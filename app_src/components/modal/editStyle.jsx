@@ -208,6 +208,7 @@ const StyleDetails = React.memo(function StyleDetails(props) {
 
   const [family, setFamily] = React.useState(currentFont.family || "");
   const [colorPickerOpen, setColorPickerOpen] = React.useState(false);
+  const [strokeColorPickerOpen, setStrokeColorPickerOpen] = React.useState(false);
 
   const families = fonts.reduce((fams, font) => (fams.includes(font.family) ? fams : fams.concat(font.family)), []);
   const familyFonts = fonts.filter((font) => font.family === family);
@@ -275,6 +276,22 @@ const StyleDetails = React.memo(function StyleDetails(props) {
     const newProps = _.cloneDeep(props.textProps);
     const newStyle = newProps.layerText.textStyleRange[0].textStyle;
     newStyle.color = { red: rgb.r, green: rgb.g, blue: rgb.b };
+    props.setTextProps(newProps);
+  };
+
+  const changeStrokeColor = (rgb) => {
+    const newProps = _.cloneDeep(props.textProps);
+    const newStyle = newProps.layerText.textStyleRange[0].textStyle;
+    newStyle.strokeColor = { red: rgb.r, green: rgb.g, blue: rgb.b };
+    if (newStyle.lineWidth > 0) newStyle.stroke = true;
+    props.setTextProps(newProps);
+  };
+
+  const changeLineWidth = (val) => {
+    const newProps = _.cloneDeep(props.textProps);
+    const newStyle = newProps.layerText.textStyleRange[0].textStyle;
+    newStyle.lineWidth = val;
+    newStyle.stroke = val > 0;
     props.setTextProps(newProps);
   };
 
@@ -368,6 +385,37 @@ const StyleDetails = React.memo(function StyleDetails(props) {
             <TiSortAlphabetically size={24} />
           </div>
           <input type="number" value={textStyle.tracking || 0} onChange={(e) => changeProp("tracking", Number(e.target.value) || 0)} className="topcoat-text-input--large" />
+        </div>
+      </div>
+      <div className="style-edit-props-row">
+        <div className="style-edit-props-col">
+          <div className="style-edit-props-label">{locale.editStyleStrokeSize}</div>
+          <input
+            type="number"
+            min={0}
+            step="0.1"
+            value={textStyle.lineWidth || 0}
+            onChange={(e) => changeLineWidth(parseFloat(e.target.value) || 0)}
+            className="topcoat-text-input--large"
+          />
+          <span className="style-edit-props-unit">{unit}</span>
+        </div>
+        <div className="style-edit-props-col">
+          <div className="style-edit-props-icon" title={locale.editStyleStrokeColor}>
+            <MdFormatColorText size={24} />
+          </div>
+          <div className="style-edit-color m-right">
+            {strokeColorPickerOpen && (
+              <React.Fragment>
+                <div className="color-picker-overlay" onClick={() => setStrokeColorPickerOpen(false)}></div>
+                <SketchPicker disableAlpha={true} color={rgbToHex(textStyle.strokeColor || { red: 0, green: 0, blue: 0 })} onChange={(e) => changeStrokeColor(e.rgb)} />
+              </React.Fragment>
+            )}
+            <div className="style-edit-color-sample" title={locale.editStyleColorButton} onClick={() => setStrokeColorPickerOpen(true)}>
+              <div style={{ background: rgbToHex(textStyle.strokeColor || { red: 0, green: 0, blue: 0 }) }}></div>
+              <span>{rgbToHex(textStyle.strokeColor || { red: 0, green: 0, blue: 0 })}</span>
+            </div>
+          </div>
         </div>
       </div>
       <div className="style-edit-props-row">
