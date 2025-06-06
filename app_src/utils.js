@@ -82,6 +82,13 @@ const getActiveLayerText = (callback) => {
   });
 };
 
+const getActiveLayerStyle = (callback) => {
+  csInterface.evalScript("getActiveLayerStyle()", (data) => {
+    const dataObj = JSON.parse(data || "{}");
+    callback(dataObj);
+  });
+};
+
 const setActiveLayerText = (text, style, callback = () => {}) => {
   if (!text && !style) {
     nativeAlert(locale.errorNoTextNoStyle, locale.errorTitle, true);
@@ -230,6 +237,14 @@ const getDefaultStyle = () => {
         },
       ],
     },
+    layerEffects: {
+      frameFX: {
+        enabled: false,
+        size: 1,
+        color: { red: 0, green: 0, blue: 0 },
+        position: "outside",
+      },
+    },
     typeUnit: "pixelsUnit",
   };
 };
@@ -238,4 +253,4 @@ const openFile = (path) => {
   csInterface.evalScript("openFile('" + path + "')");
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, openFile, checkUpdate };
+export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, getActiveLayerStyle, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, openFile, checkUpdate };

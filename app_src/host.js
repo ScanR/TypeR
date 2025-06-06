@@ -329,6 +329,9 @@ function _setActiveLayerText() {
         },
       });
     }
+    if (dataStyle && dataStyle.layerEffects) {
+      jamStyles.setLayerStyle({ layerEffects: dataStyle.layerEffects });
+    }
     if (!oldBounds.bottom) oldBounds = newBounds;
     var offsetX = oldBounds.xMid - newBounds.xMid;
     var offsetY = oldBounds.yMid - newBounds.yMid;
@@ -577,6 +580,17 @@ function getActiveLayerText() {
   return jamJSON.stringify({
     textProps: jamText.getLayerText(),
   });
+}
+
+function getActiveLayerStyle() {
+  if (!documents.length) {
+    return "";
+  }
+  try {
+    return jamJSON.stringify({ layerStyle: jamStyles.getLayerStyle() });
+  } catch (e) {
+    return "";
+  }
 }
 
 function setActiveLayerText(data) {

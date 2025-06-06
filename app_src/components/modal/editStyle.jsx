@@ -14,7 +14,7 @@ import { AiOutlineLineHeight, AiOutlineFontSize, AiOutlineColumnHeight, AiOutlin
 import { SketchPicker } from "react-color";
 
 import config from "../../config";
-import { locale, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, rgbToHex, getDefaultStyle } from "../../utils";
+import { locale, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, getActiveLayerStyle, rgbToHex, getDefaultStyle } from "../../utils";
 import { useContext } from "../../context";
 
 const EditStyleModal = React.memo(function EditStyleModal() {
@@ -26,6 +26,12 @@ const EditStyleModal = React.memo(function EditStyleModal() {
   const [prefixes, setPrefixes] = React.useState(currentData.prefixes?.join(" ") || "");
   const [prefixColor, setPrefixColor] = React.useState(currentData.prefixColor || config.defaultPrefixColor);
   const [colorPickerOpen, setColorPickerOpen] = React.useState(false);
+  const [layerEffects, setLayerEffects] = React.useState(
+    currentData.layerEffects || {
+      frameFX: { size: 1, color: { red: 0, green: 0, blue: 0 }, position: "outside" },
+    }
+  );
+  const [strokeColorOpen, setStrokeColorOpen] = React.useState(false);
   const [edited, setEdited] = React.useState(false);
   const nameInputRef = React.useRef();
 
@@ -63,7 +69,12 @@ const EditStyleModal = React.memo(function EditStyleModal() {
       delete data.textProps.layerText.bounds;
       delete data.textProps.layerText.warp;
       setTextProps(data.textProps);
-      setEdited(true);
+      getActiveLayerStyle((styleData) => {
+        if (styleData.layerStyle?.layerEffects) {
+          setLayerEffects(styleData.layerStyle.layerEffects);
+        }
+        setEdited(true);
+      });
     });
   };
 
@@ -82,13 +93,37 @@ const EditStyleModal = React.memo(function EditStyleModal() {
     setEdited(true);
   };
 
+  const changeStrokeSize = (val) => {
+    setLayerEffects({
+      ...layerEffects,
+      frameFX: { ...layerEffects.frameFX, size: val },
+    });
+    setEdited(true);
+  };
+
+  const changeStrokeColor = (rgb) => {
+    setLayerEffects({
+      ...layerEffects,
+      frameFX: { ...layerEffects.frameFX, color: { red: rgb.r, green: rgb.g, blue: rgb.b } },
+    });
+    setEdited(true);
+  };
+
+  const changeStrokePosition = (pos) => {
+    setLayerEffects({
+      ...layerEffects,
+      frameFX: { ...layerEffects.frameFX, position: pos },
+    });
+    setEdited(true);
+  };
+
   const saveStyle = (e) => {
     e.preventDefault();
     if (!name || !textProps) {
       nativeAlert(locale.errorStyleCreation, locale.errorTitle, true);
       return false;
     }
-    const data = { name, folder, textProps, prefixes, prefixColor };
+    const data = { name, folder, textProps, prefixes, prefixColor, layerEffects };
     if (currentData.create) {
       data.id = Math.random().toString(36).substr(2, 8);
     } else {
@@ -171,6 +206,39 @@ const EditStyleModal = React.memo(function EditStyleModal() {
                   <div className="style-edit-color-sample m-opacity" title={locale.editStyleColorButton} onClick={() => setColorPickerOpen(true)}>
                     <div style={{ background: prefixColor }}></div>
                     <span>{prefixColor}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.editStyleStrokeLabel}</div>
+              <div className="field-input style-edit-stroke">
+                <input
+                  type="number"
+                  min={0}
+                  value={layerEffects.frameFX.size}
+                  onChange={(e) => changeStrokeSize(parseFloat(e.target.value) || 0)}
+                  className="topcoat-text-input--large"
+                />
+                <select
+                  value={layerEffects.frameFX.position}
+                  onChange={(e) => changeStrokePosition(e.target.value)}
+                  className="topcoat-textarea"
+                >
+                  <option value="outside">{locale.editStyleStrokeOutside}</option>
+                  <option value="center">{locale.editStyleStrokeCenter}</option>
+                  <option value="inside">{locale.editStyleStrokeInside}</option>
+                </select>
+                <div className="style-edit-color">
+                  {strokeColorOpen && (
+                    <>
+                      <div className="color-picker-overlay" onClick={() => setStrokeColorOpen(false)}></div>
+                      <SketchPicker disableAlpha={true} color={rgbToHex(layerEffects.frameFX.color)} onChange={(e) => changeStrokeColor(e.rgb)} />
+                    </>
+                  )}
+                  <div className="style-edit-color-sample" title={locale.editStyleColorButton} onClick={() => setStrokeColorOpen(true)}>
+                    <div style={{ background: rgbToHex(layerEffects.frameFX.color) }}></div>
+                    <span>{rgbToHex(layerEffects.frameFX.color)}</span>
                   </div>
                 </div>
               </div>
