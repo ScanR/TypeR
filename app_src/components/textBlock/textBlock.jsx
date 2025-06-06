@@ -42,7 +42,10 @@ const TextBlock = React.memo(function TextBlock() {
       return " ";
     }
     if (context.state.currentLineIndex === line.rawIndex && context.state.images[currentPage]) {
-      openFile(context.state.images[currentPage].path);
+      openFile(
+        context.state.images[currentPage].path,
+        context.state.autoClosePsd
+      );
     }
     return line.index;
   };

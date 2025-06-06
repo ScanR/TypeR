@@ -475,6 +475,7 @@ function _alignTextLayerToSelection() {
 
 var changeActiveLayerTextSizeVal;
 var changeActiveLayerTextSizeResult;
+var lastOpenedDocument;
 
 function _changeActiveLayerTextSize() {
   if (!documents.length) {
@@ -681,6 +682,14 @@ function changeActiveLayerTextSize(val) {
   return changeActiveLayerTextSizeResult;
 }
 
-function openFile(path) {
+function openFile(path, autoClose) {
+  if (autoClose && lastOpenedDocument && lastOpenedDocument.exists) {
+    try {
+      lastOpenedDocument.close(SaveOptions.DONOTSAVECHANGES);
+    } catch (e) {}
+  }
   app.open(File(path));
+  if (autoClose) {
+    lastOpenedDocument = app.activeDocument;
+  }
 }

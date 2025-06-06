@@ -4,7 +4,21 @@ import { locale, readStorage, writeToStorage, scrollToLine, scrollToStyle, check
 import config from "./config";
 
 const storage = readStorage();
-const storeFields = ["notFirstTime", "text", "styles", "folders", "textScale", "currentLineIndex", "currentStyleId", "pastePointText", "ignoreLinePrefixes", "defaultStyleId", "shortcut", "language"];
+const storeFields = [
+  "notFirstTime",
+  "text",
+  "styles",
+  "folders",
+  "textScale",
+  "currentLineIndex",
+  "currentStyleId",
+  "pastePointText",
+  "ignoreLinePrefixes",
+  "defaultStyleId",
+  "shortcut",
+  "language",
+  "autoClosePsd",
+];
 
 const initialState = {
   notFirstTime: false,
@@ -25,6 +39,7 @@ const initialState = {
   modalType: null,
   modalData: {},
   images: [],
+  autoClosePsd: false,
   language: "auto",
   shortcut: {
     add: ["WIN", "CTRL"],
@@ -249,6 +264,11 @@ const reducer = (state, action) => {
 
   case "setLanguage": {
     newState.language = action.lang || "auto";
+    break;
+  }
+
+  case "setAutoClosePsd": {
+    newState.autoClosePsd = !!action.value;
     break;
   }
 

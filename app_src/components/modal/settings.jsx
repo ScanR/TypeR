@@ -14,6 +14,7 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [ignoreLinePrefixes, setIgnoreLinePrefixes] = React.useState(context.state.ignoreLinePrefixes.join(" "));
   const [defaultStyleId, setDefaultStyleId] = React.useState(context.state.defaultStyleId || "");
   const [language, setLanguage] = React.useState(context.state.language || "auto");
+  const [autoClosePsd, setAutoClosePsd] = React.useState(context.state.autoClosePsd || false);
   const [edited, setEdited] = React.useState(false);
 
   const close = () => {
@@ -37,6 +38,11 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeLanguage = (e) => {
     setLanguage(e.target.value);
+    setEdited(true);
+  };
+
+  const changeAutoClosePsd = (e) => {
+    setAutoClosePsd(e.target.checked);
     setEdited(true);
   };
 
@@ -66,6 +72,12 @@ const SettingsModal = React.memo(function SettingsModal() {
         lang: language,
       });
       setTimeout(() => window.location.reload(), 100);
+    }
+    if (autoClosePsd !== context.state.autoClosePsd) {
+      context.dispatch({
+        type: "setAutoClosePsd",
+        value: autoClosePsd,
+      });
     }
     const shortcut = {};
     document.querySelectorAll("input[id^=shortcut_]").forEach((input) => {
@@ -169,6 +181,15 @@ const SettingsModal = React.memo(function SettingsModal() {
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.settingsAutoClosePsdLabel}</div>
+              <div className="field-input">
+                <label className="topcoat-checkbox">
+                  <input type="checkbox" checked={autoClosePsd} onChange={changeAutoClosePsd} />
+                  <div className="topcoat-checkbox__checkmark"></div>
+                </label>
               </div>
             </div>
             <div className="field hostBrdTopContrast">

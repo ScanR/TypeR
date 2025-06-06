@@ -8,9 +8,10 @@ TypeR is a better version of TyperTools, a Photoshop extension designed for type
 - **Text Smoothing Issue Resolved**: Fixed the bug that changed text smoothing from "Strong" to "Smooth" when increasing text size.  
 - **Stable Auto-Centering**: Text shape no longer changes when using auto-centering.  
 - **Customizable Shortcuts**: You can now modify keyboard shortcuts. (+ added some new keyboard shortcuts)  
-- **Automatic Page Detection**: Automatically detects pages when importing.  
-- **Automatic Page Switching**: Automatically switches pages for seamless workflow.  
-- **Resize TypeR**: Decreased size limit of the TypeR window so it can be much smaller.  
+- **Automatic Page Detection**: Automatically detects pages when importing.
+- **Automatic Page Switching**: Automatically switches pages for seamless workflow.
+- **Auto close PSD**: Optionally close the previous page's PSD when a new one opens.
+- **Resize TypeR**: Decreased size limit of the TypeR window so it can be much smaller.
 - **Line Spacing Sync**: When increasing/decreasing text size with TypeR, line spacing adjusts accordingly.  
 - **Adaptive Size**: If no fixed text size is defined, the size of the selected layer will be used.  
 - **Line Break on Insert**: A line break is now automatically added when inserting text on the current layer.  

@@ -299,8 +299,10 @@ const getDefaultStroke = () => {
   };
 };
 
-const openFile = (path) => {
-  csInterface.evalScript("openFile('" + path + "')");
+const openFile = (path, autoClose) => {
+  csInterface.evalScript(
+    "openFile('" + path + "', " + (!!autoClose) + ")"
+  );
 };
 
 export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
