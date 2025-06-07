@@ -27,7 +27,7 @@ const ExportModal = React.memo(function ExportModal() {
     setSelected(arr);
   };
 
-  const exportData = (e) => {
+  const exportData = async (e) => {
     e.preventDefault();
     if (!selected.length && !withSettings && !withFonts) return;
     const pathSelect = window.cep.fs.showSaveDialogEx(
@@ -65,7 +65,7 @@ const ExportModal = React.memo(function ExportModal() {
 
       const exportFolder = pathSelect.data.replace(/\.zip$/, "");
       const fontsOutFolder = exportFolder + "_fonts";
-      const copied = copyFonts([...fontSet], fontsOutFolder);
+      const copied = await copyFonts([...fontSet], fontsOutFolder);
       data.fontFiles = copied.map((p) => path.basename(p));
       const jsonPath = exportFolder + ".json";
       fs.writeFileSync(jsonPath, JSON.stringify(data));
