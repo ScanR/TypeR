@@ -16,6 +16,7 @@ const storeFields = [
   "ignoreLinePrefixes",
   "defaultStyleId",
   "autoClosePSD",
+  "minimalView",
   "images",
   "shortcut",
   "language",
@@ -38,6 +39,7 @@ const initialState = {
   ignoreLinePrefixes: ["##"],
   defaultStyleId: null,
   autoClosePSD: false,
+  minimalView: false,
   modalType: null,
   modalData: {},
   images: [],
@@ -265,6 +267,11 @@ const reducer = (state, action) => {
 
   case "setAutoClosePSD": {
     newState.autoClosePSD = !!action.value;
+    break;
+  }
+
+  case "setMinimalView": {
+    newState.minimalView = !!action.value;
     break;
   }
 

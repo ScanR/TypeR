@@ -24,3 +24,10 @@
     display: none;
   }
 }
+
+.minimal-view .footer-block {
+  display: flex;
+}
+.minimal-view .footer-block .link:not(:nth-child(2)) {
+  display: none;
+}

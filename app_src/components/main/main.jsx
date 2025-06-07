@@ -2,6 +2,7 @@ import "./main.scss";
 
 import React from "react";
 import { readStorage, writeToStorage, resizeTextArea } from "../../utils";
+import { useContext } from "../../context";
 import Modal from "../modal/modal";
 import TextBlock from "../textBlock/textBlock";
 import PreviewBlock from "../previewBlock/previewBlock";
@@ -13,6 +14,7 @@ const minMiddleHeight = 100;
 const minBottomHeight = 70;
 
 const ResizeableCont = React.memo(function ResizeableCont() {
+  const context = useContext();
   const appBlock = React.useRef();
   const bottomBlock = React.useRef();
 
@@ -45,7 +47,8 @@ const ResizeableCont = React.memo(function ResizeableCont() {
   };
 
   const setBottomSize = (height) => {
-    const maxBottomHeight = appHeight - (appHeight > 450 ? topHeight : 0) - minMiddleHeight;
+    const maxBottomHeight =
+      appHeight - (appHeight > 450 && !context.state.minimalView ? topHeight : 0) - minMiddleHeight;
     bottomHeight = height || readStorage("bottomHeight") || minBottomHeight;
     if (height < minBottomHeight) bottomHeight = minBottomHeight;
     if (height > maxBottomHeight) bottomHeight = maxBottomHeight;
@@ -65,7 +68,13 @@ const ResizeableCont = React.memo(function ResizeableCont() {
   }, []);
 
   return (
-    <div className="app-body" ref={appBlock} onMouseMove={moveBottomResize} onMouseLeave={stopBottomResize} onMouseUp={stopBottomResize}>
+    <div
+      className={"app-body" + (context.state.minimalView ? " minimal-view" : "")}
+      ref={appBlock}
+      onMouseMove={moveBottomResize}
+      onMouseLeave={stopBottomResize}
+      onMouseUp={stopBottomResize}
+    >
       <Modal />
       <div className="top-block preview-block" style={{ height: topHeight }}>
         <PreviewBlock />

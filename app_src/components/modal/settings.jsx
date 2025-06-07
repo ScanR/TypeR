@@ -17,6 +17,7 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [autoClosePSD, setAutoClosePSD] = React.useState(
     !!context.state.autoClosePSD
   );
+  const [minimalView, setMinimalView] = React.useState(!!context.state.minimalView);
   const [edited, setEdited] = React.useState(false);
 
   const close = () => {
@@ -45,6 +46,11 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeAutoClosePSD = (e) => {
     setAutoClosePSD(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeMinimalView = (e) => {
+    setMinimalView(e.target.checked);
     setEdited(true);
   };
 
@@ -79,6 +85,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setAutoClosePSD",
         value: autoClosePSD,
+      });
+    }
+    if (minimalView !== context.state.minimalView) {
+      context.dispatch({
+        type: "setMinimalView",
+        value: minimalView,
       });
     }
     const shortcut = {};
@@ -243,6 +255,15 @@ const SettingsModal = React.memo(function SettingsModal() {
               <div className="field-input">
                 <label className="topcoat-checkbox">
                   <input type="checkbox" checked={autoClosePSD} onChange={changeAutoClosePSD} />
+                  <div className="topcoat-checkbox__checkmark"></div>
+                </label>
+              </div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.settingsMinimalLabel}</div>
+              <div className="field-input">
+                <label className="topcoat-checkbox">
+                  <input type="checkbox" checked={minimalView} onChange={changeMinimalView} />
                   <div className="topcoat-checkbox__checkmark"></div>
                 </label>
               </div>
