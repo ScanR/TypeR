@@ -20,7 +20,13 @@
 }
 
 @media (max-height: 450px) {
-  .footer-block {
+  .footer-block .link:not(.footer-settings) {
+    display: none;
+  }
+}
+
+.minimal-view {
+  .footer-block .link:not(.footer-settings) {
     display: none;
   }
 }

@@ -48,7 +48,7 @@ const AppFooter = React.memo(function AppFooter() {
       <span className="link" onClick={openHelp}>
         {locale.footerHelp}
       </span>
-      <span className="link" onClick={openSettings}>
+      <span className="link footer-settings" onClick={openSettings}>
         {locale.footerSettings}
       </span>
       <span className="link" onClick={openRepository}>

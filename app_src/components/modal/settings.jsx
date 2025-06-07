@@ -20,6 +20,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [checkUpdates, setCheckUpdates] = React.useState(
     context.state.checkUpdates !== false
   );
+  const [minimalView, setMinimalView] = React.useState(
+    !!context.state.minimalView
+  );
   const [edited, setEdited] = React.useState(false);
 
   const close = () => {
@@ -53,6 +56,11 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeCheckUpdates = (e) => {
     setCheckUpdates(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeMinimalView = (e) => {
+    setMinimalView(e.target.checked);
     setEdited(true);
   };
 
@@ -93,6 +101,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setCheckUpdates",
         value: checkUpdates,
+      });
+    }
+    if (minimalView !== context.state.minimalView) {
+      context.dispatch({
+        type: "setMinimalView",
+        value: minimalView,
       });
     }
     const shortcut = {};
@@ -279,6 +293,16 @@ const SettingsModal = React.memo(function SettingsModal() {
                   <div className="topcoat-checkbox__checkmark"></div>
                 </label>
               </div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.settingsMinimalLabel}</div>
+              <div className="field-input">
+                <label className="topcoat-checkbox">
+                  <input type="checkbox" checked={minimalView} onChange={changeMinimalView} />
+                  <div className="topcoat-checkbox__checkmark"></div>
+                </label>
+              </div>
+              <div className="field-descr">{locale.settingsMinimalDescr}</div>
             </div>
             <div className="field hostBrdTopContrast">
               <div className="field-label">{locale.shortcut}</div>

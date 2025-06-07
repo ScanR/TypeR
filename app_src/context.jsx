@@ -17,6 +17,7 @@ const storeFields = [
   "defaultStyleId",
   "autoClosePSD",
   "checkUpdates",
+  "minimalView",
   "images",
   "shortcut",
   "language",
@@ -40,6 +41,7 @@ const initialState = {
   defaultStyleId: null,
   autoClosePSD: false,
   checkUpdates: config.checkUpdates,
+  minimalView: false,
   modalType: null,
   modalData: {},
   images: [],
@@ -283,6 +285,11 @@ const reducer = (state, action) => {
 
   case "setCheckUpdates": {
     newState.checkUpdates = !!action.value;
+    break;
+  }
+
+  case "setMinimalView": {
+    newState.minimalView = !!action.value;
     break;
   }
 
