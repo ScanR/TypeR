@@ -144,18 +144,20 @@ function _createMagicWandSelection(tolerance) {
     var bounds = _getCurrentTextLayerBounds();
     var x = Math.max(bounds.left - 5, 0);
     var y = Math.max(bounds.yMid, 0);
-    activeDocument.selection.select(
-      [
-        [x, y],
-        [x + 1, y],
-        [x + 1, y + 1],
-        [x, y + 1],
-      ],
-      SelectionType.REPLACE,
-      0,
-      false
-    );
-    activeDocument.selection.grow(tolerance || 20, true);
+    var desc = new ActionDescriptor();
+    var ref = new ActionReference();
+    ref.putProperty(charID.Channel, charID.FrameSelect);
+    desc.putReference(charID.Null, ref);
+
+    var pos = new ActionDescriptor();
+    pos.putUnitDouble(charID.Horizontal, charID.PixelUnit, x);
+    pos.putUnitDouble(charID.Vertical, charID.PixelUnit, y);
+    desc.putObject(charID.To, stringIDToTypeID("paint"), pos);
+
+    desc.putInteger(stringIDToTypeID("tolerance"), tolerance || 20);
+    desc.putBoolean(stringIDToTypeID("merged"), true);
+    desc.putBoolean(stringIDToTypeID("antiAlias"), true);
+    executeAction(charID.Set, desc, DialogModes.NO);
   } catch (e) {}
 }
 
