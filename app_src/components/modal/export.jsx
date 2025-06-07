@@ -5,11 +5,16 @@ import { MdSave } from "react-icons/md";
 import config from "../../config";
 import { locale } from "../../utils";
 import { useContext } from "../../context";
+const fs = window.require("fs");
+const path = window.require("path");
+const archiver = window.require("archiver");
+const { copyFonts } = window.require("fonts/helpers");
 
 const ExportModal = React.memo(function ExportModal() {
   const context = useContext();
   const [selected, setSelected] = React.useState([]);
   const [withSettings, setWithSettings] = React.useState(true);
+  const [withFonts, setWithFonts] = React.useState(false);
 
   const close = () => {
     context.dispatch({ type: "setModal" });
@@ -24,12 +29,12 @@ const ExportModal = React.memo(function ExportModal() {
 
   const exportData = (e) => {
     e.preventDefault();
-    if (!selected.length && !withSettings) return;
+    if (!selected.length && !withSettings && !withFonts) return;
     const pathSelect = window.cep.fs.showSaveDialogEx(
       false,
       false,
-      ["json"],
-      config.exportFileName + ".json"
+      [withFonts ? "zip" : "json"],
+      config.exportFileName + (withFonts ? ".zip" : ".json")
     );
     if (!pathSelect?.data) return false;
     const folders = context.state.folders.filter((f) => selected.includes(f.id));
@@ -47,7 +52,34 @@ const ExportModal = React.memo(function ExportModal() {
       data.autoClosePSD = context.state.autoClosePSD;
       data.textItemKind = context.state.setTextItemKind;
     }
-    window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
+
+    if (withFonts) {
+      const fontSet = new Set();
+      styles.forEach((st) => {
+        try {
+          const ps =
+            st.textProps?.layerText?.textStyleRange?.[0]?.textStyle?.fontPostScriptName;
+          if (ps) fontSet.add(ps);
+        } catch (e) {}
+      });
+
+      const exportFolder = pathSelect.data.replace(/\.zip$/, "");
+      const fontsOutFolder = exportFolder + "_fonts";
+      const copied = copyFonts([...fontSet], fontsOutFolder);
+      data.fontFiles = copied.map((p) => path.basename(p));
+      const jsonPath = exportFolder + ".json";
+      fs.writeFileSync(jsonPath, JSON.stringify(data));
+      const archive = archiver("zip", { zlib: { level: 9 } });
+      const output = fs.createWriteStream(pathSelect.data);
+      archive.pipe(output);
+      archive.file(jsonPath, { name: path.basename(jsonPath) });
+      copied.forEach((p) => {
+        archive.file(p, { name: path.join("_fonts", path.basename(p)) });
+      });
+      archive.finalize();
+    } else {
+      window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
+    }
     close();
   };
 
@@ -81,6 +113,15 @@ const ExportModal = React.memo(function ExportModal() {
               />
               <div className="topcoat-checkbox__checkmark"></div>
               <div className="export-settings-title">{locale.exportIncludeSettings}</div>
+            </label>
+            <label className="topcoat-checkbox export-fonts-item">
+              <input
+                type="checkbox"
+                checked={withFonts}
+                onChange={(e) => setWithFonts(e.target.checked)}
+              />
+              <div className="topcoat-checkbox__checkmark"></div>
+              <div className="export-fonts-title">{locale.exportIncludeFonts}</div>
             </label>
           </div>
           <div className="fields hostBrdTopContrast">

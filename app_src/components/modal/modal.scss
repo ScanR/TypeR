@@ -57,7 +57,8 @@
 }
 
 .export-folder-item,
-.export-settings-item {
+.export-settings-item,
+.export-fonts-item {
     display: flex;
     align-items: center;
     padding: 4px;
@@ -66,6 +67,7 @@
     margin-top: 4px;
 }
 .export-folder-title,
-.export-settings-title {
+.export-settings-title,
+.export-fonts-title {
     margin-left: 6px;
 }
