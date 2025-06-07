@@ -139,6 +139,26 @@ function _modifySelectionBounds(amount) {
   executeAction(amount > 0 ? charID.Expand : charID.Contract, size, DialogModes.NO);
 }
 
+function _createMagicWandSelection(tolerance) {
+  try {
+    var bounds = _getCurrentTextLayerBounds();
+    var x = Math.max(bounds.left - 5, 0);
+    var y = Math.max(bounds.yMid, 0);
+    activeDocument.selection.select(
+      [
+        [x, y],
+        [x + 1, y],
+        [x + 1, y + 1],
+        [x, y + 1],
+      ],
+      SelectionType.REPLACE,
+      0,
+      false
+    );
+    activeDocument.selection.grow(tolerance || 20, true);
+  } catch (e) {}
+}
+
 function _moveLayer(offsetX, offsetY) {
   var amount = new ActionDescriptor();
   amount.putUnitDouble(charID.Horizontal, charID.PixelUnit, offsetX);
@@ -458,8 +478,14 @@ function _alignTextLayerToSelection() {
   }
   var selection = _checkSelection();
   if (selection.error) {
-    createTextLayerInSelectionResult = selection.error;
-    return;
+    if (selection.error === "noSelection") {
+      _createMagicWandSelection(20);
+      selection = _checkSelection();
+    }
+    if (selection.error) {
+      createTextLayerInSelectionResult = selection.error;
+      return;
+    }
   }
   var isPoint = _textLayerIsPointText();
   var bounds = _getCurrentTextLayerBounds();
