@@ -86,12 +86,18 @@ const EditStyleModal = React.memo(function EditStyleModal() {
   };
 
   const changeStrokeSize = (e) => {
-    setStroke({ ...stroke, size: parseFloat(e.target.value) || 0 });
+    const size = parseFloat(e.target.value) || 0;
+    setStroke({ ...stroke, size, enabled: size > 0 });
     setEdited(true);
   };
 
   const changeStrokeColor = (e) => {
-    setStroke({ ...stroke, color: { r: e.rgb.r, g: e.rgb.g, b: e.rgb.b } });
+    const newStroke = {
+      ...stroke,
+      color: { r: e.rgb.r, g: e.rgb.g, b: e.rgb.b },
+    };
+    if (newStroke.size > 0) newStroke.enabled = true;
+    setStroke(newStroke);
     setEdited(true);
   };
 
