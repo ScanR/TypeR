@@ -6,7 +6,7 @@ import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { MdCenterFocusWeak } from "react-icons/md";
 
-import { locale, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine, removeBoldMarkup } from "../../utils";
+import { locale, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine, removeBoldMarkup, boldMarkupToHtml } from "../../utils";
 import { useContext } from "../../context";
 
 const PreviewBlock = React.memo(function PreviewBlock() {
@@ -106,7 +106,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
               <FiArrowRightCircle size={16} onClick={insertStyledText} />
             </div>
           </div>
-          <div className="preview-line-text" style={styleObject} dangerouslySetInnerHTML={{ __html: `<span style='font-family: "${styleObject.fontFamily || "Tahoma"}"'>${line.text || ""}</span>` }}></div>
+          <div className="preview-line-text" style={styleObject} dangerouslySetInnerHTML={{ __html: `<span style='font-family: "${styleObject.fontFamily || "Tahoma"}"'>${boldMarkupToHtml(line.text || "")}</span>` }}></div>
         </div>
       </div>
     </React.Fragment>

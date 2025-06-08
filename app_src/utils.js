@@ -306,6 +306,10 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-const removeBoldMarkup = (text) => text.replace(/\*\*(.*?)\*\*/g, "$1");
+const boldRegex = /\*\*([^*]+)\*\*/g;
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate, removeBoldMarkup };
+const removeBoldMarkup = (text) => text.replace(boldRegex, "$1");
+
+const boldMarkupToHtml = (text) => text.replace(boldRegex, "<strong>$1</strong>");
+
+export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate, removeBoldMarkup, boldMarkupToHtml };

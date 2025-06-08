@@ -53,7 +53,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
         }
       }
       const pointText = context.state.pastePointText;
-      createTextLayerInSelection(line.text, style, pointText, (ok) => {
+      createTextLayerInSelection(removeBoldMarkup(line.text), style, pointText, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
       });
     } else if (checkShortcut(realState, context.state.shortcut.apply)) {
