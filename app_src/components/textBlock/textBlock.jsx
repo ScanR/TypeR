@@ -4,8 +4,15 @@ import React from "react";
 import { FiArrowRightCircle, FiTarget } from "react-icons/fi";
 
 import config from "../../config";
-import { locale, setActiveLayerText, resizeTextArea, scrollToLine, openFile } from "../../utils";
+import { locale, setActiveLayerText, resizeTextArea, scrollToLine, openFile, removeBoldMarkup } from "../../utils";
 import { useContext } from "../../context";
+
+const parseBoldMarkup = (text) => {
+  const parts = text.split(/\*\*(.*?)\*\*/g);
+  return parts.map((part, idx) =>
+    idx % 2 ? <strong key={idx}>{part}</strong> : <React.Fragment key={idx}>{part}</React.Fragment>
+  );
+};
 
 const TextBlock = React.memo(function TextBlock() {
   const context = useContext();
@@ -81,17 +88,17 @@ const TextBlock = React.memo(function TextBlock() {
               {line.ignorePrefix ? (
                 <React.Fragment>
                   <span className="text-line-ignore-prefix">{line.ignorePrefix}</span>
-                  <span>{line.rawText.replace(line.ignorePrefix, "")}</span>
+                  <span>{parseBoldMarkup(line.rawText.replace(line.ignorePrefix, ""))}</span>
                 </React.Fragment>
               ) : line.stylePrefix ? (
                 <React.Fragment>
                   <span className="text-line-style-prefix" style={{ background: line.style?.prefixColor || config.defaultPrefixColor }}>
                     {line.stylePrefix}
                   </span>
-                  <span>{line.rawText.replace(line.stylePrefix, "")}</span>
+                  <span>{parseBoldMarkup(line.rawText.replace(line.stylePrefix, ""))}</span>
                 </React.Fragment>
               ) : (
-                <span>{line.rawText || " "}</span>
+                <span>{parseBoldMarkup(line.rawText || " ")}</span>
               )}
             </div>
             <div className="text-line-insert" title={line.ignore ? "" : locale.insertText}>
@@ -99,7 +106,7 @@ const TextBlock = React.memo(function TextBlock() {
                 <FiArrowRightCircle
                   size={14}
                   onClick={() => {
-                    setActiveLayerText(line.text);
+                    setActiveLayerText(removeBoldMarkup(line.text));
                     context.dispatch({ type: "nextLine", add: true });
                   }}
                 />

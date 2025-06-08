@@ -1,7 +1,7 @@
 import _ from "lodash";
 import React from "react";
 
-import { csInterface, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
+import { csInterface, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize, removeBoldMarkup } from "./utils";
 import { useContext } from "./context";
 
 const CTRL = "CTRL";
@@ -70,7 +70,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
           txtStyle.leading *= context.state.textScale / 100;
         }
       }
-      setActiveLayerText(line.text, style, (ok) => {
+      setActiveLayerText(removeBoldMarkup(line.text), style, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
       });
     } else if (checkShortcut(realState, context.state.shortcut.center)) {

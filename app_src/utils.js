@@ -306,4 +306,6 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
+const removeBoldMarkup = (text) => text.replace(/\*\*(.*?)\*\*/g, "$1");
+
+export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate, removeBoldMarkup };

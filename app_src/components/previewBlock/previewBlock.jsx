@@ -6,7 +6,7 @@ import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { MdCenterFocusWeak } from "react-icons/md";
 
-import { locale, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine } from "../../utils";
+import { locale, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine, removeBoldMarkup } from "../../utils";
 import { useContext } from "../../context";
 
 const PreviewBlock = React.memo(function PreviewBlock() {
@@ -29,7 +29,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       }
     }
     const pointText = context.state.pastePointText;
-    createTextLayerInSelection(line.text, lineStyle, pointText, (ok) => {
+    createTextLayerInSelection(removeBoldMarkup(line.text), lineStyle, pointText, (ok) => {
       if (ok) context.dispatch({ type: "nextLine", add: true });
     });
   };
@@ -46,7 +46,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         txtStyle.leading *= context.state.textScale / 100;
       }
     }
-    setActiveLayerText(line.text, lineStyle, (ok) => {
+    setActiveLayerText(removeBoldMarkup(line.text), lineStyle, (ok) => {
       if (ok) context.dispatch({ type: "nextLine", add: true });
     });
   };
