@@ -173,7 +173,13 @@ function _moveLayer(offsetX, offsetY) {
 
 /**
  * Retrieve stroke information from the active layer.
- * Returns null if no stroke is found.
+ *
+ * Only solid color strokes are supported. If the current layer has a
+ * gradient or pattern stroke, this function will return null. Returning
+ * null ensures `getActiveLayerText()` still outputs valid JSON without
+ * throwing when encountering unsupported stroke types.
+ *
+ * @returns {Object|null} {enabled, position, size, opacity, color} or null
  */
 function _getLayerStroke() {
   var ref = new ActionReference();
@@ -186,7 +192,23 @@ function _getLayerStroke() {
   if (!fx.hasKey(charIDToTypeID("FrFX"))) return null;
 
   var fr = fx.getObjectValue(charIDToTypeID("FrFX"));
-  var col = fr.getObjectValue(charIDToTypeID("Clr "));
+  // Ensure the stroke uses a solid color fill. Other fill types (gradient,
+  // pattern) do not contain a "Clr " key and would throw.
+  try {
+    if (fr.hasKey(charIDToTypeID("PntT"))) {
+      var paintType = fr.getEnumerationValue(charIDToTypeID("PntT"));
+      if (paintType !== charIDToTypeID("SClr")) return null;
+    }
+  } catch (e) {
+    return null;
+  }
+
+  var col;
+  try {
+    col = fr.getObjectValue(charIDToTypeID("Clr "));
+  } catch (e) {
+    return null;
+  }
 
   return {
     enabled: fr.getBoolean(charIDToTypeID("enab")),
