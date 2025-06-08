@@ -207,7 +207,7 @@ function _getLayerStroke() {
  *                          position is forced to "outer".
  */
 function _setLayerStroke(stroke) {
-  if (!stroke || stroke.enabled === false) return;
+  if (!stroke || stroke.enabled === false || !stroke.size) return;
 
   var d = new ActionDescriptor();
   var r = new ActionReference();
