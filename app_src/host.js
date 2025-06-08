@@ -173,7 +173,11 @@ function _moveLayer(offsetX, offsetY) {
 
 /**
  * Retrieve stroke information from the active layer.
- * Returns null if no stroke is found.
+ *
+ * Only solid color strokes are supported.  Photoshop also allows gradient
+ * (`Grdn`/`GrFl`) and pattern (`Ptrn`) fills for strokes, but those are
+ * currently ignored and `null` is returned.  This prevents errors when
+ * attempting to access the color data of non‑solid strokes.
  */
 function _getLayerStroke() {
   var ref = new ActionReference();
@@ -186,7 +190,27 @@ function _getLayerStroke() {
   if (!fx.hasKey(charIDToTypeID("FrFX"))) return null;
 
   var fr = fx.getObjectValue(charIDToTypeID("FrFX"));
-  var col = fr.getObjectValue(charIDToTypeID("Clr "));
+
+  // Check the stroke fill type before attempting to read the color.  Photoshop
+  // stores the fill type in the `PntT` key under the `FrFl` class.  Solid
+  // color strokes use the `SClr` enumeration value.
+  var solidColorId = charIDToTypeID("SClr");
+  var fillType;
+  try {
+    fillType = fr.getEnumerationValue(charIDToTypeID("PntT"));
+  } catch (e) {
+    fillType = null;
+  }
+
+  // Non solid-color strokes (e.g. gradient or pattern) are not supported.
+  if (fillType !== solidColorId) return null;
+
+  var col;
+  try {
+    col = fr.getObjectValue(charIDToTypeID("Clr "));
+  } catch (e) {
+    return null;
+  }
 
   return {
     enabled: fr.getBoolean(charIDToTypeID("enab")),
