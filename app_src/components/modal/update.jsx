@@ -1,7 +1,7 @@
 import React from 'react';
 import { FiX } from 'react-icons/fi';
 
-import { locale, openUrl } from '../../utils';
+import { locale, openUrl, updateExtension, nativeAlert } from '../../utils';
 import { useContext } from '../../context';
 
 const UpdateModal = React.memo(function UpdateModal() {
@@ -11,8 +11,16 @@ const UpdateModal = React.memo(function UpdateModal() {
     context.dispatch({ type: 'setModal' });
   };
   const download = () => {
-    openUrl('https://github.com/ScanR/TypeR/releases/latest');
     close();
+    updateExtension(version)
+      .then(() => {
+        window.location.reload();
+      })
+      .catch((e) => {
+        console.error('Auto update failed', e);
+        nativeAlert('Update failed', locale.errorTitle, true);
+        openUrl('https://github.com/ScanR/TypeR/releases/latest');
+      });
   };
   return (
     <React.Fragment>

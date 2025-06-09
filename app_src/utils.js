@@ -306,4 +306,78 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
+const updateExtension = (version) => {
+  const nodeRequire =
+    window.cep_node?.require || window.require || ((m) => require(m));
+  const fs = nodeRequire("fs");
+  const os = nodeRequire("os");
+  const pathLib = nodeRequire("path");
+  const https = nodeRequire("https");
+  const { exec } = nodeRequire("child_process");
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tmpDir = fs.mkdtempSync(pathLib.join(os.tmpdir(), "typer-update-"));
+      const zipPath = pathLib.join(tmpDir, `typertools-${version}.zip`);
+      const file = fs.createWriteStream(zipPath);
+
+      https
+        .get(
+          `https://github.com/ScanR/TypeR/releases/download/${version}/typertools-${version}.zip`,
+          (res) => {
+            if (res.statusCode !== 200) {
+              reject(new Error("Download failed"));
+              return;
+            }
+            res.pipe(file);
+            file.on("finish", () => {
+              file.close(() => {
+                const extractCmd =
+                  process.platform === "win32"
+                    ? `powershell -Command \"Expand-Archive -Path '${zipPath}' -DestinationPath '${tmpDir}' -Force\"`
+                    : `unzip -o '${zipPath}' -d '${tmpDir}'`;
+                exec(extractCmd, (err) => {
+                  if (err) {
+                    reject(err);
+                    return;
+                  }
+                  let folder = tmpDir;
+                  const entries = fs.readdirSync(tmpDir);
+                  if (
+                    entries.length === 1 &&
+                    fs.statSync(pathLib.join(tmpDir, entries[0])).isDirectory()
+                  ) {
+                    folder = pathLib.join(tmpDir, entries[0]);
+                  }
+                  const scriptName =
+                    process.platform === "win32" ? "install_win.cmd" : "install_mac.sh";
+                  let scriptPath = pathLib.join(folder, scriptName);
+                  if (!fs.existsSync(scriptPath)) {
+                    scriptPath = pathLib.join(tmpDir, scriptName);
+                  }
+                  if (!fs.existsSync(scriptPath)) {
+                    reject(new Error("Install script not found"));
+                    return;
+                  }
+                  if (process.platform !== "win32") {
+                    try {
+                      fs.chmodSync(scriptPath, 0o755);
+                    } catch (e) {}
+                  }
+                  exec(scriptPath, { cwd: pathLib.dirname(scriptPath) }, (e2) => {
+                    if (e2) reject(e2);
+                    else resolve();
+                  });
+                });
+              });
+            });
+          }
+        )
+        .on("error", reject);
+    } catch (e) {
+      reject(e);
+    }
+  });
+};
+
+export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate, updateExtension };
