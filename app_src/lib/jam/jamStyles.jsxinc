@@ -110,6 +110,8 @@ if (typeof jamStyles !== 'object')
      * @namespace
      */
     var jamStyles = { };
+    // Storage for stroke attributes copied from text layers
+    jamStyles.copiedTextStroke = null;
     //
     (function ()
     {
@@ -1157,6 +1159,30 @@ if (typeof jamStyles !== 'object')
             try
             {
                 jamEngine.jsonPlay ("copyEffects", null);
+
+                // Retrieve stroke attributes if the active layer is text
+                var textInfo = jamText.getLayerText ();
+                if (textInfo && textInfo.layerText && textInfo.layerText.textStyleRange)
+                {
+                    var style = textInfo.layerText.textStyleRange[0].textStyle;
+                    if (style && ("stroke" in style || "strokeColor" in style || "lineWidth" in style))
+                    {
+                        jamStyles.copiedTextStroke =
+                        {
+                            stroke: style.stroke,
+                            strokeColor: style.strokeColor,
+                            lineWidth: style.lineWidth
+                        };
+                    }
+                    else
+                    {
+                        jamStyles.copiedTextStroke = null;
+                    }
+                }
+                else
+                {
+                    jamStyles.copiedTextStroke = null;
+                }
             }
             catch (e)
             {
@@ -1174,6 +1200,24 @@ if (typeof jamStyles !== 'object')
             try
             {
                 jamEngine.jsonPlay ("pasteEffects", { });
+
+                // If stroke attributes were copied from a text layer, apply them
+                if (jamStyles.copiedTextStroke)
+                {
+                    var textInfo = jamText.getLayerText ();
+                    if (textInfo && textInfo.layerText && textInfo.layerText.textStyleRange)
+                    {
+                        var ranges = textInfo.layerText.textStyleRange;
+                        for (var i = 0; i < ranges.length; i++)
+                        {
+                            var ts = ranges[i].textStyle;
+                            ts.stroke = jamStyles.copiedTextStroke.stroke;
+                            ts.strokeColor = jamStyles.copiedTextStroke.strokeColor;
+                            ts.lineWidth = jamStyles.copiedTextStroke.lineWidth;
+                        }
+                        jamText.setLayerText (textInfo);
+                    }
+                }
             }
             catch (e)
             {
