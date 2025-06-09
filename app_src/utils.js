@@ -34,10 +34,10 @@ const installUpdate = async () => {
 
     const arrayBuffer = await response.arrayBuffer();
 
-    const fs = require('fs');
-    const os = require('os');
-    const pathMod = require('path');
-    const { execSync, spawnSync } = require('child_process');
+    const fs = window.require('fs');
+    const os = window.require('os');
+    const pathMod = window.require('path');
+    const { execSync, spawnSync } = window.require('child_process');
 
     const tmp = pathMod.join(os.tmpdir(), 'typer_update');
     if (!fs.existsSync(tmp)) fs.mkdirSync(tmp, { recursive: true });
