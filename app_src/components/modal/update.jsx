@@ -11,13 +11,14 @@ const UpdateModal = React.memo(function UpdateModal() {
     context.dispatch({ type: 'setModal' });
   };
   const download = () => {
-    close();
+    context.dispatch({ type: 'setModal', modal: 'updateInstall', data: { version } });
     updateExtension(version)
       .then(() => {
         window.location.reload();
       })
       .catch((e) => {
         console.error('Auto update failed', e);
+        context.dispatch({ type: 'setModal' });
         nativeAlert('Update failed', locale.errorTitle, true);
         openUrl('https://github.com/ScanR/TypeR/releases/latest');
       });

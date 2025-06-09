@@ -8,6 +8,7 @@ import EditStyleModal from './editStyle';
 import EditFolderModal from './editFolder';
 import ExportModal from './export';
 import UpdateModal from './update';
+import UpdateInstallModal from './updateInstall';
 
 
 const Modal = React.memo(function Modal() {
@@ -21,6 +22,7 @@ const Modal = React.memo(function Modal() {
     else if (modalType === 'editFolder') modalContent = <EditFolderModal />;
     else if (modalType === 'export') modalContent = <ExportModal />;
     else if (modalType === 'update') modalContent = <UpdateModal />;
+    else if (modalType === 'updateInstall') modalContent = <UpdateInstallModal />;
 
     React.useEffect(() => {
         if (!context.state.notFirstTime) {
