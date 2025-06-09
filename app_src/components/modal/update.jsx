@@ -1,7 +1,7 @@
 import React from 'react';
 import { FiX } from 'react-icons/fi';
 
-import { locale, openUrl } from '../../utils';
+import { locale, installUpdate } from '../../utils';
 import { useContext } from '../../context';
 
 const UpdateModal = React.memo(function UpdateModal() {
@@ -11,7 +11,7 @@ const UpdateModal = React.memo(function UpdateModal() {
     context.dispatch({ type: 'setModal' });
   };
   const download = () => {
-    openUrl('https://github.com/ScanR/TypeR/releases/latest');
+    installUpdate();
     close();
   };
   return (

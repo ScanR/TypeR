@@ -25,6 +25,46 @@ const checkUpdate = async (currentVersion) => {
   return null;
 };
 
+const installUpdate = async () => {
+  try {
+    const response = await fetch(
+      'https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip'
+    );
+    if (!response.ok) throw new Error('Download failed');
+
+    const arrayBuffer = await response.arrayBuffer();
+
+    const fs = require('fs');
+    const os = require('os');
+    const pathMod = require('path');
+    const { execSync, spawnSync } = require('child_process');
+
+    const tmp = pathMod.join(os.tmpdir(), 'typer_update');
+    if (!fs.existsSync(tmp)) fs.mkdirSync(tmp, { recursive: true });
+    const zipFile = pathMod.join(tmp, 'update.zip');
+    fs.writeFileSync(zipFile, Buffer.from(arrayBuffer));
+
+    if (process.platform === 'win32') {
+      try {
+        execSync(
+          `powershell -Command "Expand-Archive -Path \"${zipFile}\" -DestinationPath \"${tmp}\" -Force"`
+        );
+      } catch (e) {
+        execSync(`tar -xf "${zipFile}" -C "${tmp}"`);
+      }
+      spawnSync('cmd', ['/c', 'install_win.cmd'], { cwd: tmp, stdio: 'inherit' });
+    } else {
+      execSync(`unzip -o "${zipFile}" -d "${tmp}"`);
+      spawnSync('sh', ['install_mac.sh'], { cwd: tmp, stdio: 'inherit' });
+    }
+
+    csInterface.closeExtension();
+  } catch (e) {
+    console.error('Auto update failed', e);
+    nativeAlert('Update failed', locale.errorTitle, true);
+  }
+};
+
 const readStorage = (key) => {
   const result = window.cep.fs.readFile(storagePath);
   if (result.err) {
@@ -306,4 +346,4 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
+export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate, installUpdate };
