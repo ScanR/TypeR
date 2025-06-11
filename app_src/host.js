@@ -655,7 +655,6 @@ function getUserFonts() {
 
 function getHotkeyPressed() {
   var state = ScriptUI.environment.keyboardState;
-  var mouse = ScriptUI.environment.mouseState;
   var string = "a";
 
   if (state.metaKey) {
@@ -669,13 +668,6 @@ function getHotkeyPressed() {
   }
   if (state.shiftKey) {
     string += "SHIFTa";
-  }
-  if (mouse && mouse.buttonName) {
-    if (mouse.buttonName === "Button 4") {
-      string += "BUTTON4a";
-    } else if (mouse.buttonName === "Button 5") {
-      string += "BUTTON5a";
-    }
   }
   if (state.keyName) {
     string += state.keyName.toUpperCase() + "a";

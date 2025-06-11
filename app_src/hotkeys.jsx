@@ -16,8 +16,6 @@ const intervalTime = 50;
 let keyboardInterval = 0;
 let canRepeat = true;
 let keyUp = true;
-let mouseButtons = [];
-let mouseDown = false;
 
 const checkRepeatTime = (time = repeatTime) => {
   if (canRepeat && keyUp) {
@@ -38,6 +36,7 @@ const checkShortcut = (state, ref) => {
 
 const handleMouseDown = (e, callback) => {
   if (e.button !== 3 && e.button !== 4) return;
+  e.preventDefault();
   const keys = [];
   if (e.metaKey) keys.push(WIN);
   if (e.ctrlKey) keys.push(CTRL);

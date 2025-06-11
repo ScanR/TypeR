@@ -3,6 +3,9 @@ import { locale } from "../../utils";
 
 const Shortcut = (props) => {
   const changeShortCut = (e) => {
+    if (e.type === "mousedown" && e.button !== 3 && e.button !== 4) {
+      return;
+    }
     e.preventDefault();
     let shortCut = "";
     if (e.metaKey) {
