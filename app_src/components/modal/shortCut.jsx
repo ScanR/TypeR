@@ -17,6 +17,13 @@ const Shortcut = (props) => {
     if (e.shiftKey) {
       shortCut += `${shortCut ? " + " : ""}SHIFT`;
     }
+    if (e.button !== undefined) {
+      if (e.button === 3) {
+        shortCut += `${shortCut ? " + " : ""}BUTTON4`;
+      } else if (e.button === 4) {
+        shortCut += `${shortCut ? " + " : ""}BUTTON5`;
+      }
+    }
     if (e.key && !["Meta", "Control", "Alt", "Shift"].includes(e.key)) {
       if (e.key === "+") {
         shortCut += `${shortCut ? " + " : ""}PLUS`;
@@ -39,7 +46,13 @@ const Shortcut = (props) => {
     <React.Fragment key={props.index}>
       <div className="field-mini-label">{locale[`shortcut_${props.index}`]}</div>
       <div className="field-input">
-        <input id={`shortcut_${props.index}`} value={props.value.join(" + ")} onKeyDown={changeShortCut} className="topcoat-textarea" />
+        <input
+          id={`shortcut_${props.index}`}
+          value={props.value.join(" + ")}
+          onKeyDown={changeShortCut}
+          onMouseDown={changeShortCut}
+          className="topcoat-textarea"
+        />
       </div>
     </React.Fragment>
   );

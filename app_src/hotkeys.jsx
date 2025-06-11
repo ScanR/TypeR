@@ -8,12 +8,16 @@ const CTRL = "CTRL";
 const SHIFT = "SHIFT";
 const ALT = "ALT";
 const WIN = "WIN";
+const BUTTON4 = "BUTTON4";
+const BUTTON5 = "BUTTON5";
 
 const repeatTime = 2000;
 const intervalTime = 50;
 let keyboardInterval = 0;
 let canRepeat = true;
 let keyUp = true;
+let mouseButtons = [];
+let mouseDown = false;
 
 const checkRepeatTime = (time = repeatTime) => {
   if (canRepeat && keyUp) {
@@ -30,6 +34,19 @@ const checkRepeatTime = (time = repeatTime) => {
 
 const checkShortcut = (state, ref) => {
   return ref.every((key) => state.includes(key));
+};
+
+const handleMouseDown = (e, callback) => {
+  if (e.button !== 3 && e.button !== 4) return;
+  const keys = [];
+  if (e.metaKey) keys.push(WIN);
+  if (e.ctrlKey) keys.push(CTRL);
+  if (e.altKey) keys.push(ALT);
+  if (e.shiftKey) keys.push(SHIFT);
+  if (e.button === 3) keys.push(BUTTON4);
+  if (e.button === 4) keys.push(BUTTON5);
+  const state = "a" + keys.join("a") + "a";
+  callback(state);
 };
 
 const HotkeysListner = React.memo(function HotkeysListner() {
@@ -106,6 +123,14 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       }
     }
   };
+
+  React.useEffect(() => {
+    const listener = (e) => {
+      handleMouseDown(e, checkState);
+    };
+    document.addEventListener("mousedown", listener);
+    return () => document.removeEventListener("mousedown", listener);
+  }, [context.state]);
 
   React.useEffect(() => {
     const keyInterests = [{ keyCode: 27 }];
