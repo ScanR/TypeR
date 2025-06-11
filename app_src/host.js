@@ -671,12 +671,18 @@ function getHotkeyPressed() {
     string += "SHIFTa";
   }
   if (state.keyName) {
-    string += state.keyName.toUpperCase() + "a";
-  }
-  if (mouse.button !== undefined) {
-    if (mouse.button == 4 || mouse.buttonName == "Button 4") {
+    var key = state.keyName;
+    if (key === "BrowserBack" || key === "Button 4") {
       string += "BUTTON4a";
-    } else if (mouse.button == 5 || mouse.buttonName == "Button 5") {
+    } else if (key === "BrowserForward" || key === "Button 5") {
+      string += "BUTTON5a";
+    } else {
+      string += key.toUpperCase() + "a";
+    }
+  } else if (mouse.button !== undefined) {
+    if (mouse.button == 3 || mouse.buttonName == "Button 4") {
+      string += "BUTTON4a";
+    } else if (mouse.button == 4 || mouse.buttonName == "Button 5") {
       string += "BUTTON5a";
     }
   }
