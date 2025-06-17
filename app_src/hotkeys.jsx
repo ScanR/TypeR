@@ -75,7 +75,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       });
     } else if (checkShortcut(realState, context.state.shortcut.center)) {
       if (!checkRepeatTime()) return;
-      alignTextLayerToSelection();
+      alignTextLayerToSelection(context.state.alignPointToParagraph);
     } else if (checkShortcut(realState, context.state.shortcut.next)) {
       if (!checkRepeatTime(300)) return;
       context.dispatch({ type: "nextLine" });

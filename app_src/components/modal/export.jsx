@@ -45,6 +45,7 @@ const ExportModal = React.memo(function ExportModal() {
       data.defaultStyleId = context.state.defaultStyleId;
       data.language = context.state.language;
       data.autoClosePSD = context.state.autoClosePSD;
+      data.alignPointToParagraph = context.state.alignPointToParagraph;
       data.textItemKind = context.state.setTextItemKind;
     }
     window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));

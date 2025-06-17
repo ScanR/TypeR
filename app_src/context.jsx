@@ -13,6 +13,7 @@ const storeFields = [
   "currentLineIndex",
   "currentStyleId",
   "pastePointText",
+  "alignPointToParagraph",
   "ignoreLinePrefixes",
   "defaultStyleId",
   "autoClosePSD",
@@ -36,6 +37,7 @@ const initialState = {
   currentStyle: null,
   currentStyleId: null,
   pastePointText: false,
+  alignPointToParagraph: false,
   ignoreLinePrefixes: ["##"],
   defaultStyleId: null,
   autoClosePSD: false,
@@ -273,6 +275,11 @@ const reducer = (state, action) => {
 
   case "setPastePointText": {
     newState.pastePointText = !!action.isPoint;
+    break;
+  }
+
+  case "setAlignPointToParagraph": {
+    newState.alignPointToParagraph = !!action.value;
     break;
   }
 

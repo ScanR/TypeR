@@ -11,6 +11,9 @@ import Shortcut from "./shortCut";
 const SettingsModal = React.memo(function SettingsModal() {
   const context = useContext();
   const [pastePointText, setPastePointText] = React.useState(context.state.pastePointText ? "1" : "");
+  const [alignPointToParagraph, setAlignPointToParagraph] = React.useState(
+    !!context.state.alignPointToParagraph
+  );
   const [ignoreLinePrefixes, setIgnoreLinePrefixes] = React.useState(context.state.ignoreLinePrefixes.join(" "));
   const [defaultStyleId, setDefaultStyleId] = React.useState(context.state.defaultStyleId || "");
   const [language, setLanguage] = React.useState(context.state.language || "auto");
@@ -51,6 +54,11 @@ const SettingsModal = React.memo(function SettingsModal() {
     setEdited(true);
   };
 
+  const changeAlignPointToParagraph = (e) => {
+    setAlignPointToParagraph(e.target.checked);
+    setEdited(true);
+  };
+
   const changeCheckUpdates = (e) => {
     setCheckUpdates(e.target.checked);
     setEdited(true);
@@ -87,6 +95,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setAutoClosePSD",
         value: autoClosePSD,
+      });
+    }
+    if (alignPointToParagraph !== context.state.alignPointToParagraph) {
+      context.dispatch({
+        type: "setAlignPointToParagraph",
+        value: alignPointToParagraph,
       });
     }
     if (checkUpdates !== context.state.checkUpdates) {
@@ -144,6 +158,7 @@ const SettingsModal = React.memo(function SettingsModal() {
             !data.defaultStyleId &&
             !data.language &&
             !data.autoClosePSD &&
+            !data.alignPointToParagraph &&
             !data.textItemKind
           ) {
             const idMap = {};
@@ -267,6 +282,15 @@ const SettingsModal = React.memo(function SettingsModal() {
               <div className="field-input">
                 <label className="topcoat-checkbox">
                   <input type="checkbox" checked={autoClosePSD} onChange={changeAutoClosePSD} />
+                  <div className="topcoat-checkbox__checkmark"></div>
+                </label>
+              </div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.settingsConvertPointLabel}</div>
+              <div className="field-input">
+                <label className="topcoat-checkbox">
+                  <input type="checkbox" checked={alignPointToParagraph} onChange={changeAlignPointToParagraph} />
                   <div className="topcoat-checkbox__checkmark"></div>
                 </label>
               </div>

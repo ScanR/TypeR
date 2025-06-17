@@ -164,8 +164,8 @@ const createTextLayerInSelection = (text, style, pointText, callback = () => {})
   });
 };
 
-const alignTextLayerToSelection = () => {
-  csInterface.evalScript("alignTextLayerToSelection()", (error) => {
+const alignTextLayerToSelection = (convert) => {
+  csInterface.evalScript("alignTextLayerToSelection(" + !!convert + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);

@@ -469,6 +469,7 @@ function _createTextLayerInSelection() {
 }
 
 var alignTextLayerToSelectionResult;
+var alignTextLayerToSelectionConvert;
 
 function _alignTextLayerToSelection() {
   if (!documents.length) {
@@ -492,7 +493,11 @@ function _alignTextLayerToSelection() {
   var isPoint = _textLayerIsPointText();
   var bounds = _getCurrentTextLayerBounds();
   if (isPoint) {
-    _changeToPointText();
+    if (alignTextLayerToSelectionConvert) {
+      _changeToBoxText();
+    } else {
+      _changeToPointText();
+    }
   }
   _deselect();
   var offsetX = selection.xMid - bounds.xMid;
@@ -700,7 +705,8 @@ function createTextLayerInSelection(data, point) {
   return createTextLayerInSelectionResult;
 }
 
-function alignTextLayerToSelection() {
+function alignTextLayerToSelection(convert) {
+  alignTextLayerToSelectionConvert = convert;
   app.activeDocument.suspendHistory("TyperTools Align", "_alignTextLayerToSelection()");
   return alignTextLayerToSelectionResult;
 }
