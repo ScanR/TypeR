@@ -126,6 +126,9 @@
   & > SVG {
     cursor: pointer;
     opacity: 0.7;
+    &:not(:first-child) {
+      margin-left: 4px;
+    }
     &:hover {
       color: #fff;
       opacity: 1;

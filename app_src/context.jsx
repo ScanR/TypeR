@@ -48,6 +48,7 @@ const initialState = {
     add: ["WIN", "CTRL"],
     center: ["WIN", "ALT"],
     apply: ["WIN", "SHIFT"],
+    editPaste: ["WIN", "V"],
     next: ["CTRL", "ENTER"],
     previous: ["CTRL", "TAB"],
     increase: ["CTRL", "SHIFT", "PLUS"],

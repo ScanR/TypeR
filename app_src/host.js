@@ -728,3 +728,13 @@ function openFile(path, autoClose) {
     _lastOpenedDocId = newDoc.id;
   }
 }
+
+function pasteFromClipboard() {
+  if (!documents.length) {
+    return "doc";
+  } else if (activeDocument.activeLayer.kind != LayerKind.TEXT) {
+    return "layer";
+  }
+  executeAction(charIDToTypeID("past"), new ActionDescriptor(), DialogModes.NO);
+  return "";
+}

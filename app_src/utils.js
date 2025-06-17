@@ -179,6 +179,16 @@ const changeActiveLayerTextSize = (val, callback = () => {}) => {
   });
 };
 
+const pasteFromClipboard = async (text, callback = () => {}) => {
+  try {
+    await navigator.clipboard.writeText(text || "");
+  } catch (e) {}
+  csInterface.evalScript("pasteFromClipboard()", (error) => {
+    if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
+    callback(!error);
+  });
+};
+
 const getHotkeyPressed = (callback) => {
   csInterface.evalScript("getHotkeyPressed()", callback);
 };
@@ -306,4 +316,4 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
+export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, pasteFromClipboard, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };

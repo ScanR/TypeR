@@ -1,10 +1,10 @@
 import "./textBlock.scss";
 
 import React from "react";
-import { FiArrowRightCircle, FiTarget } from "react-icons/fi";
+import { FiArrowRightCircle, FiTarget, FiClipboard } from "react-icons/fi";
 
 import config from "../../config";
-import { locale, setActiveLayerText, resizeTextArea, scrollToLine, openFile } from "../../utils";
+import { locale, setActiveLayerText, resizeTextArea, scrollToLine, openFile, pasteFromClipboard } from "../../utils";
 import { useContext } from "../../context";
 
 const TextBlock = React.memo(function TextBlock() {
@@ -94,15 +94,29 @@ const TextBlock = React.memo(function TextBlock() {
                 <span>{line.rawText || " "}</span>
               )}
             </div>
-            <div className="text-line-insert" title={line.ignore ? "" : locale.insertText}>
-              {line.ignore ? " " : (
-                <FiArrowRightCircle
-                  size={14}
-                  onClick={() => {
-                    setActiveLayerText(line.text);
-                    context.dispatch({ type: "nextLine", add: true });
-                  }}
-                />
+            <div className="text-line-insert">
+              {line.ignore ? (
+                " "
+              ) : (
+                <>
+                  <FiClipboard
+                    size={14}
+                    title={locale.pasteClipboard}
+                    onClick={() => {
+                      pasteFromClipboard(line.text, () => {
+                        context.dispatch({ type: "nextLine", add: true });
+                      });
+                    }}
+                  />
+                  <FiArrowRightCircle
+                    size={14}
+                    title={locale.insertText}
+                    onClick={() => {
+                      setActiveLayerText(line.text);
+                      context.dispatch({ type: "nextLine", add: true });
+                    }}
+                  />
+                </>
               )}
             </div>
           </div>

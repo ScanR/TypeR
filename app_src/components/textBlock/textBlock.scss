@@ -127,18 +127,21 @@
 .text-line-insert {
   text-align: center;
   flex: 0 0 auto;
-  width: 20px;
+  width: 34px;
   & > SVG {
     margin-bottom: -5px;
     position: relative;
     cursor: pointer;
     top: -2px;
-    &:hover {
-      color: #000;
-    }
-    .text-line.m-current &:hover {
-      color: #073357;
-    }
+  }
+  & > SVG + SVG {
+    margin-left: 4px;
+  }
+  & > SVG:hover {
+    color: #000;
+  }
+  .text-line.m-current & > SVG:hover {
+    color: #073357;
   }
 }
 .text-area {

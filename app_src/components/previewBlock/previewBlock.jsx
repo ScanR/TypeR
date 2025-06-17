@@ -2,11 +2,11 @@ import "./previewBlock.scss";
 
 import _ from "lodash";
 import React from "react";
-import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown } from "react-icons/fi";
+import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown, FiClipboard } from "react-icons/fi";
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { MdCenterFocusWeak } from "react-icons/md";
 
-import { locale, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine } from "../../utils";
+import { locale, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine, pasteFromClipboard } from "../../utils";
 import { useContext } from "../../context";
 
 const PreviewBlock = React.memo(function PreviewBlock() {
@@ -34,7 +34,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     });
   };
 
-  const insertStyledText = () => {
+const insertStyledText = () => {
     let lineStyle = context.state.currentStyle;
     if (lineStyle && context.state.textScale) {
       lineStyle = _.cloneDeep(lineStyle);
@@ -47,6 +47,12 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       }
     }
     setActiveLayerText(line.text, lineStyle, (ok) => {
+      if (ok) context.dispatch({ type: "nextLine", add: true });
+    });
+  };
+
+  const pasteClipboard = () => {
+    pasteFromClipboard(line.text, (ok) => {
       if (ok) context.dispatch({ type: "nextLine", add: true });
     });
   };
@@ -102,8 +108,9 @@ const PreviewBlock = React.memo(function PreviewBlock() {
                 <span>%</span>
               </div>
             </div>
-            <div className="preview-line-info-actions" title={locale.insertStyledText}>
-              <FiArrowRightCircle size={16} onClick={insertStyledText} />
+            <div className="preview-line-info-actions">
+              <FiClipboard size={16} title={locale.pasteClipboard} onClick={pasteClipboard} />
+              <FiArrowRightCircle size={16} title={locale.insertStyledText} onClick={insertStyledText} />
             </div>
           </div>
           <div className="preview-line-text" style={styleObject} dangerouslySetInnerHTML={{ __html: `<span style='font-family: "${styleObject.fontFamily || "Tahoma"}"'>${line.text || ""}</span>` }}></div>
