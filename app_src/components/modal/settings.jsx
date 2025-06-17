@@ -4,7 +4,7 @@ import { MdSave } from "react-icons/md";
 import { FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { locale, nativeAlert, checkUpdate } from "../../utils";
+import { locale, nativeAlert, nativeConfirm, checkUpdate } from "../../utils";
 import { useContext } from "../../context";
 import Shortcut from "./shortCut";
 
@@ -108,11 +108,11 @@ const SettingsModal = React.memo(function SettingsModal() {
     context.dispatch({ type: "setModal" });
   };
 
-  const importSettings = () => {
+  const importSettings = async () => {
     const pathSelect = window.cep.fs.showOpenDialogEx(true, false, null, null, ["json"]);
     if (!pathSelect?.data?.length) return false;
     let foldersImported = 0;
-    pathSelect.data.forEach((path) => {
+    for (const path of pathSelect.data) {
       const result = window.cep.fs.readFile(path);
       if (result.err) {
         nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
@@ -120,13 +120,37 @@ const SettingsModal = React.memo(function SettingsModal() {
         try {
           const data = JSON.parse(result.data);
           if (data.exportedStyles) {
-            const dataFolder = { name: data.name };
-            dataFolder.id = Math.random().toString(36).substring(2, 8);
-            context.dispatch({ type: "saveFolder", data: dataFolder });
+            let folderId = null;
+            const existingFolder = context.state.folders.find(
+              (f) => f.name.toLowerCase() === data.name.toLowerCase()
+            );
+            if (existingFolder) {
+              const replace = await new Promise((resolve) =>
+                nativeConfirm(
+                  locale.settingsImportFolderReplace,
+                  locale.confirmTitle,
+                  (ok) => resolve(ok)
+                )
+              );
+              if (replace) {
+                folderId = existingFolder.id;
+                context.state.styles
+                  .filter((s) => s.folder === folderId)
+                  .forEach((s) =>
+                    context.dispatch({ type: "deleteStyle", id: s.id })
+                  );
+              }
+            }
+            if (!folderId) {
+              const dataFolder = { name: data.name };
+              dataFolder.id = Math.random().toString(36).substring(2, 8);
+              context.dispatch({ type: "saveFolder", data: dataFolder });
+              folderId = dataFolder.id;
+            }
             data.exportedStyles.forEach((style) => {
               const dataStyle = {
                 name: style.name,
-                folder: dataFolder.id,
+                folder: folderId,
                 textProps: style.textProps,
                 prefixes: style.prefixes || [],
                 prefixColor: style.prefixColor,
@@ -147,15 +171,38 @@ const SettingsModal = React.memo(function SettingsModal() {
             !data.textItemKind
           ) {
             const idMap = {};
-            data.folders.forEach((folder) => {
-              const newId = Math.random().toString(36).substring(2, 8);
+            for (const folder of data.folders) {
+              let newId = null;
+              const existingFolder = context.state.folders.find(
+                (f) => f.name.toLowerCase() === folder.name.toLowerCase()
+              );
+              if (existingFolder) {
+                const replace = await new Promise((resolve) =>
+                  nativeConfirm(
+                    locale.settingsImportFolderReplace,
+                    locale.confirmTitle,
+                    (ok) => resolve(ok)
+                  )
+                );
+                if (replace) {
+                  newId = existingFolder.id;
+                  context.state.styles
+                    .filter((s) => s.folder === newId)
+                    .forEach((s) =>
+                      context.dispatch({ type: "deleteStyle", id: s.id })
+                    );
+                }
+              }
+              if (!newId) {
+                newId = Math.random().toString(36).substring(2, 8);
+                context.dispatch({
+                  type: "saveFolder",
+                  data: { id: newId, name: folder.name },
+                });
+                foldersImported++;
+              }
               idMap[folder.id] = newId;
-              context.dispatch({
-                type: "saveFolder",
-                data: { id: newId, name: folder.name },
-              });
-              foldersImported++;
-            });
+            }
             data.styles.forEach((style) => {
               const newId = Math.random().toString(36).substring(2, 8);
               context.dispatch({
@@ -181,7 +228,7 @@ const SettingsModal = React.memo(function SettingsModal() {
           nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
         }
       }
-    });
+    }
     if (foldersImported > 0) {
       nativeAlert(
         foldersImported > 1
