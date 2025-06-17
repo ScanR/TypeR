@@ -306,6 +306,47 @@ function _checkSelection() {
   return selection;
 }
 
+function _getSelectionBoundsList() {
+  var selection = _getCurrentSelectionBounds();
+  if (selection === undefined) {
+    return [];
+  }
+  _modifySelectionBounds(-10);
+  try {
+    activeDocument.selection.makeWorkPath();
+    var path = activeDocument.pathItems["Work Path"];
+    var list = [];
+    for (var i = 0; i < path.subPathItems.length; i++) {
+      var sub = path.subPathItems[i];
+      var left = 1e9,
+        top = 1e9,
+        right = -1e9,
+        bottom = -1e9;
+      for (var j = 0; j < sub.pathPoints.length; j++) {
+        var pt = sub.pathPoints[j].anchor;
+        if (pt[0] < left) left = pt[0];
+        if (pt[0] > right) right = pt[0];
+        if (pt[1] < top) top = pt[1];
+        if (pt[1] > bottom) bottom = pt[1];
+      }
+      list.push({
+        top: top,
+        left: left,
+        right: right,
+        bottom: bottom,
+        width: right - left,
+        height: bottom - top,
+        xMid: (left + right) / 2,
+        yMid: (top + bottom) / 2,
+      });
+    }
+    path.remove();
+    return list;
+  } catch (e) {
+    return [];
+  }
+}
+
 function _forEachSelectedLayer(action) {
   var selectedLayers = [];
   var reference = new ActionReference();
@@ -440,6 +481,10 @@ function _setActiveLayerText() {
 var createTextLayerInSelectionData;
 var createTextLayerInSelectionPoint;
 var createTextLayerInSelectionResult;
+var createTextLayerInBoundsData;
+var createTextLayerInBoundsPoint;
+var createTextLayerInBoundsBounds;
+var createTextLayerInBoundsResult;
 
 function _createTextLayerInSelection() {
   if (!documents.length) {
@@ -466,6 +511,33 @@ function _createTextLayerInSelection() {
   var offsetY = selection.yMid - bounds.yMid;
   _moveLayer(offsetX, offsetY);
   createTextLayerInSelectionResult = "";
+}
+
+function _createTextLayerInBounds() {
+  if (!documents.length) {
+    createTextLayerInBoundsResult = "doc";
+    return;
+  }
+  var selection = createTextLayerInBoundsBounds;
+  if (!selection || selection.width * selection.height < 200) {
+    createTextLayerInBoundsResult = "smallSelection";
+    return;
+  }
+  var width = selection.width * 0.9;
+  var height = selection.height * 15;
+  _createAndSetLayerText(createTextLayerInBoundsData, width, height);
+  var bounds = _getCurrentTextLayerBounds();
+  if (createTextLayerInBoundsPoint) {
+    _changeToPointText();
+  } else {
+    var textParams = jamText.getLayerText();
+    var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
+    _setTextBoxSize(width, bounds.height + textSize + 2);
+  }
+  var offsetX = selection.xMid - bounds.xMid;
+  var offsetY = selection.yMid - bounds.yMid;
+  _moveLayer(offsetX, offsetY);
+  createTextLayerInBoundsResult = "";
 }
 
 var alignTextLayerToSelectionResult;
@@ -701,6 +773,18 @@ function createTextLayerInSelection(data, point) {
   createTextLayerInSelectionPoint = point;
   app.activeDocument.suspendHistory("TyperTools Paste", "_createTextLayerInSelection()");
   return createTextLayerInSelectionResult;
+}
+
+function createTextLayerInBounds(data, bounds, point) {
+  createTextLayerInBoundsData = data;
+  createTextLayerInBoundsBounds = bounds;
+  createTextLayerInBoundsPoint = point;
+  app.activeDocument.suspendHistory("TyperTools Paste", "_createTextLayerInBounds()");
+  return createTextLayerInBoundsResult;
+}
+
+function getSelectionBoundsList() {
+  return jamJSON.stringify({ bounds: _getSelectionBoundsList() });
 }
 
 function alignTextLayerToSelection() {

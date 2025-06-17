@@ -6,7 +6,7 @@ import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { MdCenterFocusWeak } from "react-icons/md";
 
-import { locale, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine } from "../../utils";
+import { locale, setActiveLayerText, createTextLayerInSelection, createTextLayerInBounds, getSelectionBoundsList, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine } from "../../utils";
 import { useContext } from "../../context";
 
 const PreviewBlock = React.memo(function PreviewBlock() {
@@ -17,20 +17,43 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   const styleObject = getStyleObject(textStyle);
 
   const createLayer = () => {
-    let lineStyle = context.state.currentStyle;
-    if (lineStyle && context.state.textScale) {
-      lineStyle = _.cloneDeep(lineStyle);
-      const txtStyle = lineStyle.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
-      if (typeof txtStyle.size === "number") {
-        txtStyle.size *= context.state.textScale / 100;
-      }
-      if (typeof txtStyle.leading === "number" && txtStyle.leading) {
-        txtStyle.leading *= context.state.textScale / 100;
-      }
-    }
     const pointText = context.state.pastePointText;
-    createTextLayerInSelection(line.text, lineStyle, pointText, (ok) => {
-      if (ok) context.dispatch({ type: "nextLine", add: true });
+    getSelectionBoundsList((data) => {
+      let list = [];
+      try {
+        list = JSON.parse(data || "{}").bounds || [];
+      } catch (e) {
+        list = [];
+      }
+      if (list.length <= 1) {
+        let lStyle = context.state.currentStyle;
+        if (lStyle && context.state.textScale) {
+          lStyle = _.cloneDeep(lStyle);
+          const ts = lStyle.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
+          if (typeof ts.size === "number") ts.size *= context.state.textScale / 100;
+          if (typeof ts.leading === "number" && ts.leading) ts.leading *= context.state.textScale / 100;
+        }
+        createTextLayerInSelection(line.text, lStyle, pointText, (ok) => {
+          if (ok) context.dispatch({ type: "nextLine", add: true });
+        });
+      } else {
+        const makeLayer = (index) => {
+          if (index >= list.length) return;
+          const l = context.state.currentLine || { text: "" };
+          let style = context.state.currentStyle;
+          if (style && context.state.textScale) {
+            style = _.cloneDeep(style);
+            const ts = style.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
+            if (typeof ts.size === "number") ts.size *= context.state.textScale / 100;
+            if (typeof ts.leading === "number" && ts.leading) ts.leading *= context.state.textScale / 100;
+          }
+          createTextLayerInBounds(l.text, style, list[index], pointText, (ok) => {
+            if (ok) context.dispatch({ type: "nextLine", add: true });
+            makeLayer(index + 1);
+          });
+        };
+        makeLayer(0);
+      }
     });
   };
 

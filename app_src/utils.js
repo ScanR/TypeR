@@ -164,6 +164,30 @@ const createTextLayerInSelection = (text, style, pointText, callback = () => {})
   });
 };
 
+const createTextLayerInBounds = (text, style, bounds, pointText, callback = () => {}) => {
+  if (!text) {
+    nativeAlert(locale.errorNoText, locale.errorTitle, true);
+    callback(false);
+    return false;
+  }
+  if (!style) {
+    style = { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
+  }
+  const data = JSON.stringify({ text, style });
+  const bdata = JSON.stringify(bounds);
+  csInterface.evalScript("createTextLayerInBounds(" + data + ", " + bdata + ", " + !!pointText + ")", (error) => {
+    if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
+    else if (error) nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    callback(!error);
+  });
+};
+
+const getSelectionBoundsList = (callback) => {
+  csInterface.evalScript("getSelectionBoundsList()", (data) => {
+    callback(data);
+  });
+};
+
 const alignTextLayerToSelection = () => {
   csInterface.evalScript("alignTextLayerToSelection()", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
@@ -306,4 +330,4 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
+export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, createTextLayerInBounds, getSelectionBoundsList, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };

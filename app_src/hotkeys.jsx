@@ -1,7 +1,7 @@
 import _ from "lodash";
 import React from "react";
 
-import { csInterface, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
+import { csInterface, setActiveLayerText, createTextLayerInSelection, createTextLayerInBounds, getSelectionBoundsList, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
 import { useContext } from "./context";
 
 const CTRL = "CTRL";
@@ -34,21 +34,44 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     realState.pop();
     if (checkShortcut(realState, context.state.shortcut.add)) {
       if (!checkRepeatTime()) return;
-      const line = context.state.currentLine || { text: "" };
-      let style = context.state.currentStyle;
-      if (style && context.state.textScale) {
-        style = _.cloneDeep(style);
-        const txtStyle = style.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
-        if (typeof txtStyle.size === "number") {
-          txtStyle.size *= context.state.textScale / 100;
-        }
-        if (typeof txtStyle.leading === "number" && txtStyle.leading) {
-          txtStyle.leading *= context.state.textScale / 100;
-        }
-      }
       const pointText = context.state.pastePointText;
-      createTextLayerInSelection(line.text, style, pointText, (ok) => {
-        if (ok) context.dispatch({ type: "nextLine", add: true });
+      getSelectionBoundsList((data) => {
+        let list = [];
+        try {
+          list = JSON.parse(data || "{}").bounds || [];
+        } catch (e) {
+          list = [];
+        }
+        if (list.length <= 1) {
+          const line = context.state.currentLine || { text: "" };
+          let style = context.state.currentStyle;
+          if (style && context.state.textScale) {
+            style = _.cloneDeep(style);
+            const txtStyle = style.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
+            if (typeof txtStyle.size === "number") txtStyle.size *= context.state.textScale / 100;
+            if (typeof txtStyle.leading === "number" && txtStyle.leading) txtStyle.leading *= context.state.textScale / 100;
+          }
+          createTextLayerInSelection(line.text, style, pointText, (ok) => {
+            if (ok) context.dispatch({ type: "nextLine", add: true });
+          });
+        } else {
+          const makeLayer = (index) => {
+            if (index >= list.length) return;
+            const line = context.state.currentLine || { text: "" };
+            let style = context.state.currentStyle;
+            if (style && context.state.textScale) {
+              style = _.cloneDeep(style);
+              const txtStyle = style.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
+              if (typeof txtStyle.size === "number") txtStyle.size *= context.state.textScale / 100;
+              if (typeof txtStyle.leading === "number" && txtStyle.leading) txtStyle.leading *= context.state.textScale / 100;
+            }
+            createTextLayerInBounds(line.text, style, list[index], pointText, (ok) => {
+              if (ok) context.dispatch({ type: "nextLine", add: true });
+              makeLayer(index + 1);
+            });
+          };
+          makeLayer(0);
+        }
       });
     } else if (checkShortcut(realState, context.state.shortcut.apply)) {
       if (!checkRepeatTime()) return;
