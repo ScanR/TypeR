@@ -7,6 +7,15 @@ const config = {
   exportFileName: "TypeR_Export",
   defaultPrefixColor: "#FFF3B0",
   checkUpdates: true,
+  themes: {
+    default: 'Default',
+    'amethyst-night': 'Amethyst Night',
+    'black-blue': 'Black Blue',
+    'black-pink': 'Black Pink',
+    'neon-pink': 'Neon Pink',
+    obsidian: 'Obsidian',
+    'white-green': 'White Green',
+  },
   languages: {
     auto: "Auto",
     en_US: "English",

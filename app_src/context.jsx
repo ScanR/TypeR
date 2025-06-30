@@ -20,6 +20,7 @@ const storeFields = [
   "images",
   "shortcut",
   "language",
+  "theme",
 ];
 
 const initialState = {
@@ -44,6 +45,7 @@ const initialState = {
   modalData: {},
   images: [],
   language: "auto",
+  theme: "default",
   shortcut: {
     add: ["WIN", "CTRL"],
     center: ["WIN", "ALT"],
@@ -291,6 +293,11 @@ const reducer = (state, action) => {
     break;
   }
 
+  case "setTheme": {
+    newState.theme = action.theme || "default";
+    break;
+  }
+
     case "setModal": {
       newState.modalType = action.modal || null;
       newState.modalData = action.data || {};
@@ -447,6 +454,15 @@ const ContextProvider = React.memo(function ContextProvider(props) {
       });
     }
   }, [state.checkUpdates]);
+  React.useEffect(() => {
+    const link = document.getElementById('themeStyle');
+    if (!link) return;
+    if (state.theme && state.theme !== 'default') {
+      link.setAttribute('href', `./themes/${state.theme}.css`);
+    } else {
+      link.setAttribute('href', '');
+    }
+  }, [state.theme]);
   return <Context.Provider value={{ state, dispatch }}>{props.children}</Context.Provider>;
 });
 ContextProvider.propTypes = {

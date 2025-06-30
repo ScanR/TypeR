@@ -14,6 +14,7 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [ignoreLinePrefixes, setIgnoreLinePrefixes] = React.useState(context.state.ignoreLinePrefixes.join(" "));
   const [defaultStyleId, setDefaultStyleId] = React.useState(context.state.defaultStyleId || "");
   const [language, setLanguage] = React.useState(context.state.language || "auto");
+  const [theme, setTheme] = React.useState(context.state.theme || "default");
   const [autoClosePSD, setAutoClosePSD] = React.useState(
     !!context.state.autoClosePSD
   );
@@ -43,6 +44,11 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeLanguage = (e) => {
     setLanguage(e.target.value);
+    setEdited(true);
+  };
+
+  const changeTheme = (e) => {
+    setTheme(e.target.value);
     setEdited(true);
   };
 
@@ -82,6 +88,12 @@ const SettingsModal = React.memo(function SettingsModal() {
         lang: language,
       });
       setTimeout(() => window.location.reload(), 100);
+    }
+    if (theme !== context.state.theme) {
+      context.dispatch({
+        type: "setTheme",
+        theme,
+      });
     }
     if (autoClosePSD !== context.state.autoClosePSD) {
       context.dispatch({
@@ -259,6 +271,24 @@ const SettingsModal = React.memo(function SettingsModal() {
                       {code === "auto" ? locale.settingsLanguageAuto : name}
                     </option>
                   ))}
+                </select>
+              </div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.settingsThemeLabel}</div>
+              <div className="field-input">
+                <select value={theme} onChange={changeTheme} className="topcoat-textarea">
+                  {(config.themes ? Object.keys(config.themes) : ["default"]).map((code) => {
+                    const key =
+                      "settingsTheme" +
+                      code.replace(/(^|-)(\w)/g, (m, p1, p2) => p2.toUpperCase());
+                    const name = config.themes ? config.themes[code] : code;
+                    return (
+                      <option key={code} value={code}>
+                        {locale[key] || name}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>
