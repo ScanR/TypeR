@@ -139,6 +139,59 @@ function _modifySelectionBounds(amount) {
   executeAction(amount > 0 ? charID.Expand : charID.Contract, size, DialogModes.NO);
 }
 
+/* ========= Helpers multi-sélection ========= */
+
+/**
+ * Convertit la sélection active en Work Path puis renvoie
+ * un tableau d’objets {left, top, right, bottom, width, height, xMid, yMid},
+ * dans **l’ordre exact** de création des sous-sélections.
+ */
+function _getSelectionSubpathsBounds() {
+  var rects = [];
+
+  try {
+    /* 1 ▸ convertir la sélection ► Work Path */
+    var idMk = charIDToTypeID("Mk  ");
+    var d = new ActionDescriptor();
+    var r = new ActionReference();
+    r.putClass(stringIDToTypeID("path"));
+    d.putReference(charIDToTypeID("null"), r);
+    var r2 = new ActionReference();
+    r2.putProperty(charIDToTypeID("Chnl"), charID.FrameSelect);
+    d.putReference(charIDToTypeID("From"), r2);
+    d.putInteger(charIDToTypeID("Ttl "), 1); // tolérance
+    executeAction(idMk, d, DialogModes.NO);
+
+    /* 2 ▸ analyser le Work Path (dernier tracé créé) */
+    var wp = activeDocument.pathItems[activeDocument.pathItems.length - 1];
+    for (var s = 0; s < wp.subPathItems.length; s++) {
+      var sp   = wp.subPathItems[s];
+      var xmin =  1e9, ymin =  1e9,
+          xmax = -1e9, ymax = -1e9;
+
+      for (var p = 0; p < sp.pathPoints.length; p++) {
+        var a = sp.pathPoints[p].anchor;
+        xmin = Math.min(xmin, a[0]);  ymin = Math.min(ymin, a[1]);
+        xmax = Math.max(xmax, a[0]);  ymax = Math.max(ymax, a[1]);
+      }
+
+      rects.push({
+        left  : xmin, top   : ymin,
+        right : xmax, bottom: ymax,
+        width : xmax - xmin,
+        height: ymax - ymin,
+        xMid  : (xmin + xmax) / 2,
+        yMid  : (ymin + ymax) / 2,
+      });
+    }
+
+    /* 3 ▸ nettoyage */
+    wp.remove();
+  } catch (e) {}
+
+  return rects;
+}
+
 function _createMagicWandSelection(tolerance) {
   try {
     var bounds = _getCurrentTextLayerBounds();
@@ -509,6 +562,56 @@ function _createTextLayerInSelection() {
   createTextLayerInSelectionResult = "";
 }
 
+/* ========= Multi-paste (respecte l’ordre de création) ========= */
+
+var createTextLayersInSelectionsData;
+var createTextLayersInSelectionsPoint;
+var createTextLayersInSelectionsResult;
+
+function _createTextLayersInSelections() {
+  if (!documents.length) {               // pas de document ouvert
+    createTextLayersInSelectionsResult = "doc";
+    return;
+  }
+
+  /* Récupère les sous-sélections dans l’ordre où l’utilisateur les a tracées */
+  var selections = _getSelectionSubpathsBounds();
+  if (!selections.length) {
+    createTextLayersInSelectionsResult = "noSelection";
+    return;
+  }
+
+  var lines = createTextLayersInSelectionsData.lines;  // tableau de textes à poser
+  var style = createTextLayersInSelectionsData.style;  // style commun éventuel
+  var point = createTextLayersInSelectionsPoint;       // mode point/box
+
+  var n = Math.min(lines.length, selections.length);
+  for (var i = 0; i < n; i++) {
+    var data = { text: lines[i], style: style };
+    var sel  = selections[i];
+
+    var w = sel.width  * 0.9;
+    var h = sel.height * 15;
+
+    _createAndSetLayerText(data, w, h);
+
+    var b = _getCurrentTextLayerBounds();
+
+    if (point) {
+      _changeToPointText();
+    } else {
+      var tParams = jamText.getLayerText();
+      var txtSize = tParams.layerText.textStyleRange[0].textStyle.size;
+      _setTextBoxSize(w, b.height + txtSize + 2);
+    }
+
+    /* Centre le calque dans la zone */
+    _moveLayer(sel.xMid - b.xMid, sel.yMid - b.yMid);
+  }
+
+  createTextLayersInSelectionsResult = String(n);
+}
+
 var alignTextLayerToSelectionResult;
 
 function _alignTextLayerToSelection() {
@@ -743,6 +846,16 @@ function createTextLayerInSelection(data, point) {
   createTextLayerInSelectionPoint = point;
   app.activeDocument.suspendHistory("TyperTools Paste", "_createTextLayerInSelection()");
   return createTextLayerInSelectionResult;
+}
+
+function createTextLayersInSelections(data, point) {
+  createTextLayersInSelectionsData  = data;   // {lines:[…], style:…}
+  createTextLayersInSelectionsPoint = point;  // bool (pointText ?)
+  app.activeDocument.suspendHistory(
+    "TyperTools Paste Multiple",
+    "_createTextLayersInSelections()"
+  );
+  return createTextLayersInSelectionsResult;
 }
 
 function alignTextLayerToSelection() {

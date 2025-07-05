@@ -164,6 +164,41 @@ const createTextLayerInSelection = (text, style, pointText, callback = () => {})
   });
 };
 
+/**
+ * Pose autant de calques texte qu’il y a de sous-sélections.
+ * @param {string[]} lines — les lignes à insérer
+ * @param {Object}   lineStyle — style (peut être null)
+ * @param {boolean}  pointText — true ⇒ point-text, false ⇒ box-text
+ * @param {Function} cb — callback(ok)
+ */
+const createTextLayersInSelections = (lines, lineStyle, pointText, cb) => {
+  if (!Array.isArray(lines) || !lines.length) {
+    cb && cb(0);
+    return;
+  }
+  if (!lineStyle) {
+    lineStyle = { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
+  }
+  const payload = { lines, style: lineStyle };
+  csInterface.evalScript(
+    `createTextLayersInSelections(${JSON.stringify(payload)}, ${!!pointText})`,
+    (res) => {
+      if (res === "smallSelection") {
+        nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
+        cb && cb(0);
+        return;
+      }
+      if (res === "doc" || res === "noSelection") {
+        nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+        cb && cb(0);
+        return;
+      }
+      const count = parseInt(res, 10);
+      cb && cb(isNaN(count) ? 0 : count);
+    }
+  );
+};
+
 const alignTextLayerToSelection = () => {
   csInterface.evalScript("alignTextLayerToSelection()", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
@@ -307,4 +342,4 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
+export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, createTextLayersInSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };

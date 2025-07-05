@@ -144,12 +144,16 @@ const reducer = (state, action) => {
     case "nextLine": {
       if (!state.text || (action.add && newState.currentLine.last)) break;
       let newIndex = state.currentLineIndex;
-      for (let i = newIndex + 1; i < state.lines.length; i++) {
-        if (!state.lines[i].ignore) {
-          newState.currentLineIndex = state.lines[i].rawIndex;
-          break;
+      const count = action.count || 1;
+      for (let c = 0; c < count; c++) {
+        for (let i = newIndex + 1; i < state.lines.length; i++) {
+          if (!state.lines[i].ignore) {
+            newIndex = state.lines[i].rawIndex;
+            break;
+          }
         }
       }
+      newState.currentLineIndex = newIndex;
       thenScroll = true;
       thenSelectStyle = true;
       break;
