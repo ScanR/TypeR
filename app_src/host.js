@@ -482,6 +482,41 @@ var createTextLayerInSelectionData;
 var createTextLayerInSelectionPoint;
 var createTextLayerInSelectionResult;
 
+function _fitTextLayerToSelection(selection, width) {
+  var bounds = _getCurrentTextLayerBounds();
+  var wRatio = width / bounds.width;
+  var hRatio = selection.height / bounds.height;
+  var ratio = Math.min(wRatio, hRatio);
+  if (ratio <= 0 || Math.abs(ratio - 1) < 0.01) return;
+
+  var textParams = jamText.getLayerText();
+  var styleRange = textParams.layerText.textStyleRange[0];
+  var textStyle = styleRange.textStyle;
+  var oldSize = textStyle.size;
+  var newSize = oldSize * ratio;
+  textStyle.size = newSize;
+
+  if (textStyle.autoLeading || textStyle.leading === undefined) {
+    textStyle.autoLeading = true;
+    delete textStyle.leading;
+  } else {
+    textStyle.leading *= ratio;
+    textStyle.autoLeading = false;
+  }
+
+  styleRange.to = textParams.layerText.textKey.length;
+  jamText.setLayerText(textParams);
+  _applyMiddleEast(textStyle);
+
+  bounds = _getCurrentTextLayerBounds();
+  if (!createTextLayerInSelectionPoint) {
+    _setTextBoxSize(width, bounds.height + newSize + 2);
+  }
+  var offsetX = selection.xMid - bounds.xMid;
+  var offsetY = selection.yMid - bounds.yMid;
+  _moveLayer(offsetX, offsetY);
+}
+
 function _createTextLayerInSelection() {
   if (!documents.length) {
     createTextLayerInSelectionResult = "doc";
@@ -506,6 +541,7 @@ function _createTextLayerInSelection() {
   var offsetX = selection.xMid - bounds.xMid;
   var offsetY = selection.yMid - bounds.yMid;
   _moveLayer(offsetX, offsetY);
+  _fitTextLayerToSelection(selection, width);
   createTextLayerInSelectionResult = "";
 }
 
