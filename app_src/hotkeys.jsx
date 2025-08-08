@@ -1,7 +1,7 @@
 import _ from "lodash";
 import React from "react";
 
-import { csInterface, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
+import { csInterface, setActiveLayerText, createTextLayersInSelections, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
 import { useContext } from "./context";
 
 const CTRL = "CTRL";
@@ -34,22 +34,29 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     realState.pop();
     if (checkShortcut(realState, context.state.shortcut.add)) {
       if (!checkRepeatTime()) return;
-      const line = context.state.currentLine || { text: "" };
       let style = context.state.currentStyle;
       if (style && context.state.textScale) {
         style = _.cloneDeep(style);
         const txtStyle = style.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
-        if (typeof txtStyle.size === "number") {
-          txtStyle.size *= context.state.textScale / 100;
-        }
-        if (typeof txtStyle.leading === "number" && txtStyle.leading) {
-          txtStyle.leading *= context.state.textScale / 100;
-        }
+        if (typeof txtStyle.size === "number") txtStyle.size *= context.state.textScale / 100;
+        if (typeof txtStyle.leading === "number") txtStyle.leading *= context.state.textScale / 100;
       }
-      const pointText = context.state.pastePointText;
-      createTextLayerInSelection(line.text, style, pointText, (ok) => {
-        if (ok) context.dispatch({ type: "nextLine", add: true });
-      });
+      const startIndex = context.state.currentLine.rawIndex ?? 0;
+      const linesBuf = [];
+      for (let i = startIndex; i < context.state.lines.length; i++) {
+        const l = context.state.lines[i];
+        if (!l.ignore) linesBuf.push(l.text);
+      }
+      createTextLayersInSelections(
+        linesBuf,
+        style,
+        context.state.pastePointText,
+        (count) => {
+          if (count > 0) {
+            context.dispatch({ type: "nextLine", add: true, count });
+          }
+        }
+      );
     } else if (checkShortcut(realState, context.state.shortcut.apply)) {
       if (!checkRepeatTime()) return;
       const line = context.state.currentLine || { text: "" };
