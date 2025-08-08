@@ -28,6 +28,21 @@ TypeR is an updated version of TyperTools, a Photoshop extension designed for ty
   (There may be problems with some portable or lightweight builds)
 
 ## Installation Guide
+# If you download from the release :
+1. Download the [latest release](https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip)
+2. Extract the archive and execute the installation script for your operating system.
+
+   For macOS:
+   ```sh
+   chmod +x install_mac.sh
+   ./install_mac.sh
+   ```
+
+   For Windows:
+   ```sh
+   install_win.cmd
+   ```
+
 # If you download from the source code :
 ### Prerequisites
 
@@ -56,20 +71,6 @@ TypeR is an updated version of TyperTools, a Photoshop extension designed for ty
    ```
 
 4. Execute the installation script for your operating system.
-
-   For macOS:
-   ```sh
-   chmod +x install_mac.sh
-   ./install_mac.sh
-   ```
-
-   For Windows:
-   ```sh
-   install_win.cmd
-   ```
-
-# If you download from the release :
-1. Extract the archive and execute the installation script for your operating system.
 
    For macOS:
    ```sh

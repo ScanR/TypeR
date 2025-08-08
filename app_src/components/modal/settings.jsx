@@ -4,7 +4,7 @@ import { MdSave } from "react-icons/md";
 import { FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { locale, nativeAlert, checkUpdate } from "../../utils";
+import { locale, nativeAlert, checkUpdate, readStorage, writeToStorage, openFile } from "../../utils";
 import { useContext } from "../../context";
 import Shortcut from "./shortCut";
 
@@ -29,6 +29,13 @@ const SettingsModal = React.memo(function SettingsModal() {
     context.state.checkUpdates !== false
   );
   const [edited, setEdited] = React.useState(false);
+
+  // States manager
+  const [stateName, setStateName] = React.useState("");
+  const [savedStates, setSavedStates] = React.useState(() => readStorage("states") || {});
+  const [selectedState, setSelectedState] = React.useState("");
+  const [showDeleteStates, setShowDeleteStates] = React.useState(false);
+  const [statesToDelete, setStatesToDelete] = React.useState({});
 
   const close = () => {
     context.dispatch({ type: "setModal" });
@@ -262,6 +269,72 @@ const SettingsModal = React.memo(function SettingsModal() {
     });
   };
 
+  // Save current working snapshot as a named state
+  const saveCurrentState = (e) => {
+    e.preventDefault();
+    const name = (stateName || "").trim();
+    if (!name) {
+      nativeAlert(locale.settingsStateNameRequired, locale.errorTitle, true);
+      return;
+    }
+    // Build snapshot
+    const snapshot = {
+      text: context.state.text,
+      images: context.state.images,
+      currentLineIndex: context.state.currentLineIndex,
+      currentStyleId: context.state.currentStyleId,
+      lastOpenedImagePath: context.state.lastOpenedImagePath || null,
+      // Include a timestamp for info
+      savedAt: Date.now(),
+      version: 1,
+    };
+    const storageStates = readStorage("states") || {};
+    storageStates[name] = snapshot;
+    writeToStorage({ states: storageStates });
+    setSavedStates(storageStates);
+    setSelectedState(name);
+    setStateName("");
+    nativeAlert(locale.settingsStateSaved, locale.successTitle, false);
+  };
+
+  // Load selected state into the app
+  const loadSelectedState = () => {
+    const name = (selectedState || "").trim();
+    const storageStates = readStorage("states") || {};
+    if (!name || !storageStates[name]) {
+      nativeAlert(locale.settingsNoStateSelected, locale.errorTitle, true);
+      return;
+    }
+    const data = storageStates[name] || {};
+    // Use reducer's import path to merge safely
+    context.dispatch({ type: "import", data });
+    if (data.lastOpenedImagePath) {
+      openFile(data.lastOpenedImagePath, context.state.autoClosePSD);
+    }
+    nativeAlert(locale.settingsStateLoaded, locale.successTitle, false);
+  };
+
+  const toggleDeleteStates = () => {
+    setShowDeleteStates(!showDeleteStates);
+    setStatesToDelete({});
+  };
+
+  const toggleStateCheckbox = (name, checked) => {
+    setStatesToDelete((prev) => ({ ...prev, [name]: !!checked }));
+  };
+
+  const deleteSelectedStates = () => {
+    const storageStates = readStorage("states") || {};
+    const toDelete = Object.keys(statesToDelete).filter((k) => statesToDelete[k]);
+    if (!toDelete.length) return;
+    toDelete.forEach((k) => delete storageStates[k]);
+    writeToStorage({ states: storageStates });
+    setSavedStates(storageStates);
+    if (toDelete.includes(selectedState)) setSelectedState("");
+    setStatesToDelete({});
+    setShowDeleteStates(false);
+  };
+
   return (
     <React.Fragment>
       <div className="app-modal-header hostBrdBotContrast">
@@ -390,6 +463,90 @@ const SettingsModal = React.memo(function SettingsModal() {
               </button>
             </div>
           </form>
+          {/* States manager */}
+          <div className="fields hostBrdTopContrast">
+            <div className="field">
+              <div className="field-label">{locale.settingsStatesTitle}</div>
+              <div className="field-input">
+                <input
+                  type="text"
+                  className="topcoat-text-input--large"
+                  placeholder={locale.settingsStateNamePlaceholder}
+                  value={stateName}
+                  onChange={(e) => setStateName(e.target.value)}
+                />
+              </div>
+              <div className="field-descr">{locale.settingsStatesDescr}</div>
+            </div>
+            <div className="field">
+              <button className="topcoat-button--large" onClick={saveCurrentState}>
+                {locale.settingsSaveCurrentState}
+              </button>
+            </div>
+            <div className="field">
+              <div className="field-label">{locale.settingsStatesListLabel}</div>
+              <div className="field-input">
+                {Object.keys(savedStates).length ? (
+                  <select
+                    className="topcoat-textarea"
+                    value={selectedState}
+                    onChange={(e) => setSelectedState(e.target.value)}
+                  >
+                    <option value="">{locale.settingsSelectState}</option>
+                    {Object.keys(savedStates).map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="field-descr">{locale.settingsNoStates}</div>
+                )}
+              </div>
+            </div>
+            <div className="field">
+              <button className="topcoat-button--large" onClick={loadSelectedState}>
+                {locale.settingsLoadSelectedState}
+              </button>
+            </div>
+            <div className="field">
+              <button className="topcoat-button--large" onClick={toggleDeleteStates}>
+                {locale.settingsDeleteStates}
+              </button>
+            </div>
+            {showDeleteStates && (
+              <div className="field">
+                <div className="field-label">{locale.settingsDeleteStatesTitle}</div>
+                <div className="field-input">
+                  {Object.keys(savedStates).length ? (
+                    <div className="hostBrdContrast" style={{ maxHeight: 180, overflowY: "auto", padding: 6 }}>
+                      {Object.keys(savedStates).map((name) => (
+                        <label key={name} className="topcoat-checkbox" style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+                          <input
+                            type="checkbox"
+                            checked={!!statesToDelete[name]}
+                            onChange={(e) => toggleStateCheckbox(name, e.target.checked)}
+                          />
+                          <div className="topcoat-checkbox__checkmark" style={{ marginRight: 8 }}></div>
+                          <span>{name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="field-descr">{locale.settingsNoStates}</div>
+                  )}
+                </div>
+                <div className="field-input" style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                  <button className="topcoat-button--large--cta" onClick={deleteSelectedStates}>
+                    {locale.settingsDeleteSelected}
+                  </button>
+                  <button className="topcoat-button--large" onClick={toggleDeleteStates}>
+                    {locale.cancel}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
           <div className="fields hostBrdTopContrast">
             <div className="field">
               <button className="topcoat-button--large" onClick={importSettings}>
