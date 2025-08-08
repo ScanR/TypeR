@@ -24,6 +24,7 @@ const storeFields = [
   "theme",
   "direction",
   "middleEast",
+  "lastOpenedImagePath",
 ];
 
 const defaultShortcut = {
@@ -63,6 +64,7 @@ const initialState = {
   theme: "default",
   direction: "ltr",
   middleEast: false,
+  lastOpenedImagePath: null,
   ...storage.data,
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
 };
@@ -317,10 +319,15 @@ const reducer = (state, action) => {
     break;
   }
 
-  case "setMiddleEast": {
-    newState.middleEast = !!action.value;
-    break;
-  }
+    case "setMiddleEast": {
+      newState.middleEast = !!action.value;
+      break;
+    }
+
+    case "setLastOpenedImagePath": {
+      newState.lastOpenedImagePath = action.path || null;
+      break;
+    }
 
     case "setModal": {
       newState.modalType = action.modal || null;
