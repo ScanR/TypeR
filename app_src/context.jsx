@@ -18,6 +18,7 @@ const storeFields = [
   "autoClosePSD",
   "checkUpdates",
   "autoScrollStyle",
+  "currentFolderTagPriority",
   "images",
   "shortcut",
   "language",
@@ -57,6 +58,7 @@ const initialState = {
   autoClosePSD: false,
   checkUpdates: config.checkUpdates,
   autoScrollStyle: storage.data?.autoScrollStyle !== false,
+  currentFolderTagPriority: storage.data?.currentFolderTagPriority !== false,
   modalType: null,
   modalData: {},
   images: [],
@@ -304,6 +306,11 @@ const reducer = (state, action) => {
     break;
   }
 
+  case "setCurrentFolderTagPriority": {
+    newState.currentFolderTagPriority = !!action.value;
+    break;
+  }
+
   case "setLanguage": {
     newState.language = action.lang || "auto";
     break;
@@ -367,12 +374,16 @@ const reducer = (state, action) => {
 
   const stylePrefixes = [];
   const folderPrefixes = [];
+  const folderOnlyPrefixes = [];
+  const unsortedPrefixes = [];
   const currentFolder = state.currentStyle ? state.currentStyle.folder || null : null;
   for (const style of newState.styles) {
     const folder = style.folder || null;
     for (const prefix of style.prefixes) {
       const data = { prefix, style, folder };
       stylePrefixes.push(data);
+      if (folder) folderOnlyPrefixes.push(data);
+      else unsortedPrefixes.push(data);
       if (folder === currentFolder) folderPrefixes.push(data);
     }
   }
@@ -383,9 +394,12 @@ const reducer = (state, action) => {
   let previousStyle = null;
   newState.lines = rawLines.map((rawText, rawIndex) => {
     const ignorePrefix = newState.ignoreLinePrefixes.find((pr) => rawText.startsWith(pr)) || "";
-    const hasStylePrefix =
-      folderPrefixes.find((sp) => rawText.startsWith(sp.prefix)) ||
-      stylePrefixes.find((sp) => rawText.startsWith(sp.prefix));
+    const hasStylePrefix = (
+      newState.currentFolderTagPriority !== false
+        ? folderPrefixes.find((sp) => rawText.startsWith(sp.prefix))
+        : (unsortedPrefixes.find((sp) => rawText.startsWith(sp.prefix)) ||
+           folderOnlyPrefixes.find((sp) => rawText.startsWith(sp.prefix)))
+    ) || stylePrefixes.find((sp) => rawText.startsWith(sp.prefix));
 
     let stylePrefix = "";
     let style = null;
