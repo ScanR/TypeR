@@ -46,6 +46,7 @@ const ExportModal = React.memo(function ExportModal() {
       data.language = context.state.language;
       data.autoClosePSD = context.state.autoClosePSD;
       data.autoScrollStyle = context.state.autoScrollStyle;
+      data.currentFolderTagPriority = context.state.currentFolderTagPriority;
       data.textItemKind = context.state.setTextItemKind;
     }
     window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));

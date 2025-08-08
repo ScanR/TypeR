@@ -25,6 +25,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [autoScrollStyle, setAutoScrollStyle] = React.useState(
     context.state.autoScrollStyle !== false
   );
+  const [currentFolderTagPriority, setCurrentFolderTagPriority] = React.useState(
+    context.state.currentFolderTagPriority !== false
+  );
   const [checkUpdates, setCheckUpdates] = React.useState(
     context.state.checkUpdates !== false
   );
@@ -84,6 +87,10 @@ const SettingsModal = React.memo(function SettingsModal() {
   };
   const changeAutoScrollStyle = (e) => {
     setAutoScrollStyle(e.target.checked);
+    setEdited(true);
+  };
+  const changeCurrentFolderTagPriority = (e) => {
+    setCurrentFolderTagPriority(e.target.checked);
     setEdited(true);
   };
 
@@ -148,6 +155,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setAutoScrollStyle",
         value: autoScrollStyle,
+      });
+    }
+    if (currentFolderTagPriority !== context.state.currentFolderTagPriority) {
+      context.dispatch({
+        type: "setCurrentFolderTagPriority",
+        value: currentFolderTagPriority,
       });
     }
     if (checkUpdates !== context.state.checkUpdates) {
@@ -438,6 +451,15 @@ const SettingsModal = React.memo(function SettingsModal() {
               <div className="field-input">
                 <label className="topcoat-checkbox">
                   <input type="checkbox" checked={autoScrollStyle} onChange={changeAutoScrollStyle} />
+                  <div className="topcoat-checkbox__checkmark"></div>
+                </label>
+              </div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.settingsCurrentFolderTagPriorityLabel}</div>
+              <div className="field-input">
+                <label className="topcoat-checkbox">
+                  <input type="checkbox" checked={currentFolderTagPriority} onChange={changeCurrentFolderTagPriority} />
                   <div className="topcoat-checkbox__checkmark"></div>
                 </label>
               </div>
