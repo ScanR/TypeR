@@ -72,7 +72,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         <button className="preview-top_big-btn topcoat-button--large--cta" title={locale.createLayerDescr} onClick={createLayer}>
           <AiOutlineBorderInner size={18} /> {locale.createLayer}
         </button>
-        <button className="preview-top_big-btn topcoat-button--large" title={locale.alignLayerDescr} onClick={() => alignTextLayerToSelection()}>
+        <button className="preview-top_big-btn topcoat-button--large" title={locale.alignLayerDescr} onClick={() => alignTextLayerToSelection(context.state.resizeTextBoxOnCenter)}>
           <MdCenterFocusWeak size={18} /> {locale.alignLayer}
         </button>
         <div className="preview-top_change-size-cont">
