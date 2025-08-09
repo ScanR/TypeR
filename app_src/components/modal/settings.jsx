@@ -28,6 +28,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [currentFolderTagPriority, setCurrentFolderTagPriority] = React.useState(
     context.state.currentFolderTagPriority !== false
   );
+  const [resizeTextBoxOnCenter, setResizeTextBoxOnCenter] = React.useState(
+    !!context.state.resizeTextBoxOnCenter
+  );
   const [checkUpdates, setCheckUpdates] = React.useState(
     context.state.checkUpdates !== false
   );
@@ -91,6 +94,11 @@ const SettingsModal = React.memo(function SettingsModal() {
   };
   const changeCurrentFolderTagPriority = (e) => {
     setCurrentFolderTagPriority(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeResizeTextBoxOnCenter = (e) => {
+    setResizeTextBoxOnCenter(e.target.checked);
     setEdited(true);
   };
 
@@ -161,6 +169,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setCurrentFolderTagPriority",
         value: currentFolderTagPriority,
+      });
+    }
+    if (resizeTextBoxOnCenter !== context.state.resizeTextBoxOnCenter) {
+      context.dispatch({
+        type: "setResizeTextBoxOnCenter",
+        value: resizeTextBoxOnCenter,
       });
     }
     if (checkUpdates !== context.state.checkUpdates) {
@@ -307,7 +321,6 @@ const SettingsModal = React.memo(function SettingsModal() {
     setSavedStates(storageStates);
     setSelectedState(name);
     setStateName("");
-    nativeAlert(locale.settingsStateSaved, locale.successTitle, false);
   };
 
   // Load selected state into the app
@@ -315,7 +328,6 @@ const SettingsModal = React.memo(function SettingsModal() {
     const name = (selectedState || "").trim();
     const storageStates = readStorage("states") || {};
     if (!name || !storageStates[name]) {
-      nativeAlert(locale.settingsNoStateSelected, locale.errorTitle, true);
       return;
     }
     const data = storageStates[name] || {};
@@ -324,7 +336,6 @@ const SettingsModal = React.memo(function SettingsModal() {
     if (data.lastOpenedImagePath) {
       openFile(data.lastOpenedImagePath, context.state.autoClosePSD);
     }
-    nativeAlert(locale.settingsStateLoaded, locale.successTitle, false);
   };
 
   const toggleDeleteStates = () => {
@@ -460,6 +471,15 @@ const SettingsModal = React.memo(function SettingsModal() {
               <div className="field-input">
                 <label className="topcoat-checkbox">
                   <input type="checkbox" checked={currentFolderTagPriority} onChange={changeCurrentFolderTagPriority} />
+                  <div className="topcoat-checkbox__checkmark"></div>
+                </label>
+              </div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.settingsResizeTextBoxOnCenterLabel}</div>
+              <div className="field-input">
+                <label className="topcoat-checkbox">
+                  <input type="checkbox" checked={resizeTextBoxOnCenter} onChange={changeResizeTextBoxOnCenter} />
                   <div className="topcoat-checkbox__checkmark"></div>
                 </label>
               </div>

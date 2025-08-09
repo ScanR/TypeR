@@ -510,6 +510,7 @@ function _createTextLayerInSelection() {
 }
 
 var alignTextLayerToSelectionResult;
+var alignTextLayerToSelectionResize;
 
 function _alignTextLayerToSelection() {
   if (!documents.length) {
@@ -531,10 +532,26 @@ function _alignTextLayerToSelection() {
     }
   }
   var isPoint = _textLayerIsPointText();
-  var bounds = _getCurrentTextLayerBounds();
-  if (isPoint) {
-    _changeToPointText();
+  
+  if (alignTextLayerToSelectionResize) {
+    var width = selection.width * 0.9;
+    var height = selection.height * 15;
+    _setTextBoxSize(width, height);
+    var bounds = _getCurrentTextLayerBounds();
+    if (isPoint) {
+      _changeToPointText();
+    } else {
+      var textParams = jamText.getLayerText();
+      var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
+      _setTextBoxSize(width, bounds.height + textSize + 2);
+    }
+  } else {
+    var bounds = _getCurrentTextLayerBounds();
+    if (isPoint) {
+      _changeToPointText();
+    }
   }
+  
   _deselect();
   var offsetX = selection.xMid - bounds.xMid;
   var offsetY = selection.yMid - bounds.yMid;
@@ -745,7 +762,8 @@ function createTextLayerInSelection(data, point) {
   return createTextLayerInSelectionResult;
 }
 
-function alignTextLayerToSelection() {
+function alignTextLayerToSelection(resizeTextBox) {
+  alignTextLayerToSelectionResize = !!resizeTextBox;
   app.activeDocument.suspendHistory("TyperTools Align", "_alignTextLayerToSelection()");
   return alignTextLayerToSelectionResult;
 }

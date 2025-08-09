@@ -19,6 +19,7 @@ const storeFields = [
   "checkUpdates",
   "autoScrollStyle",
   "currentFolderTagPriority",
+  "resizeTextBoxOnCenter",
   "images",
   "shortcut",
   "language",
@@ -59,6 +60,7 @@ const initialState = {
   checkUpdates: config.checkUpdates,
   autoScrollStyle: storage.data?.autoScrollStyle !== false,
   currentFolderTagPriority: storage.data?.currentFolderTagPriority !== false,
+  resizeTextBoxOnCenter: false,
   modalType: null,
   modalData: {},
   images: [],
@@ -308,6 +310,11 @@ const reducer = (state, action) => {
 
   case "setCurrentFolderTagPriority": {
     newState.currentFolderTagPriority = !!action.value;
+    break;
+  }
+
+  case "setResizeTextBoxOnCenter": {
+    newState.resizeTextBoxOnCenter = !!action.value;
     break;
   }
 
