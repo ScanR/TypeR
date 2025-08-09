@@ -69,3 +69,216 @@
 .export-settings-title {
     margin-left: 6px;
 }
+
+// Settings tabs
+.settings-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 12px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.settings-tab {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    background: transparent;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    opacity: 0.6;
+    min-width: 0;
+    
+    &:hover {
+        opacity: 0.8;
+        outline: 1px solid rgba(255, 255, 255, 0.5);
+    }
+    
+    .light-theme &:hover {
+        outline: 1px solid rgba(0, 0, 0, 0.5);
+    }
+    
+    .light-theme & {
+        color: #333;
+    }
+    
+    &--active {
+        opacity: 1;
+        background: rgba(0, 0, 0, 0.25);
+        color: #fff;
+    }
+    
+    .light-theme &--active {
+        color: #333;
+    }
+    
+    span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+        
+        // Cache le texte sur les très petites fenêtres
+        @media (max-width: 350px) {
+            display: none;
+        }
+    }
+    
+    // Réduit le padding sur les petites fenêtres
+    @media (max-width: 450px) {
+        padding: 6px 8px;
+        gap: 2px;
+        font-size: 11px;
+    }
+}
+
+// Settings content
+.settings-content {
+    min-height: 250px;
+}
+
+.settings-actions {
+    margin-top: 16px;
+    padding-top: 10px;
+}
+
+// Settings groups
+.settings-group {
+    margin-bottom: 16px;
+    
+    &:last-child {
+        margin-bottom: 0;
+    }
+}
+
+.settings-group-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #fff;
+    padding-bottom: 4px;
+    opacity: 0.7;
+}
+
+// Improved checkbox grid
+.settings-checkbox-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.settings-checkbox-item {
+    background: rgba(0, 0, 0, 0.15);
+    padding: 8px;
+    transition: all 0.15s ease;
+    
+    &:hover {
+        outline: 1px solid rgba(255, 255, 255, 0.5);
+        opacity: 0.8;
+    }
+    
+    .light-theme &:hover {
+        outline: 1px solid rgba(0, 0, 0, 0.5);
+    }
+}
+
+.settings-checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    cursor: pointer;
+    gap: 8px;
+    font-size: 12px;
+    line-height: 1.3;
+    
+    input[type="checkbox"] {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+    
+    span {
+        flex: 1;
+        color: #fff;
+    }
+}
+
+.settings-checkbox-content {
+    flex: 1;
+    
+    span {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 2px;
+        color: #fff;
+    }
+}
+
+.settings-checkbox-hint {
+    font-size: 10px;
+    color: #fff;
+    line-height: 1.2;
+    opacity: 0.7;
+}
+
+.light-theme .settings-checkbox-label span,
+.light-theme .settings-checkbox-content span,
+.light-theme .settings-checkbox-hint {
+    color: #333;
+}
+
+.settings-checkbox-custom {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #fff;
+    background: transparent;
+    position: relative;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+    margin-top: 1px;
+    opacity: 0.6;
+    
+    &::after {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 4px;
+        height: 8px;
+        border: solid #fff;
+        border-width: 0 2px 2px 0;
+        transform: translate(-50%, -60%) rotate(45deg);
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+    
+    input:checked + & {
+        opacity: 1;
+        
+        &::after {
+            opacity: 1;
+        }
+    }
+    
+    input:focus + & {
+        outline: 1px solid rgba(255, 255, 255, 0.5);
+    }
+    
+    .light-theme & {
+        border-color: #333;
+        
+        &::after {
+            border-color: #333;
+        }
+    }
+    
+    .light-theme input:focus + & {
+        outline: 1px solid rgba(0, 0, 0, 0.5);
+    }
+}
