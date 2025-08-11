@@ -10,6 +10,7 @@ const storeFields = [
   "styles",
   "folders",
   "textScale",
+  "textSizeIncrement",
   "currentLineIndex",
   "currentStyleId",
   "pastePointText",
@@ -49,6 +50,7 @@ const initialState = {
   folders: [],
   openFolders: [],
   textScale: null,
+  textSizeIncrement: 1,
   currentLine: null,
   currentLineIndex: 0,
   currentStyle: null,
@@ -173,6 +175,19 @@ const reducer = (state, action) => {
         if (scale > 999) scale = 999;
       }
       newState.textScale = scale;
+      break;
+    }
+
+    case "setTextSizeIncrement": {
+      let increment = action.increment;
+      if (increment === "" || increment === null || increment === undefined) {
+        newState.textSizeIncrement = "";
+      } else {
+        increment = parseInt(increment) || 1;
+        if (increment < 1) increment = 1;
+        if (increment > 99) increment = 99;
+        newState.textSizeIncrement = increment;
+      }
       break;
     }
 

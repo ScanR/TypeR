@@ -11,13 +11,21 @@
     margin-right: 10px;
     flex-grow: 2;
     width: 50%;
+    &--small {
+      flex-grow: 1.5;
+      width: 40%;
+    }
   }
   .preview-top_change-size-cont {
     display: flex;
+    align-items: center;
     BUTTON {
       border-radius: 0;
     }
-    BUTTON + BUTTON {
+    BUTTON + .preview-top_size-input {
+      margin-left: -1px;
+    }
+    .preview-top_size-input + BUTTON {
       margin-left: -1px;
     }
     BUTTON:first-child {
@@ -25,6 +33,40 @@
     }
     BUTTON:last-child {
       border-radius: 0 4px 4px 0;
+    }
+  }
+  .preview-top_size-input {
+    display: flex;
+    align-items: center;
+    background: #3a3f42;
+    border: 1px solid #1b1e20;
+    border-left: 0;
+    border-right: 0;
+    height: 25px;
+    padding: 0 4px;
+    INPUT {
+      appearance: textfield;
+      text-align: center;
+      line-height: 14px;
+      font-size: 11px;
+      background: transparent;
+      border: none;
+      padding: 0;
+      margin: 0;
+      width: 20px;
+      color: inherit;
+      &::-webkit-inner-spin-button,
+      &::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+      }
+      &:focus {
+        outline: none;
+      }
+    }
+    SPAN {
+      font-size: 10px;
+      margin-left: 2px;
+      opacity: 0.7;
     }
   }
 }

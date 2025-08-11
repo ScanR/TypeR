@@ -66,20 +66,36 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     if (context.state.textScale === 100) setTextScale(null);
   };
 
+  const setTextSizeIncrement = (increment) => {
+    context.dispatch({ type: "setTextSizeIncrement", increment });
+  };
+  const handleIncrementChange = (e) => {
+    setTextSizeIncrement(e.target.value);
+  };
+  const handleIncrementBlur = () => {
+    if (!context.state.textSizeIncrement || context.state.textSizeIncrement < 1) {
+      setTextSizeIncrement(1);
+    }
+  };
+
   return (
     <React.Fragment>
       <div className="preview-top">
-        <button className="preview-top_big-btn topcoat-button--large--cta" title={locale.createLayerDescr} onClick={createLayer}>
+        <button className="preview-top_big-btn preview-top_big-btn--small topcoat-button--large--cta" title={locale.createLayerDescr} onClick={createLayer}>
           <AiOutlineBorderInner size={18} /> {locale.createLayer}
         </button>
-        <button className="preview-top_big-btn topcoat-button--large" title={locale.alignLayerDescr} onClick={() => alignTextLayerToSelection(context.state.resizeTextBoxOnCenter)}>
+        <button className="preview-top_big-btn preview-top_big-btn--small topcoat-button--large" title={locale.alignLayerDescr} onClick={() => alignTextLayerToSelection(context.state.resizeTextBoxOnCenter)}>
           <MdCenterFocusWeak size={18} /> {locale.alignLayer}
         </button>
         <div className="preview-top_change-size-cont">
-          <button className="topcoat-icon-button--large" title={locale.layerTextSizeMinus} onClick={() => changeActiveLayerTextSize(-1)}>
+          <button className="topcoat-icon-button--large" title={locale.layerTextSizeMinus} onClick={() => changeActiveLayerTextSize(-(context.state.textSizeIncrement || 1))}>
             <FiMinusCircle size={18} />
           </button>
-          <button className="topcoat-icon-button--large" title={locale.layerTextSizePlus} onClick={() => changeActiveLayerTextSize(1)}>
+          <div className="preview-top_size-input">
+            <input min={1} max={99} type="number" value={context.state.textSizeIncrement || ""} onChange={handleIncrementChange} onBlur={handleIncrementBlur} className="topcoat-text-input" />
+            <span>px</span>
+          </div>
+          <button className="topcoat-icon-button--large" title={locale.layerTextSizePlus} onClick={() => changeActiveLayerTextSize(context.state.textSizeIncrement || 1)}>
             <FiPlusCircle size={18} />
           </button>
         </div>
