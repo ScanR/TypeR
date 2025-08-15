@@ -21,7 +21,7 @@
 		"babel-preset-minify": "^0.5.2",
 		"@babel/preset-env": "^7.28.0",
 		"react-sortablejs": "^6.1.4",
-		"babel-polyfill": "^6.26.0",
+		"core-js": "^3.39.0",
 		"autoprefixer": "^10.4.21",
 		"react-color": "^2.19.3",
 		"@babel/core": "^7.28.0",

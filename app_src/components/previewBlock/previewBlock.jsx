@@ -2,6 +2,7 @@ import "./previewBlock.scss";
 
 import _ from "lodash";
 import React from "react";
+import PropTypes from "prop-types";
 import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown } from "react-icons/fi";
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { MdCenterFocusWeak } from "react-icons/md";

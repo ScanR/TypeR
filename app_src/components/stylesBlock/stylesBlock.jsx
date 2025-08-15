@@ -122,7 +122,7 @@ const FolderItem = React.memo(function FolderItem(props) {
             </ReactSortable>
           ) : (
             <div className="folder-styles-empty">
-              <span>{locale.noStylesInfolder}</span>
+              <span>{locale.noStylesInFolder}</span>
             </div>
           )}
         </div>

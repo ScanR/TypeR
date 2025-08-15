@@ -1,6 +1,7 @@
 import "./textBlock.scss";
 
 import React from "react";
+import PropTypes from "prop-types";
 import { FiArrowRightCircle, FiTarget } from "react-icons/fi";
 
 import config from "../../config";

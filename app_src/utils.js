@@ -254,15 +254,19 @@ const resizeTextArea = () => {
 const scrollToLine = (lineIndex, delay = 300) => {
   lineIndex = lineIndex < 5 ? 0 : lineIndex - 5;
   setTimeout(() => {
-    const line = document.querySelectorAll(".text-line")[lineIndex];
-    if (line) line.scrollIntoView();
+    const lines = document.querySelectorAll(".text-line");
+    if (lines && lines[lineIndex]) {
+      lines[lineIndex].scrollIntoView();
+    }
   }, delay);
 };
 
 const scrollToStyle = (styleId, delay = 100) => {
   setTimeout(() => {
     const style = document.getElementById(styleId);
-    if (style) style.scrollIntoView();
+    if (style) {
+      style.scrollIntoView();
+    }
   }, delay);
 };
 
