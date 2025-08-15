@@ -338,7 +338,6 @@ function _checkSelection() {
   if (selection === undefined) {
     return { error: "noSelection" };
   }
-  _modifySelectionBounds(-10);
   selection = _getCurrentSelectionBounds();
   if (selection === undefined || selection.width * selection.height < 200) {
     return { error: "smallSelection" };
@@ -492,16 +491,14 @@ function _createTextLayerInSelection() {
     createTextLayerInSelectionResult = selection.error;
     return;
   }
-  var width = selection.width * 0.9;
-  var height = selection.height * 15;
+  var width = selection.width;
+  var height = selection.height;
   _createAndSetLayerText(createTextLayerInSelectionData, width, height);
   var bounds = _getCurrentTextLayerBounds();
   if (createTextLayerInSelectionPoint) {
     _changeToPointText();
   } else {
-    var textParams = jamText.getLayerText();
-    var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
-    _setTextBoxSize(width, bounds.height + textSize + 2);
+    _setTextBoxSize(width, height);
   }
   var offsetX = selection.xMid - bounds.xMid;
   var offsetY = selection.yMid - bounds.yMid;
@@ -534,7 +531,7 @@ function _alignTextLayerToSelection() {
   var isPoint = _textLayerIsPointText();
   
   if (alignTextLayerToSelectionResize) {
-    var width = selection.width * 0.9;
+    var width = selection.width;
     var height = selection.height * 15;
     _setTextBoxSize(width, height);
     var bounds = _getCurrentTextLayerBounds();
