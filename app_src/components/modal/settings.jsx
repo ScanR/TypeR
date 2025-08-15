@@ -517,7 +517,20 @@ const SettingsModal = React.memo(function SettingsModal() {
                     <div className="settings-checkbox-custom"></div>
                     <div className="settings-checkbox-content">
                       <span>Mode Multi-Bubble (BETA)</span>
-                      <div className="settings-checkbox-hint">Permet de capturer plusieurs sélections pour insérer plusieurs textes en une fois</div>
+                      <div className="settings-checkbox-hint">
+                        {locale.multiBubbleModeHint || "Permet de capturer plusieurs sélections pour insérer plusieurs textes en une fois"}
+                        <br />
+                        <a 
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            window.cep && window.cep.util && window.cep.util.openURLInDefaultBrowser('https://youtu.be/bQBvB0w3S0s');
+                          }}
+                          style={{color: '#007acc', textDecoration: 'underline', cursor: 'pointer'}}
+                        >
+                          {locale.multiBubbleModeHowToUse || "Comment utiliser"}
+                        </a>
+                      </div>
                     </div>
                   </label>
                 </div>
