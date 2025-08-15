@@ -41,7 +41,6 @@ const defaultShortcut = {
   increase: ["CTRL", "SHIFT", "PLUS"],
   decrease: ["CTRL", "SHIFT", "MINUS"],
   insertText: ["WIN", "V"],
-  captureSelection: ["WIN", "C"],
 };
 
 const initialState = {
