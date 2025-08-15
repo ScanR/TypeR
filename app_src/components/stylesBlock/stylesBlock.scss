@@ -143,6 +143,7 @@
 .style-marker {
   flex: 0 0 auto;
   margin-right: 6px;
+  position: relative;
 }
 .style-color {
   box-shadow: 0 0 4px 1px rgba(#000, 0.4);
@@ -159,6 +160,31 @@
   DIV {
     opacity: 0.9;
     height: 5px;
+  }
+}
+.style-prefix-toggle {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: rgba(#000, 0.7);
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  transition: all 0.2s ease;
+  &:hover {
+    background: rgba(#000, 0.9);
+    transform: scale(1.1);
+  }
+}
+.style-item.m-disabled {
+  opacity: 0.5;
+  .style-prefix-color {
+    opacity: 0.3;
   }
 }
 .style-name {

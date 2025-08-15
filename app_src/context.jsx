@@ -270,6 +270,16 @@ const reducer = (state, action) => {
       break;
     }
 
+    case "toggleStylePrefixes": {
+      const styles = state.styles.concat([]);
+      const style = styles.find((s) => s.id === action.id);
+      if (style) {
+        style.prefixesDisabled = !style.prefixesDisabled;
+      }
+      newState.styles = styles;
+      break;
+    }
+
     case "deleteStyle": {
       newState.styles = state.styles.filter((s) => s.id !== action.id);
       break;
@@ -439,6 +449,7 @@ const reducer = (state, action) => {
   const unsortedPrefixes = [];
   const currentFolder = state.currentStyle ? state.currentStyle.folder || null : null;
   for (const style of newState.styles) {
+    if (style.prefixesDisabled) continue;
     const folder = style.folder || null;
     for (const prefix of style.prefixes) {
       const data = { prefix, style, folder };
