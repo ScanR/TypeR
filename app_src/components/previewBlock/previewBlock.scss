@@ -243,7 +243,15 @@
 }
 
 @media (max-height: 450px) {
-  .preview-block {
+  .preview-bottom {
     display: none;
+  }
+  .preview-block {
+    padding: 10px 10px 5px;
+    height: auto;
+    min-height: auto;
+  }
+  .preview-top {
+    margin-bottom: 0;
   }
 }
