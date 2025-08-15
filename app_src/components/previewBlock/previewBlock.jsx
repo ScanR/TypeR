@@ -225,8 +225,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         {context.state.multiBubbleMode && context.state.storedSelections && context.state.storedSelections.length > 0 && (
           <div className="preview-top_selection-controls">
             <div className="preview-top_selection-info">
-              <span className="preview-top_selection-count">{context.state.storedSelections.length} sélection{context.state.storedSelections.length > 1 ? 's' : ''}</span>
-              <button className="topcoat-icon-button--large" title="Vider les sélections" onClick={clearStoredSelections}>
+              <span className="preview-top_selection-count">{context.state.storedSelections.length} {context.state.storedSelections.length > 1 ? (locale.selectionsCount || 'selections') : (locale.selectionCount || 'selection')}</span>
+              <button className="topcoat-icon-button--large" title={locale.clearSelections || "Clear selections"} onClick={clearStoredSelections}>
                 <FiMinusCircle size={16} />
               </button>
             </div>
