@@ -1,19 +1,30 @@
 @echo off
 chcp 65001 >nul
-setlocal EnableDelayedExpansion
+setlocal EnableExtensions EnableDelayedExpansion
 
-rem — Extraction de la version — 
+rem === Toujours se placer dans le dossier du script (meme en admin) ===
+set "SCRIPT_DIR=%~dp0"
+pushd "%SCRIPT_DIR%" >nul 2>&1
+
+rem === Verif presence du manifest ===
+if not exist "CSXS\manifest.xml" (
+  echo [ERREUR] Fichier introuvable : "%SCRIPT_DIR%CSXS\manifest.xml"
+  echo Place ce .cmd a cote des dossiers "CSXS", "app", "icons", "locale", "themes".
+  goto :cleanup
+)
+
+rem === Extraction de la version depuis le manifest ===
 for /f "tokens=5 delims=<>=/ " %%V in ('
-    findstr /i "<Extension Id=\"typer\"" "CSXS\manifest.xml"
+  findstr /i "<Extension Id=\"typer\"" "CSXS\manifest.xml"
 ') do set "EXT_VERSION=%%~V"
 
-rem — Détection de la langue système —
+rem === Detection langue systeme ===
 for /f "tokens=3" %%a in (
-    'reg query "HKCU\Control Panel\International" /v LocaleName 2^>nul'
-) do set locale=%%a
+  'reg query "HKCU\Control Panel\International" /v LocaleName 2^>nul'
+) do set "locale=%%a"
 
-rem — Messages localisés utilisant !EXT_VERSION! —
-if "%locale:~0,2%"=="fr" (
+rem === Messages localises ===
+if /i "%locale:~0,2%"=="fr" (
     set msg_install="L'extension Photoshop TypeR v!EXT_VERSION! sera installée."
     set msg_close="Fermez Photoshop (s'il est ouvert)."
     set msg_complete="Installation terminée."
@@ -21,7 +32,7 @@ if "%locale:~0,2%"=="fr" (
     set msg_pause="Appuyez sur une touche pour continuer..."
     set msg_credits="Merci beaucoup à Swirt pour TyperTools et SeanR & Sakushi pour ce fork."
     set msg_discord="Discord de ScanR si besoin d'aide : https://discord.com/invite/Pdmfmqk"
-) else if "%locale:~0,2%"=="es" (
+) else if /i "%locale:~0,2%"=="es" (
     set msg_install="La extensión de Photoshop TypeR v!EXT_VERSION! se instalará."
     set msg_close="Cierra Photoshop (si está abierto)."
     set msg_complete="Instalación completada."
@@ -29,7 +40,7 @@ if "%locale:~0,2%"=="fr" (
     set msg_pause="Presiona cualquier tecla para continuar..."
     set msg_credits="Muchas gracias a Swirt por TyperTools y a SeanR & Sakushi por este fork."
     set msg_discord="Discord de ScanR si necesitas ayuda: https://discord.com/invite/Pdmfmqk"
-) else if "%locale:~0,2%"=="pt" (
+) else if /i "%locale:~0,2%"=="pt" (
     set msg_install="Photoshop extension TypeR v!EXT_VERSION! will be installed."
     set msg_close="Feche o Photoshop (se estiver aberto)."
     set msg_complete="Instalação concluída."
@@ -52,38 +63,49 @@ echo.
 echo %msg_close%
 echo.
 echo %msg_pause%
-PAUSE
+pause
 
-for /l %%x in (6, 1, 12) do (
-    reg query HKEY_CURRENT_USER\SOFTWARE\Adobe\CSXS.%%x 2>nul
-    if !errorlevel! equ 0 (
-        reg add HKEY_CURRENT_USER\SOFTWARE\Adobe\CSXS.%%x /t REG_SZ /v PlayerDebugMode /d 1 /f
-    )
+rem === Activer PlayerDebugMode pour CSXS 6..12 si existants ===
+for /l %%x in (6,1,12) do (
+  reg query "HKCU\SOFTWARE\Adobe\CSXS.%%x" >nul 2>&1
+  if !errorlevel! equ 0 (
+    reg add "HKCU\SOFTWARE\Adobe\CSXS.%%x" /t REG_SZ /v PlayerDebugMode /d 1 /f >nul
+  )
 )
 
-set Directory=%HOMEDRIVE%%HOMEPATH%\AppData\Roaming\Adobe\CEP\extensions\typertools
-if exist "%Directory%\storage" copy "%Directory%\storage" __storage /Y
-if exist "%Directory%" rmdir "%Directory%" /S/Q
-if not exist "%Directory%\*" md "%Directory%"
+rem === Dossier cible dans le profil utilisateur courant ===
+set "TARGET_DIR=%APPDATA%\Adobe\CEP\extensions\typertools"
 
-xcopy app "%Directory%\app\" /E/Y
-xcopy CSXS "%Directory%\CSXS\" /E/Y
-xcopy icons "%Directory%\icons\" /E/Y
-xcopy locale "%Directory%\locale\" /E/Y
-xcopy themes "%Directory%\app\themes\" /E/Y
-if exist .debug copy .debug "%Directory%\.debug" /Y
-if exist __storage (
-    copy __storage "%Directory%\storage" /Y
-    del __storage /F
+rem Sauvegarde eventuelle du storage
+if exist "%TARGET_DIR%\storage" copy "%TARGET_DIR%\storage" "%TEMP%\__storage" /Y >nul
+
+rem Reinit dossier extension
+if exist "%TARGET_DIR%" rmdir "%TARGET_DIR%" /S /Q
+if not exist "%TARGET_DIR%" md "%TARGET_DIR%"
+
+rem === Copies en chemin absolu depuis le dossier du script ===
+xcopy "%SCRIPT_DIR%app"    "%TARGET_DIR%\app\"         /E /I /Y >nul
+xcopy "%SCRIPT_DIR%CSXS"   "%TARGET_DIR%\CSXS\"        /E /I /Y >nul
+xcopy "%SCRIPT_DIR%icons"  "%TARGET_DIR%\icons\"       /E /I /Y >nul
+xcopy "%SCRIPT_DIR%locale" "%TARGET_DIR%\locale\"      /E /I /Y >nul
+xcopy "%SCRIPT_DIR%themes" "%TARGET_DIR%\app\themes\"  /E /I /Y >nul
+
+if exist "%SCRIPT_DIR%.debug" copy "%SCRIPT_DIR%.debug" "%TARGET_DIR%\.debug" /Y >nul
+if exist "%TEMP%\__storage" (
+  copy "%TEMP%\__storage" "%TARGET_DIR%\storage" /Y >nul
+  del "%TEMP%\__storage" /F >nul
 )
 
-echo. & echo.
+echo.
 echo %msg_complete%
 echo %msg_open%
 echo.
 echo %msg_credits%
 echo %msg_discord%
 echo.
-
 echo %msg_pause%
-PAUSE
+pause
+
+:cleanup
+popd >nul 2>&1
+endlocal

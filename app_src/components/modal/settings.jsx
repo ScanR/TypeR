@@ -1,15 +1,16 @@
 import React from "react";
-import { FiX } from "react-icons/fi";
+import { FiX, FiSettings, FiEye, FiToggleLeft, FiDatabase } from "react-icons/fi";
 import { MdSave } from "react-icons/md";
-import { FaFileExport, FaFileImport } from "react-icons/fa";
+import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { locale, nativeAlert, checkUpdate } from "../../utils";
+import { locale, nativeAlert, checkUpdate, readStorage, writeToStorage, openFile } from "../../utils";
 import { useContext } from "../../context";
 import Shortcut from "./shortCut";
 
 const SettingsModal = React.memo(function SettingsModal() {
   const context = useContext();
+  const [activeTab, setActiveTab] = React.useState("general");
   const [pastePointText, setPastePointText] = React.useState(context.state.pastePointText ? "1" : "");
   const [ignoreLinePrefixes, setIgnoreLinePrefixes] = React.useState(
     context.state.ignoreLinePrefixes.join("\n")
@@ -25,10 +26,26 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [autoScrollStyle, setAutoScrollStyle] = React.useState(
     context.state.autoScrollStyle !== false
   );
+  const [currentFolderTagPriority, setCurrentFolderTagPriority] = React.useState(
+    context.state.currentFolderTagPriority !== false
+  );
+  const [resizeTextBoxOnCenter, setResizeTextBoxOnCenter] = React.useState(
+    !!context.state.resizeTextBoxOnCenter
+  );
   const [checkUpdates, setCheckUpdates] = React.useState(
     context.state.checkUpdates !== false
   );
+  const [multiBubbleMode, setMultiBubbleMode] = React.useState(
+    !!context.state.multiBubbleMode
+  );
   const [edited, setEdited] = React.useState(false);
+
+  // States manager
+  const [stateName, setStateName] = React.useState("");
+  const [savedStates, setSavedStates] = React.useState(() => readStorage("states") || {});
+  const [selectedState, setSelectedState] = React.useState("");
+  const [showDeleteStates, setShowDeleteStates] = React.useState(false);
+  const [statesToDelete, setStatesToDelete] = React.useState({});
 
   const close = () => {
     context.dispatch({ type: "setModal" });
@@ -79,9 +96,23 @@ const SettingsModal = React.memo(function SettingsModal() {
     setAutoScrollStyle(e.target.checked);
     setEdited(true);
   };
+  const changeCurrentFolderTagPriority = (e) => {
+    setCurrentFolderTagPriority(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeResizeTextBoxOnCenter = (e) => {
+    setResizeTextBoxOnCenter(e.target.checked);
+    setEdited(true);
+  };
 
   const changeCheckUpdates = (e) => {
     setCheckUpdates(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeMultiBubbleMode = (e) => {
+    setMultiBubbleMode(e.target.checked);
     setEdited(true);
   };
 
@@ -143,10 +174,28 @@ const SettingsModal = React.memo(function SettingsModal() {
         value: autoScrollStyle,
       });
     }
+    if (currentFolderTagPriority !== context.state.currentFolderTagPriority) {
+      context.dispatch({
+        type: "setCurrentFolderTagPriority",
+        value: currentFolderTagPriority,
+      });
+    }
+    if (resizeTextBoxOnCenter !== context.state.resizeTextBoxOnCenter) {
+      context.dispatch({
+        type: "setResizeTextBoxOnCenter",
+        value: resizeTextBoxOnCenter,
+      });
+    }
     if (checkUpdates !== context.state.checkUpdates) {
       context.dispatch({
         type: "setCheckUpdates",
         value: checkUpdates,
+      });
+    }
+    if (multiBubbleMode !== context.state.multiBubbleMode) {
+      context.dispatch({
+        type: "setMultiBubbleMode",
+        value: multiBubbleMode,
       });
     }
     const shortcut = {};
@@ -262,17 +311,82 @@ const SettingsModal = React.memo(function SettingsModal() {
     });
   };
 
-  return (
-    <React.Fragment>
-      <div className="app-modal-header hostBrdBotContrast">
-        <div className="app-modal-title">{locale.settingsTitle}</div>
-        <button className="topcoat-icon-button--large--quiet" title={locale.close} onClick={close}>
-          <FiX size={18} />
-        </button>
-      </div>
-      <div className="app-modal-body">
-        <div className="app-modal-body-inner">
-          <form className="fields" onSubmit={save}>
+  // Save current working snapshot as a named state
+  const saveCurrentState = (e) => {
+    e.preventDefault();
+    const name = (stateName || "").trim();
+    if (!name) {
+      nativeAlert(locale.settingsStateNameRequired, locale.errorTitle, true);
+      return;
+    }
+    // Build snapshot
+    const snapshot = {
+      text: context.state.text,
+      images: context.state.images,
+      currentLineIndex: context.state.currentLineIndex,
+      currentStyleId: context.state.currentStyleId,
+      lastOpenedImagePath: context.state.lastOpenedImagePath || null,
+      // Include a timestamp for info
+      savedAt: Date.now(),
+      version: 1,
+    };
+    const storageStates = readStorage("states") || {};
+    storageStates[name] = snapshot;
+    writeToStorage({ states: storageStates });
+    setSavedStates(storageStates);
+    setSelectedState(name);
+    setStateName("");
+  };
+
+  // Load selected state into the app
+  const loadSelectedState = () => {
+    const name = (selectedState || "").trim();
+    const storageStates = readStorage("states") || {};
+    if (!name || !storageStates[name]) {
+      return;
+    }
+    const data = storageStates[name] || {};
+    // Use reducer's import path to merge safely
+    context.dispatch({ type: "import", data });
+    if (data.lastOpenedImagePath) {
+      openFile(data.lastOpenedImagePath, context.state.autoClosePSD);
+    }
+  };
+
+  const toggleDeleteStates = () => {
+    setShowDeleteStates(!showDeleteStates);
+    setStatesToDelete({});
+  };
+
+  const toggleStateCheckbox = (name, checked) => {
+    setStatesToDelete((prev) => ({ ...prev, [name]: !!checked }));
+  };
+
+  const deleteSelectedStates = () => {
+    const storageStates = readStorage("states") || {};
+    const toDelete = Object.keys(statesToDelete).filter((k) => statesToDelete[k]);
+    if (!toDelete.length) return;
+    toDelete.forEach((k) => delete storageStates[k]);
+    writeToStorage({ states: storageStates });
+    setSavedStates(storageStates);
+    if (toDelete.includes(selectedState)) setSelectedState("");
+    setStatesToDelete({});
+    setShowDeleteStates(false);
+  };
+
+  const tabs = [
+    { id: "general", label: locale.settingsTabGeneral || "Général", icon: FiSettings },
+    { id: "appearance", label: locale.settingsTabAppearance || "Apparence", icon: FiEye },
+    { id: "behavior", label: locale.settingsTabBehavior || "Comportement", icon: FiToggleLeft },
+    { id: "shortcuts", label: locale.settingsTabShortcuts || "Raccourcis", icon: FaKeyboard },
+    { id: "data", label: locale.settingsTabData || "Données", icon: FiDatabase }
+  ];
+
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "general":
+        return (
+          <div className="fields">
             <div className="field">
               <div className="field-label">{locale.settingsTextItemKindLabel}</div>
               <div className="field-input">
@@ -282,14 +396,14 @@ const SettingsModal = React.memo(function SettingsModal() {
                 </select>
               </div>
             </div>
-            <div className="field hostBrdTopContrast">
+            <div className="field">
               <div className="field-label">{locale.settingsLinePrefixesLabel}</div>
               <div className="field-input">
                 <textarea rows={2} value={ignoreLinePrefixes} onChange={changeLinePrefixes} className="topcoat-textarea" />
               </div>
               <div className="field-descr">{locale.settingsLinePrefixesDescr}</div>
             </div>
-            <div className="field hostBrdTopContrast">
+            <div className="field">
               <div className="field-label">{locale.settingsDefaultStyleLabel}</div>
               <div className="field-input">
                 <select value={defaultStyleId} onChange={changeDefaultStyle} className="topcoat-textarea">
@@ -305,7 +419,13 @@ const SettingsModal = React.memo(function SettingsModal() {
               </div>
               <div className="field-descr">{locale.settingsDefaultStyleDescr}</div>
             </div>
-            <div className="field hostBrdTopContrast">
+          </div>
+        );
+
+      case "appearance":
+        return (
+          <div className="fields">
+            <div className="field">
               <div className="field-label">{locale.settingsLanguageLabel}</div>
               <div className="field-input">
                 <select value={language} onChange={changeLanguage} className="topcoat-textarea">
@@ -317,10 +437,10 @@ const SettingsModal = React.memo(function SettingsModal() {
                 </select>
               </div>
             </div>
-            <div className="field hostBrdTopContrast">
+            <div className="field">
               <div className="field-label">{locale.settingsThemeLabel}</div>
               <div className="field-input">
-                <select value={theme} onChange={changeTheme} className="topcoat-textarea">
+                <select value={theme} onChange={changeTheme} className="topcoat-textarea" disabled>
                   {Object.keys(config.themes).map((code) => {
                     const key = 'settingsTheme' + code
                       .replace(/(^|-)(\w)/g, (m, p1, p2) => p2.toUpperCase());
@@ -332,8 +452,9 @@ const SettingsModal = React.memo(function SettingsModal() {
                   })}
                 </select>
               </div>
+              <div className="field-descr">{locale.settingsThemeDisabledDescr}</div>
             </div>
-            <div className="field hostBrdTopContrast">
+            <div className="field">
               <div className="field-label">{locale.settingsDirectionLabel}</div>
               <div className="field-input">
                 <select value={direction} onChange={changeDirection} className="topcoat-textarea">
@@ -342,7 +463,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                 </select>
               </div>
             </div>
-            <div className="field hostBrdTopContrast">
+            <div className="field">
               <div className="field-label">{locale.settingsMiddleEastLabel}</div>
               <div className="field-input">
                 <label className="topcoat-checkbox">
@@ -351,62 +472,255 @@ const SettingsModal = React.memo(function SettingsModal() {
                 </label>
               </div>
             </div>
-            <div className="field hostBrdTopContrast">
-              <div className="field-label">{locale.settingsAutoClosePsdLabel}</div>
-              <div className="field-input">
-                <label className="topcoat-checkbox">
-                  <input type="checkbox" checked={autoClosePSD} onChange={changeAutoClosePSD} />
-                  <div className="topcoat-checkbox__checkmark"></div>
-                </label>
+          </div>
+        );
+
+      case "behavior":
+        return (
+          <div className="fields">
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupAutomations || "Automatisations"}</div>
+              <div className="settings-checkbox-grid">
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={autoClosePSD} onChange={changeAutoClosePSD} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsAutoClosePsdLabel}</span>
+                      <div className="settings-checkbox-hint">{locale.settingsAutoClosePsdHint || "Ferme automatiquement les fichiers PSD après traitement"}</div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={autoScrollStyle} onChange={changeAutoScrollStyle} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsAutoScrollStyleLabel}</span>
+                      <div className="settings-checkbox-hint">{locale.settingsAutoScrollStyleHint || "Fait défiler automatiquement vers le style sélectionné"}</div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={resizeTextBoxOnCenter} onChange={changeResizeTextBoxOnCenter} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsResizeTextBoxOnCenterLabel}</span>
+                      <div className="settings-checkbox-hint">{locale.settingsResizeTextBoxOnCenterHint || "Redimensionne la boîte de texte lors du centrage automatique"}</div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={multiBubbleMode} onChange={changeMultiBubbleMode} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>Mode Multi-Bubble (BETA)</span>
+                      <div className="settings-checkbox-hint">
+                        {locale.multiBubbleModeHint || "Permet de capturer plusieurs sélections pour insérer plusieurs textes en une fois"}
+                        <br />
+                        <a 
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            window.cep && window.cep.util && window.cep.util.openURLInDefaultBrowser('https://youtu.be/bQBvB0w3S0s');
+                          }}
+                          style={{color: '#007acc', textDecoration: 'underline', cursor: 'pointer'}}
+                        >
+                          {locale.multiBubbleModeHowToUse || "Comment utiliser"}
+                        </a>
+                      </div>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
-            <div className="field hostBrdTopContrast">
-              <div className="field-label">{locale.settingsAutoScrollStyleLabel}</div>
-              <div className="field-input">
-                <label className="topcoat-checkbox">
-                  <input type="checkbox" checked={autoScrollStyle} onChange={changeAutoScrollStyle} />
-                  <div className="topcoat-checkbox__checkmark"></div>
-                </label>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupUpdates || "Priorités et mises à jour"}</div>
+              <div className="settings-checkbox-grid">
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={currentFolderTagPriority} onChange={changeCurrentFolderTagPriority} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsCurrentFolderTagPriorityLabel}</span>
+                      <div className="settings-checkbox-hint">{locale.settingsCurrentFolderTagPriorityHint || "Donne la priorité aux styles du dossier actuel"}</div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={checkUpdates} onChange={changeCheckUpdates} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsCheckUpdatesLabel}</span>
+                      <div className="settings-checkbox-hint">{locale.settingsCheckUpdatesHint || "Vérifie automatiquement les mises à jour disponibles"}</div>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
-            <div className="field hostBrdTopContrast">
-              <div className="field-label">{locale.settingsCheckUpdatesLabel}</div>
-              <div className="field-input">
-                <label className="topcoat-checkbox">
-                  <input type="checkbox" checked={checkUpdates} onChange={changeCheckUpdates} />
-                  <div className="topcoat-checkbox__checkmark"></div>
-                </label>
-              </div>
-            </div>
-            <div className="field hostBrdTopContrast">
+          </div>
+        );
+
+      case "shortcuts":
+        return (
+          <div className="fields">
+            <div className="field">
               <div className="field-label">{locale.shortcut}</div>
               {Object.entries(context.state.shortcut).map(([index, value]) => (
-                <Shortcut value={value} index={index}></Shortcut>
+                <Shortcut key={index} value={value} index={index}></Shortcut>
               ))}
             </div>
-            <div className="field hostBrdTopContrast">
+          </div>
+        );
+
+      case "data":
+        return (
+          <div className="fields">
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsStatesTitle}</div>
+              <div className="field">
+                <div className="field-input">
+                  <input
+                    type="text"
+                    className="topcoat-text-input--large"
+                    placeholder={locale.settingsStateNamePlaceholder}
+                    value={stateName}
+                    onChange={(e) => setStateName(e.target.value)}
+                  />
+                </div>
+                <div className="field-descr">{locale.settingsStatesDescr}</div>
+              </div>
+              <div className="field">
+                <button className="topcoat-button--large" onClick={saveCurrentState}>
+                  {locale.settingsSaveCurrentState}
+                </button>
+              </div>
+              <div className="field">
+                <div className="field-label">{locale.settingsStatesListLabel}</div>
+                <div className="field-input">
+                  {Object.keys(savedStates).length ? (
+                    <select
+                      className="topcoat-textarea"
+                      value={selectedState}
+                      onChange={(e) => setSelectedState(e.target.value)}
+                    >
+                      <option value="">{locale.settingsSelectState}</option>
+                      {Object.keys(savedStates).map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="field-descr">{locale.settingsNoStates}</div>
+                  )}
+                </div>
+              </div>
+              <div className="field">
+                <button className="topcoat-button--large" onClick={loadSelectedState}>
+                  {locale.settingsLoadSelectedState}
+                </button>
+              </div>
+              <div className="field">
+                <button className="topcoat-button--large" onClick={toggleDeleteStates}>
+                  {locale.settingsDeleteStates}
+                </button>
+              </div>
+              {showDeleteStates && (
+                <div className="field">
+                  <div className="field-label">{locale.settingsDeleteStatesTitle}</div>
+                  <div className="field-input">
+                    {Object.keys(savedStates).length ? (
+                      <div className="hostBrdContrast" style={{ maxHeight: 180, overflowY: "auto", padding: 6 }}>
+                        {Object.keys(savedStates).map((name) => (
+                          <label key={name} className="topcoat-checkbox" style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={!!statesToDelete[name]}
+                              onChange={(e) => toggleStateCheckbox(name, e.target.checked)}
+                            />
+                            <div className="topcoat-checkbox__checkmark" style={{ marginRight: 8 }}></div>
+                            <span>{name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="field-descr">{locale.settingsNoStates}</div>
+                    )}
+                  </div>
+                  <div className="field-input" style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                    <button className="topcoat-button--large--cta" onClick={deleteSelectedStates}>
+                      {locale.settingsDeleteSelected}
+                    </button>
+                    <button className="topcoat-button--large" onClick={toggleDeleteStates}>
+                      {locale.cancel}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupImportExport || "Import/Export"}</div>
+              <div className="field">
+                <button className="topcoat-button--large" onClick={importSettings}>
+                  <FaFileImport size={18} /> {locale.settingsImport}
+                </button>
+              </div>
+              <div className="field">
+                <button className="topcoat-button--large" onClick={exportSettings}>
+                  <FaFileExport size={18} /> {locale.settingsExport}
+                </button>
+              </div>
+              <div className="field">
+                <button className="topcoat-button--large" onClick={checkUpdatesNow}>
+                  {locale.settingsCheckUpdatesButton}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <React.Fragment>
+      <div className="app-modal-header hostBrdBotContrast">
+        <div className="app-modal-title">{locale.settingsTitle}</div>
+        <button className="topcoat-icon-button--large--quiet" title={locale.close} onClick={close}>
+          <FiX size={18} />
+        </button>
+      </div>
+      <div className="app-modal-body">
+        <div className="app-modal-body-inner">
+          <div className="settings-tabs">
+            {tabs.map((tab) => {
+              const IconComponent = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  className={`settings-tab ${activeTab === tab.id ? 'settings-tab--active' : ''}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <IconComponent size={16} />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <form className="settings-content" onSubmit={save}>
+            {renderTabContent()}
+            <div className="settings-actions">
               <button type="submit" className={edited ? "topcoat-button--large--cta" : "topcoat-button--large"}>
                 <MdSave size={18} /> {locale.save}
               </button>
             </div>
           </form>
-          <div className="fields hostBrdTopContrast">
-            <div className="field">
-              <button className="topcoat-button--large" onClick={importSettings}>
-                <FaFileImport size={18} /> {locale.settingsImport}
-              </button>
-            </div>
-            <div className="field">
-              <button className="topcoat-button--large" onClick={exportSettings}>
-                <FaFileExport size={18} /> {locale.settingsExport}
-              </button>
-            </div>
-            <div className="field">
-              <button className="topcoat-button--large" onClick={checkUpdatesNow}>
-                {locale.settingsCheckUpdatesButton}
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </React.Fragment>

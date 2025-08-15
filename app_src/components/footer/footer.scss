@@ -21,6 +21,11 @@
 
 @media (max-height: 450px) {
   .footer-block {
-    display: none;
+    padding: 1px 5px 3px;
+    min-height: 16px;
+    font-size: 10px;
+    .link + .link {
+      margin-left: 5px;
+    }
   }
 }

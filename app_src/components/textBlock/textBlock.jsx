@@ -1,6 +1,7 @@
 import "./textBlock.scss";
 
 import React from "react";
+import PropTypes from "prop-types";
 import { FiArrowRightCircle, FiTarget } from "react-icons/fi";
 
 import config from "../../config";
@@ -37,6 +38,7 @@ const TextBlock = React.memo(function TextBlock() {
     if (image && image.path !== lastOpenedPath.current) {
       openFile(image.path, context.state.autoClosePSD);
       lastOpenedPath.current = image.path;
+      context.dispatch({ type: "setLastOpenedImagePath", path: image.path });
     }
   }, [context.state.currentLineIndex, context.state.autoClosePSD, context.state.images]);
 

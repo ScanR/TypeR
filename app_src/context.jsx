@@ -10,6 +10,7 @@ const storeFields = [
   "styles",
   "folders",
   "textScale",
+  "textSizeIncrement",
   "currentLineIndex",
   "currentStyleId",
   "pastePointText",
@@ -18,12 +19,17 @@ const storeFields = [
   "autoClosePSD",
   "checkUpdates",
   "autoScrollStyle",
+  "currentFolderTagPriority",
+  "resizeTextBoxOnCenter",
   "images",
   "shortcut",
   "language",
   "theme",
   "direction",
   "middleEast",
+  "lastOpenedImagePath",
+  "storedSelections",
+  "multiBubbleMode",
 ];
 
 const defaultShortcut = {
@@ -46,6 +52,7 @@ const initialState = {
   folders: [],
   openFolders: [],
   textScale: null,
+  textSizeIncrement: 1,
   currentLine: null,
   currentLineIndex: 0,
   currentStyle: null,
@@ -56,6 +63,8 @@ const initialState = {
   autoClosePSD: false,
   checkUpdates: config.checkUpdates,
   autoScrollStyle: storage.data?.autoScrollStyle !== false,
+  currentFolderTagPriority: storage.data?.currentFolderTagPriority !== false,
+  resizeTextBoxOnCenter: false,
   modalType: null,
   modalData: {},
   images: [],
@@ -63,12 +72,16 @@ const initialState = {
   theme: "default",
   direction: "ltr",
   middleEast: false,
+  lastOpenedImagePath: null,
+  storedSelections: [],
+  multiBubbleMode: false,
   ...storage.data,
+  theme: "default",
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
 };
 
 const reducer = (state, action) => {
-  console.log("CONTEXT:", action);
+  // console.log("CONTEXT:", action);
 
   let thenScroll = false;
   let thenSelectStyle = false;
@@ -170,6 +183,19 @@ const reducer = (state, action) => {
       break;
     }
 
+    case "setTextSizeIncrement": {
+      let increment = action.increment;
+      if (increment === "" || increment === null || increment === undefined) {
+        newState.textSizeIncrement = "";
+      } else {
+        increment = parseInt(increment) || 1;
+        if (increment < 1) increment = 1;
+        if (increment > 99) increment = 99;
+        newState.textSizeIncrement = increment;
+      }
+      break;
+    }
+
     case "saveFolder": {
       const editId = action.id || action.data.id;
       if (action.data.styleIds) {
@@ -244,6 +270,16 @@ const reducer = (state, action) => {
       break;
     }
 
+    case "toggleStylePrefixes": {
+      const styles = state.styles.concat([]);
+      const style = styles.find((s) => s.id === action.id);
+      if (style) {
+        style.prefixesDisabled = !style.prefixesDisabled;
+      }
+      newState.styles = styles;
+      break;
+    }
+
     case "deleteStyle": {
       newState.styles = state.styles.filter((s) => s.id !== action.id);
       break;
@@ -302,13 +338,23 @@ const reducer = (state, action) => {
     break;
   }
 
+  case "setCurrentFolderTagPriority": {
+    newState.currentFolderTagPriority = !!action.value;
+    break;
+  }
+
+  case "setResizeTextBoxOnCenter": {
+    newState.resizeTextBoxOnCenter = !!action.value;
+    break;
+  }
+
   case "setLanguage": {
     newState.language = action.lang || "auto";
     break;
   }
 
   case "setTheme": {
-    newState.theme = action.theme || "default";
+    newState.theme = "default";
     break;
   }
 
@@ -317,10 +363,24 @@ const reducer = (state, action) => {
     break;
   }
 
-  case "setMiddleEast": {
-    newState.middleEast = !!action.value;
-    break;
-  }
+    case "setMiddleEast": {
+      newState.middleEast = !!action.value;
+      break;
+    }
+
+    case "setMultiBubbleMode": {
+      newState.multiBubbleMode = !!action.value;
+      // Vider les sélections stockées si on désactive le mode
+      if (!action.value) {
+        newState.storedSelections = [];
+      }
+      break;
+    }
+
+    case "setLastOpenedImagePath": {
+      newState.lastOpenedImagePath = action.path || null;
+      break;
+    }
 
     case "setModal": {
       newState.modalType = action.modal || null;
@@ -334,8 +394,33 @@ const reducer = (state, action) => {
     }
 
     case "updateShortcut": {
-      console.log(action);
+      // console.log(action);
       newState.shortcut = action.shortcut;
+      break;
+    }
+
+    case "addSelection": {
+      if (action.selection) {
+        // Capturer le style actuel au moment de la sélection
+        const selectionWithStyle = {
+          ...action.selection,
+          styleId: state.currentStyleId,
+          capturedAt: Date.now()
+        };
+        newState.storedSelections = [...state.storedSelections, selectionWithStyle];
+      }
+      break;
+    }
+
+    case "clearSelections": {
+      newState.storedSelections = [];
+      break;
+    }
+
+    case "removeSelection": {
+      if (action.index >= 0 && action.index < state.storedSelections.length) {
+        newState.storedSelections = state.storedSelections.filter((_, i) => i !== action.index);
+      }
       break;
     }
   }
@@ -360,12 +445,17 @@ const reducer = (state, action) => {
 
   const stylePrefixes = [];
   const folderPrefixes = [];
+  const folderOnlyPrefixes = [];
+  const unsortedPrefixes = [];
   const currentFolder = state.currentStyle ? state.currentStyle.folder || null : null;
   for (const style of newState.styles) {
+    if (style.prefixesDisabled) continue;
     const folder = style.folder || null;
     for (const prefix of style.prefixes) {
       const data = { prefix, style, folder };
       stylePrefixes.push(data);
+      if (folder) folderOnlyPrefixes.push(data);
+      else unsortedPrefixes.push(data);
       if (folder === currentFolder) folderPrefixes.push(data);
     }
   }
@@ -376,9 +466,12 @@ const reducer = (state, action) => {
   let previousStyle = null;
   newState.lines = rawLines.map((rawText, rawIndex) => {
     const ignorePrefix = newState.ignoreLinePrefixes.find((pr) => rawText.startsWith(pr)) || "";
-    const hasStylePrefix =
-      folderPrefixes.find((sp) => rawText.startsWith(sp.prefix)) ||
-      stylePrefixes.find((sp) => rawText.startsWith(sp.prefix));
+    const hasStylePrefix = (
+      newState.currentFolderTagPriority !== false
+        ? folderPrefixes.find((sp) => rawText.startsWith(sp.prefix))
+        : (unsortedPrefixes.find((sp) => rawText.startsWith(sp.prefix)) ||
+           folderOnlyPrefixes.find((sp) => rawText.startsWith(sp.prefix)))
+    ) || stylePrefixes.find((sp) => rawText.startsWith(sp.prefix));
 
     let stylePrefix = "";
     let style = null;

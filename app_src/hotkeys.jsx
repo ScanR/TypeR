@@ -69,7 +69,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       });
     } else if (checkShortcut(realState, context.state.shortcut.center)) {
       if (!checkRepeatTime()) return;
-      alignTextLayerToSelection();
+      alignTextLayerToSelection(context.state.resizeTextBoxOnCenter);
     } else if (checkShortcut(realState, context.state.shortcut.next)) {
       if (!checkRepeatTime(300)) return;
       context.dispatch({ type: "nextLine" });
@@ -91,6 +91,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     } else {
       keyUp = true;
     }
+
   };
 
   clearInterval(keyboardInterval);

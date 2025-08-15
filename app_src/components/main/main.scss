@@ -8,6 +8,14 @@
 .top-block {
     flex: 0 0 auto;
 }
+
+@media (max-height: 450px) {
+  .top-block {
+    flex: 0 0 auto;
+    height: auto !important;
+    min-height: auto;
+  }
+}
 .top-divider {
     flex: 0 0 auto;
     height: 4px;

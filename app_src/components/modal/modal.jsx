@@ -1,6 +1,7 @@
 import './modal.scss';
 
 import React from 'react';
+import PropTypes from 'prop-types';
 import {useContext} from '../../context';
 import HelpModal from './help';
 import SettingsModal from './settings';

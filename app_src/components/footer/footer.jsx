@@ -1,6 +1,7 @@
 import "./footer.scss";
 
 import React from "react";
+import PropTypes from "prop-types";
 import { locale } from "../../utils";
 import { useContext } from "../../context";
 import HiddenFileInput from "../hiddenFileInput/hiddenFileInput";

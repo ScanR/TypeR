@@ -15,53 +15,56 @@ const minBottomHeight = 70;
 const ResizeableCont = React.memo(function ResizeableCont() {
   const appBlock = React.useRef();
   const bottomBlock = React.useRef();
-
-  let dragging = false;
-  let resizeStartY = 0;
-  let resizeStartH = 0;
-  let bottomHeight = 0;
-  let appHeight = 0;
+  const draggingRef = React.useRef(false);
+  const resizeStartYRef = React.useRef(0);
+  const resizeStartHRef = React.useRef(0);
+  const bottomHeightRef = React.useRef(0);
+  const appHeightRef = React.useRef(0);
 
   const startBottomResize = (e) => {
-    resizeStartH = bottomBlock.current.offsetHeight;
-    resizeStartY = e.pageY;
-    dragging = true;
+    resizeStartHRef.current = bottomBlock.current.offsetHeight;
+    resizeStartYRef.current = e.pageY;
+    draggingRef.current = true;
   };
 
   const stopBottomResize = () => {
-    if (dragging) {
-      writeToStorage({ bottomHeight });
-      dragging = false;
+    if (draggingRef.current) {
+      writeToStorage({ bottomHeight: bottomHeightRef.current });
+      draggingRef.current = false;
     }
   };
 
   const moveBottomResize = (e) => {
-    if (dragging) {
+    if (draggingRef.current) {
       e.preventDefault();
-      const dy = e.pageY - resizeStartY;
-      const newHeight = resizeStartH - dy;
+      const dy = e.pageY - resizeStartYRef.current;
+      const newHeight = resizeStartHRef.current - dy;
       setBottomSize(newHeight);
     }
   };
 
   const setBottomSize = (height) => {
-    const maxBottomHeight = appHeight - (appHeight > 450 ? topHeight : 0) - minMiddleHeight;
-    bottomHeight = height || readStorage("bottomHeight") || minBottomHeight;
-    if (height < minBottomHeight) bottomHeight = minBottomHeight;
-    if (height > maxBottomHeight) bottomHeight = maxBottomHeight;
-    bottomBlock.current.style.height = bottomHeight + "px";
+    const maxBottomHeight = appHeightRef.current - (appHeightRef.current > 450 ? topHeight : 0) - minMiddleHeight;
+    bottomHeightRef.current = height || readStorage("bottomHeight") || minBottomHeight;
+    if (height < minBottomHeight) bottomHeightRef.current = minBottomHeight;
+    if (height > maxBottomHeight) bottomHeightRef.current = maxBottomHeight;
+    bottomBlock.current.style.height = bottomHeightRef.current + "px";
     resizeTextArea();
   };
 
   const setAppSize = () => {
-    appHeight = document.documentElement.clientHeight;
-    appBlock.current.style.height = appHeight + "px";
+    appHeightRef.current = document.documentElement.clientHeight;
+    appBlock.current.style.height = appHeightRef.current + "px";
     setBottomSize();
   };
 
   React.useEffect(() => {
     window.addEventListener("resize", setAppSize);
     setAppSize();
+    
+    return () => {
+      window.removeEventListener("resize", setAppSize);
+    };
   }, []);
 
   return (

@@ -3,7 +3,7 @@ import "./stylesBlock.scss";
 import React from "react";
 import PropTypes from "prop-types";
 import { ReactSortable } from "react-sortablejs";
-import { FiArrowRightCircle, FiPlus, FiFolderPlus, FiChevronDown, FiChevronUp, FiCopy } from "react-icons/fi";
+import { FiArrowRightCircle, FiPlus, FiFolderPlus, FiChevronDown, FiChevronUp, FiCopy, FiEye, FiEyeOff } from "react-icons/fi";
 import { MdEdit, MdLock } from "react-icons/md";
 import { CiExport } from "react-icons/ci";
 
@@ -122,7 +122,7 @@ const FolderItem = React.memo(function FolderItem(props) {
             </ReactSortable>
           ) : (
             <div className="folder-styles-empty">
-              <span>{locale.noStylesInfolder}</span>
+              <span>{locale.noStylesInFolder}</span>
             </div>
           )}
         </div>
@@ -157,13 +157,22 @@ const StyleItem = React.memo(function StyleItem(props) {
     e.stopPropagation();
     context.dispatch({ type: "duplicateStyle", data: props.style });
   };
+  const togglePrefixes = (e) => {
+    e.stopPropagation();
+    context.dispatch({ type: "toggleStylePrefixes", id: props.style.id });
+  };
   return (
-    <div id={props.style.id} className={"style-item hostBgdLight" + (props.active ? " m-current" : "")} onClick={props.selectStyle}>
+    <div id={props.style.id} className={"style-item hostBgdLight" + (props.active ? " m-current" : "") + (props.style.prefixesDisabled ? " m-disabled" : "")} onClick={props.selectStyle}>
       <div className="style-marker">
         <div className="style-color" style={{ background: rgbToHex(textStyle.color) }} title={locale.styleTextColor + ": " + rgbToHex(textStyle.color)}></div>
         {!!props.style.prefixes.length && (
           <div className="style-prefix-color" title={locale.stylePrefixColor + ": " + (props.style.prefixColor || config.defaultPrefixColor)}>
             <div style={{ background: props.style.prefixColor || config.defaultPrefixColor }}></div>
+          </div>
+        )}
+        {!!props.style.prefixes.length && (
+          <div className="style-prefix-toggle" onClick={togglePrefixes} title={props.style.prefixesDisabled ? "Activer les préfixes automatiques" : "Désactiver les préfixes automatiques"}>
+            {props.style.prefixesDisabled ? <FiEyeOff size={10} /> : <FiEye size={10} />}
           </div>
         )}
       </div>

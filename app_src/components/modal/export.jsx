@@ -10,6 +10,7 @@ const ExportModal = React.memo(function ExportModal() {
   const context = useContext();
   const [selected, setSelected] = React.useState([]);
   const [withSettings, setWithSettings] = React.useState(true);
+  const [allSelected, setAllSelected] = React.useState(false);
 
   const close = () => {
     context.dispatch({ type: "setModal" });
@@ -20,6 +21,18 @@ const ExportModal = React.memo(function ExportModal() {
     if (checked) arr.push(id);
     else arr = arr.filter((fid) => fid !== id);
     setSelected(arr);
+    setAllSelected(arr.length === context.state.folders.length);
+  };
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelected([]);
+      setAllSelected(false);
+    } else {
+      const allFolderIds = context.state.folders.map(folder => folder.id);
+      setSelected(allFolderIds);
+      setAllSelected(true);
+    }
   };
 
   const exportData = (e) => {
@@ -46,6 +59,7 @@ const ExportModal = React.memo(function ExportModal() {
       data.language = context.state.language;
       data.autoClosePSD = context.state.autoClosePSD;
       data.autoScrollStyle = context.state.autoScrollStyle;
+      data.currentFolderTagPriority = context.state.currentFolderTagPriority;
       data.textItemKind = context.state.setTextItemKind;
     }
     window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
@@ -63,6 +77,15 @@ const ExportModal = React.memo(function ExportModal() {
       <div className="app-modal-body">
         <form className="app-modal-body-inner" onSubmit={exportData}>
           <div className="fields">
+            <div className="export-select-all-container">
+              <button 
+                type="button" 
+                className="topcoat-button--large" 
+                onClick={toggleSelectAll}
+              >
+                {allSelected ? locale.deselectAll : locale.selectAll}
+              </button>
+            </div>
             {context.state.folders.map((folder) => (
               <label key={folder.id} className="topcoat-checkbox export-folder-item">
                 <input
