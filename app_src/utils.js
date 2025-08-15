@@ -11,13 +11,48 @@ const openUrl = window.cep.util.openURLInDefaultBrowser;
 const checkUpdate = async (currentVersion) => {
   try {
     const response = await fetch(
-      "https://api.github.com/repos/ScanR/TypeR/releases/latest",
+      "https://api.github.com/repos/ScanR/TypeR/releases",
       { headers: { Accept: "application/vnd.github.v3.html+json" } }
     );
     if (!response.ok) return null;
-    const data = await response.json();
-    if (data.tag_name && data.tag_name !== currentVersion) {
-      return { version: data.tag_name, body: data.body_html || data.body };
+    const releases = await response.json();
+    
+    const parseVersion = (version) => {
+      const cleanVersion = version.replace(/^v/, '');
+      return cleanVersion.split('.').map(num => parseInt(num, 10));
+    };
+    
+    const compareVersions = (v1, v2) => {
+      const version1 = parseVersion(v1);
+      const version2 = parseVersion(v2);
+      
+      for (let i = 0; i < Math.max(version1.length, version2.length); i++) {
+        const num1 = version1[i] || 0;
+        const num2 = version2[i] || 0;
+        
+        if (num1 > num2) return 1;
+        if (num1 < num2) return -1;
+      }
+      return 0;
+    };
+    
+    const currentVersionClean = currentVersion.replace(/^v/, '');
+    const newerReleases = releases.filter(release => {
+      const releaseVersion = release.tag_name.replace(/^v/, '');
+      return compareVersions(releaseVersion, currentVersionClean) > 0;
+    });
+    
+    if (newerReleases.length > 0) {
+      newerReleases.sort((a, b) => compareVersions(b.tag_name, a.tag_name));
+      
+      return {
+        version: newerReleases[0].tag_name,
+        releases: newerReleases.map(release => ({
+          version: release.tag_name,
+          body: release.body_html || release.body,
+          published_at: release.published_at
+        }))
+      };
     }
   } catch (e) {
     console.error("Update check failed", e);

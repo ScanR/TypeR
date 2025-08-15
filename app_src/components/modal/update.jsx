@@ -6,7 +6,7 @@ import { useContext } from '../../context';
 
 const UpdateModal = React.memo(function UpdateModal() {
   const context = useContext();
-  const { version, body } = context.state.modalData;
+  const { version, releases } = context.state.modalData;
   const close = () => {
     context.dispatch({ type: 'setModal' });
   };
@@ -25,11 +25,16 @@ const UpdateModal = React.memo(function UpdateModal() {
       <div className="app-modal-body">
         <div className="app-modal-body-inner article-format">
           <p>{locale.updateText.replace('{version}', version)}</p>
-          {body && (
-            <React.Fragment>
-              <div dangerouslySetInnerHTML={{ __html: body }} />
+          {releases && releases.map((release, index) => (
+            <React.Fragment key={release.version}>
+              <h3 style={{ marginTop: index === 0 ? '1rem' : '2rem', marginBottom: '0.5rem' }}>
+                Version {release.version}
+              </h3>
+              {release.body && (
+                <div dangerouslySetInnerHTML={{ __html: release.body }} />
+              )}
             </React.Fragment>
-          )}
+          ))}
         </div>
       </div>
       <div className="app-modal-footer hostBrdTopContrast">
