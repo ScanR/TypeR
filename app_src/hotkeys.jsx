@@ -1,7 +1,7 @@
 import _ from "lodash";
 import React from "react";
 
-import { csInterface, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
+import { csInterface, setActiveLayerText, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
 import { useContext } from "./context";
 
 const CTRL = "CTRL";
@@ -34,22 +34,103 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     realState.pop();
     if (checkShortcut(realState, context.state.shortcut.add)) {
       if (!checkRepeatTime()) return;
-      const line = context.state.currentLine || { text: "" };
-      let style = context.state.currentStyle;
-      if (style && context.state.textScale) {
-        style = _.cloneDeep(style);
-        const txtStyle = style.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
-        if (typeof txtStyle.size === "number") {
-          txtStyle.size *= context.state.textScale / 100;
+      
+      const storedSelections = context.state.storedSelections || [];
+      
+      if (context.state.multiBubbleMode && storedSelections.length > 0) {
+        // Mode sélections multiples
+        const texts = [];
+        const styles = [];
+        
+        // Récupérer les textes à partir de la ligne courante
+        let lineIndex = context.state.currentLineIndex;
+        for (let i = 0; i < storedSelections.length; i++) {
+          let targetLine = null;
+          // Trouver la prochaine ligne valide à partir de la ligne courante
+          while (lineIndex < context.state.lines.length) {
+            const line = context.state.lines[lineIndex];
+            if (line && !line.ignore) {
+              targetLine = line;
+              lineIndex++; // Avancer à la ligne suivante pour la prochaine itération
+              break;
+            }
+            lineIndex++;
+          }
+          
+          if (targetLine) {
+            texts.push(targetLine.text);
+            
+            // Priorité au style de prefix/tag de la ligne
+            let lineStyle = null;
+            
+            if (targetLine.style) {
+              // Si la ligne a un prefix de style, utiliser ce style (priorité absolue)
+              lineStyle = targetLine.style;
+            } else {
+              // Sinon, utiliser le style qui était actif au moment de cette sélection
+              const selection = storedSelections[i];
+              
+              if (selection.styleId) {
+                // Retrouver le style par son ID
+                lineStyle = context.state.styles.find(s => s.id === selection.styleId);
+              }
+              
+              // Si pas de style trouvé, utiliser le style par défaut
+              if (!lineStyle) {
+                lineStyle = context.state.currentStyle;
+              }
+            }
+            
+            // Appliquer le scale si nécessaire
+            if (lineStyle && context.state.textScale) {
+              lineStyle = _.cloneDeep(lineStyle);
+              const txtStyle = lineStyle.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
+              if (typeof txtStyle.size === "number") {
+                txtStyle.size *= context.state.textScale / 100;
+              }
+              if (typeof txtStyle.leading === "number" && txtStyle.leading) {
+                txtStyle.leading *= context.state.textScale / 100;
+              }
+            }
+            styles.push(lineStyle);
+          } else {
+            // Pas assez de lignes, on réutilise la dernière ligne et son style
+            texts.push(texts[texts.length - 1] || "");
+            styles.push(styles[styles.length - 1] || context.state.currentStyle);
+          }
         }
-        if (typeof txtStyle.leading === "number" && txtStyle.leading) {
-          txtStyle.leading *= context.state.textScale / 100;
+        
+        const pointText = context.state.pastePointText;
+        createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, (ok) => {
+          if (ok) {
+            // Avancer le curseur au bon endroit (à la dernière ligne utilisée)
+            const finalLineIndex = lineIndex - 1;
+            if (finalLineIndex >= 0 && finalLineIndex < context.state.lines.length) {
+              context.dispatch({ type: "setCurrentLineIndex", index: finalLineIndex });
+            }
+            // Vider les sélections stockées
+            context.dispatch({ type: "clearSelections" });
+          }
+        });
+      } else {
+        // Mode sélection unique (comportement original)
+        const line = context.state.currentLine || { text: "" };
+        let style = context.state.currentStyle;
+        if (style && context.state.textScale) {
+          style = _.cloneDeep(style);
+          const txtStyle = style.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
+          if (typeof txtStyle.size === "number") {
+            txtStyle.size *= context.state.textScale / 100;
+          }
+          if (typeof txtStyle.leading === "number" && txtStyle.leading) {
+            txtStyle.leading *= context.state.textScale / 100;
+          }
         }
+        const pointText = context.state.pastePointText;
+        createTextLayerInSelection(line.text, style, pointText, (ok) => {
+          if (ok) context.dispatch({ type: "nextLine", add: true });
+        });
       }
-      const pointText = context.state.pastePointText;
-      createTextLayerInSelection(line.text, style, pointText, (ok) => {
-        if (ok) context.dispatch({ type: "nextLine", add: true });
-      });
     } else if (checkShortcut(realState, context.state.shortcut.apply)) {
       if (!checkRepeatTime()) return;
       const line = context.state.currentLine || { text: "" };
