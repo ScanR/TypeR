@@ -76,6 +76,7 @@ const initialState = {
   storedSelections: [],
   multiBubbleMode: false,
   ...storage.data,
+  theme: "default",
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
 };
 
@@ -497,7 +498,7 @@ const reducer = (state, action) => {
     return line;
   });
   last.forEach((index) => {
-    newState.lines.find((line) => line.index === index).last = true;
+    newState.lines.find((line) => line.index == index).last = true;
   });
 
   newState.currentLine = newState.lines[newState.currentLineIndex] || null;

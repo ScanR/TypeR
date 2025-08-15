@@ -1,9 +1,11 @@
+import 'babel-polyfill';
+
 import './index.scss';
-import './lib/CSInterface.js';
-import './lib/themeManager.js';
+import './lib/CSInterface';
+import './lib/themeManager';
 
 import React from 'react';
-import { createRoot } from 'react-dom/client';
+import ReactDOM from 'react-dom';
 import { ContextProvider } from './context';
 import HotkeysListner from './hotkeys';
 import MainComponent from './components/main/main';
@@ -17,10 +19,10 @@ const App = React.memo(function App() {
   );
 });
 
-const container = document.getElementById('app');
-const root = createRoot(container);
-root.render(
+// Remplace createRoot(...).render(...) par ReactDOM.render :
+ReactDOM.render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
+  document.getElementById('app')
 );

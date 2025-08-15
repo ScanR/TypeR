@@ -1,59 +1,70 @@
 {
-	"name": "typertools",
-	"author": "Swirt",
-	"main": "app/index.js",
-	"type": "module",
-	"browserslist": [
-		"since 2012"
-	],
-	"scripts": {
-		"build_watch": "node clean.js app && webpack --mode=development --watch && node copyThemes.js",
-		"build_dev": "node clean.js app && webpack --mode=development && node copyThemes.js",
-		"build": "node clean.js app && webpack --mode=production && node copyThemes.js"
-	},
-	"dependencies": {
-		"webpack-merge-and-include-globally": "^2.3.4",
-		"mini-css-extract-plugin": "^2.9.2",
-		"lodash-webpack-plugin": "^0.11.6",
-		"@babel/preset-react": "^7.27.1",
-		"postcss-preset-env": "^10.2.4",
-		"html-webpack-plugin": "^5.6.3",
-		"babel-preset-minify": "^0.5.2",
-		"@babel/preset-env": "^7.28.0",
-		"react-sortablejs": "^6.1.4",
-		"core-js": "^3.39.0",
-		"autoprefixer": "^10.4.21",
-		"react-color": "^2.19.3",
-		"@babel/core": "^7.28.0",
-		"sortablejs": "^1.15.6",
-		"react-icons": "^5.5.0",
-		"prop-types": "^15.8.1",
-		"uglify-js": "^3.19.3",
-		"webpack": "^5.100.1",
-		"react-dom": "^18.3.1",
-		"lodash": "^4.17.21",
-		"cssnano": "^7.0.7",
-		"react": "^18.3.1"
-	},
-	"trustedDependencies": [
-		"@parcel/watcher",
-		"core-js"
-	],
-	"devDependencies": {
-		"babel-plugin-lodash": "^3.3.4",
-		"@babel/runtime": "^7.27.6",
-		"@babel/plugin-proposal-nullish-coalescing-operator": "^7.18.6",
-		"@babel/plugin-proposal-optional-chaining": "^7.21.0",
-		"@babel/plugin-proposal-class-properties": "^7.18.6",
-		"@babel/plugin-syntax-dynamic-import": "^7.8.3",
-		"@babel/plugin-transform-runtime": "^7.25.9",
-		"postcss-loader": "^8.1.1",
-		"babel-loader": "^10.0.0",
-		"sass-loader": "^16.0.5",
-		"file-loader": "^6.2.0",
-		"base64-inline-loader": "^2.0.1",
-		"webpack-cli": "^6.0.1",
-		"css-loader": "^7.1.2",
-		"sass": "^1.89.2"
-	}
+  "name": "typertools",
+  "author": "Swirt",
+  "main": "app/index.js",
+  "browserslist": [
+    "since 2012"
+  ],
+  "scripts": {
+    "build": "node clean.js app && webpack --mode=production && node copyThemes.js",
+    "build_dev": "node clean.js app && webpack --mode=development && node copyThemes.js",
+    "build_watch": "node clean.js app && webpack --mode=development --watch && node copyThemes.js"
+  },
+  "dependencies": {
+    "@babel/cli": "^7.15.7",
+    "@babel/core": "^7.15.5",
+    "@babel/plugin-proposal-class-properties": "^7.14.5",
+    "@babel/plugin-proposal-optional-chaining": "^7.14.5",
+    "@babel/plugin-syntax-dynamic-import": "^7.8.3",
+    "@babel/plugin-transform-runtime": "^7.15.0",
+    "@babel/preset-env": "^7.15.6",
+    "@babel/preset-react": "^7.14.5",
+    "@babel/runtime": "^7.15.4",
+    "autoprefixer": "^10.3.6",
+    "babel-eslint": "^10.1.0",
+    "babel-loader": "^8.2.2",
+    "babel-minify": "^0.5.1",
+    "babel-plugin-closure-elimination": "^1.3.2",
+    "babel-plugin-lodash": "^3.3.4",
+    "babel-polyfill": "^6.26.0",
+    "babel-preset-minify": "^0.5.1",
+    "base64-inline-loader": "^2.0.1",
+    "css-loader": "^6.3.0",
+    "cssnano": "^5.0.8",
+    "eslint": "^7.32.0",
+    "eslint-plugin-react": "^7.26.0",
+    "eslint-plugin-react-hooks": "^4.2.0",
+    "file-loader": "^6.2.0",
+    "html-webpack-plugin": "^5.3.2",
+    "lodash": "^4.17.21",
+    "lodash-webpack-plugin": "^0.11.6",
+    "mini-css-extract-plugin": "^2.3.0",
+    "npm-check-updates": "^11.8.5",
+    "postcss-loader": "^6.1.1",
+    "postcss-preset-env": "^6.7.0",
+    "prop-types": "^15.7.2",
+    "react": "^17.0.2",
+    "react-color": "^2.19.3",
+    "react-dom": "^17.0.2",
+    "react-icons": "^5.5.0",
+    "react-sortablejs": "^6.0.0",
+    "rimraf": "^3.0.2",
+    "sass-loader": "^12.1.0",
+    "sortablejs": "^1.15.6",
+    "style-loader": "^3.3.0",
+    "uglify-js": "^3.14.2",
+    "url-loader": "^4.1.1",
+    "webpack": "^5.54.0",
+    "webpack-cli": "^4.8.0",
+    "webpack-merge-and-include-globally": "^2.3.4"
+  },
+  "devDependencies": {
+    "cz-conventional-changelog": "^3.3.0",
+    "sass": "^1.89.0"
+  },
+  "config": {
+    "commitizen": {
+      "path": "./node_modules/cz-conventional-changelog"
+    }
+  }
 }

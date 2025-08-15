@@ -1,16 +1,12 @@
-import MergeIntoSingleFilePlugin from 'webpack-merge-and-include-globally';
-import MiniCssExtractPlugin from "mini-css-extract-plugin";
-import LodashWebpackPlugin from 'lodash-webpack-plugin';
-import HtmlWebpackPlugin from 'html-webpack-plugin';
-import postcssPresetEnv from 'postcss-preset-env';
-import autoprefixer from 'autoprefixer';
-import postcssCssnano from 'cssnano';
-import UglifyJS from 'uglify-js';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
+const MergeIntoSingleFilePlugin = require('webpack-merge-and-include-globally');
+const MiniCssExtractPlugin = require("mini-css-extract-plugin");
+const LodashWebpackPlugin = require('lodash-webpack-plugin');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const postcssPresetEnv = require('postcss-preset-env');
+const autoprefixer = require('autoprefixer');
+const postcssCssnano = require('cssnano');
+const UglifyJS = require('uglify-js');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 const hostFiles = [
     __dirname + '/app_src/lib/jam/jamActions.jsxinc',
@@ -35,9 +31,6 @@ const defaultConfig = {
     },
     resolve: {
         extensions: ['.js', '.jsx', '.jsxinc']
-    },
-    performance: {
-        hints: false
     }
 };
 
@@ -50,7 +43,10 @@ const devConfig = {
                 test: /\.jsx?$/,
                 exclude: /node_modules/,
                 use: {
-                    loader: 'babel-loader'
+                    loader: 'babel-loader',
+                    options: {
+                        plugins: ['lodash']
+                    }
                 }
             }, {
                 test: /\.css$/,
@@ -117,7 +113,10 @@ const prodConfig = {
                 test: /\.jsx?$/,
                 exclude: /node_modules/,
                 use: {
-                    loader: 'babel-loader'
+                    loader: 'babel-loader',
+                    options: {
+                        plugins: ['lodash']
+                    }
                 }
             }, {
                 test: /\.css$/,
@@ -190,4 +189,4 @@ function clientConfig(env, argv) {
     return Object.assign({}, defaultConfig, envConfig);
 }
 
-export default [clientConfig];
+module.exports = [clientConfig];

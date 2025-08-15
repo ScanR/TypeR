@@ -1,10 +1,5 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const fs = require('fs');
+const path = require('path');
 const srcDir = path.resolve(__dirname, 'themes');
 const destDir = path.resolve(__dirname, 'app', 'themes');
 if (fs.existsSync(srcDir)) {
