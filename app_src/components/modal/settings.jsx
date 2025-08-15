@@ -440,7 +440,7 @@ const SettingsModal = React.memo(function SettingsModal() {
             <div className="field">
               <div className="field-label">{locale.settingsThemeLabel}</div>
               <div className="field-input">
-                <select value={theme} onChange={changeTheme} className="topcoat-textarea">
+                <select value={theme} onChange={changeTheme} className="topcoat-textarea" disabled>
                   {Object.keys(config.themes).map((code) => {
                     const key = 'settingsTheme' + code
                       .replace(/(^|-)(\w)/g, (m, p1, p2) => p2.toUpperCase());
@@ -452,6 +452,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                   })}
                 </select>
               </div>
+              <div className="field-descr">{locale.settingsThemeDisabledDescr}</div>
             </div>
             <div className="field">
               <div className="field-label">{locale.settingsDirectionLabel}</div>

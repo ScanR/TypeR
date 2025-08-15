@@ -76,6 +76,7 @@ const initialState = {
   storedSelections: [],
   multiBubbleMode: false,
   ...storage.data,
+  theme: "default",
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
 };
 
@@ -343,7 +344,7 @@ const reducer = (state, action) => {
   }
 
   case "setTheme": {
-    newState.theme = action.theme || "default";
+    newState.theme = "default";
     break;
   }
 
