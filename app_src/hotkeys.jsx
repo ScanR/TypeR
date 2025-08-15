@@ -103,10 +103,15 @@ const HotkeysListner = React.memo(function HotkeysListner() {
         const pointText = context.state.pastePointText;
         createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, (ok) => {
           if (ok) {
-            // Avancer le curseur au bon endroit (à la dernière ligne utilisée)
-            const finalLineIndex = lineIndex - 1;
-            if (finalLineIndex >= 0 && finalLineIndex < context.state.lines.length) {
-              context.dispatch({ type: "setCurrentLineIndex", index: finalLineIndex });
+            // Trouver la prochaine ligne valide après les lignes utilisées
+            let nextLineIndex = lineIndex;
+            while (nextLineIndex < context.state.lines.length) {
+              const line = context.state.lines[nextLineIndex];
+              if (line && !line.ignore) {
+                context.dispatch({ type: "setCurrentLineIndex", index: nextLineIndex });
+                break;
+              }
+              nextLineIndex++;
             }
             // Vider les sélections stockées
             context.dispatch({ type: "clearSelections" });
