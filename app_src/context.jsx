@@ -76,7 +76,7 @@ const initialState = {
 };
 
 const reducer = (state, action) => {
-  console.log("CONTEXT:", action);
+  // console.log("CONTEXT:", action);
 
   let thenScroll = false;
   let thenSelectStyle = false;
@@ -370,7 +370,7 @@ const reducer = (state, action) => {
     }
 
     case "updateShortcut": {
-      console.log(action);
+      // console.log(action);
       newState.shortcut = action.shortcut;
       break;
     }
