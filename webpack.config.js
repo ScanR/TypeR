@@ -1,12 +1,16 @@
-const MergeIntoSingleFilePlugin = require('webpack-merge-and-include-globally');
-const MiniCssExtractPlugin = require("mini-css-extract-plugin");
-const LodashWebpackPlugin = require('lodash-webpack-plugin');
-const HtmlWebpackPlugin = require('html-webpack-plugin');
-const postcssPresetEnv = require('postcss-preset-env');
-const autoprefixer = require('autoprefixer');
-const postcssCssnano = require('cssnano');
-const UglifyJS = require('uglify-js');
+import MergeIntoSingleFilePlugin from 'webpack-merge-and-include-globally';
+import MiniCssExtractPlugin from "mini-css-extract-plugin";
+import LodashWebpackPlugin from 'lodash-webpack-plugin';
+import HtmlWebpackPlugin from 'html-webpack-plugin';
+import postcssPresetEnv from 'postcss-preset-env';
+import autoprefixer from 'autoprefixer';
+import postcssCssnano from 'cssnano';
+import UglifyJS from 'uglify-js';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const hostFiles = [
     __dirname + '/app_src/lib/jam/jamActions.jsxinc',
@@ -189,4 +193,4 @@ function clientConfig(env, argv) {
     return Object.assign({}, defaultConfig, envConfig);
 }
 
-module.exports = [clientConfig];
+export default [clientConfig];

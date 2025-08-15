@@ -1,8 +1,8 @@
 import 'babel-polyfill';
 
 import './index.scss';
-import './lib/CSInterface';
-import './lib/themeManager';
+import './lib/CSInterface.js';
+import './lib/themeManager.js';
 
 import React from 'react';
 import ReactDOM from 'react-dom';

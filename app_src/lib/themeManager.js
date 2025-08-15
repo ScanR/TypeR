@@ -1,4 +1,4 @@
-import './CSInterface';
+import './CSInterface.js';
 
 import LightTheme from './topcoat/css/topcoat-desktop-light.min.css';
 import DarkTheme from './topcoat/css/topcoat-desktop-dark.min.css';
