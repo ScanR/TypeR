@@ -35,6 +35,9 @@ const defaultConfig = {
     },
     resolve: {
         extensions: ['.js', '.jsx', '.jsxinc']
+    },
+    performance: {
+        hints: false
     }
 };
 
@@ -47,10 +50,7 @@ const devConfig = {
                 test: /\.jsx?$/,
                 exclude: /node_modules/,
                 use: {
-                    loader: 'babel-loader',
-                    options: {
-                        plugins: ['lodash']
-                    }
+                    loader: 'babel-loader'
                 }
             }, {
                 test: /\.css$/,
@@ -117,10 +117,7 @@ const prodConfig = {
                 test: /\.jsx?$/,
                 exclude: /node_modules/,
                 use: {
-                    loader: 'babel-loader',
-                    options: {
-                        plugins: ['lodash']
-                    }
+                    loader: 'babel-loader'
                 }
             }, {
                 test: /\.css$/,
