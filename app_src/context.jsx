@@ -391,7 +391,13 @@ const reducer = (state, action) => {
 
     case "addSelection": {
       if (action.selection) {
-        newState.storedSelections = [...state.storedSelections, action.selection];
+        // Capturer le style actuel au moment de la sélection
+        const selectionWithStyle = {
+          ...action.selection,
+          styleId: state.currentStyleId,
+          capturedAt: Date.now()
+        };
+        newState.storedSelections = [...state.storedSelections, selectionWithStyle];
       }
       break;
     }

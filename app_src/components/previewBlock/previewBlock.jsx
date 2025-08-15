@@ -102,7 +102,21 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         if (targetLine) {
           texts.push(targetLine.text);
           
-          let lineStyle = context.state.currentStyle;
+          // Utiliser le style qui était actif au moment de cette sélection
+          const selection = storedSelections[i];
+          let lineStyle = null;
+          
+          if (selection.styleId) {
+            // Retrouver le style par son ID
+            lineStyle = context.state.styles.find(s => s.id === selection.styleId);
+          }
+          
+          // Si pas de style trouvé, utiliser le style par défaut
+          if (!lineStyle) {
+            lineStyle = context.state.currentStyle;
+          }
+          
+          // Appliquer le scale si nécessaire
           if (lineStyle && context.state.textScale) {
             lineStyle = _.cloneDeep(lineStyle);
             const txtStyle = lineStyle.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
@@ -115,7 +129,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           }
           styles.push(lineStyle);
         } else {
-          // Pas assez de lignes, on réutilise la dernière ligne
+          // Pas assez de lignes, on réutilise la dernière ligne et son style
           texts.push(texts[texts.length - 1] || "");
           styles.push(styles[styles.length - 1] || context.state.currentStyle);
         }
