@@ -201,7 +201,12 @@ const SettingsModal = React.memo(function SettingsModal() {
     const shortcut = {};
     document.querySelectorAll("input[id^=shortcut_]").forEach((input) => {
       const typeShorcut = input.id.split("_").pop();
-      shortcut[typeShorcut] = input.value.split(" + ");
+      const value = input.value.trim();
+      if (value) {
+        shortcut[typeShorcut] = value.split(" + ");
+      } else {
+        shortcut[typeShorcut] = [];
+      }
     });
     context.dispatch({
       type: "updateShortcut",

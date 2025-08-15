@@ -395,7 +395,7 @@ const reducer = (state, action) => {
 
     case "updateShortcut": {
       // console.log(action);
-      newState.shortcut = action.shortcut;
+      newState.shortcut = { ...defaultShortcut, ...state.shortcut, ...action.shortcut };
       break;
     }
 
