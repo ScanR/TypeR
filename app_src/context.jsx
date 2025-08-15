@@ -41,6 +41,7 @@ const defaultShortcut = {
   increase: ["CTRL", "SHIFT", "PLUS"],
   decrease: ["CTRL", "SHIFT", "MINUS"],
   insertText: ["WIN", "V"],
+  nextPage: ["SHIFT", "X"],
 };
 
 const initialState = {
@@ -165,6 +166,31 @@ const reducer = (state, action) => {
       }
       thenScroll = true;
       thenSelectStyle = true;
+      break;
+    }
+
+    case "nextPage": {
+      if (!state.text) break;
+      // Trouver la prochaine ligne "Page X"
+      let foundNextPage = false;
+      for (let i = state.currentLineIndex + 1; i < state.lines.length; i++) {
+        const line = state.lines[i];
+        if (line.rawText.match(/Page [0-9]+/)) {
+          // Trouver la première ligne non-ignorée après cette page
+          for (let j = i + 1; j < state.lines.length; j++) {
+            if (!state.lines[j].ignore) {
+              newState.currentLineIndex = state.lines[j].rawIndex;
+              foundNextPage = true;
+              break;
+            }
+          }
+          break;
+        }
+      }
+      if (foundNextPage) {
+        thenScroll = true;
+        thenSelectStyle = true;
+      }
       break;
     }
 

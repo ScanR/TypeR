@@ -85,6 +85,24 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       const texts = [];
       const styles = [];
       
+      // Déterminer la page de départ
+      const getCurrentPageIndex = (lineIndex) => {
+        let currentPage = 0;
+        for (let i = 0; i <= lineIndex && i < context.state.lines.length; i++) {
+          const line = context.state.lines[i];
+          if (line.ignore) {
+            const page = line.rawText.match(/Page ([0-9]+)/);
+            if (page && context.state.images[page[1] - 1]) {
+              const img = context.state.images[page[1] - 1];
+              currentPage = context.state.images.indexOf(img);
+            }
+          }
+        }
+        return currentPage;
+      };
+      
+      const startingPage = getCurrentPageIndex(context.state.currentLineIndex);
+      
       // Récupérer les textes à partir de la ligne courante
       let lineIndex = context.state.currentLineIndex;
       for (let i = 0; i < storedSelections.length; i++) {
@@ -92,12 +110,24 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         // Trouver la prochaine ligne valide à partir de la ligne courante
         while (lineIndex < context.state.lines.length) {
           const line = context.state.lines[lineIndex];
+          
+          // Vérifier si on est toujours sur la même page
+          const currentPageOfLine = getCurrentPageIndex(lineIndex);
+          if (currentPageOfLine !== startingPage) {
+            break; // On a changé de page, arrêter
+          }
+          
           if (line && !line.ignore) {
             targetLine = line;
             lineIndex++; // Avancer à la ligne suivante pour la prochaine itération
             break;
           }
           lineIndex++;
+        }
+        
+        // Arrêter si pas de ligne disponible
+        if (!targetLine) {
+          break;
         }
         
         if (targetLine) {
@@ -146,10 +176,26 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       const pointText = context.state.pastePointText;
       createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, (ok) => {
         if (ok) {
-          // Trouver la prochaine ligne valide après les lignes utilisées
+          // Trouver la prochaine ligne valide après les lignes utilisées, mais rester sur la même page
           let nextLineIndex = lineIndex;
           while (nextLineIndex < context.state.lines.length) {
             const line = context.state.lines[nextLineIndex];
+            
+            // Vérifier si on est toujours sur la même page
+            const currentPageOfNextLine = getCurrentPageIndex(nextLineIndex);
+            if (currentPageOfNextLine !== startingPage) {
+              // On a changé de page, rester sur la dernière ligne valide de la page courante
+              let lastValidLineOnPage = context.state.currentLineIndex;
+              for (let i = context.state.currentLineIndex; i < nextLineIndex; i++) {
+                const checkLine = context.state.lines[i];
+                if (checkLine && !checkLine.ignore) {
+                  lastValidLineOnPage = i;
+                }
+              }
+              context.dispatch({ type: "setCurrentLineIndex", index: lastValidLineOnPage });
+              break;
+            }
+            
             if (line && !line.ignore) {
               context.dispatch({ type: "setCurrentLineIndex", index: nextLineIndex });
               break;
