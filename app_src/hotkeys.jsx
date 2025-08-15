@@ -1,7 +1,7 @@
 import _ from "lodash";
 import React from "react";
 
-import { csInterface, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
+import { csInterface, setActiveLayerText, getCurrentSelection, createTextLayerInSelection, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
 import { useContext } from "./context";
 
 const CTRL = "CTRL";
@@ -88,6 +88,15 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       setActiveLayerText(line.text, null, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
       });
+    } else if (checkShortcut(realState, context.state.shortcut.captureSelection)) {
+      if (!checkRepeatTime()) return;
+      if (context.state.multiBubbleMode) {
+        getCurrentSelection((selection) => {
+          if (selection) {
+            context.dispatch({ type: "addSelection", selection });
+          }
+        });
+      }
     } else {
       keyUp = true;
     }

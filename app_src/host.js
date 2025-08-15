@@ -771,6 +771,129 @@ function changeActiveLayerTextSize(val) {
   return changeActiveLayerTextSizeResult;
 }
 
+function getCurrentSelection() {
+  if (!documents.length) {
+    return jamJSON.stringify({ error: "doc" });
+  }
+  var selection = _checkSelection();
+  if (selection.error) {
+    return jamJSON.stringify({ error: selection.error });
+  }
+  return jamJSON.stringify(selection);
+}
+
+var lastSelectionBounds = null;
+var selectionChangeCallback = null;
+
+function startSelectionMonitoring() {
+  // Démarrer la surveillance des changements de sélection
+  if (selectionChangeCallback) {
+    app.removeNotifier("Slct", selectionChangeCallback);
+  }
+  
+  selectionChangeCallback = function() {
+    var currentSelection = _checkSelection();
+    if (!currentSelection.error) {
+      var currentBounds = currentSelection.xMid + "_" + currentSelection.yMid + "_" + currentSelection.width + "_" + currentSelection.height;
+      if (currentBounds !== lastSelectionBounds) {
+        lastSelectionBounds = currentBounds;
+        // Notifier l'extension CEP du changement
+        app.system("osascript -e 'tell application \"System Events\" to keystroke \"x\" using {command down, option down, shift down}'");
+      }
+    }
+  };
+  
+  app.addNotifier("Slct", selectionChangeCallback);
+}
+
+function stopSelectionMonitoring() {
+  if (selectionChangeCallback) {
+    app.removeNotifier("Slct", selectionChangeCallback);
+    selectionChangeCallback = null;
+  }
+  lastSelectionBounds = null;
+}
+
+function getSelectionChanged() {
+  var currentSelection = _checkSelection();
+  if (!currentSelection.error) {
+    var currentBounds = currentSelection.xMid + "_" + currentSelection.yMid + "_" + currentSelection.width + "_" + currentSelection.height;
+    if (currentBounds !== lastSelectionBounds) {
+      lastSelectionBounds = currentBounds;
+      return jamJSON.stringify(currentSelection);
+    }
+  }
+  return jamJSON.stringify({ noChange: true });
+}
+
+var createTextLayersInStoredSelectionsData;
+var createTextLayersInStoredSelectionsPoint;
+var createTextLayersInStoredSelectionsResult;
+var storedSelections = [];
+
+function _createTextLayersInStoredSelections() {
+  if (!documents.length) {
+    createTextLayersInStoredSelectionsResult = "doc";
+    return;
+  }
+  
+  var texts = createTextLayersInStoredSelectionsData.texts || [];
+  var styles = createTextLayersInStoredSelectionsData.styles || [];
+  
+  if (texts.length === 0 || storedSelections.length === 0) {
+    createTextLayersInStoredSelectionsResult = "noSelection";
+    return;
+  }
+  
+  var maxCount = Math.min(texts.length, storedSelections.length);
+  
+  for (var i = 0; i < maxCount; i++) {
+    var text = texts[i] || texts[texts.length - 1] || "";
+    var style = styles[i] || styles[styles.length - 1] || { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
+    var selection = storedSelections[i];
+    
+    if (!text) continue;
+    
+    var width = selection.width;
+    var height = selection.height;
+    
+    // Créer le layer de texte
+    var data = { text: text, style: style };
+    _createAndSetLayerText(data, width, height);
+    
+    var bounds = _getCurrentTextLayerBounds();
+    if (createTextLayersInStoredSelectionsPoint) {
+      _changeToPointText();
+    } else {
+      _setTextBoxSize(width, height);
+    }
+    
+    // Positionner le layer à l'emplacement de la sélection stockée
+    var offsetX = selection.xMid - bounds.xMid;
+    var offsetY = selection.yMid - bounds.yMid;
+    _moveLayer(offsetX, offsetY);
+  }
+  
+  // Vider les sélections stockées après utilisation
+  storedSelections = [];
+  createTextLayersInStoredSelectionsResult = "";
+}
+
+function createTextLayersInStoredSelections(data, point) {
+  createTextLayersInStoredSelectionsData = data;
+  createTextLayersInStoredSelectionsPoint = point;
+  
+  // Les sélections sont passées directement depuis React
+  if (data && data.selections) {
+    storedSelections = data.selections;
+  } else {
+    storedSelections = [];
+  }
+  
+  app.activeDocument.suspendHistory("TyperTools Multiple Paste", "_createTextLayersInStoredSelections()");
+  return createTextLayersInStoredSelectionsResult;
+}
+
 function openFile(path, autoClose) {
   if (autoClose && _lastOpenedDocId !== null) {
     for (var i = 0; i < app.documents.length; i++) {

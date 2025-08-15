@@ -147,6 +147,43 @@ const setActiveLayerText = (text, style, callback = () => {}) => {
   });
 };
 
+const getCurrentSelection = (callback = () => {}) => {
+  csInterface.evalScript("getCurrentSelection()", (result) => {
+    const data = JSON.parse(result || "{}");
+    if (data.error) {
+      callback(null);
+    } else {
+      callback(data);
+    }
+  });
+};
+
+const getSelectionBoundsHash = (selection) => {
+  if (!selection) return null;
+  return `${selection.xMid}_${selection.yMid}_${selection.width}_${selection.height}`;
+};
+
+const startSelectionMonitoring = () => {
+  csInterface.evalScript("startSelectionMonitoring()");
+};
+
+const stopSelectionMonitoring = () => {
+  csInterface.evalScript("stopSelectionMonitoring()");
+};
+
+const getSelectionChanged = (callback = () => {}) => {
+  csInterface.evalScript("getSelectionChanged()", (result) => {
+    const data = JSON.parse(result || "{}");
+    if (data.noChange) {
+      callback(null);
+    } else if (data.error) {
+      callback(null);
+    } else {
+      callback(data);
+    }
+  });
+};
+
 const createTextLayerInSelection = (text, style, pointText, callback = () => {}) => {
   if (!text) {
     nativeAlert(locale.errorNoText, locale.errorTitle, true);
@@ -160,6 +197,29 @@ const createTextLayerInSelection = (text, style, pointText, callback = () => {})
   csInterface.evalScript("createTextLayerInSelection(" + data + ", " + !!pointText + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    callback(!error);
+  });
+};
+
+const createTextLayersInStoredSelections = (texts, styles, selections, pointText, callback = () => {}) => {
+  if (!Array.isArray(texts) || texts.length === 0) {
+    nativeAlert(locale.errorNoText, locale.errorTitle, true);
+    callback(false);
+    return false;
+  }
+  if (!Array.isArray(styles) || styles.length === 0) {
+    styles = [{ textProps: getDefaultStyle(), stroke: getDefaultStroke() }];
+  }
+  if (!Array.isArray(selections) || selections.length === 0) {
+    nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    callback(false);
+    return false;
+  }
+  const data = JSON.stringify({ texts, styles, selections });
+  csInterface.evalScript("createTextLayersInStoredSelections(" + data + ", " + !!pointText + ")", (error) => {
+    if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
+    else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    else if (error) nativeAlert("Error: " + error, locale.errorTitle, true);
     callback(!error);
   });
 };
@@ -307,4 +367,4 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, createTextLayerInSelection, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
+export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };

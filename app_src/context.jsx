@@ -28,6 +28,8 @@ const storeFields = [
   "direction",
   "middleEast",
   "lastOpenedImagePath",
+  "storedSelections",
+  "multiBubbleMode",
 ];
 
 const defaultShortcut = {
@@ -39,6 +41,7 @@ const defaultShortcut = {
   increase: ["CTRL", "SHIFT", "PLUS"],
   decrease: ["CTRL", "SHIFT", "MINUS"],
   insertText: ["WIN", "V"],
+  captureSelection: ["WIN", "C"],
 };
 
 const initialState = {
@@ -71,6 +74,8 @@ const initialState = {
   direction: "ltr",
   middleEast: false,
   lastOpenedImagePath: null,
+  storedSelections: [],
+  multiBubbleMode: false,
   ...storage.data,
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
 };
@@ -353,6 +358,15 @@ const reducer = (state, action) => {
       break;
     }
 
+    case "setMultiBubbleMode": {
+      newState.multiBubbleMode = !!action.value;
+      // Vider les sélections stockées si on désactive le mode
+      if (!action.value) {
+        newState.storedSelections = [];
+      }
+      break;
+    }
+
     case "setLastOpenedImagePath": {
       newState.lastOpenedImagePath = action.path || null;
       break;
@@ -372,6 +386,25 @@ const reducer = (state, action) => {
     case "updateShortcut": {
       // console.log(action);
       newState.shortcut = action.shortcut;
+      break;
+    }
+
+    case "addSelection": {
+      if (action.selection) {
+        newState.storedSelections = [...state.storedSelections, action.selection];
+      }
+      break;
+    }
+
+    case "clearSelections": {
+      newState.storedSelections = [];
+      break;
+    }
+
+    case "removeSelection": {
+      if (action.index >= 0 && action.index < state.storedSelections.length) {
+        newState.storedSelections = state.storedSelections.filter((_, i) => i !== action.index);
+      }
       break;
     }
   }

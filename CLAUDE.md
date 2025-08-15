@@ -15,6 +15,9 @@ The build process:
 2. Uses webpack to bundle React components from `app_src/` to `app/`
 3. Runs `copyThemes.js` to copy theme files
 
+##Important
+
+L'application est souvent executé en petit genre 500x700, donc pense à ça pour le css en priorité  et tes choix
 ## Architecture
 
 ### Core Structure

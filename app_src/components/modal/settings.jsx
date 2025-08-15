@@ -35,6 +35,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [checkUpdates, setCheckUpdates] = React.useState(
     context.state.checkUpdates !== false
   );
+  const [multiBubbleMode, setMultiBubbleMode] = React.useState(
+    !!context.state.multiBubbleMode
+  );
   const [edited, setEdited] = React.useState(false);
 
   // States manager
@@ -105,6 +108,11 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeCheckUpdates = (e) => {
     setCheckUpdates(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeMultiBubbleMode = (e) => {
+    setMultiBubbleMode(e.target.checked);
     setEdited(true);
   };
 
@@ -182,6 +190,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setCheckUpdates",
         value: checkUpdates,
+      });
+    }
+    if (multiBubbleMode !== context.state.multiBubbleMode) {
+      context.dispatch({
+        type: "setMultiBubbleMode",
+        value: multiBubbleMode,
       });
     }
     const shortcut = {};
@@ -493,6 +507,16 @@ const SettingsModal = React.memo(function SettingsModal() {
                     <div className="settings-checkbox-content">
                       <span>{locale.settingsResizeTextBoxOnCenterLabel}</span>
                       <div className="settings-checkbox-hint">{locale.settingsResizeTextBoxOnCenterHint || "Redimensionne la boîte de texte lors du centrage automatique"}</div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={multiBubbleMode} onChange={changeMultiBubbleMode} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>Mode Multi-Bubble (BETA)</span>
+                      <div className="settings-checkbox-hint">Permet de capturer plusieurs sélections pour insérer plusieurs textes en une fois</div>
                     </div>
                   </label>
                 </div>
