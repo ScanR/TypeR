@@ -102,18 +102,25 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         if (targetLine) {
           texts.push(targetLine.text);
           
-          // Utiliser le style qui était actif au moment de cette sélection
-          const selection = storedSelections[i];
+          // Priorité au style de prefix/tag de la ligne
           let lineStyle = null;
           
-          if (selection.styleId) {
-            // Retrouver le style par son ID
-            lineStyle = context.state.styles.find(s => s.id === selection.styleId);
-          }
-          
-          // Si pas de style trouvé, utiliser le style par défaut
-          if (!lineStyle) {
-            lineStyle = context.state.currentStyle;
+          if (targetLine.style) {
+            // Si la ligne a un prefix de style, utiliser ce style (priorité absolue)
+            lineStyle = targetLine.style;
+          } else {
+            // Sinon, utiliser le style qui était actif au moment de cette sélection
+            const selection = storedSelections[i];
+            
+            if (selection.styleId) {
+              // Retrouver le style par son ID
+              lineStyle = context.state.styles.find(s => s.id === selection.styleId);
+            }
+            
+            // Si pas de style trouvé, utiliser le style par défaut
+            if (!lineStyle) {
+              lineStyle = context.state.currentStyle;
+            }
           }
           
           // Appliquer le scale si nécessaire

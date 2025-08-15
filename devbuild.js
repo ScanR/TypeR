@@ -1,6 +1,6 @@
-const { spawn } = require("child_process");
-const { resolve } = require("path");
-const { existsSync } = require("fs");
+import { spawn } from "child_process";
+import { resolve } from "path";
+import { existsSync } from "fs";
 
 const cwd = process.cwd();
 
