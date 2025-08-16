@@ -480,6 +480,7 @@ function _setActiveLayerText() {
 var createTextLayerInSelectionData;
 var createTextLayerInSelectionPoint;
 var createTextLayerInSelectionResult;
+var createTextLayerInSelectionPadding;
 
 function _createTextLayerInSelection() {
   if (!documents.length) {
@@ -491,8 +492,14 @@ function _createTextLayerInSelection() {
     createTextLayerInSelectionResult = selection.error;
     return;
   }
-  var width = selection.width;
+  var padding = createTextLayerInSelectionPadding || 0;
+  var width = selection.width * 0.9;
   var height = selection.height;
+  
+  if (padding > 0) {
+    width = Math.max(width - (padding * 2), 10);
+  }
+  
   _createAndSetLayerText(createTextLayerInSelectionData, width, height);
   var bounds = _getCurrentTextLayerBounds();
   if (createTextLayerInSelectionPoint) {
@@ -508,6 +515,7 @@ function _createTextLayerInSelection() {
 
 var alignTextLayerToSelectionResult;
 var alignTextLayerToSelectionResize;
+var alignTextLayerToSelectionPadding;
 
 function _alignTextLayerToSelection() {
   if (!documents.length) {
@@ -529,10 +537,16 @@ function _alignTextLayerToSelection() {
     }
   }
   var isPoint = _textLayerIsPointText();
+  var padding = alignTextLayerToSelectionPadding || 0;
   
   if (alignTextLayerToSelectionResize) {
-    var width = selection.width;
+    var width = selection.width * 0.9;
     var height = selection.height * 15;
+    
+    if (padding > 0) {
+      width = Math.max(width - (padding * 2), 10);
+    }
+    
     _setTextBoxSize(width, height);
     var bounds = _getCurrentTextLayerBounds();
     if (isPoint) {
@@ -785,12 +799,14 @@ function setActiveLayerText(data) {
 function createTextLayerInSelection(data, point) {
   createTextLayerInSelectionData = data;
   createTextLayerInSelectionPoint = point;
+  createTextLayerInSelectionPadding = data.padding || 0;
   app.activeDocument.suspendHistory("TyperTools Paste", "_createTextLayerInSelection()");
   return createTextLayerInSelectionResult;
 }
 
-function alignTextLayerToSelection(resizeTextBox) {
-  alignTextLayerToSelectionResize = !!resizeTextBox;
+function alignTextLayerToSelection(data) {
+  alignTextLayerToSelectionResize = !!data.resizeTextBox;
+  alignTextLayerToSelectionPadding = data.padding || 0;
   app.activeDocument.suspendHistory("TyperTools Align", "_alignTextLayerToSelection()");
   return alignTextLayerToSelectionResult;
 }
@@ -859,6 +875,7 @@ function getSelectionChanged() {
 var createTextLayersInStoredSelectionsData;
 var createTextLayersInStoredSelectionsPoint;
 var createTextLayersInStoredSelectionsResult;
+var createTextLayersInStoredSelectionsPadding;
 var storedSelections = [];
 
 function _createTextLayersInStoredSelections() {
@@ -884,8 +901,13 @@ function _createTextLayersInStoredSelections() {
     
     if (!text) continue;
     
-    var width = selection.width;
+    var padding = createTextLayersInStoredSelectionsPadding || 0;
+    var width = selection.width * 0.9;
     var height = selection.height;
+    
+    if (padding > 0) {
+      width = Math.max(width - (padding * 2), 10);
+    }
     
     // Créer le layer de texte
     var data = { text: text, style: style };
@@ -912,6 +934,7 @@ function _createTextLayersInStoredSelections() {
 function createTextLayersInStoredSelections(data, point) {
   createTextLayersInStoredSelectionsData = data;
   createTextLayersInStoredSelectionsPoint = point;
+  createTextLayersInStoredSelectionsPadding = data.padding || 0;
   
   // Les sélections sont passées directement depuis React
   if (data && data.selections) {

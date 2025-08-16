@@ -202,7 +202,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       }
       
       const pointText = context.state.pastePointText;
-      createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, (ok) => {
+      const padding = context.state.internalPadding || 0;
+      createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, padding, (ok) => {
         if (ok) {
           // Trouver la prochaine ligne valide après les lignes utilisées, mais rester sur la même page
           let nextLineIndex = lineIndex;
@@ -248,7 +249,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         }
       }
       const pointText = context.state.pastePointText;
-      createTextLayerInSelection(line.text, lineStyle, pointText, (ok) => {
+      const padding = context.state.internalPadding || 0;
+      createTextLayerInSelection(line.text, lineStyle, pointText, padding, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
       });
     }
@@ -333,7 +335,10 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           } onClick={createLayer}>
             <AiOutlineBorderInner size={18} /> {locale.createLayer}
           </button>
-          <button className="preview-top_big-btn preview-top_big-btn--small topcoat-button--large" title={locale.alignLayerDescr} onClick={() => alignTextLayerToSelection(context.state.resizeTextBoxOnCenter)}>
+          <button className="preview-top_big-btn preview-top_big-btn--small topcoat-button--large" title={locale.alignLayerDescr} onClick={() => {
+            const padding = context.state.internalPadding || 0;
+            alignTextLayerToSelection(context.state.resizeTextBoxOnCenter, padding);
+          }}>
             <MdCenterFocusWeak size={18} /> {locale.alignLayer}
           </button>
           <div className="preview-top_change-size-cont">
