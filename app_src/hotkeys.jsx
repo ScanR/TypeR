@@ -210,10 +210,10 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       context.dispatch({ type: "prevLine" });
     } else if (checkShortcut(realState, context.state.shortcut.increase)) {
       if (!checkRepeatTime(300)) return;
-      changeActiveLayerTextSize(1);
+      changeActiveLayerTextSize(context.state.textSizeIncrement || 1);
     } else if (checkShortcut(realState, context.state.shortcut.decrease)) {
       if (!checkRepeatTime(300)) return;
-      changeActiveLayerTextSize(-1);
+      changeActiveLayerTextSize(-(context.state.textSizeIncrement || 1));
     } else if (checkShortcut(realState, context.state.shortcut.insertText)) {
       if (!checkRepeatTime()) return;
       const line = context.state.currentLine || { text: "" };
