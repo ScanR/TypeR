@@ -29,8 +29,36 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     });
   };
 
+  const [clearButtonTimeout, setClearButtonTimeout] = React.useState(null);
+
   const clearStoredSelections = () => {
-    context.dispatch({ type: "clearSelections" });
+    const storedSelections = context.state.storedSelections || [];
+    if (storedSelections.length === 0) return;
+    
+    context.dispatch({ type: "removeSelection", index: storedSelections.length - 1 });
+  };
+
+  const handleClearMouseDown = () => {
+    const timeout = setTimeout(() => {
+      context.dispatch({ type: "clearSelections" });
+      setClearButtonTimeout(null);
+    }, 1000);
+    setClearButtonTimeout(timeout);
+  };
+
+  const handleClearMouseUp = () => {
+    if (clearButtonTimeout) {
+      clearTimeout(clearButtonTimeout);
+      setClearButtonTimeout(null);
+      clearStoredSelections();
+    }
+  };
+
+  const handleClearMouseLeave = () => {
+    if (clearButtonTimeout) {
+      clearTimeout(clearButtonTimeout);
+      setClearButtonTimeout(null);
+    }
   };
 
   // Fonction pour vérifier les changements de sélection
@@ -174,7 +202,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       }
       
       const pointText = context.state.pastePointText;
-      createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, (ok) => {
+      const padding = context.state.internalPadding || 0;
+      createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, padding, (ok) => {
         if (ok) {
           // Trouver la prochaine ligne valide après les lignes utilisées, mais rester sur la même page
           let nextLineIndex = lineIndex;
@@ -220,7 +249,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         }
       }
       const pointText = context.state.pastePointText;
-      createTextLayerInSelection(line.text, lineStyle, pointText, (ok) => {
+      const padding = context.state.internalPadding || 0;
+      createTextLayerInSelection(line.text, lineStyle, pointText, padding, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
       });
     }
@@ -285,7 +315,13 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           <div className="preview-top_selection-controls">
             <div className="preview-top_selection-info">
               <span className="preview-top_selection-count">{context.state.storedSelections.length} {context.state.storedSelections.length > 1 ? (locale.selectionsCount || 'selections') : (locale.selectionCount || 'selection')}</span>
-              <button className="topcoat-icon-button--large" title={locale.clearSelections || "Clear selections"} onClick={clearStoredSelections}>
+              <button 
+                className="topcoat-icon-button--large" 
+                title={locale.clearSelections || "Clear selections"} 
+                onMouseDown={handleClearMouseDown}
+                onMouseUp={handleClearMouseUp}
+                onMouseLeave={handleClearMouseLeave}
+              >
                 <FiMinusCircle size={16} />
               </button>
             </div>
@@ -299,7 +335,10 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           } onClick={createLayer}>
             <AiOutlineBorderInner size={18} /> {locale.createLayer}
           </button>
-          <button className="preview-top_big-btn preview-top_big-btn--small topcoat-button--large" title={locale.alignLayerDescr} onClick={() => alignTextLayerToSelection(context.state.resizeTextBoxOnCenter)}>
+          <button className="preview-top_big-btn preview-top_big-btn--small topcoat-button--large" title={locale.alignLayerDescr} onClick={() => {
+            const padding = context.state.internalPadding || 0;
+            alignTextLayerToSelection(context.state.resizeTextBoxOnCenter, padding);
+          }}>
             <MdCenterFocusWeak size={18} /> {locale.alignLayer}
           </button>
           <div className="preview-top_change-size-cont">

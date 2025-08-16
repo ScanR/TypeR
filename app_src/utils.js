@@ -219,7 +219,12 @@ const getSelectionChanged = (callback = () => {}) => {
   });
 };
 
-const createTextLayerInSelection = (text, style, pointText, callback = () => {}) => {
+const createTextLayerInSelection = (text, style, pointText, padding, callback = () => {}) => {
+  // Support legacy calls where padding is omitted and callback is 4th parameter
+  if (typeof padding === "function") {
+    callback = padding;
+    padding = 0;
+  }
   if (!text) {
     nativeAlert(locale.errorNoText, locale.errorTitle, true);
     callback(false);
@@ -228,7 +233,7 @@ const createTextLayerInSelection = (text, style, pointText, callback = () => {})
   if (!style) {
     style = { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
   }
-  const data = JSON.stringify({ text, style });
+  const data = JSON.stringify({ text, style, padding: padding || 0 });
   csInterface.evalScript("createTextLayerInSelection(" + data + ", " + !!pointText + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
@@ -236,7 +241,12 @@ const createTextLayerInSelection = (text, style, pointText, callback = () => {})
   });
 };
 
-const createTextLayersInStoredSelections = (texts, styles, selections, pointText, callback = () => {}) => {
+const createTextLayersInStoredSelections = (texts, styles, selections, pointText, padding, callback = () => {}) => {
+  // Support legacy calls where padding is omitted and callback is 5th parameter
+  if (typeof padding === "function") {
+    callback = padding;
+    padding = 0;
+  }
   if (!Array.isArray(texts) || texts.length === 0) {
     nativeAlert(locale.errorNoText, locale.errorTitle, true);
     callback(false);
@@ -250,7 +260,7 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
     callback(false);
     return false;
   }
-  const data = JSON.stringify({ texts, styles, selections });
+  const data = JSON.stringify({ texts, styles, selections, padding: padding || 0 });
   csInterface.evalScript("createTextLayersInStoredSelections(" + data + ", " + !!pointText + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
@@ -259,8 +269,9 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
   });
 };
 
-const alignTextLayerToSelection = (resizeTextBox = false) => {
-  csInterface.evalScript("alignTextLayerToSelection(" + !!resizeTextBox + ")", (error) => {
+const alignTextLayerToSelection = (resizeTextBox = false, padding = 0) => {
+  const data = JSON.stringify({ resizeTextBox: !!resizeTextBox, padding: padding || 0 });
+  csInterface.evalScript("alignTextLayerToSelection(" + data + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);

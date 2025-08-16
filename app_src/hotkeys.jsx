@@ -131,7 +131,8 @@ const HotkeysListner = React.memo(function HotkeysListner() {
         }
         
         const pointText = context.state.pastePointText;
-        createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, (ok) => {
+        const padding = context.state.internalPadding || 0;
+        createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, padding, (ok) => {
           if (ok) {
             // Trouver la prochaine ligne valide après les lignes utilisées, mais rester sur la même page
             let nextLineIndex = lineIndex;
@@ -178,7 +179,8 @@ const HotkeysListner = React.memo(function HotkeysListner() {
           }
         }
         const pointText = context.state.pastePointText;
-        createTextLayerInSelection(line.text, style, pointText, (ok) => {
+        const padding = context.state.internalPadding || 0;
+        createTextLayerInSelection(line.text, style, pointText, padding, (ok) => {
           if (ok) context.dispatch({ type: "nextLine", add: true });
         });
       }
@@ -201,7 +203,8 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       });
     } else if (checkShortcut(realState, context.state.shortcut.center)) {
       if (!checkRepeatTime()) return;
-      alignTextLayerToSelection(context.state.resizeTextBoxOnCenter);
+      const padding = context.state.internalPadding || 0;
+      alignTextLayerToSelection(context.state.resizeTextBoxOnCenter, padding);
     } else if (checkShortcut(realState, context.state.shortcut.next)) {
       if (!checkRepeatTime(300)) return;
       context.dispatch({ type: "nextLine" });
@@ -210,10 +213,10 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       context.dispatch({ type: "prevLine" });
     } else if (checkShortcut(realState, context.state.shortcut.increase)) {
       if (!checkRepeatTime(300)) return;
-      changeActiveLayerTextSize(1);
+      changeActiveLayerTextSize(context.state.textSizeIncrement || 1);
     } else if (checkShortcut(realState, context.state.shortcut.decrease)) {
       if (!checkRepeatTime(300)) return;
-      changeActiveLayerTextSize(-1);
+      changeActiveLayerTextSize(-(context.state.textSizeIncrement || 1));
     } else if (checkShortcut(realState, context.state.shortcut.insertText)) {
       if (!checkRepeatTime()) return;
       const line = context.state.currentLine || { text: "" };

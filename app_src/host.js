@@ -480,6 +480,7 @@ function _setActiveLayerText() {
 var createTextLayerInSelectionData;
 var createTextLayerInSelectionPoint;
 var createTextLayerInSelectionResult;
+var createTextLayerInSelectionPadding;
 
 function _createTextLayerInSelection() {
   if (!documents.length) {
@@ -491,8 +492,14 @@ function _createTextLayerInSelection() {
     createTextLayerInSelectionResult = selection.error;
     return;
   }
-  var width = selection.width;
+  var padding = createTextLayerInSelectionPadding || 0;
+  var width = selection.width * 0.9;
   var height = selection.height;
+  
+  if (padding > 0) {
+    width = Math.max(width - (padding * 2), 10);
+  }
+  
   _createAndSetLayerText(createTextLayerInSelectionData, width, height);
   var bounds = _getCurrentTextLayerBounds();
   if (createTextLayerInSelectionPoint) {
@@ -508,6 +515,7 @@ function _createTextLayerInSelection() {
 
 var alignTextLayerToSelectionResult;
 var alignTextLayerToSelectionResize;
+var alignTextLayerToSelectionPadding;
 
 function _alignTextLayerToSelection() {
   if (!documents.length) {
@@ -529,10 +537,16 @@ function _alignTextLayerToSelection() {
     }
   }
   var isPoint = _textLayerIsPointText();
+  var padding = alignTextLayerToSelectionPadding || 0;
   
   if (alignTextLayerToSelectionResize) {
-    var width = selection.width;
+    var width = selection.width * 0.9;
     var height = selection.height * 15;
+    
+    if (padding > 0) {
+      width = Math.max(width - (padding * 2), 10);
+    }
+    
     _setTextBoxSize(width, height);
     var bounds = _getCurrentTextLayerBounds();
     if (isPoint) {
@@ -573,67 +587,97 @@ function _changeActiveLayerTextSize() {
     return;
   }
 
+  // Version optimisée utilisant les actions Photoshop directes
   _forEachSelectedLayer(function () {
-    var oldTextParams = jamText.getLayerText();
-    var text = oldTextParams.layerText.textKey.replace(/\n+/g, "");
-    if (!text) {
-      changeActiveLayerTextSizeResult = "layer";
-      return;
-    }
-    var oldBounds = _getCurrentTextLayerBounds();
-    var isPoint = _textLayerIsPointText();
-    var newTextParams = {
-      typeUnit: oldTextParams.typeUnit,
-      layerText: {
-        textKey: text,
-        textGridding: oldTextParams.layerText.textGridding || "none",
-        orientation: oldTextParams.layerText.orientation || "horizontal",
-        antiAlias: oldTextParams.layerText.antiAlias || "antiAliasSmooth",
-        textStyleRange: [oldTextParams.layerText.textStyleRange[0]],
-      },
-    };
-    if (oldTextParams.layerText.paragraphStyleRange) {
-      var oldParStyle = oldTextParams.layerText.paragraphStyleRange[0].paragraphStyle;
-      newTextParams.layerText.paragraphStyleRange = [oldTextParams.layerText.paragraphStyleRange[0]];
-      newTextParams.layerText.paragraphStyleRange[0].paragraphStyle.textEveryLineComposer = oldParStyle.textEveryLineComposer || false;
-      newTextParams.layerText.paragraphStyleRange[0].paragraphStyle.burasagari = oldParStyle.burasagari || "burasagariNone";
-      newTextParams.layerText.paragraphStyleRange[0].to = text.length;
-    }
-    var oldSize = newTextParams.layerText.textStyleRange[0].textStyle.size;
-    var newTextSize = oldSize + changeActiveLayerTextSizeVal;
-    newTextParams.layerText.textStyleRange[0].textStyle.size = newTextSize;
+    try {
+      // Utiliser la méthode rapide d'actions Photoshop pour changer la taille
+      var ref = new ActionReference();
+      ref.putProperty(charID.Property, charID.TextStyle);
+      ref.putEnumerated(charID.TextLayer, charID.Ordinal, charID.Target);
+      
+      var currentTextStyle = executeActionGet(ref);
+      if (currentTextStyle.hasKey(charID.TextStyle)) {
+        var textStyle = currentTextStyle.getObjectValue(charID.TextStyle);
+        var currentSize = textStyle.getDouble(charID.Size);
+        var sizeUnit = textStyle.getUnitDoubleType(charID.Size);
+        var newSize = currentSize + changeActiveLayerTextSizeVal;
+        
+        // Appliquer le nouveau size directement
+        var descriptor = new ActionDescriptor();
+        var reference = new ActionReference();
+        reference.putProperty(charID.Property, charID.TextStyle);
+        reference.putEnumerated(charID.TextLayer, charID.Ordinal, charID.Target);
+        descriptor.putReference(charID.Null, reference);
+        
+        var newTextStyle = new ActionDescriptor();
+        newTextStyle.putUnitDouble(charID.Size, sizeUnit, newSize);
+        descriptor.putObject(charID.To, charID.TextStyle, newTextStyle);
+        
+        executeAction(charID.Set, descriptor, DialogModes.NO);
+      }
+    } catch (e) {
+      // Si la méthode rapide échoue, utiliser l'ancienne méthode
+      var oldTextParams = jamText.getLayerText();
+      var text = oldTextParams.layerText.textKey.replace(/\n+/g, "");
+      if (!text) {
+        changeActiveLayerTextSizeResult = "layer";
+        return;
+      }
+      var oldBounds = _getCurrentTextLayerBounds();
+      var isPoint = _textLayerIsPointText();
+      var newTextParams = {
+        typeUnit: oldTextParams.typeUnit,
+        layerText: {
+          textKey: text,
+          textGridding: oldTextParams.layerText.textGridding || "none",
+          orientation: oldTextParams.layerText.orientation || "horizontal",
+          antiAlias: oldTextParams.layerText.antiAlias || "antiAliasSmooth",
+          textStyleRange: [oldTextParams.layerText.textStyleRange[0]],
+        },
+      };
+      if (oldTextParams.layerText.paragraphStyleRange) {
+        var oldParStyle = oldTextParams.layerText.paragraphStyleRange[0].paragraphStyle;
+        newTextParams.layerText.paragraphStyleRange = [oldTextParams.layerText.paragraphStyleRange[0]];
+        newTextParams.layerText.paragraphStyleRange[0].paragraphStyle.textEveryLineComposer = oldParStyle.textEveryLineComposer || false;
+        newTextParams.layerText.paragraphStyleRange[0].paragraphStyle.burasagari = oldParStyle.burasagari || "burasagariNone";
+        newTextParams.layerText.paragraphStyleRange[0].to = text.length;
+      }
+      var oldSize = newTextParams.layerText.textStyleRange[0].textStyle.size;
+      var newTextSize = oldSize + changeActiveLayerTextSizeVal;
+      newTextParams.layerText.textStyleRange[0].textStyle.size = newTextSize;
 
-    // Ajuster l'interligne
-    const textStyle = newTextParams.layerText.textStyleRange[0].textStyle;
-    if (textStyle.autoLeading || textStyle.leading === undefined) {
-      // Si l'interligne est en auto, on le laisse en auto
-      textStyle.autoLeading = true;
-      // On supprime la propriété leading si elle existe pour s'assurer que l'auto soit appliqué
-      delete textStyle.leading;
-    } else {
-      // Sinon, on ajuste l'interligne de la même valeur que la taille du texte
-      const oldLeading = textStyle.leading;
-      const newLeading = oldLeading + changeActiveLayerTextSizeVal;
-      textStyle.leading = newLeading;
-      textStyle.autoLeading = false;
-    }
+      // Ajuster l'interligne
+      var textStyle = newTextParams.layerText.textStyleRange[0].textStyle;
+      if (textStyle.autoLeading || textStyle.leading === undefined) {
+        // Si l'interligne est en auto, on le laisse en auto
+        textStyle.autoLeading = true;
+        // On supprime la propriété leading si elle existe pour s'assurer que l'auto soit appliqué
+        delete textStyle.leading;
+      } else {
+        // Sinon, on ajuste l'interligne de la même valeur que la taille du texte
+        var oldLeading = textStyle.leading;
+        var newLeading = oldLeading + changeActiveLayerTextSizeVal;
+        textStyle.leading = newLeading;
+        textStyle.autoLeading = false;
+      }
 
-    newTextParams.layerText.textStyleRange[0].to = text.length;
-    if (!isPoint) {
-      var ratio = newTextSize / oldSize;
-      newTextParams.layerText.textShape = [oldTextParams.layerText.textShape[0]];
-      var shapeBounds = newTextParams.layerText.textShape[0].bounds;
-      shapeBounds.top *= ratio;
-      shapeBounds.left *= ratio;
-      shapeBounds.bottom *= ratio;
-      shapeBounds.right *= ratio;
+      newTextParams.layerText.textStyleRange[0].to = text.length;
+      if (!isPoint) {
+        var ratio = newTextSize / oldSize;
+        newTextParams.layerText.textShape = [oldTextParams.layerText.textShape[0]];
+        var shapeBounds = newTextParams.layerText.textShape[0].bounds;
+        shapeBounds.top *= ratio;
+        shapeBounds.left *= ratio;
+        shapeBounds.bottom *= ratio;
+        shapeBounds.right *= ratio;
+      }
+      jamText.setLayerText(newTextParams);
+      _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
+      var newBounds = _getCurrentTextLayerBounds();
+      var offsetX = oldBounds.xMid - newBounds.xMid;
+      var offsetY = oldBounds.yMid - newBounds.yMid;
+      _moveLayer(offsetX, offsetY);
     }
-    jamText.setLayerText(newTextParams);
-    _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
-    var newBounds = _getCurrentTextLayerBounds();
-    var offsetX = oldBounds.xMid - newBounds.xMid;
-    var offsetY = oldBounds.yMid - newBounds.yMid;
-    _moveLayer(offsetX, offsetY);
   });
 
   changeActiveLayerTextSizeResult = "";
@@ -755,12 +799,14 @@ function setActiveLayerText(data) {
 function createTextLayerInSelection(data, point) {
   createTextLayerInSelectionData = data;
   createTextLayerInSelectionPoint = point;
+  createTextLayerInSelectionPadding = data.padding || 0;
   app.activeDocument.suspendHistory("TyperTools Paste", "_createTextLayerInSelection()");
   return createTextLayerInSelectionResult;
 }
 
-function alignTextLayerToSelection(resizeTextBox) {
-  alignTextLayerToSelectionResize = !!resizeTextBox;
+function alignTextLayerToSelection(data) {
+  alignTextLayerToSelectionResize = !!data.resizeTextBox;
+  alignTextLayerToSelectionPadding = data.padding || 0;
   app.activeDocument.suspendHistory("TyperTools Align", "_alignTextLayerToSelection()");
   return alignTextLayerToSelectionResult;
 }
@@ -829,6 +875,7 @@ function getSelectionChanged() {
 var createTextLayersInStoredSelectionsData;
 var createTextLayersInStoredSelectionsPoint;
 var createTextLayersInStoredSelectionsResult;
+var createTextLayersInStoredSelectionsPadding;
 var storedSelections = [];
 
 function _createTextLayersInStoredSelections() {
@@ -854,8 +901,13 @@ function _createTextLayersInStoredSelections() {
     
     if (!text) continue;
     
-    var width = selection.width;
+    var padding = createTextLayersInStoredSelectionsPadding || 0;
+    var width = selection.width * 0.9;
     var height = selection.height;
+    
+    if (padding > 0) {
+      width = Math.max(width - (padding * 2), 10);
+    }
     
     // Créer le layer de texte
     var data = { text: text, style: style };
@@ -882,6 +934,7 @@ function _createTextLayersInStoredSelections() {
 function createTextLayersInStoredSelections(data, point) {
   createTextLayersInStoredSelectionsData = data;
   createTextLayersInStoredSelectionsPoint = point;
+  createTextLayersInStoredSelectionsPadding = data.padding || 0;
   
   // Les sélections sont passées directement depuis React
   if (data && data.selections) {

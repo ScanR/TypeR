@@ -38,6 +38,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [multiBubbleMode, setMultiBubbleMode] = React.useState(
     !!context.state.multiBubbleMode
   );
+  const [internalPadding, setInternalPadding] = React.useState(
+    context.state.internalPadding !== undefined ? context.state.internalPadding : 10
+  );
   const [edited, setEdited] = React.useState(false);
 
   // States manager
@@ -114,6 +117,15 @@ const SettingsModal = React.memo(function SettingsModal() {
   const changeMultiBubbleMode = (e) => {
     setMultiBubbleMode(e.target.checked);
     setEdited(true);
+  };
+
+  const changeInternalPadding = (e) => {
+    const value = e.target.value;
+    // Allow empty string or valid numbers
+    if (value === "" || (!isNaN(value) && !isNaN(parseFloat(value)))) {
+      setInternalPadding(value);
+      setEdited(true);
+    }
   };
 
   const save = (e) => {
@@ -196,6 +208,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setMultiBubbleMode",
         value: multiBubbleMode,
+      });
+    }
+    if (internalPadding !== context.state.internalPadding) {
+      context.dispatch({
+        type: "setInternalPadding",
+        value: internalPadding,
       });
     }
     const shortcut = {};
@@ -521,7 +539,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                     <input type="checkbox" checked={multiBubbleMode} onChange={changeMultiBubbleMode} />
                     <div className="settings-checkbox-custom"></div>
                     <div className="settings-checkbox-content">
-                      <span>Mode Multi-Bubble (BETA)</span>
+                      <span>Multi-Bubble Mode (BETA)</span>
                       <div className="settings-checkbox-hint">
                         {locale.multiBubbleModeHint || "Permet de capturer plusieurs sélections pour insérer plusieurs textes en une fois"}
                         <br />
@@ -539,6 +557,23 @@ const SettingsModal = React.memo(function SettingsModal() {
                     </div>
                   </label>
                 </div>
+              </div>
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupTextPositioning || "Positionnement du texte"}</div>
+              <div className="field">
+                <div className="field-label">{locale.settingsInternalPaddingLabel || "Padding interne (px)"}</div>
+                <div className="field-input">
+                  <input 
+                    type="number" 
+                    min="0" 
+                    max="100" 
+                    value={internalPadding} 
+                    onChange={changeInternalPadding} 
+                    className="topcoat-text-input--large" 
+                  />
+                </div>
+                <div className="field-descr">{locale.settingsInternalPaddingHint || "Espace interne pour éviter que le texte touche les bords de la bulle (0-100 pixels)"}</div>
               </div>
             </div>
             <div className="settings-group">

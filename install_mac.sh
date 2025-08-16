@@ -110,15 +110,45 @@ else
 fi
 
 # —————————————————————————————————————————————————————————————
+# Fonctions pour les couleurs et affichage
+# —————————————————————————————————————————————————————————————
+print_banner() {
+    echo "\033[96m"
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║                          TypeR Installer                         ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    echo "\033[0m"
+}
+
+print_success_banner() {
+    echo "\033[92m"
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║                     Installation Completed                       ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    echo "\033[0m"
+}
+
+print_credits_box() {
+    echo "\033[37m"
+    echo "┌──────────────────────────────────────────────────────────────────┐"
+    echo "│ Credits:                                                         │"
+    echo "└──────────────────────────────────────────────────────────────────┘"
+    echo "\033[0m"
+}
+
+# —————————————————————————————————————————————————————————————
 # Affichage des messages et pause
 # —————————————————————————————————————————————————————————————
-cat << EOF
-$MSG_INSTALL
-
-$MSG_CLOSE_PHOTOSHOP
-
-EOF
-read -n 1 -p "$MSG_PRESS_KEY"
+clear
+echo
+print_banner
+echo
+echo "\033[92m►\033[0m $MSG_INSTALL"
+echo
+echo "\033[93m⚠\033[0m  $MSG_CLOSE_PHOTOSHOP"
+echo
+echo "\033[96m✓\033[0m $MSG_PRESS_KEY"
+read -n 1
 echo
 
 # —————————————————————————————————————————————————————————————
@@ -165,14 +195,17 @@ fi
 # —————————————————————————————————————————————————————————————
 # Fin et dernières info à l'utilisateur
 # —————————————————————————————————————————————————————————————
-cat << EOF
-
-$MSG_INSTALL_COMPLETE
-$MSG_OPEN_PHOTOSHOP
-
-$MSG_CREDITS
-$MSG_DISCORD
-
-EOF
-read -n 1 -p "$MSG_PRESS_ENTER"
+echo
+print_success_banner
+echo
+echo "\033[92m✓\033[0m $MSG_INSTALL_COMPLETE"
+echo
+echo "\033[96m→\033[0m $MSG_OPEN_PHOTOSHOP"
+echo
+print_credits_box
+echo "\033[97m  $MSG_CREDITS\033[0m"
+echo "\033[95m  $MSG_DISCORD\033[0m"
+echo
+echo "\033[96m✓\033[0m $MSG_PRESS_ENTER"
+read -n 1
 echo

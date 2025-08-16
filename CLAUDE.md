@@ -18,6 +18,8 @@ The build process:
 ##Important
 
 L'application est souvent executé en petit genre 500x700, donc pense à ça pour le css en priorité  et tes choix
+
+Si tu mets des commentaires, mets les en anglais
 ## Architecture
 
 ### Core Structure

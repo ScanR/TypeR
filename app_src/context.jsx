@@ -30,6 +30,7 @@ const storeFields = [
   "lastOpenedImagePath",
   "storedSelections",
   "multiBubbleMode",
+  "internalPadding",
 ];
 
 const defaultShortcut = {
@@ -76,6 +77,7 @@ const initialState = {
   lastOpenedImagePath: null,
   storedSelections: [],
   multiBubbleMode: false,
+  internalPadding: 10,
   ...storage.data,
   theme: "default",
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
@@ -447,6 +449,15 @@ const reducer = (state, action) => {
       if (action.index >= 0 && action.index < state.storedSelections.length) {
         newState.storedSelections = state.storedSelections.filter((_, i) => i !== action.index);
       }
+      break;
+    }
+
+    case "setInternalPadding": {
+      let padding = action.value === "" || action.value === null || action.value === undefined ? 0 : parseInt(action.value);
+      if (isNaN(padding)) padding = 0;
+      if (padding < 0) padding = 0;
+      if (padding > 100) padding = 100;
+      newState.internalPadding = padding;
       break;
     }
   }
