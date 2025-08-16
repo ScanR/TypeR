@@ -29,8 +29,36 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     });
   };
 
+  const [clearButtonTimeout, setClearButtonTimeout] = React.useState(null);
+
   const clearStoredSelections = () => {
-    context.dispatch({ type: "clearSelections" });
+    const storedSelections = context.state.storedSelections || [];
+    if (storedSelections.length === 0) return;
+    
+    context.dispatch({ type: "removeSelection", index: storedSelections.length - 1 });
+  };
+
+  const handleClearMouseDown = () => {
+    const timeout = setTimeout(() => {
+      context.dispatch({ type: "clearSelections" });
+      setClearButtonTimeout(null);
+    }, 1000);
+    setClearButtonTimeout(timeout);
+  };
+
+  const handleClearMouseUp = () => {
+    if (clearButtonTimeout) {
+      clearTimeout(clearButtonTimeout);
+      setClearButtonTimeout(null);
+      clearStoredSelections();
+    }
+  };
+
+  const handleClearMouseLeave = () => {
+    if (clearButtonTimeout) {
+      clearTimeout(clearButtonTimeout);
+      setClearButtonTimeout(null);
+    }
   };
 
   // Fonction pour vérifier les changements de sélection
@@ -285,7 +313,13 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           <div className="preview-top_selection-controls">
             <div className="preview-top_selection-info">
               <span className="preview-top_selection-count">{context.state.storedSelections.length} {context.state.storedSelections.length > 1 ? (locale.selectionsCount || 'selections') : (locale.selectionCount || 'selection')}</span>
-              <button className="topcoat-icon-button--large" title={locale.clearSelections || "Clear selections"} onClick={clearStoredSelections}>
+              <button 
+                className="topcoat-icon-button--large" 
+                title={locale.clearSelections || "Clear selections"} 
+                onMouseDown={handleClearMouseDown}
+                onMouseUp={handleClearMouseUp}
+                onMouseLeave={handleClearMouseLeave}
+              >
                 <FiMinusCircle size={16} />
               </button>
             </div>

@@ -2,6 +2,8 @@
 chcp 65001 >nul
 setlocal EnableExtensions EnableDelayedExpansion
 
+rem === Configuration des couleurs ===
+
 rem === Toujours se placer dans le dossier du script (meme en admin) ===
 set "SCRIPT_DIR=%~dp0"
 pushd "%SCRIPT_DIR%" >nul 2>&1
@@ -58,12 +60,18 @@ if /i "%locale:~0,2%"=="fr" (
     set msg_discord="ScanR's Discord if you need help: https://discord.com/invite/Pdmfmqk"
 )
 
-echo %msg_install%
+cls
 echo.
-echo %msg_close%
+echo ╔══════════════════════════════════════════════════════════════════╗
+echo ║                          TypeR Installer                         ║
+echo ╚══════════════════════════════════════════════════════════════════╝
 echo.
-echo %msg_pause%
-pause
+echo ► %msg_install%
+echo.
+echo ⚠ %msg_close%
+echo.
+echo ✓ %msg_pause%
+pause >nul
 
 rem === Activer PlayerDebugMode pour CSXS 6..12 si existants ===
 for /l %%x in (6,1,12) do (
@@ -97,14 +105,22 @@ if exist "%TEMP%\__storage" (
 )
 
 echo.
-echo %msg_complete%
-echo %msg_open%
+echo ╔══════════════════════════════════════════════════════════════════╗
+echo ║                     Installation Completed                       ║
+echo ╚══════════════════════════════════════════════════════════════════╝
 echo.
-echo %msg_credits%
-echo %msg_discord%
+echo ✓ %msg_complete%
 echo.
-echo %msg_pause%
-pause
+echo → %msg_open%
+echo.
+echo ┌──────────────────────────────────────────────────────────────────┐
+echo │ Credits:                                                         │
+echo └──────────────────────────────────────────────────────────────────┘
+echo   %msg_credits%
+echo   %msg_discord%
+echo.
+echo ✓ %msg_pause%
+pause >nul
 
 :cleanup
 popd >nul 2>&1
