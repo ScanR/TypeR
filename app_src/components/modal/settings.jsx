@@ -539,7 +539,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                     <input type="checkbox" checked={multiBubbleMode} onChange={changeMultiBubbleMode} />
                     <div className="settings-checkbox-custom"></div>
                     <div className="settings-checkbox-content">
-                      <span>Mode Multi-Bubble (BETA)</span>
+                      <span>Multi-Bubble Mode (BETA)</span>
                       <div className="settings-checkbox-hint">
                         {locale.multiBubbleModeHint || "Permet de capturer plusieurs sélections pour insérer plusieurs textes en une fois"}
                         <br />
