@@ -443,7 +443,6 @@ function _setActiveLayerText() {
     }
     newTextParams.layerText.antiAlias = oldTextParams.layerText.antiAlias || "antiAliasSmooth";
     newTextParams.layerText.textShape = [oldTextParams.layerText.textShape[0]];
-    newTextParams.layerText.textShape[0].bounds.bottom *= 15;
     newTextParams.typeUnit = oldTextParams.typeUnit;
     jamText.setLayerText(newTextParams);
     _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
@@ -505,7 +504,9 @@ function _createTextLayerInSelection() {
   if (createTextLayerInSelectionPoint) {
     _changeToPointText();
   } else {
-    _setTextBoxSize(width, height);
+    var textParams = jamText.getLayerText();
+    var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
+    _setTextBoxSize(width, bounds.height + textSize + 2);
   }
   var offsetX = selection.xMid - bounds.xMid;
   var offsetY = selection.yMid - bounds.yMid;
@@ -541,7 +542,7 @@ function _alignTextLayerToSelection() {
   
   if (alignTextLayerToSelectionResize) {
     var width = selection.width * 0.9;
-    var height = selection.height * 15;
+    var height = selection.height;
     
     if (padding > 0) {
       width = Math.max(width - (padding * 2), 10);
@@ -917,7 +918,9 @@ function _createTextLayersInStoredSelections() {
     if (createTextLayersInStoredSelectionsPoint) {
       _changeToPointText();
     } else {
-      _setTextBoxSize(width, height);
+      var textParams = jamText.getLayerText();
+      var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
+      _setTextBoxSize(width, bounds.height + textSize + 2);
     }
     
     // Positionner le layer à l'emplacement de la sélection stockée
