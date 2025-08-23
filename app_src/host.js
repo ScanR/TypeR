@@ -338,6 +338,7 @@ function _checkSelection() {
   if (selection === undefined) {
     return { error: "noSelection" };
   }
+  _modifySelectionBounds(-10);
   selection = _getCurrentSelectionBounds();
   if (selection === undefined || selection.width * selection.height < 200) {
     return { error: "smallSelection" };
