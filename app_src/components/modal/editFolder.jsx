@@ -8,6 +8,58 @@ import {MdDelete, MdCancel, MdSave} from "react-icons/md";
 import {locale, nativeAlert, nativeConfirm} from '../../utils';
 import {useContext} from '../../context';
 
+const buildFolderTree = (folders) => {
+    const map = new Map();
+    (folders || []).forEach(folder => {
+        map.set(folder.id, { ...folder, children: [] });
+    });
+    const roots = [];
+    map.forEach(folder => {
+        if (folder.parentId && map.has(folder.parentId)) {
+            map.get(folder.parentId).children.push(folder);
+        } else {
+            roots.push(folder);
+        }
+    });
+    const sortRecursive = (nodes) => {
+        nodes.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        nodes.forEach(node => sortRecursive(node.children));
+    };
+    sortRecursive(roots);
+    return roots;
+};
+
+const flattenFolderTree = (nodes, parents = [], depth = 0) => {
+    const list = [];
+    nodes.forEach(node => {
+        const breadcrumb = parents.concat(node.name);
+        list.push({
+            id: node.id,
+            name: node.name,
+            parentId: node.parentId || null,
+            depth,
+            label: breadcrumb.join(' / '),
+            children: node.children || []
+        });
+        list.push(...flattenFolderTree(node.children || [], breadcrumb, depth + 1));
+    });
+    return list;
+};
+
+const collectDescendantIds = (folders, folderId) => {
+    if (!folderId) return [];
+    const ids = [];
+    const queue = [folderId];
+    while (queue.length) {
+        const current = queue.shift();
+        const children = folders.filter(folder => (folder.parentId || null) === current);
+        children.forEach(child => {
+            ids.push(child.id);
+            queue.push(child.id);
+        });
+    }
+    return ids;
+};
 
 const EditFolderModal = React.memo(function EditFolderModal() {
     const context = useContext();
@@ -16,7 +68,26 @@ const EditFolderModal = React.memo(function EditFolderModal() {
     const [name, setName] = React.useState(currentData.name || '');
     const [styleIds, setStyleIds] = React.useState(folderStyleIds);
     const [edited, setEdited] = React.useState(false);
+    const initialParentId = React.useMemo(() => {
+        if (currentData.parentId === null) return '';
+        if (currentData.hasOwnProperty('parentId')) return currentData.parentId || '';
+        if (currentData.parentFolderId) return currentData.parentFolderId;
+        if (currentData.parentFolder) return currentData.parentFolder;
+        if (currentData.parent) return currentData.parent;
+        return '';
+    }, [currentData.parent, currentData.parentFolder, currentData.parentFolderId, currentData.parentId]);
+    const [parentId, setParentId] = React.useState(initialParentId);
     const nameInputRef = React.useRef();
+
+    const folderTree = React.useMemo(() => buildFolderTree(context.state.folders), [context.state.folders]);
+    const flatFolders = React.useMemo(() => flattenFolderTree(folderTree), [folderTree]);
+    const descendantIds = React.useMemo(() => collectDescendantIds(context.state.folders, currentData.id), [context.state.folders, currentData.id]);
+
+    React.useEffect(() => {
+        if (currentData.create && currentData.parentId) {
+            setParentId(currentData.parentId);
+        }
+    }, [currentData.create, currentData.parentId]);
 
     const close = () => {
         context.dispatch({type: 'setModal'});
@@ -44,7 +115,8 @@ const EditFolderModal = React.memo(function EditFolderModal() {
             nativeAlert(locale.errorFolderCreation, locale.errorTitle, true);
             return false;
         }
-        const data = {name, styleIds};
+        const parent = parentId || null;
+        const data = {name, styleIds, parentId: parent};
         if (currentData.create) {
             data.id = Math.random().toString(36).substr(2, 8);
         } else {
@@ -58,15 +130,10 @@ const EditFolderModal = React.memo(function EditFolderModal() {
         e.preventDefault();
         if (!currentData.id) return;
         const permanent = e.shiftKey;
-        const confirmText = permanent ? locale.confirmDeleteFolderPermanent : locale.confirmDeleteFolder;
+        const confirmText = permanent ? locale.confirmDeleteFolderPermanent : (locale.confirmDeleteFolderWithChildren || locale.confirmDeleteFolder);
         nativeConfirm(confirmText, locale.confirmTitle, ok => {
             if (!ok) return;
-            if (permanent) {
-                context.state.styles.filter(s => s.folder === currentData.id).forEach(s => {
-                    context.dispatch({type: 'deleteStyle', id: s.id});
-                });
-            }
-            context.dispatch({type: 'deleteFolder', id: currentData.id});
+            context.dispatch({type: 'deleteFolder', id: currentData.id, permanent});
             close();
         });
     };
@@ -76,6 +143,12 @@ const EditFolderModal = React.memo(function EditFolderModal() {
     }, []);
 
     const unsortedStyles = context.state.styles.filter(s => !s.folder);
+
+    const parentOptions = flatFolders.filter(folder => {
+        if (folder.id === currentData.id) return false;
+        if (descendantIds.includes(folder.id)) return false;
+        return true;
+    });
 
     return (
         <React.Fragment>
@@ -106,6 +179,25 @@ const EditFolderModal = React.memo(function EditFolderModal() {
                         </div>
                         <div className="field hostBrdTopContrast">
                             <div className="field-label">
+                                {locale.editFolderParentLabel || 'Parent folder'}
+                            </div>
+                            <div className="field-input">
+                                <select
+                                    value={parentId || ''}
+                                    onChange={e => { setParentId(e.target.value); setEdited(true); }}
+                                    className="topcoat-textarea"
+                                >
+                                    <option value="">{locale.editFolderParentRoot || locale.noFolderTitle}</option>
+                                    {parentOptions.map(folder => (
+                                        <option key={folder.id} value={folder.id}>
+                                            {"".padStart(folder.depth * 2, ' ')}{folder.label}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="field hostBrdTopContrast">
+                            <div className="field-label">
                                 {locale.editFolderStyles}
                             </div>
                             <div className="field-input">
@@ -114,16 +206,25 @@ const EditFolderModal = React.memo(function EditFolderModal() {
                                         <React.Fragment>
                                             {(unsortedStyles.length > 0) && (
                                                 <FolderStylesList 
-                                                    name={locale.noFolderTitle}
+                                                    label={locale.noFolderTitle}
                                                     styles={unsortedStyles}
                                                     toggleStyle={changeFolderStyles}
                                                     selected={styleIds}
                                                 />
                                             )}
-                                            {context.state.folders.map(folder => (
+                                            {flatFolders.map(folder => (
+                                                <FolderStylesList 
+                                                    key={folder.id}
+                                                    label={folder.label}
+                                                    styles={context.state.styles.filter(s => (s.folder === folder.id))}
+                                                    toggleStyle={changeFolderStyles}
+                                                    selected={styleIds}
+                                                />
+                                            ))}
+                                            {context.state.folders.filter(folder => !flatFolders.find(f => f.id === folder.id)).map(folder => (
                                                 <FolderStylesList 
                                                     key={folder.id} 
-                                                    name={folder.name}
+                                                    label={folder.name}
                                                     styles={context.state.styles.filter(s => (s.folder === folder.id))}
                                                     toggleStyle={changeFolderStyles}
                                                     selected={styleIds}
@@ -173,17 +274,14 @@ const FolderStylesList = React.memo(function FolderStylesList(props) {
                         />
                         <div className="topcoat-checkbox__checkmark"></div>
                     </div>
-                    <div className="folder-style-title">
-                        {style.name} 
-                        <span>({props.name})</span>
-                    </div>
+                    <div className="folder-style-title">{style.name} <span>({props.label})</span></div>
                 </label>
             ))}
         </React.Fragment>
     );
 });
 FolderStylesList.propTypes = {
-    name: PropTypes.string.isRequired,
+    label: PropTypes.string.isRequired,
     styles: PropTypes.array.isRequired,
     toggleStyle: PropTypes.func.isRequired,
     selected: PropTypes.array.isRequired

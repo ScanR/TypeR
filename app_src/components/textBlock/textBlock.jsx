@@ -16,7 +16,7 @@ const TextBlock = React.memo(function TextBlock() {
   React.useEffect(resizeTextArea);
   React.useEffect(() => {
     scrollToLine(context.state.currentLineIndex, 1000);
-  }, []);
+  }, [context.state.currentLineIndex]);
 
   React.useEffect(() => {
     let pageIndex = 0;
@@ -40,7 +40,7 @@ const TextBlock = React.memo(function TextBlock() {
       lastOpenedPath.current = image.path;
       context.dispatch({ type: "setLastOpenedImagePath", path: image.path });
     }
-  }, [context.state.currentLineIndex, context.state.autoClosePSD, context.state.images]);
+  }, [context.state.currentLineIndex, context.state.autoClosePSD, context.state.images, context.state.lines]);
 
   let currentPage = 0;
 

@@ -274,12 +274,20 @@ const SettingsModal = React.memo(function SettingsModal() {
             !data.textItemKind
           ) {
             const idMap = {};
-            data.folders.forEach((folder) => {
+            const foldersWithNewIds = data.folders.map((folder) => {
               const newId = Math.random().toString(36).substring(2, 8);
               idMap[folder.id] = newId;
+              return { folder, newId };
+            });
+            foldersWithNewIds.forEach(({ folder, newId }) => {
               context.dispatch({
                 type: "saveFolder",
-                data: { id: newId, name: folder.name },
+                data: {
+                  id: newId,
+                  name: folder.name,
+                  parentId: folder.parentId ? idMap[folder.parentId] || null : null,
+                  order: typeof folder.order === "number" ? folder.order : undefined,
+                },
               });
               foldersImported++;
             });
