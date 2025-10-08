@@ -481,8 +481,42 @@ function _setActiveLayerText() {
       newTextParams.layerText.textStyleRange[0].to = text.length;
       newTextParams.layerText.paragraphStyleRange[0].to = text.length;
     }
+    var retainedShape = oldTextParams.layerText.textShape && oldTextParams.layerText.textShape[0];
+    if (isPoint && retainedShape && retainedShape.bounds) {
+      var oldTextStyle = oldTextParams.layerText.textStyleRange &&
+        oldTextParams.layerText.textStyleRange[0] &&
+        oldTextParams.layerText.textStyleRange[0].textStyle;
+      var styleTextStyle = dataStyle &&
+        dataStyle.textProps &&
+        dataStyle.textProps.layerText &&
+        dataStyle.textProps.layerText.textStyleRange &&
+        dataStyle.textProps.layerText.textStyleRange[0] &&
+        dataStyle.textProps.layerText.textStyleRange[0].textStyle;
+      var oldSize = oldTextStyle && oldTextStyle.size;
+      var newSize = styleTextStyle && styleTextStyle.size != null ? styleTextStyle.size : oldSize;
+      var widthScale = oldSize && newSize ? newSize / oldSize : 1;
+      if (!(widthScale > 0)) widthScale = 1;
+      if (widthScale < 1) widthScale = 1;
+      var bounds = retainedShape.bounds;
+      var currentWidth = bounds.right - bounds.left;
+      var currentHeight = bounds.bottom - bounds.top;
+      var oldWidthPoints = typeof oldBounds.width === "number" ? _convertPixelToPoint(oldBounds.width) : currentWidth;
+      var oldHeightPoints = typeof oldBounds.height === "number" ? _convertPixelToPoint(oldBounds.height) : currentHeight;
+      var targetWidth = currentWidth * widthScale;
+      var targetHeight = currentHeight * widthScale;
+      if (targetWidth < oldWidthPoints * widthScale) targetWidth = oldWidthPoints * widthScale;
+      var minWidthPadding = (newSize || oldSize || 12) * 0.5;
+      if (targetWidth < oldWidthPoints + minWidthPadding) targetWidth = oldWidthPoints + minWidthPadding;
+      var minHeightPadding = (newSize || oldSize || 12) * 0.75;
+      if (targetHeight < oldHeightPoints * widthScale) targetHeight = oldHeightPoints * widthScale;
+      if (targetHeight < oldHeightPoints + minHeightPadding) targetHeight = oldHeightPoints + minHeightPadding;
+      bounds.right = bounds.left + targetWidth;
+      bounds.bottom = bounds.top + targetHeight;
+    }
     newTextParams.layerText.antiAlias = oldTextParams.layerText.antiAlias || "antiAliasSmooth";
-    newTextParams.layerText.textShape = [oldTextParams.layerText.textShape[0]];
+    if (retainedShape) {
+      newTextParams.layerText.textShape = [retainedShape];
+    }
     newTextParams.typeUnit = oldTextParams.typeUnit;
     jamText.setLayerText(newTextParams);
     _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
