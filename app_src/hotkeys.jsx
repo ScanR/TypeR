@@ -48,7 +48,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
           for (let i = 0; i <= lineIndex && i < context.state.lines.length; i++) {
             const line = context.state.lines[i];
             if (line.ignore) {
-              const page = line.rawText.match(/Page ([0-9]+)/);
+              const page = line.rawText.match(/Page ([0-9]+)/i);
               if (page && context.state.images[page[1] - 1]) {
                 const img = context.state.images[page[1] - 1];
                 currentPage = context.state.images.indexOf(img);

@@ -177,7 +177,7 @@ const reducer = (state, action) => {
       let foundNextPage = false;
       for (let i = state.currentLineIndex + 1; i < state.lines.length; i++) {
         const line = state.lines[i];
-        if (line.rawText.match(/Page [0-9]+/)) {
+        if (line.rawText.match(/Page [0-9]+/i)) {
           // Trouver la première ligne non-ignorée après cette page
           for (let j = i + 1; j < state.lines.length; j++) {
             if (!state.lines[j].ignore) {
@@ -522,7 +522,7 @@ const reducer = (state, action) => {
     }
 
     const text = rawText.replace(ignorePrefix, "").replace(stylePrefix, "").trim();
-    const isPage = rawText.match(/Page [0-9]+/);
+    const isPage = rawText.match(/Page [0-9]+/i);
     const ignore = !!ignorePrefix || !text || isPage;
     if (isPage && newState.images.length) {
       last.push(linesCounter);

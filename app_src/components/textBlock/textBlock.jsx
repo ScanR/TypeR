@@ -23,7 +23,7 @@ const TextBlock = React.memo(function TextBlock() {
     let currentPage = 0;
     for (const line of context.state.lines) {
       if (line.ignore) {
-        const page = line.rawText.match(/Page ([0-9]+)/);
+        const page = line.rawText.match(/Page ([0-9]+)/i);
         if (page && context.state.images[page[1] - 1]) {
           const img = context.state.images[page[1] - 1];
           currentPage = context.state.images.indexOf(img);
@@ -52,7 +52,7 @@ const TextBlock = React.memo(function TextBlock() {
     if (context.state.currentLineIndex === line.rawIndex) {
       style += " m-current";
     }
-    if (line.rawText.match("Page [0-9]+")) {
+    if (line.rawText.match(/Page [0-9]+/i)) {
       style += " m-page";
     }
     return style;
@@ -60,7 +60,7 @@ const TextBlock = React.memo(function TextBlock() {
 
   const getTextLineNum = (line) => {
     if (line.ignore) {
-      const page = line.rawText.match("Page ([0-9]+)");
+      const page = line.rawText.match(/Page ([0-9]+)/i);
       if (page && context.state.images[page[1] - 1]) {
         const currentImage = context.state.images[page[1] - 1];
         currentPage = context.state.images.indexOf(currentImage);
