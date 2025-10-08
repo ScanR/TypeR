@@ -47,6 +47,12 @@ var charID = {
 };
 
 function _changeToPointText() {
+  try {
+    if (app.activeDocument && app.activeDocument.activeLayer && app.activeDocument.activeLayer.textItem) {
+      app.activeDocument.activeLayer.textItem.kind = TextType.POINTTEXT;
+      return;
+    }
+  } catch (e) {}
   var reference = new ActionReference();
   reference.putProperty(charID.Property, charID.TextShapeType);
   reference.putEnumerated(charID.TextLayer, charID.Ordinal, charID.Target);
@@ -607,14 +613,15 @@ function _alignTextLayerToSelection() {
       selection = _checkSelection();
     }
     if (selection.error) {
-      createTextLayerInSelectionResult = selection.error;
+      alignTextLayerToSelectionResult = selection.error;
       return;
     }
   }
-  var isPoint = _textLayerIsPointText();
+  var wasPoint = _textLayerIsPointText();
   var padding = alignTextLayerToSelectionPadding || 0;
-  
-  if (alignTextLayerToSelectionResize) {
+  var bounds = _getCurrentTextLayerBounds();
+
+  if (alignTextLayerToSelectionResize && !wasPoint) {
     var width = selection.width * 0.9;
     var height = selection.height;
     
@@ -623,25 +630,20 @@ function _alignTextLayerToSelection() {
     }
     
     _setTextBoxSize(width, height);
-    var bounds = _getCurrentTextLayerBounds();
-    if (isPoint) {
-      _changeToPointText();
-    } else {
-      var textParams = jamText.getLayerText();
-      var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
-      _setTextBoxSize(width, bounds.height + textSize + 2);
-    }
-  } else {
-    var bounds = _getCurrentTextLayerBounds();
-    if (isPoint) {
-      _changeToPointText();
-    }
+    var textBounds = _getCurrentTextLayerBounds();
+    var textParams = jamText.getLayerText();
+    var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
+    _setTextBoxSize(width, textBounds.height + textSize + 2);
+    bounds = _getCurrentTextLayerBounds();
   }
   
   _deselect();
   var offsetX = selection.xMid - bounds.xMid;
   var offsetY = selection.yMid - bounds.yMid;
   _moveLayer(offsetX, offsetY);
+  if (wasPoint) {
+    _changeToPointText();
+  }
   alignTextLayerToSelectionResult = "";
 }
 
