@@ -139,6 +139,39 @@ function _modifySelectionBounds(amount) {
   executeAction(amount > 0 ? charID.Expand : charID.Contract, size, DialogModes.NO);
 }
 
+function _getAdjustedSelectionBounds(bounds, amount) {
+  if (!bounds || amount === 0) return bounds;
+  var delta = Math.abs(amount);
+  if (amount < 0) {
+    if (bounds.width <= delta * 2 || bounds.height <= delta * 2) {
+      return null;
+    }
+    var contracted = {
+      top: bounds.top + delta,
+      left: bounds.left + delta,
+      right: bounds.right - delta,
+      bottom: bounds.bottom - delta,
+    };
+    contracted.width = contracted.right - contracted.left;
+    contracted.height = contracted.bottom - contracted.top;
+    contracted.xMid = bounds.xMid;
+    contracted.yMid = bounds.yMid;
+    return contracted;
+  } else {
+    var expanded = {
+      top: Math.max(bounds.top - delta, 0),
+      left: Math.max(bounds.left - delta, 0),
+      right: bounds.right + delta,
+      bottom: bounds.bottom + delta,
+    };
+    expanded.width = expanded.right - expanded.left;
+    expanded.height = expanded.bottom - expanded.top;
+    expanded.xMid = bounds.xMid;
+    expanded.yMid = bounds.yMid;
+    return expanded;
+  }
+}
+
 function _createMagicWandSelection(tolerance) {
   try {
     var bounds = _getCurrentTextLayerBounds();
@@ -333,17 +366,23 @@ function _setTextBoxSize(width, height) {
   jamText.setLayerText({ layerText: { textShape: box } });
 }
 
-function _checkSelection() {
+function _checkSelection(options) {
   var selection = _getCurrentSelectionBounds();
   if (selection === undefined) {
     return { error: "noSelection" };
   }
-  _modifySelectionBounds(-10);
-  selection = _getCurrentSelectionBounds();
-  if (selection === undefined || selection.width * selection.height < 200) {
+
+  var adjustAmount = -10;
+  if (options && options.adjustAmount !== undefined) {
+    adjustAmount = options.adjustAmount;
+  }
+
+  var adjustedSelection = adjustAmount !== 0 ? _getAdjustedSelectionBounds(selection, adjustAmount) : selection;
+  if (!adjustedSelection || adjustedSelection.width * adjustedSelection.height < 200) {
     return { error: "smallSelection" };
   }
-  return selection;
+
+  return adjustedSelection;
 }
 
 function _forEachSelectedLayer(action) {
