@@ -8,6 +8,8 @@ import config from "../../config";
 import { locale, setActiveLayerText, resizeTextArea, scrollToLine, openFile } from "../../utils";
 import { useContext } from "../../context";
 
+const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const TextBlock = React.memo(function TextBlock() {
   const context = useContext();
   const direction = context.state.direction || "ltr";
@@ -17,6 +19,49 @@ const TextBlock = React.memo(function TextBlock() {
   React.useEffect(() => {
     scrollToLine(context.state.currentLineIndex, 1000);
   }, [context.state.currentLineIndex]);
+
+  const ignoreTags = React.useMemo(
+    () => (context.state.ignoreTags || []).filter((tag) => tag),
+    [context.state.ignoreTags]
+  );
+  const ignoreTagsPattern = React.useMemo(() => {
+    if (!ignoreTags.length) return null;
+    const pattern = ignoreTags.map((tag) => escapeRegExp(tag)).join("|");
+    return pattern || null;
+  }, [ignoreTags]);
+  const renderHighlightedText = React.useCallback(
+    (text) => {
+      if (text === undefined || text === null || text === "") {
+        return <span>{" "}</span>;
+      }
+      if (!ignoreTagsPattern) {
+        return <span>{text}</span>;
+      }
+      const regex = new RegExp(`(${ignoreTagsPattern})`, "g");
+      const parts = text.split(regex);
+      const nodes = parts.map((part, index) => {
+        if (!part) return null;
+        if (index % 2 === 1) {
+          return (
+            <span key={`ignore-${index}`} className="text-line-ignore-tag">
+              {part}
+            </span>
+          );
+        }
+        return (
+          <React.Fragment key={`text-${index}`}>
+            {part}
+          </React.Fragment>
+        );
+      });
+      const hasContent = nodes.some((node) => node !== null);
+      if (!hasContent) {
+        return <span>{" "}</span>;
+      }
+      return nodes;
+    },
+    [ignoreTagsPattern]
+  );
 
   React.useEffect(() => {
     let pageIndex = 0;
@@ -84,17 +129,17 @@ const TextBlock = React.memo(function TextBlock() {
               {line.ignorePrefix ? (
                 <React.Fragment>
                   <span className="text-line-ignore-prefix">{line.ignorePrefix}</span>
-                  <span>{line.rawText.replace(line.ignorePrefix, "")}</span>
+                  {renderHighlightedText(line.rawText.slice(line.ignorePrefix.length))}
                 </React.Fragment>
               ) : line.stylePrefix ? (
                 <React.Fragment>
                   <span className="text-line-style-prefix" style={{ background: line.style?.prefixColor || config.defaultPrefixColor }}>
                     {line.stylePrefix}
                   </span>
-                  <span>{line.rawText.replace(line.stylePrefix, "")}</span>
+                  {renderHighlightedText(line.rawText.slice(line.stylePrefix.length))}
                 </React.Fragment>
               ) : (
-                <span>{line.rawText || " "}</span>
+                renderHighlightedText(line.rawText)
               )}
             </div>
             <div className="text-line-insert" title={line.ignore ? "" : locale.insertText}>

@@ -15,6 +15,7 @@ const storeFields = [
   "currentStyleId",
   "pastePointText",
   "ignoreLinePrefixes",
+  "ignoreTags",
   "defaultStyleId",
   "autoClosePSD",
   "checkUpdates",
@@ -122,6 +123,7 @@ const initialState = {
   currentStyleId: null,
   pastePointText: false,
   ignoreLinePrefixes: ["##"],
+  ignoreTags: [],
   defaultStyleId: null,
   autoClosePSD: false,
   checkUpdates: config.checkUpdates,
@@ -478,6 +480,18 @@ const reducer = (state, action) => {
       break;
     }
 
+    case "setIgnoreTags": {
+      if (!action.data) {
+        newState.ignoreTags = [];
+      } else if (Array.isArray(action.data)) {
+        newState.ignoreTags = action.data;
+      } else if (typeof action.data === "string") {
+        const arr = action.data.split(/(?:\r?\n|;)/);
+        newState.ignoreTags = arr.map((p) => p.trim()).filter(Boolean);
+      }
+      break;
+    }
+
     case "setDefaultStyleId": {
       newState.defaultStyleId = action.id || null;
       break;
@@ -675,7 +689,14 @@ const reducer = (state, action) => {
       style = hasStylePrefix.style;
     }
 
-    const text = rawText.replace(ignorePrefix, "").replace(stylePrefix, "").trim();
+    let text = rawText.replace(ignorePrefix, "").replace(stylePrefix, "");
+    if (newState.ignoreTags?.length) {
+      text = newState.ignoreTags.reduce((acc, tag) => {
+        if (!tag) return acc;
+        return acc.split(tag).join("");
+      }, text);
+    }
+    text = text.trim();
     const isPage = rawText.match(/Page [0-9]+/i);
     const ignore = !!ignorePrefix || !text || isPage;
     if (isPage && newState.images.length) {

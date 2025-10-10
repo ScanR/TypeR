@@ -99,6 +99,7 @@ const ExportModal = React.memo(function ExportModal() {
     };
     if (withSettings) {
       data.ignoreLinePrefixes = context.state.ignoreLinePrefixes;
+      data.ignoreTags = context.state.ignoreTags;
       data.defaultStyleId = context.state.defaultStyleId;
       data.language = context.state.language;
       data.autoClosePSD = context.state.autoClosePSD;
