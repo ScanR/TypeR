@@ -514,6 +514,29 @@ function _applyTextDirection(direction, textLength) {
   var psDirection = direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
 
   try {
+    var currentText = jamText.getLayerText();
+    var currentParagraphStyle = null;
+    var currentAlignment = null;
+    if (
+      currentText &&
+      currentText.layerText &&
+      currentText.layerText.paragraphStyleRange &&
+      currentText.layerText.paragraphStyleRange.length
+    ) {
+      currentParagraphStyle =
+        currentText.layerText.paragraphStyleRange[0].paragraphStyle || null;
+    }
+    if (currentParagraphStyle) {
+      currentAlignment =
+        currentParagraphStyle.alignment ||
+        currentParagraphStyle.align ||
+        currentParagraphStyle.justification ||
+        null;
+    }
+    if (textLength == null && currentText && currentText.layerText && currentText.layerText.textKey) {
+      textLength = currentText.layerText.textKey.length;
+    }
+
     var dirDesc = new ActionDescriptor();
     var textDesc = new ActionDescriptor();
     var paraRangeList = new ActionList();
@@ -532,6 +555,18 @@ function _applyTextDirection(direction, textLength) {
       stringIDToTypeID("textComposerEngine"),
       stringIDToTypeID("textOptycaComposer")
     );
+
+    if (currentAlignment) {
+      try {
+        paraStyleDesc.putEnumerated(
+          stringIDToTypeID("alignment"),
+          stringIDToTypeID("alignmentType"),
+          stringIDToTypeID(currentAlignment)
+        );
+      } catch (alignmentError) {
+        // Ignore if the alignment value is not supported on this PS version
+      }
+    }
 
     paraRangeDesc.putInteger(stringIDToTypeID("from"), 0);
     paraRangeDesc.putInteger(stringIDToTypeID("to"), textLength);
@@ -778,7 +813,8 @@ function _setActiveLayerText() {
     }
     newTextParams.typeUnit = oldTextParams.typeUnit;
     jamText.setLayerText(newTextParams);
-    var userDirection = payload.direction || "ltr";
+    var userDirection = payload.direction;
+    if (userDirection === "") userDirection = null;
     _applyTextDirection(userDirection, targetTextLength);
     _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
     if (dataStyle && dataStyle.stroke) {
