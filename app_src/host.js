@@ -71,6 +71,7 @@ var _SAFE_PARAGRAPH_PROPS = [
 
 var _DEFAULT_SELECTION_SCALE = 0.9;
 var _MIN_TEXTBOX_WIDTH = 10;
+var _TEMP_SELECTION_CHANNEL = "__TyperSelectionTemp__";
 
 var _hostState = {
   fallbackTextSize: 20,
@@ -307,6 +308,68 @@ function _modifySelectionBounds(amount) {
 
 function _getAdjustedSelectionBounds(bounds, amount) {
   if (!bounds || amount === 0) return bounds;
+
+  var doc;
+  try {
+    doc = app.activeDocument;
+  } catch (error) {
+    doc = null;
+  }
+
+  if (!doc || !doc.selection) {
+    return _getAdjustedSelectionBoundsFallback(bounds, amount);
+  }
+
+  var tempChannel = _createTempSelectionChannel(doc);
+  if (!tempChannel) {
+    return _getAdjustedSelectionBoundsFallback(bounds, amount);
+  }
+
+  var adjusted = null;
+  try {
+    _modifySelectionBounds(amount);
+    adjusted = _getCurrentSelectionBounds();
+  } catch (error2) {
+    adjusted = null;
+  } finally {
+    try {
+      doc.selection.load(tempChannel);
+    } catch (restoreError) {}
+    try {
+      tempChannel.remove();
+    } catch (removeError) {}
+  }
+
+  if (!adjusted) {
+    return _getAdjustedSelectionBoundsFallback(bounds, amount);
+  }
+  return adjusted;
+}
+
+function _createTempSelectionChannel(doc) {
+  var channel = null;
+  try {
+    channel = doc.channels.getByName(_TEMP_SELECTION_CHANNEL);
+    channel.remove();
+  } catch (e) {}
+
+  try {
+    channel = doc.channels.add();
+    channel.name = _TEMP_SELECTION_CHANNEL;
+    doc.selection.store(channel);
+    return channel;
+  } catch (error) {
+    if (channel) {
+      try {
+        channel.remove();
+      } catch (removeError) {}
+    }
+    return null;
+  }
+}
+
+function _getAdjustedSelectionBoundsFallback(bounds, amount) {
+  if (!bounds || amount === 0) return bounds;
   var delta = Math.abs(amount);
   if (amount < 0) {
     if (bounds.width <= delta * 2 || bounds.height <= delta * 2) {
@@ -320,8 +383,8 @@ function _getAdjustedSelectionBounds(bounds, amount) {
     };
     contracted.width = contracted.right - contracted.left;
     contracted.height = contracted.bottom - contracted.top;
-    contracted.xMid = bounds.xMid;
-    contracted.yMid = bounds.yMid;
+    contracted.xMid = (contracted.left + contracted.right) / 2;
+    contracted.yMid = (contracted.top + contracted.bottom) / 2;
     return contracted;
   } else {
     var expanded = {
@@ -332,8 +395,8 @@ function _getAdjustedSelectionBounds(bounds, amount) {
     };
     expanded.width = expanded.right - expanded.left;
     expanded.height = expanded.bottom - expanded.top;
-    expanded.xMid = bounds.xMid;
-    expanded.yMid = bounds.yMid;
+    expanded.xMid = (expanded.left + expanded.right) / 2;
+    expanded.yMid = (expanded.top + expanded.bottom) / 2;
     return expanded;
   }
 }
@@ -648,7 +711,7 @@ function _checkSelection(options) {
     return { error: "noSelection" };
   }
 
-  var adjustAmount = -10;
+  var adjustAmount = 0;
   if (options && options.adjustAmount !== undefined) {
     adjustAmount = options.adjustAmount;
   }
@@ -854,7 +917,7 @@ function _createTextLayerInSelection() {
     state.result = "doc";
     return;
   }
-  var selection = _checkSelection();
+  var selection = _checkSelection({ adjustAmount: -10 });
   if (selection.error) {
     state.result = selection.error;
     return;
@@ -881,11 +944,11 @@ function _alignTextLayerToSelection() {
     state.result = "layer";
     return;
   }
-  var selection = _checkSelection();
+  var selection = _checkSelection({ adjustAmount: -10 });
   if (selection.error) {
     if (selection.error === "noSelection") {
       _createMagicWandSelection(20);
-      selection = _checkSelection();
+      selection = _checkSelection({ adjustAmount: -10 });
     }
     if (selection.error) {
       state.result = selection.error;
@@ -1166,7 +1229,7 @@ function getCurrentSelection() {
   if (!documents.length) {
     return jamJSON.stringify({ error: "doc" });
   }
-  var selection = _checkSelection();
+  var selection = _checkSelection({ adjustAmount: 0 });
   if (selection.error) {
     return jamJSON.stringify({ error: selection.error });
   }
@@ -1181,7 +1244,7 @@ function startSelectionMonitoring() {
   }
   
   monitor.callback = function() {
-    var currentSelection = _checkSelection();
+    var currentSelection = _checkSelection({ adjustAmount: 0 });
     if (!currentSelection.error) {
       var currentBounds = _selectionBoundsKey(currentSelection);
       if (currentBounds !== monitor.lastBoundsKey) {
@@ -1206,7 +1269,7 @@ function stopSelectionMonitoring() {
 
 function getSelectionChanged() {
   var monitor = _hostState.selectionMonitor;
-  var currentSelection = _checkSelection();
+  var currentSelection = _checkSelection({ adjustAmount: 0 });
   if (!currentSelection.error) {
     var currentBounds = _selectionBoundsKey(currentSelection);
     if (currentBounds !== monitor.lastBoundsKey) {
