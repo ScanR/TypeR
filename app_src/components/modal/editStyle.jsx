@@ -18,6 +18,41 @@ import config from "../../config";
 import { locale, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, rgbToHex, getDefaultStyle, getDefaultStroke } from "../../utils";
 import { useContext } from "../../context";
 
+const buildFolderTree = (folders) => {
+  const map = new Map();
+  (folders || []).forEach((folder) => {
+    map.set(folder.id, { ...folder, children: [] });
+  });
+  const roots = [];
+  map.forEach((folder) => {
+    if (folder.parentId && map.has(folder.parentId)) {
+      map.get(folder.parentId).children.push(folder);
+    } else {
+      roots.push(folder);
+    }
+  });
+  const sortRecursive = (nodes) => {
+    nodes.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    nodes.forEach((node) => sortRecursive(node.children));
+  };
+  sortRecursive(roots);
+  return roots;
+};
+
+const flattenFolderTree = (nodes, parents = [], depth = 0) => {
+  const list = [];
+  nodes.forEach((node) => {
+    const breadcrumb = parents.concat(node.name);
+    list.push({
+      id: node.id,
+      depth,
+      label: breadcrumb.join(' / '),
+    });
+    list.push(...flattenFolderTree(node.children || [], breadcrumb, depth + 1));
+  });
+  return list;
+};
+
 const EditStyleModal = React.memo(function EditStyleModal() {
   const context = useContext();
   const currentData = context.state.modalData;
@@ -31,6 +66,8 @@ const EditStyleModal = React.memo(function EditStyleModal() {
   const [strokePickerOpen, setStrokePickerOpen] = React.useState(false);
   const [edited, setEdited] = React.useState(false);
   const nameInputRef = React.useRef();
+  const folderTree = React.useMemo(() => buildFolderTree(context.state.folders), [context.state.folders]);
+  const folderOptions = React.useMemo(() => flattenFolderTree(folderTree), [folderTree]);
 
   const close = () => {
     context.dispatch({ type: "setModal" });
@@ -158,9 +195,9 @@ const EditStyleModal = React.memo(function EditStyleModal() {
               <div className="field-input">
                 <select value={folder} onChange={changeStyleFolder} className="topcoat-textarea">
                   <option value="">{locale.noFolderTitle}</option>
-                  {context.state.folders.map((folder) => (
-                    <option key={folder.id} value={folder.id}>
-                      {folder.name}
+                  {folderOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {"".padStart(option.depth * 2, ' ')}{option.label}
                     </option>
                   ))}
                 </select>

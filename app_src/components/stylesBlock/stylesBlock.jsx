@@ -11,20 +11,39 @@ import config from "../../config";
 import { locale, getActiveLayerText, setActiveLayerText, rgbToHex, getStyleObject } from "../../utils";
 import { useContext } from "../../context";
 
+const buildFolderTree = (folders) => {
+  const map = new Map();
+  (folders || []).forEach((folder) => {
+    map.set(folder.id, { ...folder, children: [] });
+  });
+  const roots = [];
+  map.forEach((folder) => {
+    if (folder.parentId && map.has(folder.parentId)) {
+      map.get(folder.parentId).children.push(folder);
+    } else {
+      roots.push(folder);
+    }
+  });
+  const sortRecursive = (nodes) => {
+    nodes.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    nodes.forEach((node) => sortRecursive(node.children));
+  };
+  sortRecursive(roots);
+  return roots;
+};
+
 const StylesBlock = React.memo(function StylesBlock() {
   const context = useContext();
   const unsortedStyles = context.state.styles.filter((s) => !s.folder);
+  const folderTree = React.useMemo(() => buildFolderTree(context.state.folders), [context.state.folders]);
+  const hasContent = context.state.folders.length || context.state.styles.length;
   return (
     <React.Fragment>
       <div className="folders-list">
-        {context.state.folders.length || context.state.styles.length ? (
+        {hasContent ? (
           <React.Fragment>
-            {unsortedStyles.length > 0 && <FolderItem data={{ name: locale.noFolderTitle }} />}
-            <ReactSortable className="folders-sortable" list={context.state.folders} setList={(data) => context.dispatch({ type: "setFolders", data })}>
-              {context.state.folders.map((folder) => (
-                <FolderItem key={folder.id} data={folder} />
-              ))}
-            </ReactSortable>
+            {unsortedStyles.length > 0 && <FolderItem data={{ name: locale.noFolderTitle }} depth={0} />}
+            <FolderTree folders={folderTree} parentId={null} depth={0} />
           </React.Fragment>
         ) : (
           <div className="styles-empty">
@@ -44,6 +63,29 @@ const StylesBlock = React.memo(function StylesBlock() {
   );
 });
 
+const FolderTree = React.memo(function FolderTree({ folders, parentId, depth }) {
+  const context = useContext();
+  if (!folders || !folders.length) return null;
+  const handleOrder = React.useCallback(
+    (items) => {
+      context.dispatch({ type: "reorderFolders", parentId, order: items.map((item) => item.id) });
+    },
+    [context, parentId]
+  );
+  return (
+    <ReactSortable className={"folders-sortable" + (depth > 0 ? " m-nested" : "")} list={folders} setList={handleOrder} animation={150}>
+      {folders.map((folder) => (
+        <FolderItem key={folder.id} data={folder} depth={depth} />
+      ))}
+    </ReactSortable>
+  );
+});
+FolderTree.propTypes = {
+  folders: PropTypes.array,
+  parentId: PropTypes.oneOfType([PropTypes.string, PropTypes.oneOf([null])]),
+  depth: PropTypes.number.isRequired,
+};
+
 const FolderItem = React.memo(function FolderItem(props) {
   const context = useContext();
   const openFolder = (e) => {
@@ -56,6 +98,7 @@ const FolderItem = React.memo(function FolderItem(props) {
     context.dispatch({ type: "setStyles", data: styles });
   };
   const styles = props.data.id ? context.state.styles.filter((s) => s.folder === props.data.id) : context.state.styles.filter((s) => !s.folder);
+  const childFolders = props.data.children || [];
 
   const exportFolder = (e) => {
     e.stopPropagation();
@@ -81,14 +124,19 @@ const FolderItem = React.memo(function FolderItem(props) {
   };
   const duplicateFolder = (e) => {
     e.stopPropagation();
-    context.dispatch({ type: "duplicateFolder", data: props.data });
+    context.dispatch({ type: "duplicateFolder", id: props.data.id });
+  };
+  const addSubfolder = (e) => {
+    e.stopPropagation();
+    context.dispatch({ type: "setModal", modal: "editFolder", data: { create: true, parentId: props.data.id } });
   };
 
+  const isUnsorted = !props.data.id;
   const isOpen = props.data.id ? context.state.openFolders.includes(props.data.id) : context.state.openFolders.includes("unsorted");
   const hasActive = context.state.currentStyleId ? !!styles.find((s) => s.id === context.state.currentStyleId) : false;
   return (
-    <div className={"folder-item hostBrdContrast" + (isOpen ? " m-open" : "")}>
-      <div className="folder-header" onClick={() => context.dispatch({ type: "toggleFolder", id: props.data.id })}>
+    <div className={"folder-item hostBrdContrast" + (isOpen ? " m-open" : "") + (props.depth ? " m-nested" : "")}>
+      <div className="folder-header" style={{ paddingLeft: props.depth ? props.depth * 12 + 4 : 4 }} onClick={() => context.dispatch({ type: "toggleFolder", id: props.data.id })}>
         <div className="folder-marker">{isOpen ? <FiChevronUp size={18} /> : <FiChevronDown size={18} />}</div>
         <div className="folder-title">
           {hasActive ? <strong>{props.data.name}</strong> : <span>{props.data.name}</span>}
@@ -97,6 +145,9 @@ const FolderItem = React.memo(function FolderItem(props) {
         <div className="folder-actions">
           {props.data.id ? (
             <>
+              <button className="topcoat-icon-button--large--quiet" title={locale.addSubfolder || "Add subfolder"} onClick={addSubfolder}>
+                <FiFolderPlus size={14} />
+              </button>
               <button className="topcoat-icon-button--large--quiet" title={locale.exportFolder} onClick={exportFolder}>
                 <CiExport size={14} />
               </button>
@@ -113,18 +164,31 @@ const FolderItem = React.memo(function FolderItem(props) {
         </div>
       </div>
       {isOpen && (
-        <div className="folder-styles hostBrdTopContrast">
-          {styles.length ? (
-            <ReactSortable className="styles-list" list={styles} setList={sortFolderStyles}>
-              {styles.map((style) => (
-                <StyleItem key={style.id} active={context.state.currentStyleId === style.id} selectStyle={() => context.dispatch({ type: "setCurrentStyleId", id: style.id })} openStyle={() => context.dispatch({ type: "setModal", modal: "editStyle", data: style })} style={style} />
-              ))}
-            </ReactSortable>
-          ) : (
-            <div className="folder-styles-empty">
-              <span>{locale.noStylesInFolder}</span>
+        <div className="folder-content">
+          {!!childFolders.length && props.data.id && (
+            <div className="folder-subfolders hostBrdTopContrast">
+              <FolderTree folders={childFolders} parentId={props.data.id} depth={props.depth + 1} />
             </div>
           )}
+          <div className={"folder-styles hostBrdTopContrast" + (childFolders.length && props.data.id ? " m-with-subfolders" : "")}>
+            {styles.length ? (
+              <ReactSortable className="styles-list" list={styles} setList={sortFolderStyles}>
+                {styles.map((style) => (
+                  <StyleItem
+                    key={style.id}
+                    active={context.state.currentStyleId === style.id}
+                    selectStyle={() => context.dispatch({ type: "setCurrentStyleId", id: style.id })}
+                    openStyle={() => context.dispatch({ type: "setModal", modal: "editStyle", data: style })}
+                    style={style}
+                  />
+                ))}
+              </ReactSortable>
+            ) : (
+              <div className="folder-styles-empty">
+                <span>{locale.noStylesInFolder}</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -132,6 +196,7 @@ const FolderItem = React.memo(function FolderItem(props) {
 });
 FolderItem.propTypes = {
   data: PropTypes.object.isRequired,
+  depth: PropTypes.number.isRequired,
 };
 
 const StyleItem = React.memo(function StyleItem(props) {

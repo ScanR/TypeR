@@ -15,6 +15,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [ignoreLinePrefixes, setIgnoreLinePrefixes] = React.useState(
     context.state.ignoreLinePrefixes.join("\n")
   );
+  const [ignoreTags, setIgnoreTags] = React.useState(
+    (context.state.ignoreTags || []).join("\n")
+  );
   const [defaultStyleId, setDefaultStyleId] = React.useState(context.state.defaultStyleId || "");
   const [language, setLanguage] = React.useState(context.state.language || "auto");
   const [theme, setTheme] = React.useState(context.state.theme || "default");
@@ -61,6 +64,11 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeLinePrefixes = (e) => {
     setIgnoreLinePrefixes(e.target.value);
+    setEdited(true);
+  };
+
+  const changeIgnoreTags = (e) => {
+    setIgnoreTags(e.target.value);
     setEdited(true);
   };
 
@@ -140,6 +148,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setIgnoreLinePrefixes",
         data: ignoreLinePrefixes,
+      });
+    }
+    if (ignoreTags !== (context.state.ignoreTags || []).join("\n")) {
+      context.dispatch({
+        type: "setIgnoreTags",
+        data: ignoreTags,
       });
     }
     if (defaultStyleId !== context.state.defaultStyleId) {
@@ -267,6 +281,7 @@ const SettingsModal = React.memo(function SettingsModal() {
             data.folders &&
             data.styles &&
             !data.ignoreLinePrefixes &&
+            !data.ignoreTags &&
             !data.defaultStyleId &&
             !data.language &&
             !data.autoClosePSD &&
@@ -274,12 +289,20 @@ const SettingsModal = React.memo(function SettingsModal() {
             !data.textItemKind
           ) {
             const idMap = {};
-            data.folders.forEach((folder) => {
+            const foldersWithNewIds = data.folders.map((folder) => {
               const newId = Math.random().toString(36).substring(2, 8);
               idMap[folder.id] = newId;
+              return { folder, newId };
+            });
+            foldersWithNewIds.forEach(({ folder, newId }) => {
               context.dispatch({
                 type: "saveFolder",
-                data: { id: newId, name: folder.name },
+                data: {
+                  id: newId,
+                  name: folder.name,
+                  parentId: folder.parentId ? idMap[folder.parentId] || null : null,
+                  order: typeof folder.order === "number" ? folder.order : undefined,
+                },
               });
               foldersImported++;
             });
@@ -427,6 +450,13 @@ const SettingsModal = React.memo(function SettingsModal() {
               <div className="field-descr">{locale.settingsLinePrefixesDescr}</div>
             </div>
             <div className="field">
+              <div className="field-label">{locale.settingsIgnoreTagsLabel}</div>
+              <div className="field-input">
+                <textarea rows={2} value={ignoreTags} onChange={changeIgnoreTags} className="topcoat-textarea" />
+              </div>
+              <div className="field-descr">{locale.settingsIgnoreTagsDescr}</div>
+            </div>
+            <div className="field">
               <div className="field-label">{locale.settingsDefaultStyleLabel}</div>
               <div className="field-input">
                 <select value={defaultStyleId} onChange={changeDefaultStyle} className="topcoat-textarea">
@@ -539,7 +569,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                     <input type="checkbox" checked={multiBubbleMode} onChange={changeMultiBubbleMode} />
                     <div className="settings-checkbox-custom"></div>
                     <div className="settings-checkbox-content">
-                      <span>Multi-Bubble Mode (BETA)</span>
+                      <span>Multi-Bubble Mode</span>
                       <div className="settings-checkbox-hint">
                         {locale.multiBubbleModeHint || "Permet de capturer plusieurs sélections pour insérer plusieurs textes en une fois"}
                         <br />

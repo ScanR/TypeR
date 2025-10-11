@@ -46,7 +46,173 @@ var charID = {
   Vertical: 1450341475, // 'Vrtc'
 };
 
+var _SAFE_PARAGRAPH_PROPS = [
+  "align",
+  "alignment",
+  "firstLineIndent",
+  "startIndent",
+  "endIndent",
+  "spaceBefore",
+  "spaceAfter",
+  "autoLeadingPercentage",
+  "leadingType",
+  "hyphenate",
+  "hyphenateWordSize",
+  "hyphenatePreLength",
+  "hyphenatePostLength",
+  "hyphenateLimit",
+  "hyphenationZone",
+  "hyphenateCapitalized",
+  "hangingRoman",
+  "burasagari",
+  "textEveryLineComposer",
+  "textComposerEngine",
+];
+
+var _DEFAULT_SELECTION_SCALE = 0.9;
+var _MIN_TEXTBOX_WIDTH = 10;
+
+var _hostState = {
+  fallbackTextSize: 20,
+  setActiveLayerText: {
+    data: null,
+    result: "",
+  },
+  createTextLayerInSelection: {
+    data: null,
+    result: "",
+    point: false,
+    padding: 0,
+  },
+  alignTextLayerToSelection: {
+    result: "",
+    resize: false,
+    padding: 0,
+  },
+  changeActiveLayerTextSize: {
+    value: 0,
+    result: "",
+  },
+  selectionMonitor: {
+    lastBoundsKey: null,
+    callback: null,
+  },
+  createTextLayersInStoredSelections: {
+    data: null,
+    result: "",
+    point: false,
+    padding: 0,
+    selections: [],
+  },
+  lastOpenedDocId: null,
+};
+
+function _clone(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  if (obj instanceof Array) {
+    var arr = [];
+    for (var i = 0; i < obj.length; i++) {
+      arr[i] = _clone(obj[i]);
+    }
+    return arr;
+  }
+  var result = {};
+  for (var key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      result[key] = _clone(obj[key]);
+    }
+  }
+  return result;
+}
+
+function _getHostDefaultStyle() {
+  return {
+    layerText: {
+      textGridding: "none",
+      orientation: "horizontal",
+      antiAlias: "antiAliasSmooth",
+      textStyleRange: [
+        {
+          from: 0,
+          to: 100,
+          textStyle: {
+            fontPostScriptName: "Tahoma",
+            fontName: "Tahoma",
+            fontStyleName: "Regular",
+            fontScript: 0,
+            fontTechnology: 1,
+            fontAvailable: true,
+            size: 14,
+            impliedFontSize: 14,
+            horizontalScale: 100,
+            verticalScale: 100,
+            autoLeading: true,
+            tracking: 0,
+            baselineShift: 0,
+            impliedBaselineShift: 0,
+            autoKern: "metricsKern",
+            fontCaps: "normal",
+            digitSet: "defaultDigits",
+            diacXOffset: 0,
+            markYDistFromBaseline: 100,
+            otbaseline: "normal",
+            ligature: false,
+            altligature: false,
+            connectionForms: false,
+            contextualLigatures: false,
+            baselineDirection: "withStream",
+            color: { red: 0, green: 0, blue: 0 }
+          }
+        }
+      ],
+      paragraphStyleRange: [
+        {
+          from: 0,
+          to: 100,
+          paragraphStyle: {
+            burasagari: "burasagariNone",
+            singleWordJustification: "justifyAll",
+            justificationMethodType: "justifMethodAutomatic",
+            textEveryLineComposer: false,
+            alignment: "center",
+            hangingRoman: true,
+            hyphenate: true
+          }
+        }
+      ]
+    },
+    typeUnit: "pixelsUnit"
+  };
+}
+
+function _getHostDefaultStroke() {
+  return {
+    enabled: false,
+    size: 0,
+    opacity: 100,
+    position: "outer",
+    color: { r: 255, g: 255, b: 255 }
+  };
+}
+
+function _ensureStyle(style) {
+  var normalized = style ? _clone(style) : {};
+  if (!normalized.textProps || !normalized.textProps.layerText) {
+    normalized.textProps = _getHostDefaultStyle();
+  }
+  if (typeof normalized.stroke === "undefined") {
+    normalized.stroke = _getHostDefaultStroke();
+  }
+  return normalized;
+}
+
 function _changeToPointText() {
+  try {
+    if (app.activeDocument && app.activeDocument.activeLayer && app.activeDocument.activeLayer.textItem) {
+      app.activeDocument.activeLayer.textItem.kind = TextType.POINTTEXT;
+      return;
+    }
+  } catch (e) {}
   var reference = new ActionReference();
   reference.putProperty(charID.Property, charID.TextShapeType);
   reference.putEnumerated(charID.TextLayer, charID.Ordinal, charID.Target);
@@ -137,6 +303,69 @@ function _modifySelectionBounds(amount) {
   var size = new ActionDescriptor();
   size.putUnitDouble(charID.By, charID.PixelUnit, Math.abs(amount));
   executeAction(amount > 0 ? charID.Expand : charID.Contract, size, DialogModes.NO);
+}
+
+function _getAdjustedSelectionBounds(bounds, amount) {
+  if (!bounds || amount === 0) return bounds;
+  var delta = Math.abs(amount);
+  if (amount < 0) {
+    if (bounds.width <= delta * 2 || bounds.height <= delta * 2) {
+      return null;
+    }
+    var contracted = {
+      top: bounds.top + delta,
+      left: bounds.left + delta,
+      right: bounds.right - delta,
+      bottom: bounds.bottom - delta,
+    };
+    contracted.width = contracted.right - contracted.left;
+    contracted.height = contracted.bottom - contracted.top;
+    contracted.xMid = bounds.xMid;
+    contracted.yMid = bounds.yMid;
+    return contracted;
+  } else {
+    var expanded = {
+      top: Math.max(bounds.top - delta, 0),
+      left: Math.max(bounds.left - delta, 0),
+      right: bounds.right + delta,
+      bottom: bounds.bottom + delta,
+    };
+    expanded.width = expanded.right - expanded.left;
+    expanded.height = expanded.bottom - expanded.top;
+    expanded.xMid = bounds.xMid;
+    expanded.yMid = bounds.yMid;
+    return expanded;
+  }
+}
+
+function _selectionBoundsKey(bounds) {
+  if (!bounds) return "";
+  return bounds.xMid + "_" + bounds.yMid + "_" + bounds.width + "_" + bounds.height;
+}
+
+function _calculateSelectionDimensions(selection, padding) {
+  if (!selection) return { width: 0, height: 0 };
+  var width = selection.width * _DEFAULT_SELECTION_SCALE;
+  if (padding > 0) {
+    width = Math.max(width - padding * 2, _MIN_TEXTBOX_WIDTH);
+  }
+  return {
+    width: width,
+    height: selection.height,
+  };
+}
+
+function _resizeTextBoxToContent(width, currentBounds) {
+  var textParams = jamText.getLayerText();
+  var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
+  _setTextBoxSize(width, currentBounds.height + textSize + 2);
+}
+
+function _positionLayerWithinSelection(selection, bounds) {
+  if (!selection || !bounds) return;
+  var offsetX = selection.xMid - bounds.xMid;
+  var offsetY = selection.yMid - bounds.yMid;
+  _moveLayer(offsetX, offsetY);
 }
 
 function _createMagicWandSelection(tolerance) {
@@ -277,25 +506,66 @@ function _setMarkYOffset(val) {
 function _applyMiddleEast(textStyle) {
   if (!textStyle) return;
   if (textStyle.diacXOffset != null) _setDiacXOffset(textStyle.diacXOffset);
-  if (textStyle.markYDistFromBaseline != null)
-    _setMarkYOffset(textStyle.markYDistFromBaseline);
+  if (textStyle.markYDistFromBaseline != null) _setMarkYOffset(textStyle.markYDistFromBaseline);
 }
 
-var securitySize = 20;
+function _applyTextDirection(direction, textLength) {
+  if (!direction) return;
+  var psDirection = direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
+
+  try {
+    var dirDesc = new ActionDescriptor();
+    var textDesc = new ActionDescriptor();
+    var paraRangeList = new ActionList();
+    var paraRangeDesc = new ActionDescriptor();
+    var paraStyleDesc = new ActionDescriptor();
+
+    paraStyleDesc.putEnumerated(
+      stringIDToTypeID("directionType"),
+      stringIDToTypeID("directionType"),
+      stringIDToTypeID(psDirection)
+    );
+
+    // Ensure textComposerEngine is set to textOptycaComposer
+    paraStyleDesc.putEnumerated(
+      stringIDToTypeID("textComposerEngine"),
+      stringIDToTypeID("textComposerEngine"),
+      stringIDToTypeID("textOptycaComposer")
+    );
+
+    paraRangeDesc.putInteger(stringIDToTypeID("from"), 0);
+    paraRangeDesc.putInteger(stringIDToTypeID("to"), textLength);
+    paraRangeDesc.putObject(stringIDToTypeID("paragraphStyle"), stringIDToTypeID("paragraphStyle"), paraStyleDesc);
+
+    paraRangeList.putObject(stringIDToTypeID("paragraphStyleRange"), paraRangeDesc);
+    textDesc.putList(stringIDToTypeID("paragraphStyleRange"), paraRangeList);
+
+    var ref = new ActionReference();
+    ref.putEnumerated(stringIDToTypeID("textLayer"), stringIDToTypeID("ordinal"), stringIDToTypeID("targetEnum"));
+
+    dirDesc.putReference(stringIDToTypeID("null"), ref);
+    dirDesc.putObject(stringIDToTypeID("to"), stringIDToTypeID("textLayer"), textDesc);
+
+    executeAction(stringIDToTypeID("set"), dirDesc, DialogModes.NO);
+  } catch (e) {
+    // Ignore errors if directionType is not supported on this PS version
+  }
+}
 
 function _createAndSetLayerText(data, width, height) {
-  data.style.textProps.layerText.textKey = data.text.replace(/\n+/g, "");
-  data.style.textProps.layerText.textStyleRange[0].to = data.text.length;
-  data.style.textProps.layerText.paragraphStyleRange[0].to = data.text.length;
-  var sizeProp = data.style.textProps.layerText.textStyleRange[0].textStyle.size;
+  var style = _ensureStyle(data.style);
+  style.textProps.layerText.textKey = data.text.replace(/\n+/g, "");
+  style.textProps.layerText.textStyleRange[0].to = data.text.length;
+  style.textProps.layerText.paragraphStyleRange[0].to = data.text.length;
+  var sizeProp = style.textProps.layerText.textStyleRange[0].textStyle.size;
   if (typeof sizeProp !== "number") {
     try {
       var textParams = jamText.getLayerText();
-      securitySize = textParams.layerText.textStyleRange[0].textStyle.size;
+      _hostState.fallbackTextSize = textParams.layerText.textStyleRange[0].textStyle.size;
     } catch (error) {}
-    data.style.textProps.layerText.textStyleRange[0].textStyle.size = securitySize;
+    style.textProps.layerText.textStyleRange[0].textStyle.size = _hostState.fallbackTextSize;
   }
-  data.style.textProps.layerText.textShape = [
+  style.textProps.layerText.textShape = [
     {
       textType: "box",
       orientation: "horizontal",
@@ -309,11 +579,15 @@ function _createAndSetLayerText(data, width, height) {
   ];
   jamEngine.jsonPlay("make", {
     target: ["<reference>", [["textLayer", ["<class>", null]]]],
-    using: jamText.toLayerTextObject(data.style.textProps),
+    using: jamText.toLayerTextObject(style.textProps),
   });
-  _applyMiddleEast(data.style.textProps.layerText.textStyleRange[0].textStyle);
-  if (data.style.stroke) {
-    _setLayerStroke(data.style.stroke);
+  _applyMiddleEast(style.textProps.layerText.textStyleRange[0].textStyle);
+  if (style.stroke) {
+    _setLayerStroke(style.stroke);
+  }
+  // Apply text direction if specified
+  if (data.direction) {
+    _applyTextDirection(data.direction, data.text.length);
   }
 }
 
@@ -333,16 +607,23 @@ function _setTextBoxSize(width, height) {
   jamText.setLayerText({ layerText: { textShape: box } });
 }
 
-function _checkSelection() {
+function _checkSelection(options) {
   var selection = _getCurrentSelectionBounds();
   if (selection === undefined) {
     return { error: "noSelection" };
   }
-  selection = _getCurrentSelectionBounds();
-  if (selection === undefined || selection.width * selection.height < 200) {
+
+  var adjustAmount = -10;
+  if (options && options.adjustAmount !== undefined) {
+    adjustAmount = options.adjustAmount;
+  }
+
+  var adjustedSelection = adjustAmount !== 0 ? _getAdjustedSelectionBounds(selection, adjustAmount) : selection;
+  if (!adjustedSelection || adjustedSelection.width * adjustedSelection.height < 200) {
     return { error: "smallSelection" };
   }
-  return selection;
+
+  return adjustedSelection;
 }
 
 function _forEachSelectedLayer(action) {
@@ -387,22 +668,22 @@ function _forEachSelectedLayer(action) {
 /* ============ full methods for suspendHistory ============ */
 /* ========================================================= */
 
-var setActiveLayerTextData;
-var setActiveLayerTextResult;
-
 function _setActiveLayerText() {
-  if (!setActiveLayerTextData) {
-    setActiveLayerTextResult = "";
+  var state = _hostState.setActiveLayerText;
+  var payload = state.data;
+  state.result = "";
+  if (!payload) {
     return;
   } else if (!documents.length) {
-    setActiveLayerTextResult = "doc";
+    state.result = "doc";
     return;
   } else if (!_layerIsTextLayer()) {
-    setActiveLayerTextResult = "layer";
+    state.result = "layer";
     return;
   }
-  var dataText = setActiveLayerTextData.text;
-  var dataStyle = setActiveLayerTextData.style;
+  var dataText = payload.text;
+  var dataStyle = payload.style;
+  var targetTextLength = 0;
 
   _forEachSelectedLayer(function () {
     var oldBounds = _getCurrentTextLayerBounds();
@@ -421,6 +702,7 @@ function _setActiveLayerText() {
       newTextParams.layerText.textKey = dataText.replace(/\n+/g, "");
       newTextParams.layerText.textStyleRange[0].to = dataText.length;
       newTextParams.layerText.paragraphStyleRange[0].to = dataText.length;
+      targetTextLength = dataText.length;
     } else if (dataText) {
       newTextParams = {
         layerText: {
@@ -432,19 +714,72 @@ function _setActiveLayerText() {
         newTextParams.layerText.textStyleRange[0].to = dataText.length;
       }
       if (oldTextParams.layerText.paragraphStyleRange && oldTextParams.layerText.paragraphStyleRange[0]) {
-        newTextParams.layerText.paragraphStyleRange = [oldTextParams.layerText.paragraphStyleRange[0]];
-        newTextParams.layerText.paragraphStyleRange[0].to = dataText.length;
+        // Create a minimal paragraphStyleRange without directionType to avoid RTL issues
+        var oldParagraphStyle = oldTextParams.layerText.paragraphStyleRange[0].paragraphStyle || {};
+        var newParagraphStyle = {};
+
+        // Copy only safe properties, explicitly excluding directionType
+        for (var i = 0; i < _SAFE_PARAGRAPH_PROPS.length; i++) {
+          var prop = _SAFE_PARAGRAPH_PROPS[i];
+          if (oldParagraphStyle[prop] !== undefined) {
+            newParagraphStyle[prop] = oldParagraphStyle[prop];
+          }
+        }
+
+        newTextParams.layerText.paragraphStyleRange = [{
+          from: 0,
+          to: dataText.length,
+          paragraphStyle: newParagraphStyle
+        }];
       }
+      targetTextLength = dataText.length;
     } else if (dataStyle) {
       var text = oldTextParams.layerText.textKey || "";
       newTextParams = dataStyle.textProps;
       newTextParams.layerText.textStyleRange[0].to = text.length;
       newTextParams.layerText.paragraphStyleRange[0].to = text.length;
+      targetTextLength = text.length;
+    }
+    var retainedShape = oldTextParams.layerText.textShape && oldTextParams.layerText.textShape[0];
+    if (isPoint && retainedShape && retainedShape.bounds) {
+      var oldTextStyle = oldTextParams.layerText.textStyleRange &&
+        oldTextParams.layerText.textStyleRange[0] &&
+        oldTextParams.layerText.textStyleRange[0].textStyle;
+      var styleTextStyle = dataStyle &&
+        dataStyle.textProps &&
+        dataStyle.textProps.layerText &&
+        dataStyle.textProps.layerText.textStyleRange &&
+        dataStyle.textProps.layerText.textStyleRange[0] &&
+        dataStyle.textProps.layerText.textStyleRange[0].textStyle;
+      var oldSize = oldTextStyle && oldTextStyle.size;
+      var newSize = styleTextStyle && styleTextStyle.size != null ? styleTextStyle.size : oldSize;
+      var widthScale = oldSize && newSize ? newSize / oldSize : 1;
+      if (!(widthScale > 0)) widthScale = 1;
+      if (widthScale < 1) widthScale = 1;
+      var bounds = retainedShape.bounds;
+      var currentWidth = bounds.right - bounds.left;
+      var currentHeight = bounds.bottom - bounds.top;
+      var oldWidthPoints = typeof oldBounds.width === "number" ? _convertPixelToPoint(oldBounds.width) : currentWidth;
+      var oldHeightPoints = typeof oldBounds.height === "number" ? _convertPixelToPoint(oldBounds.height) : currentHeight;
+      var targetWidth = currentWidth * widthScale;
+      var targetHeight = currentHeight * widthScale;
+      if (targetWidth < oldWidthPoints * widthScale) targetWidth = oldWidthPoints * widthScale;
+      var minWidthPadding = (newSize || oldSize || 12) * 0.5;
+      if (targetWidth < oldWidthPoints + minWidthPadding) targetWidth = oldWidthPoints + minWidthPadding;
+      var minHeightPadding = (newSize || oldSize || 12) * 0.75;
+      if (targetHeight < oldHeightPoints * widthScale) targetHeight = oldHeightPoints * widthScale;
+      if (targetHeight < oldHeightPoints + minHeightPadding) targetHeight = oldHeightPoints + minHeightPadding;
+      bounds.right = bounds.left + targetWidth;
+      bounds.bottom = bounds.top + targetHeight;
     }
     newTextParams.layerText.antiAlias = oldTextParams.layerText.antiAlias || "antiAliasSmooth";
-    newTextParams.layerText.textShape = [oldTextParams.layerText.textShape[0]];
+    if (retainedShape) {
+      newTextParams.layerText.textShape = [retainedShape];
+    }
     newTextParams.typeUnit = oldTextParams.typeUnit;
     jamText.setLayerText(newTextParams);
+    var userDirection = payload.direction || "ltr";
+    _applyTextDirection(userDirection, targetTextLength);
     _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
     if (dataStyle && dataStyle.stroke) {
       _setLayerStroke(dataStyle.stroke);
@@ -467,63 +802,47 @@ function _setActiveLayerText() {
         },
       });
     }
+    newBounds = _getCurrentTextLayerBounds();
     if (!oldBounds.bottom) oldBounds = newBounds;
     var offsetX = oldBounds.xMid - newBounds.xMid;
     var offsetY = oldBounds.yMid - newBounds.yMid;
     _moveLayer(offsetX, offsetY);
   });
 
-  setActiveLayerTextResult = "";
+  state.result = "";
 }
 
-var createTextLayerInSelectionData;
-var createTextLayerInSelectionPoint;
-var createTextLayerInSelectionResult;
-var createTextLayerInSelectionPadding;
-
 function _createTextLayerInSelection() {
+  var state = _hostState.createTextLayerInSelection;
   if (!documents.length) {
-    createTextLayerInSelectionResult = "doc";
+    state.result = "doc";
     return;
   }
   var selection = _checkSelection();
   if (selection.error) {
-    createTextLayerInSelectionResult = selection.error;
+    state.result = selection.error;
     return;
   }
-  var padding = createTextLayerInSelectionPadding || 0;
-  var width = selection.width * 0.9;
-  var height = selection.height;
-  
-  if (padding > 0) {
-    width = Math.max(width - (padding * 2), 10);
-  }
-  
-  _createAndSetLayerText(createTextLayerInSelectionData, width, height);
+  var dimensions = _calculateSelectionDimensions(selection, state.padding);
+  _createAndSetLayerText(state.data, dimensions.width, dimensions.height);
   var bounds = _getCurrentTextLayerBounds();
-  if (createTextLayerInSelectionPoint) {
+  if (state.point) {
     _changeToPointText();
   } else {
-    var textParams = jamText.getLayerText();
-    var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
-    _setTextBoxSize(width, bounds.height + textSize + 2);
+    _resizeTextBoxToContent(dimensions.width, bounds);
   }
-  var offsetX = selection.xMid - bounds.xMid;
-  var offsetY = selection.yMid - bounds.yMid;
-  _moveLayer(offsetX, offsetY);
-  createTextLayerInSelectionResult = "";
+  bounds = _getCurrentTextLayerBounds();
+  _positionLayerWithinSelection(selection, bounds);
+  state.result = "";
 }
 
-var alignTextLayerToSelectionResult;
-var alignTextLayerToSelectionResize;
-var alignTextLayerToSelectionPadding;
-
 function _alignTextLayerToSelection() {
+  var state = _hostState.alignTextLayerToSelection;
   if (!documents.length) {
-    alignTextLayerToSelectionResult = "doc";
+    state.result = "doc";
     return;
   } else if (!_layerIsTextLayer()) {
-    alignTextLayerToSelectionResult = "layer";
+    state.result = "layer";
     return;
   }
   var selection = _checkSelection();
@@ -533,58 +852,39 @@ function _alignTextLayerToSelection() {
       selection = _checkSelection();
     }
     if (selection.error) {
-      createTextLayerInSelectionResult = selection.error;
+      state.result = selection.error;
       return;
     }
   }
-  var isPoint = _textLayerIsPointText();
-  var padding = alignTextLayerToSelectionPadding || 0;
-  
-  if (alignTextLayerToSelectionResize) {
-    var width = selection.width * 0.9;
-    var height = selection.height;
-    
-    if (padding > 0) {
-      width = Math.max(width - (padding * 2), 10);
-    }
-    
-    _setTextBoxSize(width, height);
-    var bounds = _getCurrentTextLayerBounds();
-    if (isPoint) {
-      _changeToPointText();
-    } else {
-      var textParams = jamText.getLayerText();
-      var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
-      _setTextBoxSize(width, bounds.height + textSize + 2);
-    }
-  } else {
-    var bounds = _getCurrentTextLayerBounds();
-    if (isPoint) {
-      _changeToPointText();
-    }
+  var wasPoint = _textLayerIsPointText();
+  var bounds = _getCurrentTextLayerBounds();
+
+  if (state.resize && !wasPoint) {
+    var dimensions = _calculateSelectionDimensions(selection, state.padding);
+    _setTextBoxSize(dimensions.width, dimensions.height);
+    var textBounds = _getCurrentTextLayerBounds();
+    _resizeTextBoxToContent(dimensions.width, textBounds);
+    bounds = _getCurrentTextLayerBounds();
   }
   
   _deselect();
-  var offsetX = selection.xMid - bounds.xMid;
-  var offsetY = selection.yMid - bounds.yMid;
-  _moveLayer(offsetX, offsetY);
-  alignTextLayerToSelectionResult = "";
+  _positionLayerWithinSelection(selection, bounds);
+  if (wasPoint) {
+    _changeToPointText();
+  }
+  state.result = "";
 }
 
-var changeActiveLayerTextSizeVal;
-var changeActiveLayerTextSizeResult;
-
-var _lastOpenedDocId = null;
-
 function _changeActiveLayerTextSize() {
+  var state = _hostState.changeActiveLayerTextSize;
   if (!documents.length) {
-    changeActiveLayerTextSizeResult = "doc";
+    state.result = "doc";
     return;
   } else if (!_layerIsTextLayer()) {
-    changeActiveLayerTextSizeResult = "layer";
+    state.result = "layer";
     return;
-  } else if (!changeActiveLayerTextSizeVal) {
-    changeActiveLayerTextSizeResult = "";
+  } else if (!state.value) {
+    state.result = "";
     return;
   }
 
@@ -601,7 +901,7 @@ function _changeActiveLayerTextSize() {
         var textStyle = currentTextStyle.getObjectValue(charID.TextStyle);
         var currentSize = textStyle.getDouble(charID.Size);
         var sizeUnit = textStyle.getUnitDoubleType(charID.Size);
-        var newSize = currentSize + changeActiveLayerTextSizeVal;
+        var newSize = currentSize + state.value;
         
         // Appliquer le nouveau size directement
         var descriptor = new ActionDescriptor();
@@ -621,7 +921,7 @@ function _changeActiveLayerTextSize() {
       var oldTextParams = jamText.getLayerText();
       var text = oldTextParams.layerText.textKey.replace(/\n+/g, "");
       if (!text) {
-        changeActiveLayerTextSizeResult = "layer";
+        state.result = "layer";
         return;
       }
       var oldBounds = _getCurrentTextLayerBounds();
@@ -644,7 +944,7 @@ function _changeActiveLayerTextSize() {
         newTextParams.layerText.paragraphStyleRange[0].to = text.length;
       }
       var oldSize = newTextParams.layerText.textStyleRange[0].textStyle.size;
-      var newTextSize = oldSize + changeActiveLayerTextSizeVal;
+      var newTextSize = oldSize + state.value;
       newTextParams.layerText.textStyleRange[0].textStyle.size = newTextSize;
 
       // Ajuster l'interligne
@@ -657,7 +957,7 @@ function _changeActiveLayerTextSize() {
       } else {
         // Sinon, on ajuste l'interligne de la même valeur que la taille du texte
         var oldLeading = textStyle.leading;
-        var newLeading = oldLeading + changeActiveLayerTextSizeVal;
+        var newLeading = oldLeading + state.value;
         textStyle.leading = newLeading;
         textStyle.autoLeading = false;
       }
@@ -681,11 +981,11 @@ function _changeActiveLayerTextSize() {
     }
   });
 
-  changeActiveLayerTextSizeResult = "";
+  state.result = "";
 }
 
 function _changeSize_alt() {
-  var increasing = changeActiveLayerTextSizeVal > 0;
+  var increasing = _hostState.changeActiveLayerTextSize.value > 0;
   _forEachSelectedLayer(function () {
     var a = new ActionReference();
     a.putProperty(charID.Property, charID.Text);
@@ -723,7 +1023,7 @@ function _changeSize_alt() {
       }
     }
   });
-  changeActiveLayerTextSizeResult = "";
+  _hostState.changeActiveLayerTextSize.result = "";
 }
 
 /* ======================================================== */
@@ -792,30 +1092,38 @@ function getActiveLayerText() {
 }
 
 function setActiveLayerText(data) {
-  setActiveLayerTextData = data;
+  var state = _hostState.setActiveLayerText;
+  state.data = data;
+  state.result = "";
   app.activeDocument.suspendHistory("TyperTools Change", "_setActiveLayerText()");
-  return setActiveLayerTextResult;
+  return state.result;
 }
 
 function createTextLayerInSelection(data, point) {
-  createTextLayerInSelectionData = data;
-  createTextLayerInSelectionPoint = point;
-  createTextLayerInSelectionPadding = data.padding || 0;
+  var state = _hostState.createTextLayerInSelection;
+  state.data = data;
+  state.point = point;
+  state.padding = data.padding || 0;
+  state.result = "";
   app.activeDocument.suspendHistory("TyperTools Paste", "_createTextLayerInSelection()");
-  return createTextLayerInSelectionResult;
+  return state.result;
 }
 
 function alignTextLayerToSelection(data) {
-  alignTextLayerToSelectionResize = !!data.resizeTextBox;
-  alignTextLayerToSelectionPadding = data.padding || 0;
+  var state = _hostState.alignTextLayerToSelection;
+  state.resize = !!data.resizeTextBox;
+  state.padding = data.padding || 0;
+  state.result = "";
   app.activeDocument.suspendHistory("TyperTools Align", "_alignTextLayerToSelection()");
-  return alignTextLayerToSelectionResult;
+  return state.result;
 }
 
 function changeActiveLayerTextSize(val) {
-  changeActiveLayerTextSizeVal = val;
+  var state = _hostState.changeActiveLayerTextSize;
+  state.value = val;
+  state.result = "";
   app.activeDocument.suspendHistory("TyperTools Resize", "_changeActiveLayerTextSize()");
-  return changeActiveLayerTextSizeResult;
+  return state.result;
 }
 
 function getCurrentSelection() {
@@ -829,132 +1137,121 @@ function getCurrentSelection() {
   return jamJSON.stringify(selection);
 }
 
-var lastSelectionBounds = null;
-var selectionChangeCallback = null;
-
 function startSelectionMonitoring() {
+  var monitor = _hostState.selectionMonitor;
   // Démarrer la surveillance des changements de sélection
-  if (selectionChangeCallback) {
-    app.removeNotifier("Slct", selectionChangeCallback);
+  if (monitor.callback) {
+    app.removeNotifier("Slct", monitor.callback);
   }
   
-  selectionChangeCallback = function() {
+  monitor.callback = function() {
     var currentSelection = _checkSelection();
     if (!currentSelection.error) {
-      var currentBounds = currentSelection.xMid + "_" + currentSelection.yMid + "_" + currentSelection.width + "_" + currentSelection.height;
-      if (currentBounds !== lastSelectionBounds) {
-        lastSelectionBounds = currentBounds;
+      var currentBounds = _selectionBoundsKey(currentSelection);
+      if (currentBounds !== monitor.lastBoundsKey) {
+        monitor.lastBoundsKey = currentBounds;
         // Notifier l'extension CEP du changement
         app.system("osascript -e 'tell application \"System Events\" to keystroke \"x\" using {command down, option down, shift down}'");
       }
     }
   };
   
-  app.addNotifier("Slct", selectionChangeCallback);
+  app.addNotifier("Slct", monitor.callback);
 }
 
 function stopSelectionMonitoring() {
-  if (selectionChangeCallback) {
-    app.removeNotifier("Slct", selectionChangeCallback);
-    selectionChangeCallback = null;
+  var monitor = _hostState.selectionMonitor;
+  if (monitor.callback) {
+    app.removeNotifier("Slct", monitor.callback);
+    monitor.callback = null;
   }
-  lastSelectionBounds = null;
+  monitor.lastBoundsKey = null;
 }
 
 function getSelectionChanged() {
+  var monitor = _hostState.selectionMonitor;
   var currentSelection = _checkSelection();
   if (!currentSelection.error) {
-    var currentBounds = currentSelection.xMid + "_" + currentSelection.yMid + "_" + currentSelection.width + "_" + currentSelection.height;
-    if (currentBounds !== lastSelectionBounds) {
-      lastSelectionBounds = currentBounds;
+    var currentBounds = _selectionBoundsKey(currentSelection);
+    if (currentBounds !== monitor.lastBoundsKey) {
+      monitor.lastBoundsKey = currentBounds;
       return jamJSON.stringify(currentSelection);
     }
   }
   return jamJSON.stringify({ noChange: true });
 }
 
-var createTextLayersInStoredSelectionsData;
-var createTextLayersInStoredSelectionsPoint;
-var createTextLayersInStoredSelectionsResult;
-var createTextLayersInStoredSelectionsPadding;
-var storedSelections = [];
-
 function _createTextLayersInStoredSelections() {
+  var state = _hostState.createTextLayersInStoredSelections;
   if (!documents.length) {
-    createTextLayersInStoredSelectionsResult = "doc";
+    state.result = "doc";
     return;
   }
   
-  var texts = createTextLayersInStoredSelectionsData.texts || [];
-  var styles = createTextLayersInStoredSelectionsData.styles || [];
+  var texts = state.data.texts || [];
+  var styles = state.data.styles || [];
   
-  if (texts.length === 0 || storedSelections.length === 0) {
-    createTextLayersInStoredSelectionsResult = "noSelection";
+  if (texts.length === 0 || state.selections.length === 0) {
+    state.result = "noSelection";
     return;
   }
   
-  var maxCount = Math.min(texts.length, storedSelections.length);
+  var maxCount = Math.min(texts.length, state.selections.length);
   
   for (var i = 0; i < maxCount; i++) {
     var text = texts[i] || texts[texts.length - 1] || "";
-    var style = styles[i] || styles[styles.length - 1] || { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
-    var selection = storedSelections[i];
+    var baseStyle = styles[i] || styles[styles.length - 1] || null;
+    var style = _ensureStyle(baseStyle);
+    var selection = state.selections[i];
     
     if (!text) continue;
     
-    var padding = createTextLayersInStoredSelectionsPadding || 0;
-    var width = selection.width * 0.9;
-    var height = selection.height;
-    
-    if (padding > 0) {
-      width = Math.max(width - (padding * 2), 10);
-    }
-    
+    var dimensions = _calculateSelectionDimensions(selection, state.padding);
+
     // Créer le layer de texte
-    var data = { text: text, style: style };
-    _createAndSetLayerText(data, width, height);
+    var data = { text: text, style: style, direction: state.data.direction };
+    _createAndSetLayerText(data, dimensions.width, dimensions.height);
     
     var bounds = _getCurrentTextLayerBounds();
-    if (createTextLayersInStoredSelectionsPoint) {
+    if (state.point) {
       _changeToPointText();
     } else {
-      var textParams = jamText.getLayerText();
-      var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
-      _setTextBoxSize(width, bounds.height + textSize + 2);
+      _resizeTextBoxToContent(dimensions.width, bounds);
     }
+    bounds = _getCurrentTextLayerBounds();
     
     // Positionner le layer à l'emplacement de la sélection stockée
-    var offsetX = selection.xMid - bounds.xMid;
-    var offsetY = selection.yMid - bounds.yMid;
-    _moveLayer(offsetX, offsetY);
+    _positionLayerWithinSelection(selection, bounds);
   }
   
   // Vider les sélections stockées après utilisation
-  storedSelections = [];
-  createTextLayersInStoredSelectionsResult = "";
+  state.selections = [];
+  state.result = "";
 }
 
 function createTextLayersInStoredSelections(data, point) {
-  createTextLayersInStoredSelectionsData = data;
-  createTextLayersInStoredSelectionsPoint = point;
-  createTextLayersInStoredSelectionsPadding = data.padding || 0;
+  var state = _hostState.createTextLayersInStoredSelections;
+  state.data = data;
+  state.point = point;
+  state.padding = data.padding || 0;
+  state.result = "";
   
   // Les sélections sont passées directement depuis React
   if (data && data.selections) {
-    storedSelections = data.selections;
+    state.selections = data.selections;
   } else {
-    storedSelections = [];
+    state.selections = [];
   }
   
   app.activeDocument.suspendHistory("TyperTools Multiple Paste", "_createTextLayersInStoredSelections()");
-  return createTextLayersInStoredSelectionsResult;
+  return state.result;
 }
 
 function openFile(path, autoClose) {
-  if (autoClose && _lastOpenedDocId !== null) {
+  if (autoClose && _hostState.lastOpenedDocId !== null) {
     for (var i = 0; i < app.documents.length; i++) {
       var doc = app.documents[i];
-      if (doc.id === _lastOpenedDocId) {
+      if (doc.id === _hostState.lastOpenedDocId) {
         try {
           doc.close(SaveOptions.SAVECHANGES);
         } catch (e) {}
@@ -964,6 +1261,6 @@ function openFile(path, autoClose) {
   }
   var newDoc = app.open(File(path));
   if (autoClose) {
-    _lastOpenedDocId = newDoc.id;
+    _hostState.lastOpenedDocId = newDoc.id;
   }
 }

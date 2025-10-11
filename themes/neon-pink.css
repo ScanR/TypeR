@@ -275,6 +275,9 @@
 .export-folder-item + .export-folder-item {
   margin-top: 4px;
 }
+.export-folder-item.m-nested {
+  padding-left: 16px;
+}
 .export-folder-title,
 .export-settings-title {
   margin-left: 6px;

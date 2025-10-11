@@ -119,7 +119,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         for (let i = 0; i <= lineIndex && i < context.state.lines.length; i++) {
           const line = context.state.lines[i];
           if (line.ignore) {
-            const page = line.rawText.match(/Page ([0-9]+)/);
+            const page = line.rawText.match(/Page ([0-9]+)/i);
             if (page && context.state.images[page[1] - 1]) {
               const img = context.state.images[page[1] - 1];
               currentPage = context.state.images.indexOf(img);
@@ -203,7 +203,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       
       const pointText = context.state.pastePointText;
       const padding = context.state.internalPadding || 0;
-      createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, padding, (ok) => {
+      const direction = context.state.direction;
+      createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, padding, direction, (ok) => {
         if (ok) {
           // Trouver la prochaine ligne valide après les lignes utilisées, mais rester sur la même page
           let nextLineIndex = lineIndex;
@@ -250,7 +251,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       }
       const pointText = context.state.pastePointText;
       const padding = context.state.internalPadding || 0;
-      createTextLayerInSelection(line.text, lineStyle, pointText, padding, (ok) => {
+      const direction = context.state.direction;
+      createTextLayerInSelection(line.text, lineStyle, pointText, padding, direction, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
       });
     }
@@ -275,7 +277,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           txtStyle.leading *= context.state.textScale / 100;
         }
       }
-      setActiveLayerText(line.text, lineStyle, (ok) => {
+      setActiveLayerText(line.text, lineStyle, context.state.direction, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
       });
     }

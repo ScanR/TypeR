@@ -15,6 +15,7 @@ const storeFields = [
   "currentStyleId",
   "pastePointText",
   "ignoreLinePrefixes",
+  "ignoreTags",
   "defaultStyleId",
   "autoClosePSD",
   "checkUpdates",
@@ -45,6 +46,67 @@ const defaultShortcut = {
   nextPage: ["SHIFT", "X"],
 };
 
+const normalizeFolders = (folders) => {
+  const normalized = (folders || []).map((folder) => {
+    const parentId = folder?.parentId === undefined || folder?.parentId === null || folder?.parentId === "" ? null : folder.parentId;
+    return {
+      ...folder,
+      parentId,
+      order: typeof folder?.order === "number" ? folder.order : 0,
+    };
+  });
+  const ids = new Set(normalized.map((folder) => folder.id));
+  normalized.forEach((folder) => {
+    if (folder.parentId === folder.id || (folder.parentId && !ids.has(folder.parentId))) {
+      folder.parentId = null;
+    }
+  });
+  const siblingsMap = new Map();
+  normalized.forEach((folder) => {
+    const key = folder.parentId || "__root__";
+    if (!siblingsMap.has(key)) siblingsMap.set(key, []);
+    siblingsMap.get(key).push(folder);
+  });
+  siblingsMap.forEach((siblings) => {
+    siblings
+      .sort((a, b) => {
+        const orderA = typeof a.order === "number" ? a.order : 0;
+        const orderB = typeof b.order === "number" ? b.order : 0;
+        return orderA - orderB;
+      })
+      .forEach((folder, index) => {
+        folder.order = index;
+      });
+  });
+  return normalized;
+};
+
+const collectDescendantFolderIds = (folders, folderId) => {
+  const ids = [];
+  if (!folderId) return ids;
+  const queue = [folderId];
+  while (queue.length) {
+    const current = queue.shift();
+    const children = (folders || []).filter((folder) => (folder.parentId || null) === current);
+    for (const child of children) {
+      ids.push(child.id);
+      queue.push(child.id);
+    }
+  }
+  return ids;
+};
+
+const getFolderChildren = (folders, parentId = null) => {
+  const parentKey = parentId || null;
+  return (folders || [])
+    .filter((folder) => (folder.parentId || null) === parentKey)
+    .sort((a, b) => {
+      const orderA = typeof a.order === "number" ? a.order : 0;
+      const orderB = typeof b.order === "number" ? b.order : 0;
+      return orderA - orderB;
+    });
+};
+
 const initialState = {
   notFirstTime: false,
   initiated: false,
@@ -61,6 +123,7 @@ const initialState = {
   currentStyleId: null,
   pastePointText: false,
   ignoreLinePrefixes: ["##"],
+  ignoreTags: [],
   defaultStyleId: null,
   autoClosePSD: false,
   checkUpdates: config.checkUpdates,
@@ -177,7 +240,7 @@ const reducer = (state, action) => {
       let foundNextPage = false;
       for (let i = state.currentLineIndex + 1; i < state.lines.length; i++) {
         const line = state.lines[i];
-        if (line.rawText.match(/Page [0-9]+/)) {
+        if (line.rawText.match(/Page [0-9]+/i)) {
           // Trouver la première ligne non-ignorée après cette page
           for (let j = i + 1; j < state.lines.length; j++) {
             if (!state.lines[j].ignore) {
@@ -226,45 +289,107 @@ const reducer = (state, action) => {
 
     case "saveFolder": {
       const editId = action.id || action.data.id;
-      if (action.data.styleIds) {
+      const { styleIds, ...folderPayload } = action.data;
+      if (styleIds) {
         let styles = state.styles.concat([]);
         styles
           .filter((s) => s.folder === editId)
           .forEach((style) => {
-            if (!action.data.styleIds.includes(style.id)) style.folder = null;
+            if (!styleIds.includes(style.id)) style.folder = null;
           });
-        action.data.styleIds.forEach((sid) => {
+        styleIds.forEach((sid) => {
           const style = styles.find((s) => s.id === sid);
           if (style) style.folder = editId;
         });
         newState.styles = styles;
-        delete action.data.styleIds;
       }
-      const folders = state.folders.concat([]);
-      const folder = folders.find((f) => f.id === editId);
-      if (folder) Object.assign(folder, action.data);
-      else folders.push(action.data);
+      let folders = state.folders.map((folder) => ({ ...folder }));
+      const data = { ...folderPayload, id: editId };
+      const parentId = data.parentId === undefined || data.parentId === null || data.parentId === "" ? null : data.parentId;
+      data.parentId = parentId;
+      if (data.parentId && !folders.find((folder) => folder.id === data.parentId)) {
+        data.parentId = null;
+      }
+      let folder = folders.find((f) => f.id === editId);
+      const siblings = folders.filter((f) => (f.parentId || null) === (data.parentId || null) && f.id !== editId);
+      if (folder) {
+        Object.assign(folder, data);
+        folder.order = typeof data.order === "number" ? data.order : siblings.length;
+      } else {
+        folder = {
+          ...data,
+          order: typeof data.order === "number" ? data.order : siblings.length,
+        };
+        folders.push(folder);
+      }
+      folders = normalizeFolders(folders);
       newState.folders = folders;
+      if (!state.folders.find((f) => f.id === editId)) {
+        const toOpen = data.parentId ? [data.parentId, editId] : [editId];
+        newState.openFolders = Array.from(new Set(state.openFolders.concat(toOpen)));
+      } else if (state.folders.find((f) => f.id === editId)?.parentId !== data.parentId && data.parentId) {
+        newState.openFolders = Array.from(new Set(state.openFolders.concat([data.parentId])));
+      }
       break;
     }
 
     case "deleteFolder": {
-      newState.folders = state.folders.filter((f) => f.id !== action.id);
+      if (!action.id) break;
+      const idsToRemove = [action.id].concat(collectDescendantFolderIds(state.folders, action.id));
+      const folders = state.folders.filter((folder) => !idsToRemove.includes(folder.id)).map((folder) => ({ ...folder }));
+      let styles = state.styles.concat([]);
+      if (action.permanent) {
+        styles = styles.filter((style) => !idsToRemove.includes(style.folder));
+      } else {
+        styles = styles.map((style) => {
+          if (idsToRemove.includes(style.folder)) {
+            return { ...style, folder: null };
+          }
+          return style;
+        });
+      }
+      newState.styles = styles;
+      newState.folders = normalizeFolders(folders);
+      newState.openFolders = state.openFolders.filter((id) => id === "unsorted" || !idsToRemove.includes(id));
       break;
     }
     case "duplicateFolder": {
-      const folderToDup = action.data;
-      const newFolderId = Math.random().toString(36).substr(2, 8);
-      const newFolderName = folderToDup.name + " copy";
-      const newFolder = { id: newFolderId, name: newFolderName };
-      newState.folders = state.folders.concat(newFolder);
-      const stylesCopy = state.styles.filter((s) => s.folder === folderToDup.id);
-      const newStyles = stylesCopy.map((s) => {
-        const newStyleId = Math.random().toString(36).substr(2, 8);
-        return { ...s, id: newStyleId, folder: newFolderId };
-      });
-      newState.styles = state.styles.concat(newStyles);
-      newState.openFolders = state.openFolders.concat(newFolderId);
+      const sourceId = action.id || action.data?.id;
+      if (!sourceId) break;
+      const originalFolder = state.folders.find((folder) => folder.id === sourceId);
+      if (!originalFolder) break;
+      const folders = state.folders.map((folder) => ({ ...folder }));
+      const styles = state.styles.map((style) => ({ ...style }));
+      const openFolders = state.openFolders.concat([]);
+      const createdFolderIds = [];
+      const duplicateStylesForFolder = (sourceFolderId, targetFolderId) => {
+        const stylesToClone = state.styles.filter((style) => style.folder === sourceFolderId);
+        stylesToClone.forEach((style) => {
+          const newStyleId = Math.random().toString(36).substr(2, 8);
+          styles.push({ ...style, id: newStyleId, name: style.name + " copy", folder: targetFolderId });
+        });
+      };
+      const duplicateFolderRecursive = (folder, parentId) => {
+        const siblingCount = folders.filter((f) => (f.parentId || null) === (parentId || null)).length;
+        const newFolderId = Math.random().toString(36).substr(2, 8);
+        const newFolder = {
+          ...folder,
+          id: newFolderId,
+          name: folder.name + " copy",
+          parentId: parentId || null,
+          order: siblingCount,
+        };
+        delete newFolder.children;
+        folders.push(newFolder);
+        createdFolderIds.push(newFolderId);
+        duplicateStylesForFolder(folder.id, newFolderId);
+        const children = state.folders.filter((child) => (child.parentId || null) === folder.id);
+        children.forEach((child) => duplicateFolderRecursive(child, newFolderId));
+      };
+      duplicateFolderRecursive(originalFolder, originalFolder.parentId);
+      newState.folders = normalizeFolders(folders);
+      newState.styles = styles;
+      newState.openFolders = Array.from(new Set(openFolders.concat(createdFolderIds)));
       break;
     }
 
@@ -278,7 +403,21 @@ const reducer = (state, action) => {
     }
 
     case "setFolders": {
-      newState.folders = action.data || [];
+      newState.folders = normalizeFolders(action.data || []);
+      newState.openFolders = state.openFolders.filter((id) => id === "unsorted" || newState.folders.find((folder) => folder.id === id));
+      break;
+    }
+
+    case "reorderFolders": {
+      const parentId = action.parentId === undefined || action.parentId === null || action.parentId === "" ? null : action.parentId;
+      const orderIds = action.order || [];
+      const orderMap = new Map(orderIds.map((id, index) => [id, index]));
+      const folders = state.folders.map((folder) => {
+        if ((folder.parentId || null) !== parentId) return { ...folder };
+        if (!orderMap.has(folder.id)) return { ...folder };
+        return { ...folder, order: orderMap.get(folder.id) };
+      });
+      newState.folders = normalizeFolders(folders);
       break;
     }
 
@@ -337,6 +476,18 @@ const reducer = (state, action) => {
       } else if (typeof action.data === "string") {
         const arr = action.data.split(/(?:\r?\n|;)/);
         newState.ignoreLinePrefixes = arr.map((p) => p.trim()).filter(Boolean);
+      }
+      break;
+    }
+
+    case "setIgnoreTags": {
+      if (!action.data) {
+        newState.ignoreTags = [];
+      } else if (Array.isArray(action.data)) {
+        newState.ignoreTags = action.data;
+      } else if (typeof action.data === "string") {
+        const arr = action.data.split(/(?:\r?\n|;)/);
+        newState.ignoreTags = arr.map((p) => p.trim()).filter(Boolean);
       }
       break;
     }
@@ -468,16 +619,33 @@ const reducer = (state, action) => {
     if (!hasFolder) style.folder = null;
   }
 
+  if (newState.folders !== state.folders) {
+    newState.folders = normalizeFolders(newState.folders);
+  }
+
+  if (newState.openFolders) {
+    const validFolderIds = new Set(newState.folders.map((folder) => folder.id));
+    if (newState.openFolders.some((id) => id !== "unsorted" && !validFolderIds.has(id))) {
+      newState.openFolders = newState.openFolders.filter((id) => id === "unsorted" || validFolderIds.has(id));
+    }
+  }
+
   if (newState.defaultStyleId) {
     const hasDefault = newState.styles.find((s) => s.id === newState.defaultStyleId);
     if (!hasDefault) newState.defaultStyleId = null;
   }
 
-  let sortedStyles = newState.styles.filter((s) => !s.folder);
-  for (const folder of newState.folders) {
-    const folderStyles = newState.styles.filter((s) => s.folder === folder.id);
-    sortedStyles = sortedStyles.concat(folderStyles);
-  }
+  const stylesSource = newState.styles.concat([]);
+  let sortedStyles = stylesSource.filter((style) => !style.folder);
+  const appendFolderStyles = (parentId = null) => {
+    const children = getFolderChildren(newState.folders, parentId);
+    for (const folder of children) {
+      const folderStyles = stylesSource.filter((style) => style.folder === folder.id);
+      sortedStyles = sortedStyles.concat(folderStyles);
+      appendFolderStyles(folder.id);
+    }
+  };
+  appendFolderStyles(null);
   newState.styles = sortedStyles;
 
   const stylePrefixes = [];
@@ -521,8 +689,15 @@ const reducer = (state, action) => {
       style = hasStylePrefix.style;
     }
 
-    const text = rawText.replace(ignorePrefix, "").replace(stylePrefix, "").trim();
-    const isPage = rawText.match(/Page [0-9]+/);
+    let text = rawText.replace(ignorePrefix, "").replace(stylePrefix, "");
+    if (newState.ignoreTags?.length) {
+      text = newState.ignoreTags.reduce((acc, tag) => {
+        if (!tag) return acc;
+        return acc.split(tag).join("");
+      }, text);
+    }
+    text = text.trim();
+    const isPage = rawText.match(/Page [0-9]+/i);
     const ignore = !!ignorePrefix || !text || isPage;
     if (isPage && newState.images.length) {
       last.push(linesCounter);

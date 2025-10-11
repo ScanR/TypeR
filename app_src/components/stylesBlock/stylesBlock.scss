@@ -10,6 +10,9 @@
   padding: 10px;
   flex-grow: 2;
 }
+.folders-sortable.m-nested {
+  margin-left: 12px;
+}
 .styles-empty {
   display: flex;
   align-items: center;
@@ -43,6 +46,9 @@
 .folder-item {
   background: rgba(#000, 0.15);
   margin-bottom: 8px;
+  &.m-nested {
+    margin-bottom: 6px;
+  }
 }
 .folder-header {
   display: flex;
@@ -83,9 +89,9 @@
 }
 .folder-actions {
   flex: 0 0 auto;
-  flex-direction: row-reverse;
-  width: 36px;
   display: flex;
+  flex-direction: row-reverse;
+  gap: 4px;
   BUTTON {
     height: 18px;
     width: 18px;
@@ -96,8 +102,18 @@
   height: 18px;
   opacity: 0.3;
 }
+.folder-content {
+  display: flex;
+  flex-direction: column;
+}
+.folder-subfolders {
+  padding: 4px 0 2px;
+}
 .folder-styles {
   padding: 6px 4px 2px;
+  &.m-with-subfolders {
+    padding-top: 4px;
+  }
 }
 .folder-styles-empty {
   padding: 2px 10px 6px;
