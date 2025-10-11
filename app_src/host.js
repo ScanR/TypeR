@@ -107,6 +107,105 @@ var _hostState = {
   lastOpenedDocId: null,
 };
 
+function _clone(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  if (obj instanceof Array) {
+    var arr = [];
+    for (var i = 0; i < obj.length; i++) {
+      arr[i] = _clone(obj[i]);
+    }
+    return arr;
+  }
+  var result = {};
+  for (var key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      result[key] = _clone(obj[key]);
+    }
+  }
+  return result;
+}
+
+function _getHostDefaultStyle() {
+  return {
+    layerText: {
+      textGridding: "none",
+      orientation: "horizontal",
+      antiAlias: "antiAliasSmooth",
+      textStyleRange: [
+        {
+          from: 0,
+          to: 100,
+          textStyle: {
+            fontPostScriptName: "Tahoma",
+            fontName: "Tahoma",
+            fontStyleName: "Regular",
+            fontScript: 0,
+            fontTechnology: 1,
+            fontAvailable: true,
+            size: 14,
+            impliedFontSize: 14,
+            horizontalScale: 100,
+            verticalScale: 100,
+            autoLeading: true,
+            tracking: 0,
+            baselineShift: 0,
+            impliedBaselineShift: 0,
+            autoKern: "metricsKern",
+            fontCaps: "normal",
+            digitSet: "defaultDigits",
+            diacXOffset: 0,
+            markYDistFromBaseline: 100,
+            otbaseline: "normal",
+            ligature: false,
+            altligature: false,
+            connectionForms: false,
+            contextualLigatures: false,
+            baselineDirection: "withStream",
+            color: { red: 0, green: 0, blue: 0 }
+          }
+        }
+      ],
+      paragraphStyleRange: [
+        {
+          from: 0,
+          to: 100,
+          paragraphStyle: {
+            burasagari: "burasagariNone",
+            singleWordJustification: "justifyAll",
+            justificationMethodType: "justifMethodAutomatic",
+            textEveryLineComposer: false,
+            alignment: "center",
+            hangingRoman: true,
+            hyphenate: true
+          }
+        }
+      ]
+    },
+    typeUnit: "pixelsUnit"
+  };
+}
+
+function _getHostDefaultStroke() {
+  return {
+    enabled: false,
+    size: 0,
+    opacity: 100,
+    position: "outer",
+    color: { r: 255, g: 255, b: 255 }
+  };
+}
+
+function _ensureStyle(style) {
+  var normalized = style ? _clone(style) : {};
+  if (!normalized.textProps || !normalized.textProps.layerText) {
+    normalized.textProps = _getHostDefaultStyle();
+  }
+  if (typeof normalized.stroke === "undefined") {
+    normalized.stroke = _getHostDefaultStroke();
+  }
+  return normalized;
+}
+
 function _changeToPointText() {
   try {
     if (app.activeDocument && app.activeDocument.activeLayer && app.activeDocument.activeLayer.textItem) {
@@ -454,18 +553,19 @@ function _applyTextDirection(direction, textLength) {
 }
 
 function _createAndSetLayerText(data, width, height) {
-  data.style.textProps.layerText.textKey = data.text.replace(/\n+/g, "");
-  data.style.textProps.layerText.textStyleRange[0].to = data.text.length;
-  data.style.textProps.layerText.paragraphStyleRange[0].to = data.text.length;
-  var sizeProp = data.style.textProps.layerText.textStyleRange[0].textStyle.size;
+  var style = _ensureStyle(data.style);
+  style.textProps.layerText.textKey = data.text.replace(/\n+/g, "");
+  style.textProps.layerText.textStyleRange[0].to = data.text.length;
+  style.textProps.layerText.paragraphStyleRange[0].to = data.text.length;
+  var sizeProp = style.textProps.layerText.textStyleRange[0].textStyle.size;
   if (typeof sizeProp !== "number") {
     try {
       var textParams = jamText.getLayerText();
       _hostState.fallbackTextSize = textParams.layerText.textStyleRange[0].textStyle.size;
     } catch (error) {}
-    data.style.textProps.layerText.textStyleRange[0].textStyle.size = _hostState.fallbackTextSize;
+    style.textProps.layerText.textStyleRange[0].textStyle.size = _hostState.fallbackTextSize;
   }
-  data.style.textProps.layerText.textShape = [
+  style.textProps.layerText.textShape = [
     {
       textType: "box",
       orientation: "horizontal",
@@ -479,11 +579,11 @@ function _createAndSetLayerText(data, width, height) {
   ];
   jamEngine.jsonPlay("make", {
     target: ["<reference>", [["textLayer", ["<class>", null]]]],
-    using: jamText.toLayerTextObject(data.style.textProps),
+    using: jamText.toLayerTextObject(style.textProps),
   });
-  _applyMiddleEast(data.style.textProps.layerText.textStyleRange[0].textStyle);
-  if (data.style.stroke) {
-    _setLayerStroke(data.style.stroke);
+  _applyMiddleEast(style.textProps.layerText.textStyleRange[0].textStyle);
+  if (style.stroke) {
+    _setLayerStroke(style.stroke);
   }
   // Apply text direction if specified
   if (data.direction) {
@@ -583,6 +683,7 @@ function _setActiveLayerText() {
   }
   var dataText = payload.text;
   var dataStyle = payload.style;
+  var targetTextLength = 0;
 
   _forEachSelectedLayer(function () {
     var oldBounds = _getCurrentTextLayerBounds();
@@ -601,6 +702,7 @@ function _setActiveLayerText() {
       newTextParams.layerText.textKey = dataText.replace(/\n+/g, "");
       newTextParams.layerText.textStyleRange[0].to = dataText.length;
       newTextParams.layerText.paragraphStyleRange[0].to = dataText.length;
+      targetTextLength = dataText.length;
     } else if (dataText) {
       newTextParams = {
         layerText: {
@@ -630,11 +732,13 @@ function _setActiveLayerText() {
           paragraphStyle: newParagraphStyle
         }];
       }
+      targetTextLength = dataText.length;
     } else if (dataStyle) {
       var text = oldTextParams.layerText.textKey || "";
       newTextParams = dataStyle.textProps;
       newTextParams.layerText.textStyleRange[0].to = text.length;
       newTextParams.layerText.paragraphStyleRange[0].to = text.length;
+      targetTextLength = text.length;
     }
     var retainedShape = oldTextParams.layerText.textShape && oldTextParams.layerText.textShape[0];
     if (isPoint && retainedShape && retainedShape.bounds) {
@@ -674,50 +778,8 @@ function _setActiveLayerText() {
     }
     newTextParams.typeUnit = oldTextParams.typeUnit;
     jamText.setLayerText(newTextParams);
-    // Apply text direction based on user setting (default to LTR)
-    if (dataText && !dataStyle) {
-      var userDirection = payload.direction || "ltr";
-      var psDirection = userDirection === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
-
-      try {
-        var dirDesc = new ActionDescriptor();
-        var textDesc = new ActionDescriptor();
-        var paraRangeList = new ActionList();
-        var paraRangeDesc = new ActionDescriptor();
-        var paraStyleDesc = new ActionDescriptor();
-
-        paraStyleDesc.putEnumerated(
-          stringIDToTypeID("directionType"),
-          stringIDToTypeID("directionType"),
-          stringIDToTypeID(psDirection)
-        );
-
-        // Ensure textComposerEngine is set to textOptycaComposer
-        paraStyleDesc.putEnumerated(
-          stringIDToTypeID("textComposerEngine"),
-          stringIDToTypeID("textComposerEngine"),
-          stringIDToTypeID("textOptycaComposer")
-        );
-
-        paraRangeDesc.putInteger(stringIDToTypeID("from"), 0);
-        paraRangeDesc.putInteger(stringIDToTypeID("to"), dataText.length);
-        paraRangeDesc.putObject(stringIDToTypeID("paragraphStyle"), stringIDToTypeID("paragraphStyle"), paraStyleDesc);
-
-        // ActionList.putObject takes only 2 params: classID and descriptor
-        paraRangeList.putObject(stringIDToTypeID("paragraphStyleRange"), paraRangeDesc);
-        textDesc.putList(stringIDToTypeID("paragraphStyleRange"), paraRangeList);
-
-        var ref = new ActionReference();
-        ref.putEnumerated(stringIDToTypeID("textLayer"), stringIDToTypeID("ordinal"), stringIDToTypeID("targetEnum"));
-
-        dirDesc.putReference(stringIDToTypeID("null"), ref);
-        dirDesc.putObject(stringIDToTypeID("to"), stringIDToTypeID("textLayer"), textDesc);
-
-        executeAction(stringIDToTypeID("set"), dirDesc, DialogModes.NO);
-      } catch (e) {
-        // Ignore errors if directionType is not supported on this PS version
-      }
-    }
+    var userDirection = payload.direction || "ltr";
+    _applyTextDirection(userDirection, targetTextLength);
     _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
     if (dataStyle && dataStyle.stroke) {
       _setLayerStroke(dataStyle.stroke);
@@ -740,6 +802,7 @@ function _setActiveLayerText() {
         },
       });
     }
+    newBounds = _getCurrentTextLayerBounds();
     if (!oldBounds.bottom) oldBounds = newBounds;
     var offsetX = oldBounds.xMid - newBounds.xMid;
     var offsetY = oldBounds.yMid - newBounds.yMid;
@@ -768,6 +831,7 @@ function _createTextLayerInSelection() {
   } else {
     _resizeTextBoxToContent(dimensions.width, bounds);
   }
+  bounds = _getCurrentTextLayerBounds();
   _positionLayerWithinSelection(selection, bounds);
   state.result = "";
 }
@@ -1136,7 +1200,8 @@ function _createTextLayersInStoredSelections() {
   
   for (var i = 0; i < maxCount; i++) {
     var text = texts[i] || texts[texts.length - 1] || "";
-    var style = styles[i] || styles[styles.length - 1] || { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
+    var baseStyle = styles[i] || styles[styles.length - 1] || null;
+    var style = _ensureStyle(baseStyle);
     var selection = state.selections[i];
     
     if (!text) continue;
@@ -1153,6 +1218,7 @@ function _createTextLayersInStoredSelections() {
     } else {
       _resizeTextBoxToContent(dimensions.width, bounds);
     }
+    bounds = _getCurrentTextLayerBounds();
     
     // Positionner le layer à l'emplacement de la sélection stockée
     _positionLayerWithinSelection(selection, bounds);
