@@ -169,13 +169,18 @@ const getActiveLayerText = (callback) => {
   });
 };
 
-const setActiveLayerText = (text, style, callback = () => {}) => {
+const setActiveLayerText = (text, style, direction, callback = () => {}) => {
+  // Support legacy calls where direction is omitted and callback is 3rd parameter
+  if (typeof direction === "function") {
+    callback = direction;
+    direction = undefined;
+  }
   if (!text && !style) {
     nativeAlert(locale.errorNoTextNoStyle, locale.errorTitle, true);
     callback(false);
     return false;
   }
-  const data = JSON.stringify({ text, style });
+  const data = JSON.stringify({ text, style, direction });
   csInterface.evalScript("setActiveLayerText(" + data + ")", (error) => {
     if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
     callback(!error);
@@ -219,11 +224,15 @@ const getSelectionChanged = (callback = () => {}) => {
   });
 };
 
-const createTextLayerInSelection = (text, style, pointText, padding, callback = () => {}) => {
-  // Support legacy calls where padding is omitted and callback is 4th parameter
+const createTextLayerInSelection = (text, style, pointText, padding, direction, callback = () => {}) => {
+  // Support legacy calls where padding/direction are omitted and callback may be 4th or 5th parameter
   if (typeof padding === "function") {
     callback = padding;
     padding = 0;
+    direction = undefined;
+  } else if (typeof direction === "function") {
+    callback = direction;
+    direction = undefined;
   }
   if (!text) {
     nativeAlert(locale.errorNoText, locale.errorTitle, true);
@@ -233,7 +242,7 @@ const createTextLayerInSelection = (text, style, pointText, padding, callback = 
   if (!style) {
     style = { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
   }
-  const data = JSON.stringify({ text, style, padding: padding || 0 });
+  const data = JSON.stringify({ text, style, padding: padding || 0, direction });
   csInterface.evalScript("createTextLayerInSelection(" + data + ", " + !!pointText + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
@@ -241,11 +250,15 @@ const createTextLayerInSelection = (text, style, pointText, padding, callback = 
   });
 };
 
-const createTextLayersInStoredSelections = (texts, styles, selections, pointText, padding, callback = () => {}) => {
-  // Support legacy calls where padding is omitted and callback is 5th parameter
+const createTextLayersInStoredSelections = (texts, styles, selections, pointText, padding, direction, callback = () => {}) => {
+  // Support legacy calls where padding/direction are omitted and callback may be 5th or 6th parameter
   if (typeof padding === "function") {
     callback = padding;
     padding = 0;
+    direction = undefined;
+  } else if (typeof direction === "function") {
+    callback = direction;
+    direction = undefined;
   }
   if (!Array.isArray(texts) || texts.length === 0) {
     nativeAlert(locale.errorNoText, locale.errorTitle, true);
@@ -260,7 +273,7 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
     callback(false);
     return false;
   }
-  const data = JSON.stringify({ texts, styles, selections, padding: padding || 0 });
+  const data = JSON.stringify({ texts, styles, selections, padding: padding || 0, direction });
   csInterface.evalScript("createTextLayersInStoredSelections(" + data + ", " + !!pointText + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);

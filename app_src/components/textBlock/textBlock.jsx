@@ -147,7 +147,7 @@ const TextBlock = React.memo(function TextBlock() {
                 <FiArrowRightCircle
                   size={14}
                   onClick={() => {
-                    setActiveLayerText(line.text);
+                    setActiveLayerText(line.text, null, direction);
                     context.dispatch({ type: "nextLine", add: true });
                   }}
                 />

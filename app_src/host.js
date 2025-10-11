@@ -410,6 +410,49 @@ function _applyMiddleEast(textStyle) {
   if (textStyle.markYDistFromBaseline != null) _setMarkYOffset(textStyle.markYDistFromBaseline);
 }
 
+function _applyTextDirection(direction, textLength) {
+  if (!direction) return;
+  var psDirection = direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
+
+  try {
+    var dirDesc = new ActionDescriptor();
+    var textDesc = new ActionDescriptor();
+    var paraRangeList = new ActionList();
+    var paraRangeDesc = new ActionDescriptor();
+    var paraStyleDesc = new ActionDescriptor();
+
+    paraStyleDesc.putEnumerated(
+      stringIDToTypeID("directionType"),
+      stringIDToTypeID("directionType"),
+      stringIDToTypeID(psDirection)
+    );
+
+    // Ensure textComposerEngine is set to textOptycaComposer
+    paraStyleDesc.putEnumerated(
+      stringIDToTypeID("textComposerEngine"),
+      stringIDToTypeID("textComposerEngine"),
+      stringIDToTypeID("textOptycaComposer")
+    );
+
+    paraRangeDesc.putInteger(stringIDToTypeID("from"), 0);
+    paraRangeDesc.putInteger(stringIDToTypeID("to"), textLength);
+    paraRangeDesc.putObject(stringIDToTypeID("paragraphStyle"), stringIDToTypeID("paragraphStyle"), paraStyleDesc);
+
+    paraRangeList.putObject(stringIDToTypeID("paragraphStyleRange"), paraRangeDesc);
+    textDesc.putList(stringIDToTypeID("paragraphStyleRange"), paraRangeList);
+
+    var ref = new ActionReference();
+    ref.putEnumerated(stringIDToTypeID("textLayer"), stringIDToTypeID("ordinal"), stringIDToTypeID("targetEnum"));
+
+    dirDesc.putReference(stringIDToTypeID("null"), ref);
+    dirDesc.putObject(stringIDToTypeID("to"), stringIDToTypeID("textLayer"), textDesc);
+
+    executeAction(stringIDToTypeID("set"), dirDesc, DialogModes.NO);
+  } catch (e) {
+    // Ignore errors if directionType is not supported on this PS version
+  }
+}
+
 function _createAndSetLayerText(data, width, height) {
   data.style.textProps.layerText.textKey = data.text.replace(/\n+/g, "");
   data.style.textProps.layerText.textStyleRange[0].to = data.text.length;
@@ -441,6 +484,10 @@ function _createAndSetLayerText(data, width, height) {
   _applyMiddleEast(data.style.textProps.layerText.textStyleRange[0].textStyle);
   if (data.style.stroke) {
     _setLayerStroke(data.style.stroke);
+  }
+  // Apply text direction if specified
+  if (data.direction) {
+    _applyTextDirection(data.direction, data.text.length);
   }
 }
 
@@ -627,8 +674,11 @@ function _setActiveLayerText() {
     }
     newTextParams.typeUnit = oldTextParams.typeUnit;
     jamText.setLayerText(newTextParams);
-    // Fix for old Photoshop versions: explicitly set direction to left-to-right using ActionDescriptor
+    // Apply text direction based on user setting (default to LTR)
     if (dataText && !dataStyle) {
+      var userDirection = payload.direction || "ltr";
+      var psDirection = userDirection === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
+
       try {
         var dirDesc = new ActionDescriptor();
         var textDesc = new ActionDescriptor();
@@ -639,7 +689,14 @@ function _setActiveLayerText() {
         paraStyleDesc.putEnumerated(
           stringIDToTypeID("directionType"),
           stringIDToTypeID("directionType"),
-          stringIDToTypeID("dirLeftToRight")
+          stringIDToTypeID(psDirection)
+        );
+
+        // Ensure textComposerEngine is set to textOptycaComposer
+        paraStyleDesc.putEnumerated(
+          stringIDToTypeID("textComposerEngine"),
+          stringIDToTypeID("textComposerEngine"),
+          stringIDToTypeID("textOptycaComposer")
         );
 
         paraRangeDesc.putInteger(stringIDToTypeID("from"), 0);
@@ -1085,9 +1142,9 @@ function _createTextLayersInStoredSelections() {
     if (!text) continue;
     
     var dimensions = _calculateSelectionDimensions(selection, state.padding);
-    
+
     // Créer le layer de texte
-    var data = { text: text, style: style };
+    var data = { text: text, style: style, direction: state.data.direction };
     _createAndSetLayerText(data, dimensions.width, dimensions.height);
     
     var bounds = _getCurrentTextLayerBounds();

@@ -198,7 +198,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
           txtStyle.leading *= context.state.textScale / 100;
         }
       }
-      setActiveLayerText(line.text, style, (ok) => {
+      setActiveLayerText(line.text, style, context.state.direction, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
       });
     } else if (checkShortcut(realState, context.state.shortcut.center)) {
@@ -220,7 +220,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     } else if (checkShortcut(realState, context.state.shortcut.insertText)) {
       if (!checkRepeatTime()) return;
       const line = context.state.currentLine || { text: "" };
-      setActiveLayerText(line.text, null, (ok) => {
+      setActiveLayerText(line.text, null, context.state.direction, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
       });
     } else if (checkShortcut(realState, context.state.shortcut.nextPage)) {
