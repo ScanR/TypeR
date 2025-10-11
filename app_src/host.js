@@ -478,8 +478,29 @@ function _setActiveLayerText() {
         newTextParams.layerText.textStyleRange[0].to = dataText.length;
       }
       if (oldTextParams.layerText.paragraphStyleRange && oldTextParams.layerText.paragraphStyleRange[0]) {
-        newTextParams.layerText.paragraphStyleRange = [oldTextParams.layerText.paragraphStyleRange[0]];
-        newTextParams.layerText.paragraphStyleRange[0].to = dataText.length;
+        // Create a minimal paragraphStyleRange without directionType to avoid RTL issues
+        var oldParagraphStyle = oldTextParams.layerText.paragraphStyleRange[0].paragraphStyle || {};
+        var newParagraphStyle = {};
+
+        // Copy only safe properties, explicitly excluding directionType
+        var safeProps = ["align", "alignment", "firstLineIndent", "startIndent", "endIndent",
+                         "spaceBefore", "spaceAfter", "autoLeadingPercentage", "leadingType",
+                         "hyphenate", "hyphenateWordSize", "hyphenatePreLength", "hyphenatePostLength",
+                         "hyphenateLimit", "hyphenationZone", "hyphenateCapitalized", "hangingRoman",
+                         "burasagari", "textEveryLineComposer", "textComposerEngine"];
+
+        for (var i = 0; i < safeProps.length; i++) {
+          var prop = safeProps[i];
+          if (oldParagraphStyle[prop] !== undefined) {
+            newParagraphStyle[prop] = oldParagraphStyle[prop];
+          }
+        }
+
+        newTextParams.layerText.paragraphStyleRange = [{
+          from: 0,
+          to: dataText.length,
+          paragraphStyle: newParagraphStyle
+        }];
       }
     } else if (dataStyle) {
       var text = oldTextParams.layerText.textKey || "";
@@ -525,6 +546,40 @@ function _setActiveLayerText() {
     }
     newTextParams.typeUnit = oldTextParams.typeUnit;
     jamText.setLayerText(newTextParams);
+    // Fix for old Photoshop versions: explicitly set direction to left-to-right using ActionDescriptor
+    if (dataText && !dataStyle) {
+      try {
+        var dirDesc = new ActionDescriptor();
+        var textDesc = new ActionDescriptor();
+        var paraRangeList = new ActionList();
+        var paraRangeDesc = new ActionDescriptor();
+        var paraStyleDesc = new ActionDescriptor();
+
+        paraStyleDesc.putEnumerated(
+          stringIDToTypeID("directionType"),
+          stringIDToTypeID("directionType"),
+          stringIDToTypeID("dirLeftToRight")
+        );
+
+        paraRangeDesc.putInteger(stringIDToTypeID("from"), 0);
+        paraRangeDesc.putInteger(stringIDToTypeID("to"), dataText.length);
+        paraRangeDesc.putObject(stringIDToTypeID("paragraphStyle"), stringIDToTypeID("paragraphStyle"), paraStyleDesc);
+
+        // ActionList.putObject takes only 2 params: classID and descriptor
+        paraRangeList.putObject(stringIDToTypeID("paragraphStyleRange"), paraRangeDesc);
+        textDesc.putList(stringIDToTypeID("paragraphStyleRange"), paraRangeList);
+
+        var ref = new ActionReference();
+        ref.putEnumerated(stringIDToTypeID("textLayer"), stringIDToTypeID("ordinal"), stringIDToTypeID("targetEnum"));
+
+        dirDesc.putReference(stringIDToTypeID("null"), ref);
+        dirDesc.putObject(stringIDToTypeID("to"), stringIDToTypeID("textLayer"), textDesc);
+
+        executeAction(stringIDToTypeID("set"), dirDesc, DialogModes.NO);
+      } catch (e) {
+        // Ignore errors if directionType is not supported on this PS version
+      }
+    }
     _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
     if (dataStyle && dataStyle.stroke) {
       _setLayerStroke(dataStyle.stroke);
