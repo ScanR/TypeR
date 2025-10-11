@@ -711,7 +711,7 @@ function _checkSelection(options) {
     return { error: "noSelection" };
   }
 
-  var adjustAmount = -10;
+  var adjustAmount = 0;
   if (options && options.adjustAmount !== undefined) {
     adjustAmount = options.adjustAmount;
   }
@@ -917,7 +917,7 @@ function _createTextLayerInSelection() {
     state.result = "doc";
     return;
   }
-  var selection = _checkSelection();
+  var selection = _checkSelection({ adjustAmount: -10 });
   if (selection.error) {
     state.result = selection.error;
     return;
@@ -944,11 +944,11 @@ function _alignTextLayerToSelection() {
     state.result = "layer";
     return;
   }
-  var selection = _checkSelection();
+  var selection = _checkSelection({ adjustAmount: -10 });
   if (selection.error) {
     if (selection.error === "noSelection") {
       _createMagicWandSelection(20);
-      selection = _checkSelection();
+      selection = _checkSelection({ adjustAmount: -10 });
     }
     if (selection.error) {
       state.result = selection.error;
@@ -1229,7 +1229,7 @@ function getCurrentSelection() {
   if (!documents.length) {
     return jamJSON.stringify({ error: "doc" });
   }
-  var selection = _checkSelection();
+  var selection = _checkSelection({ adjustAmount: 0 });
   if (selection.error) {
     return jamJSON.stringify({ error: selection.error });
   }
@@ -1244,7 +1244,7 @@ function startSelectionMonitoring() {
   }
   
   monitor.callback = function() {
-    var currentSelection = _checkSelection();
+    var currentSelection = _checkSelection({ adjustAmount: 0 });
     if (!currentSelection.error) {
       var currentBounds = _selectionBoundsKey(currentSelection);
       if (currentBounds !== monitor.lastBoundsKey) {
@@ -1269,7 +1269,7 @@ function stopSelectionMonitoring() {
 
 function getSelectionChanged() {
   var monitor = _hostState.selectionMonitor;
-  var currentSelection = _checkSelection();
+  var currentSelection = _checkSelection({ adjustAmount: 0 });
   if (!currentSelection.error) {
     var currentBounds = _selectionBoundsKey(currentSelection);
     if (currentBounds !== monitor.lastBoundsKey) {
