@@ -46,6 +46,67 @@ var charID = {
   Vertical: 1450341475, // 'Vrtc'
 };
 
+var _SAFE_PARAGRAPH_PROPS = [
+  "align",
+  "alignment",
+  "firstLineIndent",
+  "startIndent",
+  "endIndent",
+  "spaceBefore",
+  "spaceAfter",
+  "autoLeadingPercentage",
+  "leadingType",
+  "hyphenate",
+  "hyphenateWordSize",
+  "hyphenatePreLength",
+  "hyphenatePostLength",
+  "hyphenateLimit",
+  "hyphenationZone",
+  "hyphenateCapitalized",
+  "hangingRoman",
+  "burasagari",
+  "textEveryLineComposer",
+  "textComposerEngine",
+];
+
+var _DEFAULT_SELECTION_SCALE = 0.9;
+var _MIN_TEXTBOX_WIDTH = 10;
+
+var _hostState = {
+  fallbackTextSize: 20,
+  setActiveLayerText: {
+    data: null,
+    result: "",
+  },
+  createTextLayerInSelection: {
+    data: null,
+    result: "",
+    point: false,
+    padding: 0,
+  },
+  alignTextLayerToSelection: {
+    result: "",
+    resize: false,
+    padding: 0,
+  },
+  changeActiveLayerTextSize: {
+    value: 0,
+    result: "",
+  },
+  selectionMonitor: {
+    lastBoundsKey: null,
+    callback: null,
+  },
+  createTextLayersInStoredSelections: {
+    data: null,
+    result: "",
+    point: false,
+    padding: 0,
+    selections: [],
+  },
+  lastOpenedDocId: null,
+};
+
 function _changeToPointText() {
   try {
     if (app.activeDocument && app.activeDocument.activeLayer && app.activeDocument.activeLayer.textItem) {
@@ -176,6 +237,36 @@ function _getAdjustedSelectionBounds(bounds, amount) {
     expanded.yMid = bounds.yMid;
     return expanded;
   }
+}
+
+function _selectionBoundsKey(bounds) {
+  if (!bounds) return "";
+  return bounds.xMid + "_" + bounds.yMid + "_" + bounds.width + "_" + bounds.height;
+}
+
+function _calculateSelectionDimensions(selection, padding) {
+  if (!selection) return { width: 0, height: 0 };
+  var width = selection.width * _DEFAULT_SELECTION_SCALE;
+  if (padding > 0) {
+    width = Math.max(width - padding * 2, _MIN_TEXTBOX_WIDTH);
+  }
+  return {
+    width: width,
+    height: selection.height,
+  };
+}
+
+function _resizeTextBoxToContent(width, currentBounds) {
+  var textParams = jamText.getLayerText();
+  var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
+  _setTextBoxSize(width, currentBounds.height + textSize + 2);
+}
+
+function _positionLayerWithinSelection(selection, bounds) {
+  if (!selection || !bounds) return;
+  var offsetX = selection.xMid - bounds.xMid;
+  var offsetY = selection.yMid - bounds.yMid;
+  _moveLayer(offsetX, offsetY);
 }
 
 function _createMagicWandSelection(tolerance) {
@@ -316,11 +407,8 @@ function _setMarkYOffset(val) {
 function _applyMiddleEast(textStyle) {
   if (!textStyle) return;
   if (textStyle.diacXOffset != null) _setDiacXOffset(textStyle.diacXOffset);
-  if (textStyle.markYDistFromBaseline != null)
-    _setMarkYOffset(textStyle.markYDistFromBaseline);
+  if (textStyle.markYDistFromBaseline != null) _setMarkYOffset(textStyle.markYDistFromBaseline);
 }
-
-var securitySize = 20;
 
 function _createAndSetLayerText(data, width, height) {
   data.style.textProps.layerText.textKey = data.text.replace(/\n+/g, "");
@@ -330,9 +418,9 @@ function _createAndSetLayerText(data, width, height) {
   if (typeof sizeProp !== "number") {
     try {
       var textParams = jamText.getLayerText();
-      securitySize = textParams.layerText.textStyleRange[0].textStyle.size;
+      _hostState.fallbackTextSize = textParams.layerText.textStyleRange[0].textStyle.size;
     } catch (error) {}
-    data.style.textProps.layerText.textStyleRange[0].textStyle.size = securitySize;
+    data.style.textProps.layerText.textStyleRange[0].textStyle.size = _hostState.fallbackTextSize;
   }
   data.style.textProps.layerText.textShape = [
     {
@@ -433,22 +521,21 @@ function _forEachSelectedLayer(action) {
 /* ============ full methods for suspendHistory ============ */
 /* ========================================================= */
 
-var setActiveLayerTextData;
-var setActiveLayerTextResult;
-
 function _setActiveLayerText() {
-  if (!setActiveLayerTextData) {
-    setActiveLayerTextResult = "";
+  var state = _hostState.setActiveLayerText;
+  var payload = state.data;
+  state.result = "";
+  if (!payload) {
     return;
   } else if (!documents.length) {
-    setActiveLayerTextResult = "doc";
+    state.result = "doc";
     return;
   } else if (!_layerIsTextLayer()) {
-    setActiveLayerTextResult = "layer";
+    state.result = "layer";
     return;
   }
-  var dataText = setActiveLayerTextData.text;
-  var dataStyle = setActiveLayerTextData.style;
+  var dataText = payload.text;
+  var dataStyle = payload.style;
 
   _forEachSelectedLayer(function () {
     var oldBounds = _getCurrentTextLayerBounds();
@@ -483,14 +570,8 @@ function _setActiveLayerText() {
         var newParagraphStyle = {};
 
         // Copy only safe properties, explicitly excluding directionType
-        var safeProps = ["align", "alignment", "firstLineIndent", "startIndent", "endIndent",
-                         "spaceBefore", "spaceAfter", "autoLeadingPercentage", "leadingType",
-                         "hyphenate", "hyphenateWordSize", "hyphenatePreLength", "hyphenatePostLength",
-                         "hyphenateLimit", "hyphenationZone", "hyphenateCapitalized", "hangingRoman",
-                         "burasagari", "textEveryLineComposer", "textComposerEngine"];
-
-        for (var i = 0; i < safeProps.length; i++) {
-          var prop = safeProps[i];
+        for (var i = 0; i < _SAFE_PARAGRAPH_PROPS.length; i++) {
+          var prop = _SAFE_PARAGRAPH_PROPS[i];
           if (oldParagraphStyle[prop] !== undefined) {
             newParagraphStyle[prop] = oldParagraphStyle[prop];
           }
@@ -608,57 +689,39 @@ function _setActiveLayerText() {
     _moveLayer(offsetX, offsetY);
   });
 
-  setActiveLayerTextResult = "";
+  state.result = "";
 }
 
-var createTextLayerInSelectionData;
-var createTextLayerInSelectionPoint;
-var createTextLayerInSelectionResult;
-var createTextLayerInSelectionPadding;
-
 function _createTextLayerInSelection() {
+  var state = _hostState.createTextLayerInSelection;
   if (!documents.length) {
-    createTextLayerInSelectionResult = "doc";
+    state.result = "doc";
     return;
   }
   var selection = _checkSelection();
   if (selection.error) {
-    createTextLayerInSelectionResult = selection.error;
+    state.result = selection.error;
     return;
   }
-  var padding = createTextLayerInSelectionPadding || 0;
-  var width = selection.width * 0.9;
-  var height = selection.height;
-  
-  if (padding > 0) {
-    width = Math.max(width - (padding * 2), 10);
-  }
-  
-  _createAndSetLayerText(createTextLayerInSelectionData, width, height);
+  var dimensions = _calculateSelectionDimensions(selection, state.padding);
+  _createAndSetLayerText(state.data, dimensions.width, dimensions.height);
   var bounds = _getCurrentTextLayerBounds();
-  if (createTextLayerInSelectionPoint) {
+  if (state.point) {
     _changeToPointText();
   } else {
-    var textParams = jamText.getLayerText();
-    var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
-    _setTextBoxSize(width, bounds.height + textSize + 2);
+    _resizeTextBoxToContent(dimensions.width, bounds);
   }
-  var offsetX = selection.xMid - bounds.xMid;
-  var offsetY = selection.yMid - bounds.yMid;
-  _moveLayer(offsetX, offsetY);
-  createTextLayerInSelectionResult = "";
+  _positionLayerWithinSelection(selection, bounds);
+  state.result = "";
 }
 
-var alignTextLayerToSelectionResult;
-var alignTextLayerToSelectionResize;
-var alignTextLayerToSelectionPadding;
-
 function _alignTextLayerToSelection() {
+  var state = _hostState.alignTextLayerToSelection;
   if (!documents.length) {
-    alignTextLayerToSelectionResult = "doc";
+    state.result = "doc";
     return;
   } else if (!_layerIsTextLayer()) {
-    alignTextLayerToSelectionResult = "layer";
+    state.result = "layer";
     return;
   }
   var selection = _checkSelection();
@@ -668,54 +731,39 @@ function _alignTextLayerToSelection() {
       selection = _checkSelection();
     }
     if (selection.error) {
-      alignTextLayerToSelectionResult = selection.error;
+      state.result = selection.error;
       return;
     }
   }
   var wasPoint = _textLayerIsPointText();
-  var padding = alignTextLayerToSelectionPadding || 0;
   var bounds = _getCurrentTextLayerBounds();
 
-  if (alignTextLayerToSelectionResize && !wasPoint) {
-    var width = selection.width * 0.9;
-    var height = selection.height;
-    
-    if (padding > 0) {
-      width = Math.max(width - (padding * 2), 10);
-    }
-    
-    _setTextBoxSize(width, height);
+  if (state.resize && !wasPoint) {
+    var dimensions = _calculateSelectionDimensions(selection, state.padding);
+    _setTextBoxSize(dimensions.width, dimensions.height);
     var textBounds = _getCurrentTextLayerBounds();
-    var textParams = jamText.getLayerText();
-    var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
-    _setTextBoxSize(width, textBounds.height + textSize + 2);
+    _resizeTextBoxToContent(dimensions.width, textBounds);
     bounds = _getCurrentTextLayerBounds();
   }
   
   _deselect();
-  var offsetX = selection.xMid - bounds.xMid;
-  var offsetY = selection.yMid - bounds.yMid;
-  _moveLayer(offsetX, offsetY);
+  _positionLayerWithinSelection(selection, bounds);
   if (wasPoint) {
     _changeToPointText();
   }
-  alignTextLayerToSelectionResult = "";
+  state.result = "";
 }
 
-var changeActiveLayerTextSizeVal;
-var changeActiveLayerTextSizeResult;
-
-var _lastOpenedDocId = null;
-
 function _changeActiveLayerTextSize() {
+  var state = _hostState.changeActiveLayerTextSize;
   if (!documents.length) {
-    changeActiveLayerTextSizeResult = "doc";
+    state.result = "doc";
     return;
   } else if (!_layerIsTextLayer()) {
-    changeActiveLayerTextSizeResult = "layer";
+    state.result = "layer";
     return;
-  } else if (!changeActiveLayerTextSizeVal) {
-    changeActiveLayerTextSizeResult = "";
+  } else if (!state.value) {
+    state.result = "";
     return;
   }
 
@@ -732,7 +780,7 @@ function _changeActiveLayerTextSize() {
         var textStyle = currentTextStyle.getObjectValue(charID.TextStyle);
         var currentSize = textStyle.getDouble(charID.Size);
         var sizeUnit = textStyle.getUnitDoubleType(charID.Size);
-        var newSize = currentSize + changeActiveLayerTextSizeVal;
+        var newSize = currentSize + state.value;
         
         // Appliquer le nouveau size directement
         var descriptor = new ActionDescriptor();
@@ -752,7 +800,7 @@ function _changeActiveLayerTextSize() {
       var oldTextParams = jamText.getLayerText();
       var text = oldTextParams.layerText.textKey.replace(/\n+/g, "");
       if (!text) {
-        changeActiveLayerTextSizeResult = "layer";
+        state.result = "layer";
         return;
       }
       var oldBounds = _getCurrentTextLayerBounds();
@@ -775,7 +823,7 @@ function _changeActiveLayerTextSize() {
         newTextParams.layerText.paragraphStyleRange[0].to = text.length;
       }
       var oldSize = newTextParams.layerText.textStyleRange[0].textStyle.size;
-      var newTextSize = oldSize + changeActiveLayerTextSizeVal;
+      var newTextSize = oldSize + state.value;
       newTextParams.layerText.textStyleRange[0].textStyle.size = newTextSize;
 
       // Ajuster l'interligne
@@ -788,7 +836,7 @@ function _changeActiveLayerTextSize() {
       } else {
         // Sinon, on ajuste l'interligne de la même valeur que la taille du texte
         var oldLeading = textStyle.leading;
-        var newLeading = oldLeading + changeActiveLayerTextSizeVal;
+        var newLeading = oldLeading + state.value;
         textStyle.leading = newLeading;
         textStyle.autoLeading = false;
       }
@@ -812,11 +860,11 @@ function _changeActiveLayerTextSize() {
     }
   });
 
-  changeActiveLayerTextSizeResult = "";
+  state.result = "";
 }
 
 function _changeSize_alt() {
-  var increasing = changeActiveLayerTextSizeVal > 0;
+  var increasing = _hostState.changeActiveLayerTextSize.value > 0;
   _forEachSelectedLayer(function () {
     var a = new ActionReference();
     a.putProperty(charID.Property, charID.Text);
@@ -854,7 +902,7 @@ function _changeSize_alt() {
       }
     }
   });
-  changeActiveLayerTextSizeResult = "";
+  _hostState.changeActiveLayerTextSize.result = "";
 }
 
 /* ======================================================== */
@@ -923,30 +971,38 @@ function getActiveLayerText() {
 }
 
 function setActiveLayerText(data) {
-  setActiveLayerTextData = data;
+  var state = _hostState.setActiveLayerText;
+  state.data = data;
+  state.result = "";
   app.activeDocument.suspendHistory("TyperTools Change", "_setActiveLayerText()");
-  return setActiveLayerTextResult;
+  return state.result;
 }
 
 function createTextLayerInSelection(data, point) {
-  createTextLayerInSelectionData = data;
-  createTextLayerInSelectionPoint = point;
-  createTextLayerInSelectionPadding = data.padding || 0;
+  var state = _hostState.createTextLayerInSelection;
+  state.data = data;
+  state.point = point;
+  state.padding = data.padding || 0;
+  state.result = "";
   app.activeDocument.suspendHistory("TyperTools Paste", "_createTextLayerInSelection()");
-  return createTextLayerInSelectionResult;
+  return state.result;
 }
 
 function alignTextLayerToSelection(data) {
-  alignTextLayerToSelectionResize = !!data.resizeTextBox;
-  alignTextLayerToSelectionPadding = data.padding || 0;
+  var state = _hostState.alignTextLayerToSelection;
+  state.resize = !!data.resizeTextBox;
+  state.padding = data.padding || 0;
+  state.result = "";
   app.activeDocument.suspendHistory("TyperTools Align", "_alignTextLayerToSelection()");
-  return alignTextLayerToSelectionResult;
+  return state.result;
 }
 
 function changeActiveLayerTextSize(val) {
-  changeActiveLayerTextSizeVal = val;
+  var state = _hostState.changeActiveLayerTextSize;
+  state.value = val;
+  state.result = "";
   app.activeDocument.suspendHistory("TyperTools Resize", "_changeActiveLayerTextSize()");
-  return changeActiveLayerTextSizeResult;
+  return state.result;
 }
 
 function getCurrentSelection() {
@@ -960,132 +1016,119 @@ function getCurrentSelection() {
   return jamJSON.stringify(selection);
 }
 
-var lastSelectionBounds = null;
-var selectionChangeCallback = null;
-
 function startSelectionMonitoring() {
+  var monitor = _hostState.selectionMonitor;
   // Démarrer la surveillance des changements de sélection
-  if (selectionChangeCallback) {
-    app.removeNotifier("Slct", selectionChangeCallback);
+  if (monitor.callback) {
+    app.removeNotifier("Slct", monitor.callback);
   }
   
-  selectionChangeCallback = function() {
+  monitor.callback = function() {
     var currentSelection = _checkSelection();
     if (!currentSelection.error) {
-      var currentBounds = currentSelection.xMid + "_" + currentSelection.yMid + "_" + currentSelection.width + "_" + currentSelection.height;
-      if (currentBounds !== lastSelectionBounds) {
-        lastSelectionBounds = currentBounds;
+      var currentBounds = _selectionBoundsKey(currentSelection);
+      if (currentBounds !== monitor.lastBoundsKey) {
+        monitor.lastBoundsKey = currentBounds;
         // Notifier l'extension CEP du changement
         app.system("osascript -e 'tell application \"System Events\" to keystroke \"x\" using {command down, option down, shift down}'");
       }
     }
   };
   
-  app.addNotifier("Slct", selectionChangeCallback);
+  app.addNotifier("Slct", monitor.callback);
 }
 
 function stopSelectionMonitoring() {
-  if (selectionChangeCallback) {
-    app.removeNotifier("Slct", selectionChangeCallback);
-    selectionChangeCallback = null;
+  var monitor = _hostState.selectionMonitor;
+  if (monitor.callback) {
+    app.removeNotifier("Slct", monitor.callback);
+    monitor.callback = null;
   }
-  lastSelectionBounds = null;
+  monitor.lastBoundsKey = null;
 }
 
 function getSelectionChanged() {
+  var monitor = _hostState.selectionMonitor;
   var currentSelection = _checkSelection();
   if (!currentSelection.error) {
-    var currentBounds = currentSelection.xMid + "_" + currentSelection.yMid + "_" + currentSelection.width + "_" + currentSelection.height;
-    if (currentBounds !== lastSelectionBounds) {
-      lastSelectionBounds = currentBounds;
+    var currentBounds = _selectionBoundsKey(currentSelection);
+    if (currentBounds !== monitor.lastBoundsKey) {
+      monitor.lastBoundsKey = currentBounds;
       return jamJSON.stringify(currentSelection);
     }
   }
   return jamJSON.stringify({ noChange: true });
 }
 
-var createTextLayersInStoredSelectionsData;
-var createTextLayersInStoredSelectionsPoint;
-var createTextLayersInStoredSelectionsResult;
-var createTextLayersInStoredSelectionsPadding;
-var storedSelections = [];
-
 function _createTextLayersInStoredSelections() {
+  var state = _hostState.createTextLayersInStoredSelections;
   if (!documents.length) {
-    createTextLayersInStoredSelectionsResult = "doc";
+    state.result = "doc";
     return;
   }
   
-  var texts = createTextLayersInStoredSelectionsData.texts || [];
-  var styles = createTextLayersInStoredSelectionsData.styles || [];
+  var texts = state.data.texts || [];
+  var styles = state.data.styles || [];
   
-  if (texts.length === 0 || storedSelections.length === 0) {
-    createTextLayersInStoredSelectionsResult = "noSelection";
+  if (texts.length === 0 || state.selections.length === 0) {
+    state.result = "noSelection";
     return;
   }
   
-  var maxCount = Math.min(texts.length, storedSelections.length);
+  var maxCount = Math.min(texts.length, state.selections.length);
   
   for (var i = 0; i < maxCount; i++) {
     var text = texts[i] || texts[texts.length - 1] || "";
     var style = styles[i] || styles[styles.length - 1] || { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
-    var selection = storedSelections[i];
+    var selection = state.selections[i];
     
     if (!text) continue;
     
-    var padding = createTextLayersInStoredSelectionsPadding || 0;
-    var width = selection.width * 0.9;
-    var height = selection.height;
-    
-    if (padding > 0) {
-      width = Math.max(width - (padding * 2), 10);
-    }
+    var dimensions = _calculateSelectionDimensions(selection, state.padding);
     
     // Créer le layer de texte
     var data = { text: text, style: style };
-    _createAndSetLayerText(data, width, height);
+    _createAndSetLayerText(data, dimensions.width, dimensions.height);
     
     var bounds = _getCurrentTextLayerBounds();
-    if (createTextLayersInStoredSelectionsPoint) {
+    if (state.point) {
       _changeToPointText();
     } else {
-      var textParams = jamText.getLayerText();
-      var textSize = textParams.layerText.textStyleRange[0].textStyle.size;
-      _setTextBoxSize(width, bounds.height + textSize + 2);
+      _resizeTextBoxToContent(dimensions.width, bounds);
     }
     
     // Positionner le layer à l'emplacement de la sélection stockée
-    var offsetX = selection.xMid - bounds.xMid;
-    var offsetY = selection.yMid - bounds.yMid;
-    _moveLayer(offsetX, offsetY);
+    _positionLayerWithinSelection(selection, bounds);
   }
   
   // Vider les sélections stockées après utilisation
-  storedSelections = [];
-  createTextLayersInStoredSelectionsResult = "";
+  state.selections = [];
+  state.result = "";
 }
 
 function createTextLayersInStoredSelections(data, point) {
-  createTextLayersInStoredSelectionsData = data;
-  createTextLayersInStoredSelectionsPoint = point;
-  createTextLayersInStoredSelectionsPadding = data.padding || 0;
+  var state = _hostState.createTextLayersInStoredSelections;
+  state.data = data;
+  state.point = point;
+  state.padding = data.padding || 0;
+  state.result = "";
   
   // Les sélections sont passées directement depuis React
   if (data && data.selections) {
-    storedSelections = data.selections;
+    state.selections = data.selections;
   } else {
-    storedSelections = [];
+    state.selections = [];
   }
   
   app.activeDocument.suspendHistory("TyperTools Multiple Paste", "_createTextLayersInStoredSelections()");
-  return createTextLayersInStoredSelectionsResult;
+  return state.result;
 }
 
 function openFile(path, autoClose) {
-  if (autoClose && _lastOpenedDocId !== null) {
+  if (autoClose && _hostState.lastOpenedDocId !== null) {
     for (var i = 0; i < app.documents.length; i++) {
       var doc = app.documents[i];
-      if (doc.id === _lastOpenedDocId) {
+      if (doc.id === _hostState.lastOpenedDocId) {
         try {
           doc.close(SaveOptions.SAVECHANGES);
         } catch (e) {}
@@ -1095,6 +1138,6 @@ function openFile(path, autoClose) {
   }
   var newDoc = app.open(File(path));
   if (autoClose) {
-    _lastOpenedDocId = newDoc.id;
+    _hostState.lastOpenedDocId = newDoc.id;
   }
 }
