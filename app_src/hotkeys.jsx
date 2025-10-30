@@ -4,11 +4,6 @@ import React from "react";
 import { csInterface, setActiveLayerText, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, getHotkeyPressed, changeActiveLayerTextSize } from "./utils";
 import { useContext } from "./context";
 
-const CTRL = "CTRL";
-const SHIFT = "SHIFT";
-const ALT = "ALT";
-const WIN = "WIN";
-
 const intervalTime = 50;
 let keyboardInterval = 0;
 let keyUp = true;
