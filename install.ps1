@@ -87,21 +87,27 @@ Read-Host "? $msg_pause"
 # --- 6. Gestion des dossiers ---
 $AppData = $env:APPDATA
 $TargetDir = Join-Path $AppData "Adobe\CEP\extensions\typertools"
-$TempStorage = Join-Path $env:TEMP "typer_storage_backup"
 
-# Sauvegarde storage
+# On crée un dossier TEMP pour contenir la sauvegarde (et non le fichier lui-même)
+$TempBackupContainer = Join-Path $env:TEMP "typer_backup_container"
+
+# Nettoyage préalable du temp au cas où
+if (Test-Path $TempBackupContainer) { Remove-Item $TempBackupContainer -Recurse -Force -ErrorAction SilentlyContinue }
+New-Item -Path $TempBackupContainer -ItemType Directory -Force | Out-Null
+
+# SAUVEGARDE : On copie "storage" DANS le dossier conteneur
+# Cela préserve la nature de "storage" (que ce soit un fichier ou un dossier)
 if (Test-Path "$TargetDir\storage") {
-    Copy-Item "$TargetDir\storage" -Destination $TempStorage -Recurse -Force -ErrorAction SilentlyContinue
+    Copy-Item "$TargetDir\storage" -Destination $TempBackupContainer -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Nettoyage dossier cible (Reset)
+# Nettoyage dossier cible (Reset complet de l'extension)
 if (Test-Path $TargetDir) {
     Remove-Item $TargetDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 New-Item -Path $TargetDir -ItemType Directory -Force | Out-Null
 
 # --- 7. Copie des fichiers ---
-# On liste les dossiers à copier explicitement
 $FoldersToCopy = @("app", "CSXS", "icons", "locale")
 
 foreach ($folder in $FoldersToCopy) {
@@ -112,7 +118,7 @@ foreach ($folder in $FoldersToCopy) {
     }
 }
 
-# Cas particulier: themes va DANS app/themes selon votre script original
+# Cas particulier: themes
 if (Test-Path "$ScriptDir\themes") {
     $ThemeDest = "$TargetDir\app\themes"
     if (-not (Test-Path $ThemeDest)) { New-Item $ThemeDest -ItemType Directory -Force | Out-Null }
@@ -124,12 +130,15 @@ if (Test-Path "$ScriptDir\.debug") {
     Copy-Item "$ScriptDir\.debug" -Destination "$TargetDir\.debug" -Force
 }
 
-# Restauration storage
-if (Test-Path $TempStorage) {
-    if (-not (Test-Path "$TargetDir\storage")) { New-Item "$TargetDir\storage" -ItemType Directory | Out-Null }
-    Copy-Item "$TempStorage\*" -Destination "$TargetDir\storage" -Recurse -Force
-    Remove-Item $TempStorage -Recurse -Force
+# RESTAURATION DU STORAGE
+# On vérifie si la sauvegarde existe dans le conteneur
+if (Test-Path "$TempBackupContainer\storage") {
+    # On copie l'élément "storage" depuis le conteneur vers la racine de l'extension
+    Copy-Item "$TempBackupContainer\storage" -Destination "$TargetDir" -Recurse -Force
 }
+
+# Nettoyage final du dossier temp
+if (Test-Path $TempBackupContainer) { Remove-Item $TempBackupContainer -Recurse -Force -ErrorAction SilentlyContinue }
 
 # --- 8. Fin ---
 Write-Host ""
