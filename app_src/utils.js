@@ -123,17 +123,19 @@ const parseLocaleFile = (str) => {
 
 const initLocale = () => {
   locale = csInterface.initResourceBundle();
-  const lang = readStorage("language");
-  if (lang && lang !== "auto") {
-    const file =
-      lang === "en_US"
-        ? `${path}/locale/messages.properties`
-        : `${path}/locale/${lang}/messages.properties`;
+  const loadLocaleFile = (file) => {
     const result = window.cep.fs.readFile(file);
     if (!result.err) {
       const data = parseLocaleFile(result.data);
       locale = Object.assign(locale, data);
     }
+  };
+  // Always merge default strings to ensure fallbacks for new keys
+  loadLocaleFile(`${path}/locale/messages.properties`);
+  const lang = readStorage("language");
+  if (lang && lang !== "auto") {
+    const file = lang === "en_US" ? `${path}/locale/messages.properties` : `${path}/locale/${lang}/messages.properties`;
+    loadLocaleFile(file);
   }
 };
 
