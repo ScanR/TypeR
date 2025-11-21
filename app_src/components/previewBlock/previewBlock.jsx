@@ -3,7 +3,7 @@ import "./previewBlock.scss";
 import _ from "lodash";
 import React from "react";
 import PropTypes from "prop-types";
-import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown } from "react-icons/fi";
+import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown, FiAlertTriangle } from "react-icons/fi";
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { MdCenterFocusWeak } from "react-icons/md";
 
@@ -20,6 +20,16 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   // État pour la détection automatique des sélections
   const [lastSelectionHash, setLastSelectionHash] = React.useState(null);
   const selectionCheckInterval = React.useRef(null);
+  const [shiftSelectionWarning, setShiftSelectionWarning] = React.useState(false);
+  const shiftTipTimeout = React.useRef(null);
+
+  const showShiftTip = React.useCallback(() => {
+    setShiftSelectionWarning(true);
+    if (shiftTipTimeout.current) {
+      clearTimeout(shiftTipTimeout.current);
+    }
+    shiftTipTimeout.current = setTimeout(() => setShiftSelectionWarning(false), 3500);
+  }, []);
 
   const addSelectionAndAdvance = (selection) => {
     if (!selection) return;
@@ -79,17 +89,22 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     
     getSelectionChanged((selection) => {
       if (selection) {
-        const newHash = getSelectionBoundsHash(selection);
+        if (selection.shiftKey) {
+          showShiftTip();
+          return;
+        }
+        const { shiftKey, ...cleanSelection } = selection;
+        const newHash = getSelectionBoundsHash(cleanSelection);
         const storedHashes = context.state.storedSelections?.map(s => getSelectionBoundsHash(s)) || [];
         
         // Si la sélection n'est pas déjà stockée, l'ajouter
         if (!storedHashes.includes(newHash)) {
           setLastSelectionHash(newHash);
-          addSelectionAndAdvance(selection);
+          addSelectionAndAdvance(cleanSelection);
         }
       }
     });
-  }, [context.state.multiBubbleMode, context.state.storedSelections, context.state.currentLineIndex]);
+  }, [context.state.multiBubbleMode, context.state.storedSelections, context.state.currentLineIndex, showShiftTip]);
 
   // Effect pour démarrer/arrêter la surveillance automatique
   React.useEffect(() => {
@@ -114,8 +129,16 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       if (selectionCheckInterval.current) {
         clearInterval(selectionCheckInterval.current);
       }
+      if (shiftTipTimeout.current) {
+        clearTimeout(shiftTipTimeout.current);
+      }
     };
   }, [context.state.multiBubbleMode, checkForSelectionChange]);
+  React.useEffect(() => {
+    if (!context.state.multiBubbleMode && shiftSelectionWarning) {
+      setShiftSelectionWarning(false);
+    }
+  }, [context.state.multiBubbleMode, shiftSelectionWarning]);
 
   const createLayer = () => {
     const storedSelections = context.state.storedSelections || [];
@@ -280,6 +303,12 @@ const PreviewBlock = React.memo(function PreviewBlock() {
                 <FiMinusCircle size={16} />
               </button>
             </div>
+          </div>
+        )}
+        {context.state.multiBubbleMode && shiftSelectionWarning && (
+          <div className="preview-top_selection-warning">
+            <FiAlertTriangle size={14} />
+            <span>{locale.multiBubbleShiftTip || "Le mode multi-bubble fonctionne avec une sélection à la fois. Relâchez Shift et faites vos sélections une par une."}</span>
           </div>
         )}
         <div className="preview-top_main-controls">

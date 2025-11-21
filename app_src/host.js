@@ -1344,14 +1344,27 @@ function stopSelectionMonitoring() {
 function getSelectionChanged() {
   var monitor = _hostState.selectionMonitor;
   var currentSelection = _checkSelection({ adjustAmount: 0 });
+  var keyboardState = ScriptUI.environment && ScriptUI.environment.keyboardState;
+  var shiftPressed = !!(keyboardState && keyboardState.shiftKey);
+
   if (!currentSelection.error) {
     var currentBounds = _selectionBoundsKey(currentSelection);
     if (currentBounds !== monitor.lastBoundsKey) {
       monitor.lastBoundsKey = currentBounds;
-      return jamJSON.stringify(currentSelection);
+      return jamJSON.stringify({
+        shiftKey: shiftPressed,
+        top: currentSelection.top,
+        left: currentSelection.left,
+        right: currentSelection.right,
+        bottom: currentSelection.bottom,
+        width: currentSelection.width,
+        height: currentSelection.height,
+        xMid: currentSelection.xMid,
+        yMid: currentSelection.yMid,
+      });
     }
   }
-  return jamJSON.stringify({ noChange: true });
+  return jamJSON.stringify({ noChange: true, shiftKey: shiftPressed });
 }
 
 function _createTextLayersInStoredSelections() {
