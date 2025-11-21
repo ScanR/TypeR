@@ -87,6 +87,20 @@ const writeToStorage = (data, rewrite) => {
   }
 };
 
+const deleteStorageFile = () => {
+  const result = window.cep.fs.deleteFile(storagePath);
+  if (typeof result === "number") {
+    return (
+      result === window.cep.fs.NO_ERROR ||
+      result === window.cep.fs.ERR_NOT_FOUND
+    );
+  }
+  if (typeof result === "object" && result) {
+    return !result.err || result.err === window.cep.fs.ERR_NOT_FOUND;
+  }
+  return false;
+};
+
 const parseLocaleFile = (str) => {
   const result = {};
   if (!str) return result;
@@ -428,4 +442,4 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
+export { csInterface, locale, openUrl, readStorage, writeToStorage, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };

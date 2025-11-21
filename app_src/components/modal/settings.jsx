@@ -4,7 +4,7 @@ import { MdSave } from "react-icons/md";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { locale, nativeAlert, checkUpdate, readStorage, writeToStorage, openFile } from "../../utils";
+import { locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, openFile } from "../../utils";
 import { useContext } from "../../context";
 import Shortcut from "./shortCut";
 
@@ -355,6 +355,31 @@ const SettingsModal = React.memo(function SettingsModal() {
         nativeAlert(locale.updateNoUpdate, locale.successTitle, false);
       }
     });
+  };
+
+  const resetStorage = () => {
+    nativeConfirm(
+      locale.settingsResetStorageConfirm || "Supprimer le fichier de stockage et réinitialiser les réglages ?",
+      locale.confirmTitle || "Confirmation",
+      (confirmed) => {
+        if (!confirmed) return;
+        const success = deleteStorageFile();
+        if (success) {
+          nativeAlert(
+            locale.settingsResetStorageSuccess || "Réglages réinitialisés. L'extension va redémarrer.",
+            locale.successTitle,
+            false
+          );
+          setTimeout(() => window.location.reload(), 300);
+        } else {
+          nativeAlert(
+            locale.settingsResetStorageError || "Impossible de supprimer le fichier de stockage.",
+            locale.errorTitle,
+            true
+          );
+        }
+      }
+    );
   };
 
   // Save current working snapshot as a named state
@@ -747,6 +772,11 @@ const SettingsModal = React.memo(function SettingsModal() {
               <div className="field">
                 <button className="topcoat-button--large" onClick={checkUpdatesNow}>
                   {locale.settingsCheckUpdatesButton}
+                </button>
+              </div>
+              <div className="field">
+                <button className="topcoat-button--large--cta" onClick={resetStorage}>
+                  {locale.settingsResetStorage || "Réinitialiser les réglages"}
                 </button>
               </div>
             </div>
