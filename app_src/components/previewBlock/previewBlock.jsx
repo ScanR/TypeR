@@ -21,10 +21,22 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   const [lastSelectionHash, setLastSelectionHash] = React.useState(null);
   const selectionCheckInterval = React.useRef(null);
 
+  const addSelectionAndAdvance = (selection) => {
+    if (!selection) return;
+    context.dispatch({
+      type: "addSelection",
+      selection,
+      lineIndex: context.state.currentLineIndex,
+    });
+    if (context.state.multiBubbleMode) {
+      context.dispatch({ type: "nextLine", add: true });
+    }
+  };
+
   const addCurrentSelection = () => {
     getCurrentSelection((selection) => {
       if (selection) {
-        context.dispatch({ type: "addSelection", selection });
+        addSelectionAndAdvance(selection);
       }
     });
   };
@@ -73,11 +85,11 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         // Si la sélection n'est pas déjà stockée, l'ajouter
         if (!storedHashes.includes(newHash)) {
           setLastSelectionHash(newHash);
-          context.dispatch({ type: "addSelection", selection });
+          addSelectionAndAdvance(selection);
         }
       }
     });
-  }, [context.state.multiBubbleMode, context.state.storedSelections]);
+  }, [context.state.multiBubbleMode, context.state.storedSelections, context.state.currentLineIndex]);
 
   // Effect pour démarrer/arrêter la surveillance automatique
   React.useEffect(() => {
@@ -112,93 +124,60 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       // Mode sélections multiples
       const texts = [];
       const styles = [];
-      
-      // Déterminer la page de départ
-      const getCurrentPageIndex = (lineIndex) => {
-        let currentPage = 0;
-        for (let i = 0; i <= lineIndex && i < context.state.lines.length; i++) {
-          const line = context.state.lines[i];
-          if (line.ignore) {
-            const page = line.rawText.match(/Page ([0-9]+)/i);
-            if (page && context.state.images[page[1] - 1]) {
-              const img = context.state.images[page[1] - 1];
-              currentPage = context.state.images.indexOf(img);
-            }
-          }
+      const lines = context.state.lines || [];
+      let nextFallbackIndex = context.state.currentLineIndex;
+
+      const resolveStyleForLine = (targetLine, selection) => {
+        if (targetLine?.style) {
+          return targetLine.style;
         }
-        return currentPage;
+        if (selection?.styleId) {
+          const storedStyle = context.state.styles.find((s) => s.id === selection.styleId);
+          if (storedStyle) return storedStyle;
+        }
+        return context.state.currentStyle;
       };
-      
-      const startingPage = getCurrentPageIndex(context.state.currentLineIndex);
-      
-      // Récupérer les textes à partir de la ligne courante
-      let lineIndex = context.state.currentLineIndex;
-      for (let i = 0; i < storedSelections.length; i++) {
-        let targetLine = null;
-        // Trouver la prochaine ligne valide à partir de la ligne courante
-        while (lineIndex < context.state.lines.length) {
-          const line = context.state.lines[lineIndex];
-          
-          // Vérifier si on est toujours sur la même page
-          const currentPageOfLine = getCurrentPageIndex(lineIndex);
-          if (currentPageOfLine !== startingPage) {
-            break; // On a changé de page, arrêter
+
+      const resolveLineForSelection = (selection) => {
+        if (typeof selection.lineIndex === "number" && selection.lineIndex >= 0) {
+          const storedLine = lines[selection.lineIndex];
+          if (storedLine && !storedLine.ignore) {
+            nextFallbackIndex = Math.max(nextFallbackIndex, selection.lineIndex + 1);
+            return storedLine;
           }
-          
-          if (line && !line.ignore) {
-            targetLine = line;
-            lineIndex++; // Avancer à la ligne suivante pour la prochaine itération
-            break;
-          }
-          lineIndex++;
         }
-        
-        // Arrêter si pas de ligne disponible
+
+        while (nextFallbackIndex < lines.length) {
+          const candidate = lines[nextFallbackIndex];
+          nextFallbackIndex++;
+          if (candidate && !candidate.ignore) {
+            return candidate;
+          }
+        }
+        return null;
+      };
+
+      for (let i = 0; i < storedSelections.length; i++) {
+        const selection = storedSelections[i];
+        const targetLine = resolveLineForSelection(selection);
         if (!targetLine) {
           break;
         }
-        
-        if (targetLine) {
-          texts.push(targetLine.text);
-          
-          // Priorité au style de prefix/tag de la ligne
-          let lineStyle = null;
-          
-          if (targetLine.style) {
-            // Si la ligne a un prefix de style, utiliser ce style (priorité absolue)
-            lineStyle = targetLine.style;
-          } else {
-            // Sinon, utiliser le style qui était actif au moment de cette sélection
-            const selection = storedSelections[i];
-            
-            if (selection.styleId) {
-              // Retrouver le style par son ID
-              lineStyle = context.state.styles.find(s => s.id === selection.styleId);
-            }
-            
-            // Si pas de style trouvé, utiliser le style par défaut
-            if (!lineStyle) {
-              lineStyle = context.state.currentStyle;
-            }
+
+        texts.push(targetLine.text);
+
+        let lineStyle = resolveStyleForLine(targetLine, selection);
+        if (lineStyle && context.state.textScale) {
+          lineStyle = _.cloneDeep(lineStyle);
+          const txtStyle = lineStyle.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
+          if (typeof txtStyle.size === "number") {
+            txtStyle.size *= context.state.textScale / 100;
           }
-          
-          // Appliquer le scale si nécessaire
-          if (lineStyle && context.state.textScale) {
-            lineStyle = _.cloneDeep(lineStyle);
-            const txtStyle = lineStyle.textProps?.layerText.textStyleRange?.[0]?.textStyle || {};
-            if (typeof txtStyle.size === "number") {
-              txtStyle.size *= context.state.textScale / 100;
-            }
-            if (typeof txtStyle.leading === "number" && txtStyle.leading) {
-              txtStyle.leading *= context.state.textScale / 100;
-            }
+          if (typeof txtStyle.leading === "number" && txtStyle.leading) {
+            txtStyle.leading *= context.state.textScale / 100;
           }
-          styles.push(lineStyle);
-        } else {
-          // Pas assez de lignes, on réutilise la dernière ligne et son style
-          texts.push(texts[texts.length - 1] || "");
-          styles.push(styles[styles.length - 1] || context.state.currentStyle);
         }
+        styles.push(lineStyle);
       }
       
       const pointText = context.state.pastePointText;
@@ -206,32 +185,6 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       const direction = context.state.direction;
       createTextLayersInStoredSelections(texts, styles, storedSelections, pointText, padding, direction, (ok) => {
         if (ok) {
-          // Trouver la prochaine ligne valide après les lignes utilisées, mais rester sur la même page
-          let nextLineIndex = lineIndex;
-          while (nextLineIndex < context.state.lines.length) {
-            const line = context.state.lines[nextLineIndex];
-            
-            // Vérifier si on est toujours sur la même page
-            const currentPageOfNextLine = getCurrentPageIndex(nextLineIndex);
-            if (currentPageOfNextLine !== startingPage) {
-              // On a changé de page, rester sur la dernière ligne valide de la page courante
-              let lastValidLineOnPage = context.state.currentLineIndex;
-              for (let i = context.state.currentLineIndex; i < nextLineIndex; i++) {
-                const checkLine = context.state.lines[i];
-                if (checkLine && !checkLine.ignore) {
-                  lastValidLineOnPage = i;
-                }
-              }
-              context.dispatch({ type: "setCurrentLineIndex", index: lastValidLineOnPage });
-              break;
-            }
-            
-            if (line && !line.ignore) {
-              context.dispatch({ type: "setCurrentLineIndex", index: nextLineIndex });
-              break;
-            }
-            nextLineIndex++;
-          }
           // Vider les sélections stockées
           context.dispatch({ type: "clearSelections" });
         }
