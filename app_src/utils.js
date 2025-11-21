@@ -87,6 +87,20 @@ const writeToStorage = (data, rewrite) => {
   }
 };
 
+const deleteStorageFile = () => {
+  const result = window.cep.fs.deleteFile(storagePath);
+  if (typeof result === "number") {
+    return (
+      result === window.cep.fs.NO_ERROR ||
+      result === window.cep.fs.ERR_NOT_FOUND
+    );
+  }
+  if (typeof result === "object" && result) {
+    return !result.err || result.err === window.cep.fs.ERR_NOT_FOUND;
+  }
+  return false;
+};
+
 const parseLocaleFile = (str) => {
   const result = {};
   if (!str) return result;
@@ -123,17 +137,19 @@ const parseLocaleFile = (str) => {
 
 const initLocale = () => {
   locale = csInterface.initResourceBundle();
-  const lang = readStorage("language");
-  if (lang && lang !== "auto") {
-    const file =
-      lang === "en_US"
-        ? `${path}/locale/messages.properties`
-        : `${path}/locale/${lang}/messages.properties`;
+  const loadLocaleFile = (file) => {
     const result = window.cep.fs.readFile(file);
     if (!result.err) {
       const data = parseLocaleFile(result.data);
       locale = Object.assign(locale, data);
     }
+  };
+  // Always merge default strings to ensure fallbacks for new keys
+  loadLocaleFile(`${path}/locale/messages.properties`);
+  const lang = readStorage("language");
+  if (lang && lang !== "auto") {
+    const file = lang === "en_US" ? `${path}/locale/messages.properties` : `${path}/locale/${lang}/messages.properties`;
+    loadLocaleFile(file);
   }
 };
 
@@ -426,4 +442,4 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };
+export { csInterface, locale, openUrl, readStorage, writeToStorage, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate };

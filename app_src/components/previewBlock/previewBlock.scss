@@ -25,6 +25,28 @@
     flex: 0 0 auto;
     order: 1;
   }
+  .preview-top_selection-warning {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 193, 7, 0.14);
+    border: 1px solid rgba(255, 193, 7, 0.35);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-size: 11px;
+    line-height: 14px;
+    flex: 1 1 100%;
+    order: 3;
+    color: #ffd166;
+    .light-theme & {
+      background: rgba(0, 0, 0, 0.05);
+      border-color: rgba(0, 0, 0, 0.12);
+      color: #8c6b00;
+    }
+    svg {
+      flex-shrink: 0;
+    }
+  }
   .preview-top_selection-info {
     display: flex;
     align-items: center;

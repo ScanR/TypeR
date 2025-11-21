@@ -44,6 +44,7 @@ const defaultShortcut = {
   decrease: ["CTRL", "SHIFT", "MINUS"],
   insertText: ["WIN", "V"],
   nextPage: ["SHIFT", "X"],
+  toggleMultiBubble: ["CTRL", "SHIFT", "M"],
 };
 
 const normalizeFolders = (folders) => {
@@ -584,8 +585,11 @@ const reducer = (state, action) => {
         const selectionWithStyle = {
           ...action.selection,
           styleId: state.currentStyleId,
-          capturedAt: Date.now()
+          capturedAt: Date.now(),
         };
+        if (typeof action.lineIndex === "number") {
+          selectionWithStyle.lineIndex = action.lineIndex;
+        }
         newState.storedSelections = [...state.storedSelections, selectionWithStyle];
       }
       break;

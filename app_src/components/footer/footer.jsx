@@ -30,6 +30,10 @@ const AppFooter = React.memo(function AppFooter() {
     fileInputRef.current?.click();
   };
 
+  const toggleMultiBubble = () => {
+    context.dispatch({ type: "setMultiBubbleMode", value: !context.state.multiBubbleMode });
+  };
+
   return (
     <React.Fragment>
       <span className="link" onClick={openHelp}>
@@ -42,6 +46,17 @@ const AppFooter = React.memo(function AppFooter() {
         {context.state.images.length
           ? locale.footerDesyncRepo
           : locale.footerOpenRepo}
+      </span>
+      <span
+        className="link footer-mode-indicator"
+        onClick={toggleMultiBubble}
+        title={locale.multiBubbleModeHint || "Permet de capturer plusieurs sélections pour insérer plusieurs textes en une fois"}
+      >
+        <span className={`footer-mode-dot ${context.state.multiBubbleMode ? "is-on" : ""}`} />
+        <span className="footer-mode-label">{locale.multiBubbleModeShort || "MB"}</span>
+        <span className="footer-mode-status">
+          {context.state.multiBubbleMode ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF")}
+        </span>
       </span>
       <HiddenFileInput ref={fileInputRef} />
     </React.Fragment>

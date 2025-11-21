@@ -209,13 +209,14 @@ const StyleItem = React.memo(function StyleItem(props) {
   };
   const insertStyle = (e) => {
     e.stopPropagation();
+    const direction = context.state.direction;
     if (e.ctrlKey) {
       getActiveLayerText((data) => {
         textStyle.size = data.textProps.layerText.textStyleRange[0].textStyle.size;
-        setActiveLayerText("", props.style);
+        setActiveLayerText("", props.style, direction);
       });
     } else {
-      setActiveLayerText("", props.style);
+      setActiveLayerText("", props.style, direction);
     }
   };
   const duplicateStyle = (e) => {
