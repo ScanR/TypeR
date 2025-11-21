@@ -72,6 +72,7 @@ var _SAFE_PARAGRAPH_PROPS = [
 var _DEFAULT_SELECTION_SCALE = 0.9;
 var _MIN_TEXTBOX_WIDTH = 10;
 var _TEMP_SELECTION_CHANNEL = "__TyperSelectionTemp__";
+var _DEFAULT_ADJUST_SEQUENCE = [-5, -5, -5, -5, -5, 5, 5, 5, 5, 5];
 
 var _hostState = {
   fallbackTextSize: 20,
@@ -401,6 +402,70 @@ function _getAdjustedSelectionBoundsFallback(bounds, amount) {
   }
 }
 
+function _clampAdjustAmount(bounds, amount) {
+  if (!bounds || amount >= 0) return amount;
+  // Avoid over-contracting small selections: keep at least 2px margin per side
+  var maxContract = Math.floor(Math.min(bounds.width, bounds.height) / 2 - 1);
+  if (maxContract <= 0) return 0;
+  return -Math.min(Math.abs(amount), maxContract);
+}
+
+function _getAdjustedSelectionBoundsSequence(bounds, adjustments) {
+  if (!bounds || !adjustments || !adjustments.length) return bounds;
+
+  var doc;
+  try {
+    doc = app.activeDocument;
+  } catch (error) {
+    doc = null;
+  }
+
+  if (!doc || !doc.selection) {
+    return _getAdjustedSelectionBoundsSequenceFallback(bounds, adjustments);
+  }
+
+  var tempChannel = _createTempSelectionChannel(doc);
+  if (!tempChannel) {
+    return _getAdjustedSelectionBoundsSequenceFallback(bounds, adjustments);
+  }
+
+  var adjusted = bounds;
+  try {
+    for (var i = 0; i < adjustments.length; i++) {
+      var amount = _clampAdjustAmount(adjusted, adjustments[i]);
+      if (amount === 0) continue;
+      _modifySelectionBounds(amount);
+      adjusted = _getCurrentSelectionBounds();
+      if (!adjusted) break;
+    }
+  } catch (error2) {
+    adjusted = null;
+  } finally {
+    try {
+      doc.selection.load(tempChannel);
+    } catch (restoreError) {}
+    try {
+      tempChannel.remove();
+    } catch (removeError) {}
+  }
+
+  if (!adjusted) {
+    return _getAdjustedSelectionBoundsSequenceFallback(bounds, adjustments);
+  }
+  return adjusted;
+}
+
+function _getAdjustedSelectionBoundsSequenceFallback(bounds, adjustments) {
+  if (!bounds || !adjustments || !adjustments.length) return bounds;
+  var current = bounds;
+  for (var i = 0; i < adjustments.length; i++) {
+    var amount = _clampAdjustAmount(current, adjustments[i]);
+    current = _getAdjustedSelectionBoundsFallback(current, amount);
+    if (!current) break;
+  }
+  return current;
+}
+
 function _selectionBoundsKey(bounds) {
   if (!bounds) return "";
   return bounds.xMid + "_" + bounds.yMid + "_" + bounds.width + "_" + bounds.height;
@@ -712,11 +777,20 @@ function _checkSelection(options) {
   }
 
   var adjustAmount = 0;
+  var adjustSequence = null;
   if (options && options.adjustAmount !== undefined) {
     adjustAmount = options.adjustAmount;
   }
+  if (options && options.adjustSequence && options.adjustSequence.length) {
+    adjustSequence = options.adjustSequence;
+  }
 
-  var adjustedSelection = adjustAmount !== 0 ? _getAdjustedSelectionBounds(selection, adjustAmount) : selection;
+  var adjustedSelection = selection;
+  if (adjustSequence) {
+    adjustedSelection = _getAdjustedSelectionBoundsSequence(selection, adjustSequence);
+  } else if (adjustAmount !== 0) {
+    adjustedSelection = _getAdjustedSelectionBounds(selection, adjustAmount);
+  }
   if (!adjustedSelection || adjustedSelection.width * adjustedSelection.height < 200) {
     return { error: "smallSelection" };
   }
@@ -917,7 +991,7 @@ function _createTextLayerInSelection() {
     state.result = "doc";
     return;
   }
-  var selection = _checkSelection({ adjustAmount: -10 });
+  var selection = _checkSelection({ adjustSequence: _DEFAULT_ADJUST_SEQUENCE });
   if (selection.error) {
     state.result = selection.error;
     return;
@@ -944,11 +1018,11 @@ function _alignTextLayerToSelection() {
     state.result = "layer";
     return;
   }
-  var selection = _checkSelection({ adjustAmount: -10 });
+  var selection = _checkSelection({ adjustSequence: _DEFAULT_ADJUST_SEQUENCE });
   if (selection.error) {
     if (selection.error === "noSelection") {
       _createMagicWandSelection(20);
-      selection = _checkSelection({ adjustAmount: -10 });
+      selection = _checkSelection({ adjustSequence: _DEFAULT_ADJUST_SEQUENCE });
     }
     if (selection.error) {
       state.result = selection.error;
