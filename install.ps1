@@ -1,5 +1,7 @@
 # Encodage pour les accents dans la console
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding  = [System.Text.Encoding]::UTF8
+$OutputEncoding = New-Object System.Text.UTF8Encoding
 
 # --- 1. Définition robuste du dossier du script ---
 # $PSScriptRoot est une variable native fiable, contrairement à %~dp0
@@ -73,7 +75,7 @@ Write-Host "? $msg_install"
 Write-Host ""
 Write-Host "? $msg_close" -ForegroundColor Yellow
 Write-Host ""
-Read-Host "? $msg_pause"
+Read-Host -Prompt "? $msg_pause"
 
 # --- 5. Mode Debug (CSXS 6 à 12) ---
 # Ne nécessite pas les droits admin car c'est dans HKCU (Utilisateur courant)
@@ -153,7 +155,7 @@ Write-Host ""
 Write-Host "+------------------------------------------------------------------+"
 Write-Host "| Credits:                                                         |"
 Write-Host "+------------------------------------------------------------------+"
-Write-Host "  $msg_credits"
-Write-Host "  $msg_discord"
+Write-Host ("  {0}" -f $msg_credits)
+Write-Host ("  {0}" -f $msg_discord)
 Write-Host ""
-Read-Host $msg_pause
+Read-Host -Prompt $msg_pause
