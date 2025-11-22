@@ -643,73 +643,39 @@ function _applyTextDirection(direction, textLength) {
 
   try {
     var currentText = jamText.getLayerText();
-    var currentParagraphStyle = null;
-    var currentAlignment = null;
     if (
-      currentText &&
-      currentText.layerText &&
-      currentText.layerText.paragraphStyleRange &&
-      currentText.layerText.paragraphStyleRange.length
+      !currentText ||
+      !currentText.layerText ||
+      !currentText.layerText.paragraphStyleRange ||
+      !currentText.layerText.paragraphStyleRange.length
     ) {
-      currentParagraphStyle =
-        currentText.layerText.paragraphStyleRange[0].paragraphStyle || null;
-    }
-    if (currentParagraphStyle) {
-      currentAlignment =
-        currentParagraphStyle.alignment ||
-        currentParagraphStyle.align ||
-        currentParagraphStyle.justification ||
-        null;
-    }
-    if (textLength == null && currentText && currentText.layerText && currentText.layerText.textKey) {
-      textLength = currentText.layerText.textKey.length;
+      return;
     }
 
-    var dirDesc = new ActionDescriptor();
-    var textDesc = new ActionDescriptor();
-    var paraRangeList = new ActionList();
-    var paraRangeDesc = new ActionDescriptor();
-    var paraStyleDesc = new ActionDescriptor();
+    var updatedText = _clone(currentText);
+    var paragraphRanges = updatedText.layerText.paragraphStyleRange;
+    var targetLength = textLength;
+    if (targetLength == null && updatedText.layerText && updatedText.layerText.textKey) {
+      targetLength = updatedText.layerText.textKey.length;
+    }
 
-    paraStyleDesc.putEnumerated(
-      stringIDToTypeID("directionType"),
-      stringIDToTypeID("directionType"),
-      stringIDToTypeID(psDirection)
-    );
+    for (var i = 0; i < paragraphRanges.length; i++) {
+      var range = paragraphRanges[i] || {};
+      var paragraphStyle = range.paragraphStyle || {};
 
-    // Ensure textComposerEngine is set to textOptycaComposer
-    paraStyleDesc.putEnumerated(
-      stringIDToTypeID("textComposerEngine"),
-      stringIDToTypeID("textComposerEngine"),
-      stringIDToTypeID("textOptycaComposer")
-    );
+      paragraphStyle.directionType = psDirection;
+      paragraphStyle.textComposerEngine = "textOptycaComposer";
 
-    if (currentAlignment) {
-      try {
-        paraStyleDesc.putEnumerated(
-          stringIDToTypeID("alignment"),
-          stringIDToTypeID("alignmentType"),
-          stringIDToTypeID(currentAlignment)
-        );
-      } catch (alignmentError) {
-        // Ignore if the alignment value is not supported on this PS version
+      range.paragraphStyle = paragraphStyle;
+      if (targetLength != null) {
+        range.from = typeof range.from === "number" ? range.from : 0;
+        range.to = targetLength;
       }
+      paragraphRanges[i] = range;
     }
 
-    paraRangeDesc.putInteger(stringIDToTypeID("from"), 0);
-    paraRangeDesc.putInteger(stringIDToTypeID("to"), textLength);
-    paraRangeDesc.putObject(stringIDToTypeID("paragraphStyle"), stringIDToTypeID("paragraphStyle"), paraStyleDesc);
-
-    paraRangeList.putObject(stringIDToTypeID("paragraphStyleRange"), paraRangeDesc);
-    textDesc.putList(stringIDToTypeID("paragraphStyleRange"), paraRangeList);
-
-    var ref = new ActionReference();
-    ref.putEnumerated(stringIDToTypeID("textLayer"), stringIDToTypeID("ordinal"), stringIDToTypeID("targetEnum"));
-
-    dirDesc.putReference(stringIDToTypeID("null"), ref);
-    dirDesc.putObject(stringIDToTypeID("to"), stringIDToTypeID("textLayer"), textDesc);
-
-    executeAction(stringIDToTypeID("set"), dirDesc, DialogModes.NO);
+    updatedText.layerText.paragraphStyleRange = paragraphRanges;
+    jamText.setLayerText(updatedText);
   } catch (e) {
     // Ignore errors if directionType is not supported on this PS version
   }
