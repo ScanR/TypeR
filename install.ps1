@@ -1,21 +1,21 @@
 # Encodage pour les accents dans la console
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# --- 1. Définition robuste du dossier du script ---
-# $PSScriptRoot est une variable native fiable, contrairement à %~dp0
+# --- 1. DÃ©finition robuste du dossier du script ---
+# $PSScriptRoot est une variable native fiable, contrairement Ã  %~dp0
 $ScriptDir = $PSScriptRoot
 Set-Location -Path $ScriptDir
 
-# --- 2. Vérification du Manifest ---
+# --- 2. VÃ©rification du Manifest ---
 $ManifestPath = Join-Path $ScriptDir "CSXS\manifest.xml"
 if (-not (Test-Path $ManifestPath)) {
     Write-Host "[ERREUR] Fichier introuvable : $ManifestPath" -ForegroundColor Red
-    Write-Host "Placez ce script à côté des dossiers 'CSXS', 'app', 'icons', 'locale', 'themes'."
-    Read-Host "Appuyez sur Entrée pour quitter..."
+    Write-Host "Placez ce script Ã  cÃ´tÃ© des dossiers 'CSXS', 'app', 'icons', 'locale', 'themes'."
+    Read-Host "Appuyez sur EntrÃ©e pour quitter..."
     exit
 }
 
-# --- 3. Extraction de la version (plus précis que findstr) ---
+# --- 3. Extraction de la version (plus prÃ©cis que findstr) ---
 $Content = Get-Content $ManifestPath -Raw
 if ($Content -match 'Extension Id="typer".*?Version="([^"]+)"') {
     $ExtVersion = $matches[1]
@@ -24,10 +24,10 @@ if ($Content -match 'Extension Id="typer".*?Version="([^"]+)"') {
 }
 
 # --- 4. Langues et Messages ---
-# Détection de la langue de l'interface utilisateur (ex: fr-FR)
+# DÃ©tection de la langue de l'interface utilisateur (ex: fr-FR)
 $Lang = $Host.CurrentCulture.TwoLetterISOLanguageName
 
-# Valeurs par défaut (Anglais)
+# Valeurs par dÃ©faut (Anglais)
 $msg_install  = "Photoshop extension TypeR v$ExtVersion will be installed."
 $msg_close    = "Close Photoshop (if it is open)."
 $msg_complete = "Installation completed."
@@ -37,19 +37,19 @@ $msg_credits  = "Many thanks to Swirt for TyperTools and SeanR & Sakushi for thi
 $msg_discord  = "ScanR's Discord if you need help: https://discord.com/invite/Pdmfmqk"
 
 if ($Lang -eq "fr") {
-    $msg_install  = "L'extension Photoshop TypeR v$ExtVersion sera installée."
+    $msg_install  = "L'extension Photoshop TypeR v$ExtVersion sera installÃ©e."
     $msg_close    = "Fermez Photoshop (s'il est ouvert)."
-    $msg_complete = "Installation terminée."
-    $msg_open     = "Ouvrez Photoshop et dans le menu supérieur cliquez sur : [Fenêtre] > [Extensions] > [TypeR]"
-    $msg_pause    = "Appuyez sur Entrée pour continuer..."
-    $msg_credits  = "Merci beaucoup à Swirt pour TyperTools et SeanR & Sakushi pour ce fork."
+    $msg_complete = "Installation terminÃ©e."
+    $msg_open     = "Ouvrez Photoshop et dans le menu supÃ©rieur cliquez sur : [FenÃªtre] > [Extensions] > [TypeR]"
+    $msg_pause    = "Appuyez sur EntrÃ©e pour continuer..."
+    $msg_credits  = "Merci beaucoup Ã  Swirt pour TyperTools et SeanR & Sakushi pour ce fork."
     $msg_discord  = "Discord de ScanR si besoin d'aide : https://discord.com/invite/Pdmfmqk"
 }
 elseif ($Lang -eq "es") {
-    $msg_install  = "La extensión de Photoshop TypeR v$ExtVersion se instalará."
-    $msg_close    = "Cierra Photoshop (si está abierto)."
-    $msg_complete = "Instalación completada."
-    $msg_open     = "Abre Photoshop y en el menú superior haz clic en lo siguiente: [Ventana] > [Extensiones] > [TypeR]"
+    $msg_install  = "La extensiÃ³n de Photoshop TypeR v$ExtVersion se instalarÃ¡."
+    $msg_close    = "Cierra Photoshop (si estÃ¡ abierto)."
+    $msg_complete = "InstalaciÃ³n completada."
+    $msg_open     = "Abre Photoshop y en el menÃº superior haz clic en lo siguiente: [Ventana] > [Extensiones] > [TypeR]"
     $msg_pause    = "Presiona Enter para continuar..."
     $msg_credits  = "Muchas gracias a Swirt por TyperTools y a SeanR & Sakushi por este fork."
     $msg_discord  = "Discord de ScanR si necesitas ayuda: https://discord.com/invite/Pdmfmqk"
@@ -57,8 +57,8 @@ elseif ($Lang -eq "es") {
 elseif ($Lang -eq "pt") {
     $msg_install  = "Photoshop extension TypeR v$ExtVersion will be installed."
     $msg_close    = "Feche o Photoshop (se estiver aberto)."
-    $msg_complete = "Instalação concluída."
-    $msg_open     = "Abra o Photoshop e no menu superior clique em: [Janela] > [Extensões] > [TypeR]"
+    $msg_complete = "InstalaÃ§Ã£o concluÃ­da."
+    $msg_open     = "Abra o Photoshop e no menu superior clique em: [Janela] > [ExtensÃµes] > [TypeR]"
     $msg_pause    = "Pressione Enter para continuar..."
     $msg_credits  = "Muito obrigado a Swirt pelo TyperTools e a SeanR & Sakushi por este fork."
     $msg_discord  = "Discord do ScanR se precisar de ajuda: https://discord.com/invite/Pdmfmqk"
@@ -66,7 +66,7 @@ elseif ($Lang -eq "pt") {
 
 Clear-Host
 Write-Host "+------------------------------------------------------------------+" -ForegroundColor Cyan
-Write-Host "¦                          TypeR Installer                         ¦" -ForegroundColor Cyan
+Write-Host "|                          TypeR Installer                         |" -ForegroundColor Cyan
 Write-Host "+------------------------------------------------------------------+" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "? $msg_install"
@@ -75,8 +75,8 @@ Write-Host "? $msg_close" -ForegroundColor Yellow
 Write-Host ""
 Read-Host "? $msg_pause"
 
-# --- 5. Mode Debug (CSXS 6 à 12) ---
-# Ne nécessite pas les droits admin car c'est dans HKCU (Utilisateur courant)
+# --- 5. Mode Debug (CSXS 6 Ã  12) ---
+# Ne nÃ©cessite pas les droits admin car c'est dans HKCU (Utilisateur courant)
 6..12 | ForEach-Object {
     $RegPath = "HKCU:\Software\Adobe\CSXS.$_"
     if (Test-Path $RegPath) {
@@ -88,15 +88,15 @@ Read-Host "? $msg_pause"
 $AppData = $env:APPDATA
 $TargetDir = Join-Path $AppData "Adobe\CEP\extensions\typertools"
 
-# On crée un dossier TEMP pour contenir la sauvegarde (et non le fichier lui-même)
+# On crÃ©e un dossier TEMP pour contenir la sauvegarde (et non le fichier lui-mÃªme)
 $TempBackupContainer = Join-Path $env:TEMP "typer_backup_container"
 
-# Nettoyage préalable du temp au cas où
+# Nettoyage prÃ©alable du temp au cas oÃ¹
 if (Test-Path $TempBackupContainer) { Remove-Item $TempBackupContainer -Recurse -Force -ErrorAction SilentlyContinue }
 New-Item -Path $TempBackupContainer -ItemType Directory -Force | Out-Null
 
 # SAUVEGARDE : On copie "storage" DANS le dossier conteneur
-# Cela préserve la nature de "storage" (que ce soit un fichier ou un dossier)
+# Cela prÃ©serve la nature de "storage" (que ce soit un fichier ou un dossier)
 if (Test-Path "$TargetDir\storage") {
     Copy-Item "$TargetDir\storage" -Destination $TempBackupContainer -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -131,9 +131,9 @@ if (Test-Path "$ScriptDir\.debug") {
 }
 
 # RESTAURATION DU STORAGE
-# On vérifie si la sauvegarde existe dans le conteneur
+# On vÃ©rifie si la sauvegarde existe dans le conteneur
 if (Test-Path "$TempBackupContainer\storage") {
-    # On copie l'élément "storage" depuis le conteneur vers la racine de l'extension
+    # On copie l'Ã©lÃ©ment "storage" depuis le conteneur vers la racine de l'extension
     Copy-Item "$TempBackupContainer\storage" -Destination "$TargetDir" -Recurse -Force
 }
 
@@ -143,7 +143,7 @@ if (Test-Path $TempBackupContainer) { Remove-Item $TempBackupContainer -Recurse 
 # --- 8. Fin ---
 Write-Host ""
 Write-Host "+------------------------------------------------------------------+" -ForegroundColor Green
-Write-Host "¦                      Installation Completed                      ¦" -ForegroundColor Green
+Write-Host "|                      Installation Completed                      |" -ForegroundColor Green
 Write-Host "+------------------------------------------------------------------+" -ForegroundColor Green
 Write-Host ""
 Write-Host "? $msg_complete"
@@ -151,7 +151,7 @@ Write-Host ""
 Write-Host "? $msg_open" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "+------------------------------------------------------------------+"
-Write-Host "¦ Credits:                                                         ¦"
+Write-Host "| Credits:                                                         |"
 Write-Host "+------------------------------------------------------------------+"
 Write-Host "  $msg_credits"
 Write-Host "  $msg_discord"
