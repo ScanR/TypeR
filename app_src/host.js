@@ -1,13 +1,3 @@
-/*
-$.evalFile(Folder.userData + '/Adobe/CEP/extensions/typertools/app/lib/jam/jamActions-min.jsxinc');
-$.evalFile(Folder.userData + '/Adobe/CEP/extensions/typertools/app/lib/jam/jamEngine-min.jsxinc');
-$.evalFile(Folder.userData + '/Adobe/CEP/extensions/typertools/app/lib/jam/jamHelpers-min.jsxinc');
-$.evalFile(Folder.userData + '/Adobe/CEP/extensions/typertools/app/lib/jam/jamJSON-min.jsxinc');
-$.evalFile(Folder.userData + '/Adobe/CEP/extensions/typertools/app/lib/jam/jamText-min.jsxinc');
-$.evalFile(Folder.userData + '/Adobe/CEP/extensions/typertools/app/lib/jam/jamStyles-min.jsxinc');
-$.evalFile(Folder.userData + '/Adobe/CEP/extensions/typertools/app/lib/jam/jamUtils-min.jsxinc');
-*/
-
 /* globals app, documents, activeDocument, ScriptUI, DialogModes, LayerKind, ActionReference, ActionDescriptor, executeAction, executeActionGet, stringIDToTypeID, jamEngine, jamJSON, jamText */
 
 var charID = {
@@ -72,7 +62,7 @@ var _SAFE_PARAGRAPH_PROPS = [
 var _DEFAULT_SELECTION_SCALE = 0.9;
 var _MIN_TEXTBOX_WIDTH = 10;
 var _TEMP_SELECTION_CHANNEL = "__TyperSelectionTemp__";
-var _DEFAULT_ADJUST_SEQUENCE = [-5, -5, -5, -5, -5, 5, 5, 5, 5, 5];
+var _DEFAULT_ADJUST_SEQUENCE = [-5, -5, -5, -5, -5, -5, 5, 5, 5, 5, 5, 5];
 
 var _hostState = {
   fallbackTextSize: 20,
@@ -245,6 +235,20 @@ function _textLayerIsPointText() {
   return textType === charID.Point;
 }
 
+function _getTextLayerSize() {
+  try {
+    var textParams = jamText.getLayerText();
+    if (textParams && textParams.layerText && 
+        textParams.layerText.textStyleRange && 
+        textParams.layerText.textStyleRange[0] &&
+        textParams.layerText.textStyleRange[0].textStyle &&
+        textParams.layerText.textStyleRange[0].textStyle.size) {
+      return textParams.layerText.textStyleRange[0].textStyle.size;
+    }
+  } catch (e) {}
+  return _hostState.fallbackTextSize || 20;
+}
+
 function _convertPixelToPoint(value) {
   return (parseInt(value) / activeDocument.resolution) * 72;
 }
@@ -306,6 +310,7 @@ function _modifySelectionBounds(amount) {
   size.putUnitDouble(charID.By, charID.PixelUnit, Math.abs(amount));
   executeAction(amount > 0 ? charID.Expand : charID.Contract, size, DialogModes.NO);
 }
+
 
 function _getAdjustedSelectionBounds(bounds, amount) {
   if (!bounds || amount === 0) return bounds;
@@ -410,7 +415,7 @@ function _clampAdjustAmount(bounds, amount) {
   return -Math.min(Math.abs(amount), maxContract);
 }
 
-function _getAdjustedSelectionBoundsSequence(bounds, adjustments) {
+function _getAdjustedSelectionBoundsSequence(bounds, adjustments, preExpandAmount) {
   if (!bounds || !adjustments || !adjustments.length) return bounds;
 
   var doc;
@@ -431,6 +436,25 @@ function _getAdjustedSelectionBoundsSequence(bounds, adjustments) {
 
   var adjusted = bounds;
   try {
+    // Expand then contract by text size (smooths the selection)
+    if (preExpandAmount && preExpandAmount > 0) {
+      // First expand
+      _modifySelectionBounds(preExpandAmount);
+      adjusted = _getCurrentSelectionBounds();
+      if (!adjusted) {
+        adjusted = bounds;
+      }
+      // Then contract back by the same amount
+      var contractAmount = _clampAdjustAmount(adjusted, -preExpandAmount);
+      if (contractAmount !== 0) {
+        _modifySelectionBounds(contractAmount);
+        adjusted = _getCurrentSelectionBounds();
+        if (!adjusted) {
+          adjusted = bounds;
+        }
+      }
+    }
+    
     for (var i = 0; i < adjustments.length; i++) {
       var amount = _clampAdjustAmount(adjusted, adjustments[i]);
       if (amount === 0) continue;
@@ -744,16 +768,20 @@ function _checkSelection(options) {
 
   var adjustAmount = 0;
   var adjustSequence = null;
+  var preExpandAmount = 0;
   if (options && options.adjustAmount !== undefined) {
     adjustAmount = options.adjustAmount;
   }
   if (options && options.adjustSequence && options.adjustSequence.length) {
     adjustSequence = options.adjustSequence;
   }
+  if (options && options.preExpandAmount !== undefined) {
+    preExpandAmount = options.preExpandAmount;
+  }
 
   var adjustedSelection = selection;
   if (adjustSequence) {
-    adjustedSelection = _getAdjustedSelectionBoundsSequence(selection, adjustSequence);
+    adjustedSelection = _getAdjustedSelectionBoundsSequence(selection, adjustSequence, preExpandAmount);
   } else if (adjustAmount !== 0) {
     adjustedSelection = _getAdjustedSelectionBounds(selection, adjustAmount);
   }
@@ -957,7 +985,22 @@ function _createTextLayerInSelection() {
     state.result = "doc";
     return;
   }
-  var selection = _checkSelection({ adjustSequence: _DEFAULT_ADJUST_SEQUENCE });
+  
+  // Get the text size from the style to pre-expand/dilate selection
+  var textSize = _hostState.fallbackTextSize || 20;
+  var style = _ensureStyle(state.data.style);
+  if (style && style.textProps && style.textProps.layerText && 
+      style.textProps.layerText.textStyleRange && 
+      style.textProps.layerText.textStyleRange[0] &&
+      style.textProps.layerText.textStyleRange[0].textStyle &&
+      style.textProps.layerText.textStyleRange[0].textStyle.size) {
+    textSize = style.textProps.layerText.textStyleRange[0].textStyle.size;
+  }
+  
+  var selection = _checkSelection({ 
+    adjustSequence: _DEFAULT_ADJUST_SEQUENCE,
+    preExpandAmount: textSize
+  });
   if (selection.error) {
     state.result = selection.error;
     return;
@@ -984,11 +1027,21 @@ function _alignTextLayerToSelection() {
     state.result = "layer";
     return;
   }
-  var selection = _checkSelection({ adjustSequence: _DEFAULT_ADJUST_SEQUENCE });
+  
+  // Get the text size to pre-expand/dilate selection
+  var textSize = _getTextLayerSize();
+  
+  var selection = _checkSelection({ 
+    adjustSequence: _DEFAULT_ADJUST_SEQUENCE,
+    preExpandAmount: textSize
+  });
   if (selection.error) {
     if (selection.error === "noSelection") {
       _createMagicWandSelection(20);
-      selection = _checkSelection({ adjustSequence: _DEFAULT_ADJUST_SEQUENCE });
+      selection = _checkSelection({ 
+        adjustSequence: _DEFAULT_ADJUST_SEQUENCE,
+        preExpandAmount: textSize
+      });
     }
     if (selection.error) {
       state.result = selection.error;
@@ -1289,8 +1342,10 @@ function startSelectionMonitoring() {
       var currentBounds = _selectionBoundsKey(currentSelection);
       if (currentBounds !== monitor.lastBoundsKey) {
         monitor.lastBoundsKey = currentBounds;
-        // Notifier l'extension CEP du changement
-        app.system("osascript -e 'tell application \"System Events\" to keystroke \"x\" using {command down, option down, shift down}'");
+        // Notifier l'extension CEP du changement (Mac only workaround)
+        if ($.os.toLowerCase().indexOf("mac") !== -1) {
+          app.system("osascript -e 'tell application \"System Events\" to keystroke \"x\" using {command down, option down, shift down}'");
+        }
       }
     }
   };
@@ -1414,5 +1469,54 @@ function openFile(path, autoClose) {
   var newDoc = app.open(File(path));
   if (autoClose) {
     _hostState.lastOpenedDocId = newDoc.id;
+  }
+}
+
+function deleteFolder(folderPath) {
+  try {
+    var folder = new Folder(folderPath);
+    if (folder.exists) {
+      // Recursively delete contents
+      var files = folder.getFiles();
+      for (var i = 0; i < files.length; i++) {
+        if (files[i] instanceof Folder) {
+          deleteFolder(files[i].fsName);
+        } else {
+          files[i].remove();
+        }
+      }
+      folder.remove();
+    }
+    return 'OK';
+  } catch (e) {
+    return 'ERROR: ' + e.message;
+  }
+}
+
+function openFolder(folderPath) {
+  try {
+    var os = $.os.toLowerCase();
+    if (os.indexOf('win') !== -1) {
+      // Windows: open Explorer
+      app.system('explorer "' + folderPath.replace(/\//g, '\\') + '"');
+    } else {
+      // macOS: open Finder
+      app.system('open "' + folderPath + '"');
+    }
+    return 'OK';
+  } catch (e) {
+    return 'ERROR: ' + e.message;
+  }
+}
+
+function makeExecutable(filePath) {
+  try {
+    var os = $.os.toLowerCase();
+    if (os.indexOf('mac') !== -1) {
+      app.system('chmod +x "' + filePath + '"');
+    }
+    return 'OK';
+  } catch (e) {
+    return 'ERROR: ' + e.message;
   }
 }
