@@ -245,6 +245,20 @@ function _textLayerIsPointText() {
   return textType === charID.Point;
 }
 
+function _getTextLayerSize() {
+  try {
+    var textParams = jamText.getLayerText();
+    if (textParams && textParams.layerText && 
+        textParams.layerText.textStyleRange && 
+        textParams.layerText.textStyleRange[0] &&
+        textParams.layerText.textStyleRange[0].textStyle &&
+        textParams.layerText.textStyleRange[0].textStyle.size) {
+      return textParams.layerText.textStyleRange[0].textStyle.size;
+    }
+  } catch (e) {}
+  return _hostState.fallbackTextSize || 20;
+}
+
 function _convertPixelToPoint(value) {
   return (parseInt(value) / activeDocument.resolution) * 72;
 }
@@ -305,6 +319,20 @@ function _modifySelectionBounds(amount) {
   var size = new ActionDescriptor();
   size.putUnitDouble(charID.By, charID.PixelUnit, Math.abs(amount));
   executeAction(amount > 0 ? charID.Expand : charID.Contract, size, DialogModes.NO);
+}
+
+function _smoothSelection(radius) {
+  if (!radius || radius <= 0) return;
+  try {
+    var desc = new ActionDescriptor();
+    desc.putUnitDouble(stringIDToTypeID("radius"), charID.PixelUnit, radius);
+    executeAction(stringIDToTypeID("smoothness"), desc, DialogModes.NO);
+  } catch (e) {
+    // Fallback: try using DOM method
+    try {
+      app.activeDocument.selection.smooth(radius);
+    } catch (e2) {}
+  }
 }
 
 function _getAdjustedSelectionBounds(bounds, amount) {
@@ -410,7 +438,7 @@ function _clampAdjustAmount(bounds, amount) {
   return -Math.min(Math.abs(amount), maxContract);
 }
 
-function _getAdjustedSelectionBoundsSequence(bounds, adjustments) {
+function _getAdjustedSelectionBoundsSequence(bounds, adjustments, smoothRadius) {
   if (!bounds || !adjustments || !adjustments.length) return bounds;
 
   var doc;
@@ -431,6 +459,15 @@ function _getAdjustedSelectionBoundsSequence(bounds, adjustments) {
 
   var adjusted = bounds;
   try {
+    // Apply smoothing first if radius is provided
+    if (smoothRadius && smoothRadius > 0) {
+      _smoothSelection(smoothRadius);
+      adjusted = _getCurrentSelectionBounds();
+      if (!adjusted) {
+        adjusted = bounds;
+      }
+    }
+    
     for (var i = 0; i < adjustments.length; i++) {
       var amount = _clampAdjustAmount(adjusted, adjustments[i]);
       if (amount === 0) continue;
@@ -744,16 +781,20 @@ function _checkSelection(options) {
 
   var adjustAmount = 0;
   var adjustSequence = null;
+  var smoothRadius = 0;
   if (options && options.adjustAmount !== undefined) {
     adjustAmount = options.adjustAmount;
   }
   if (options && options.adjustSequence && options.adjustSequence.length) {
     adjustSequence = options.adjustSequence;
   }
+  if (options && options.smoothRadius !== undefined) {
+    smoothRadius = options.smoothRadius;
+  }
 
   var adjustedSelection = selection;
   if (adjustSequence) {
-    adjustedSelection = _getAdjustedSelectionBoundsSequence(selection, adjustSequence);
+    adjustedSelection = _getAdjustedSelectionBoundsSequence(selection, adjustSequence, smoothRadius);
   } else if (adjustAmount !== 0) {
     adjustedSelection = _getAdjustedSelectionBounds(selection, adjustAmount);
   }
@@ -957,7 +998,22 @@ function _createTextLayerInSelection() {
     state.result = "doc";
     return;
   }
-  var selection = _checkSelection({ adjustSequence: _DEFAULT_ADJUST_SEQUENCE });
+  
+  // Get the text size from the style for smoothing radius
+  var textSize = _hostState.fallbackTextSize || 20;
+  var style = _ensureStyle(state.data.style);
+  if (style && style.textProps && style.textProps.layerText && 
+      style.textProps.layerText.textStyleRange && 
+      style.textProps.layerText.textStyleRange[0] &&
+      style.textProps.layerText.textStyleRange[0].textStyle &&
+      style.textProps.layerText.textStyleRange[0].textStyle.size) {
+    textSize = style.textProps.layerText.textStyleRange[0].textStyle.size;
+  }
+  
+  var selection = _checkSelection({ 
+    adjustSequence: _DEFAULT_ADJUST_SEQUENCE,
+    smoothRadius: textSize
+  });
   if (selection.error) {
     state.result = selection.error;
     return;
@@ -984,11 +1040,21 @@ function _alignTextLayerToSelection() {
     state.result = "layer";
     return;
   }
-  var selection = _checkSelection({ adjustSequence: _DEFAULT_ADJUST_SEQUENCE });
+  
+  // Get the text size for smoothing radius
+  var textSize = _getTextLayerSize();
+  
+  var selection = _checkSelection({ 
+    adjustSequence: _DEFAULT_ADJUST_SEQUENCE,
+    smoothRadius: textSize
+  });
   if (selection.error) {
     if (selection.error === "noSelection") {
       _createMagicWandSelection(20);
-      selection = _checkSelection({ adjustSequence: _DEFAULT_ADJUST_SEQUENCE });
+      selection = _checkSelection({ 
+        adjustSequence: _DEFAULT_ADJUST_SEQUENCE,
+        smoothRadius: textSize
+      });
     }
     if (selection.error) {
       state.result = selection.error;
