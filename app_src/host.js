@@ -72,7 +72,7 @@ var _SAFE_PARAGRAPH_PROPS = [
 var _DEFAULT_SELECTION_SCALE = 0.9;
 var _MIN_TEXTBOX_WIDTH = 10;
 var _TEMP_SELECTION_CHANNEL = "__TyperSelectionTemp__";
-var _DEFAULT_ADJUST_SEQUENCE = [-5, -5, -5, -5, -5, 5, 5, 5, 5, 5];
+var _DEFAULT_ADJUST_SEQUENCE = [-5, -5, -5, -5, -5, -5, 5, 5, 5, 5, 5, 5];
 
 var _hostState = {
   fallbackTextSize: 20,
@@ -321,19 +321,6 @@ function _modifySelectionBounds(amount) {
   executeAction(amount > 0 ? charID.Expand : charID.Contract, size, DialogModes.NO);
 }
 
-function _smoothSelection(radius) {
-  if (!radius || radius <= 0) return;
-  try {
-    var desc = new ActionDescriptor();
-    desc.putUnitDouble(stringIDToTypeID("radius"), charID.PixelUnit, radius);
-    executeAction(stringIDToTypeID("smoothness"), desc, DialogModes.NO);
-  } catch (e) {
-    // Fallback: try using DOM method
-    try {
-      app.activeDocument.selection.smooth(radius);
-    } catch (e2) {}
-  }
-}
 
 function _getAdjustedSelectionBounds(bounds, amount) {
   if (!bounds || amount === 0) return bounds;
@@ -438,7 +425,7 @@ function _clampAdjustAmount(bounds, amount) {
   return -Math.min(Math.abs(amount), maxContract);
 }
 
-function _getAdjustedSelectionBoundsSequence(bounds, adjustments, smoothRadius) {
+function _getAdjustedSelectionBoundsSequence(bounds, adjustments, preExpandAmount) {
   if (!bounds || !adjustments || !adjustments.length) return bounds;
 
   var doc;
@@ -459,12 +446,22 @@ function _getAdjustedSelectionBoundsSequence(bounds, adjustments, smoothRadius) 
 
   var adjusted = bounds;
   try {
-    // Apply smoothing first if radius is provided
-    if (smoothRadius && smoothRadius > 0) {
-      _smoothSelection(smoothRadius);
+    // Expand then contract by text size (smooths the selection)
+    if (preExpandAmount && preExpandAmount > 0) {
+      // First expand
+      _modifySelectionBounds(preExpandAmount);
       adjusted = _getCurrentSelectionBounds();
       if (!adjusted) {
         adjusted = bounds;
+      }
+      // Then contract back by the same amount
+      var contractAmount = _clampAdjustAmount(adjusted, -preExpandAmount);
+      if (contractAmount !== 0) {
+        _modifySelectionBounds(contractAmount);
+        adjusted = _getCurrentSelectionBounds();
+        if (!adjusted) {
+          adjusted = bounds;
+        }
       }
     }
     
@@ -781,20 +778,20 @@ function _checkSelection(options) {
 
   var adjustAmount = 0;
   var adjustSequence = null;
-  var smoothRadius = 0;
+  var preExpandAmount = 0;
   if (options && options.adjustAmount !== undefined) {
     adjustAmount = options.adjustAmount;
   }
   if (options && options.adjustSequence && options.adjustSequence.length) {
     adjustSequence = options.adjustSequence;
   }
-  if (options && options.smoothRadius !== undefined) {
-    smoothRadius = options.smoothRadius;
+  if (options && options.preExpandAmount !== undefined) {
+    preExpandAmount = options.preExpandAmount;
   }
 
   var adjustedSelection = selection;
   if (adjustSequence) {
-    adjustedSelection = _getAdjustedSelectionBoundsSequence(selection, adjustSequence, smoothRadius);
+    adjustedSelection = _getAdjustedSelectionBoundsSequence(selection, adjustSequence, preExpandAmount);
   } else if (adjustAmount !== 0) {
     adjustedSelection = _getAdjustedSelectionBounds(selection, adjustAmount);
   }
@@ -999,7 +996,7 @@ function _createTextLayerInSelection() {
     return;
   }
   
-  // Get the text size from the style for smoothing radius
+  // Get the text size from the style to pre-expand/dilate selection
   var textSize = _hostState.fallbackTextSize || 20;
   var style = _ensureStyle(state.data.style);
   if (style && style.textProps && style.textProps.layerText && 
@@ -1012,7 +1009,7 @@ function _createTextLayerInSelection() {
   
   var selection = _checkSelection({ 
     adjustSequence: _DEFAULT_ADJUST_SEQUENCE,
-    smoothRadius: textSize
+    preExpandAmount: textSize
   });
   if (selection.error) {
     state.result = selection.error;
@@ -1041,19 +1038,19 @@ function _alignTextLayerToSelection() {
     return;
   }
   
-  // Get the text size for smoothing radius
+  // Get the text size to pre-expand/dilate selection
   var textSize = _getTextLayerSize();
   
   var selection = _checkSelection({ 
     adjustSequence: _DEFAULT_ADJUST_SEQUENCE,
-    smoothRadius: textSize
+    preExpandAmount: textSize
   });
   if (selection.error) {
     if (selection.error === "noSelection") {
       _createMagicWandSelection(20);
       selection = _checkSelection({ 
         adjustSequence: _DEFAULT_ADJUST_SEQUENCE,
-        smoothRadius: textSize
+        preExpandAmount: textSize
       });
     }
     if (selection.error) {
