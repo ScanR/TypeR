@@ -1482,3 +1482,52 @@ function openFile(path, autoClose) {
     _hostState.lastOpenedDocId = newDoc.id;
   }
 }
+
+function deleteFolder(folderPath) {
+  try {
+    var folder = new Folder(folderPath);
+    if (folder.exists) {
+      // Recursively delete contents
+      var files = folder.getFiles();
+      for (var i = 0; i < files.length; i++) {
+        if (files[i] instanceof Folder) {
+          deleteFolder(files[i].fsName);
+        } else {
+          files[i].remove();
+        }
+      }
+      folder.remove();
+    }
+    return 'OK';
+  } catch (e) {
+    return 'ERROR: ' + e.message;
+  }
+}
+
+function openFolder(folderPath) {
+  try {
+    var os = $.os.toLowerCase();
+    if (os.indexOf('win') !== -1) {
+      // Windows: open Explorer
+      app.system('explorer "' + folderPath.replace(/\//g, '\\') + '"');
+    } else {
+      // macOS: open Finder
+      app.system('open "' + folderPath + '"');
+    }
+    return 'OK';
+  } catch (e) {
+    return 'ERROR: ' + e.message;
+  }
+}
+
+function makeExecutable(filePath) {
+  try {
+    var os = $.os.toLowerCase();
+    if (os.indexOf('mac') !== -1) {
+      app.system('chmod +x "' + filePath + '"');
+    }
+    return 'OK';
+  } catch (e) {
+    return 'ERROR: ' + e.message;
+  }
+}
