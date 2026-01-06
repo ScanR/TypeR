@@ -31,6 +31,7 @@ const storeFields = [
   "lastOpenedImagePath",
   "storedSelections",
   "multiBubbleMode",
+  "showTips",
   "internalPadding",
 ];
 
@@ -131,6 +132,7 @@ const initialState = {
   autoScrollStyle: storage.data?.autoScrollStyle !== false,
   currentFolderTagPriority: storage.data?.currentFolderTagPriority !== false,
   resizeTextBoxOnCenter: false,
+  showTips: storage.data?.showTips !== false,
   modalType: null,
   modalData: {},
   images: [],
@@ -554,6 +556,11 @@ const reducer = (state, action) => {
       if (!action.value) {
         newState.storedSelections = [];
       }
+      break;
+    }
+
+    case "setShowTips": {
+      newState.showTips = !!action.value;
       break;
     }
 

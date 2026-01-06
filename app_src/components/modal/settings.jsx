@@ -41,6 +41,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [multiBubbleMode, setMultiBubbleMode] = React.useState(
     !!context.state.multiBubbleMode
   );
+  const [showTips, setShowTips] = React.useState(
+    context.state.showTips !== false
+  );
   const [internalPadding, setInternalPadding] = React.useState(
     context.state.internalPadding !== undefined ? context.state.internalPadding : 10
   );
@@ -124,6 +127,11 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeMultiBubbleMode = (e) => {
     setMultiBubbleMode(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeShowTips = (e) => {
+    setShowTips(e.target.checked);
     setEdited(true);
   };
 
@@ -222,6 +230,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setMultiBubbleMode",
         value: multiBubbleMode,
+      });
+    }
+    if (showTips !== context.state.showTips) {
+      context.dispatch({
+        type: "setShowTips",
+        value: showTips,
       });
     }
     if (internalPadding !== context.state.internalPadding) {
@@ -619,6 +633,18 @@ const SettingsModal = React.memo(function SettingsModal() {
                         >
                           {locale.multiBubbleModeHowToUse || "Comment utiliser"}
                         </a>
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={showTips} onChange={changeShowTips} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsShowTipsLabel || "Show tips"}</span>
+                      <div className="settings-checkbox-hint">
+                        {locale.settingsShowTipsHint || "Display tips in the interface (multi-bubble hints, etc.)"}
                       </div>
                     </div>
                   </label>

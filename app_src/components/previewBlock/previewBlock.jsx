@@ -341,13 +341,13 @@ const PreviewBlock = React.memo(function PreviewBlock() {
             </div>
           </div>
         )}
-        {context.state.multiBubbleMode && shiftSelectionWarning && (
+        {context.state.multiBubbleMode && context.state.showTips !== false && shiftSelectionWarning && (
           <div className="preview-top_selection-warning">
             <FiAlertTriangle size={14} />
             <span>{locale.multiBubbleShiftTip || "Le mode multi-bubble fonctionne avec une sélection à la fois. Relâchez Shift et faites vos sélections une par une."}</span>
           </div>
         )}
-        {context.state.multiBubbleMode && showClearAllTip && (
+        {context.state.multiBubbleMode && context.state.showTips !== false && showClearAllTip && (
           <div className="preview-top_selection-tip">
             <FiMinusCircle size={14} />
             <span>{locale.multiBubbleClearAllTip || "Tip: Hold the - button for 1 second to clear all selections at once"}</span>
