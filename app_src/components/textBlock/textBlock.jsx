@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 import { FiArrowRightCircle, FiTarget } from "react-icons/fi";
 
 import config from "../../config";
-import { locale, setActiveLayerText, resizeTextArea, scrollToLine, openFile } from "../../utils";
+import { locale, setActiveLayerText, resizeTextArea, scrollToLine, openFile, convertHtmlToMarkdown, parseMarkdownRuns } from "../../utils";
 import { useContext } from "../../context";
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -15,6 +15,7 @@ const TextBlock = React.memo(function TextBlock() {
   const direction = context.state.direction || "ltr";
   const [focused, setFocused] = React.useState(false);
   const lastOpenedPath = React.useRef(null);
+  const textAreaRef = React.useRef(null);
   React.useEffect(resizeTextArea);
   React.useEffect(() => {
     scrollToLine(context.state.currentLineIndex, 1000);
@@ -29,13 +30,29 @@ const TextBlock = React.memo(function TextBlock() {
     const pattern = ignoreTags.map((tag) => escapeRegExp(tag)).join("|");
     return pattern || null;
   }, [ignoreTags]);
+  const renderMarkdownText = React.useCallback((text, keyPrefix = "md") => {
+    const parsed = parseMarkdownRuns(text);
+    if (!parsed.hasFormatting) {
+      return parsed.text;
+    }
+    return parsed.runs.map((run, index) => {
+      const runStyle = {};
+      if (run.bold) runStyle.fontWeight = "bold";
+      if (run.italic) runStyle.fontStyle = "italic";
+      return (
+        <span key={`${keyPrefix}-${index}`} style={runStyle}>
+          {run.text}
+        </span>
+      );
+    });
+  }, []);
   const renderHighlightedText = React.useCallback(
     (text) => {
       if (text === undefined || text === null || text === "") {
         return <span>{" "}</span>;
       }
       if (!ignoreTagsPattern) {
-        return <span>{text}</span>;
+        return <span>{renderMarkdownText(text)}</span>;
       }
       const regex = new RegExp(`(${ignoreTagsPattern})`, "g");
       const parts = text.split(regex);
@@ -50,7 +67,7 @@ const TextBlock = React.memo(function TextBlock() {
         }
         return (
           <React.Fragment key={`text-${index}`}>
-            {part}
+            {renderMarkdownText(part, `md-${index}`)}
           </React.Fragment>
         );
       });
@@ -60,7 +77,7 @@ const TextBlock = React.memo(function TextBlock() {
       }
       return nodes;
     },
-    [ignoreTagsPattern]
+    [ignoreTagsPattern, renderMarkdownText]
   );
 
   React.useEffect(() => {
@@ -116,6 +133,34 @@ const TextBlock = React.memo(function TextBlock() {
     return line.index;
   };
 
+  const handlePaste = React.useCallback(
+    (event) => {
+      const clipboard = event.clipboardData;
+      if (!clipboard) return;
+      const html = clipboard.getData("text/html");
+      if (!html) return;
+      const markdown = convertHtmlToMarkdown(html);
+      if (!markdown) return;
+      const plainText = clipboard.getData("text/plain") || "";
+      if (markdown === plainText) return;
+
+      event.preventDefault();
+      const currentText = context.state.text || "";
+      const textArea = textAreaRef.current;
+      const start = textArea ? textArea.selectionStart : currentText.length;
+      const end = textArea ? textArea.selectionEnd : currentText.length;
+      const nextText = currentText.slice(0, start) + markdown + currentText.slice(end);
+      context.dispatch({ type: "setText", text: nextText });
+      requestAnimationFrame(() => {
+        if (!textArea) return;
+        const cursor = start + markdown.length;
+        textArea.selectionStart = cursor;
+        textArea.selectionEnd = cursor;
+      });
+    },
+    [context.state.text, context.dispatch]
+  );
+
   return (
     <React.Fragment>
       <div className="text-lines">
@@ -156,7 +201,19 @@ const TextBlock = React.memo(function TextBlock() {
           </div>
         ))}
       </div>
-      <textarea className="text-area" dir={direction} value={context.state.text} onChange={(e) => context.dispatch({ type: "setText", text: e.target.value })} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} />
+      <div className="text-area-overlay" dir={direction}>
+        {renderMarkdownText(context.state.text || "")}
+      </div>
+      <textarea
+        ref={textAreaRef}
+        className="text-area"
+        dir={direction}
+        value={context.state.text}
+        onChange={(e) => context.dispatch({ type: "setText", text: e.target.value })}
+        onPaste={handlePaste}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
       {!context.state.lines.length && !focused && (
         <div className="text-message" dir={direction}>
           <div>{locale.pasteTextHint}</div>

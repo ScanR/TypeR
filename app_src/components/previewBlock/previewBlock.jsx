@@ -7,7 +7,7 @@ import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { MdCenterFocusWeak } from "react-icons/md";
 
-import { locale, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine } from "../../utils";
+import { locale, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine, parseMarkdownRuns } from "../../utils";
 import { useContext } from "../../context";
 
 const PreviewBlock = React.memo(function PreviewBlock() {
@@ -16,6 +16,22 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   const line = context.state.currentLine || { text: "" };
   const textStyle = style.textProps?.layerText.textStyleRange[0].textStyle || {};
   const styleObject = getStyleObject(textStyle);
+  const renderMarkdownText = React.useCallback((text) => {
+    const parsed = parseMarkdownRuns(text || "");
+    if (!parsed.hasFormatting) {
+      return parsed.text;
+    }
+    return parsed.runs.map((run, index) => {
+      const runStyle = {};
+      if (run.bold) runStyle.fontWeight = "bold";
+      if (run.italic) runStyle.fontStyle = "italic";
+      return (
+        <span key={`md-${index}`} style={runStyle}>
+          {run.text}
+        </span>
+      );
+    });
+  }, []);
 
   // État pour la détection automatique des sélections
   const [lastSelectionHash, setLastSelectionHash] = React.useState(null);
@@ -410,7 +426,11 @@ const PreviewBlock = React.memo(function PreviewBlock() {
               <FiArrowRightCircle size={16} onClick={insertStyledText} />
             </div>
           </div>
-          <div className="preview-line-text" style={styleObject} dangerouslySetInnerHTML={{ __html: `<span style='font-family: "${styleObject.fontFamily || "Tahoma"}"'>${line.text || ""}</span>` }}></div>
+          <div className="preview-line-text" style={styleObject}>
+            <span style={{ fontFamily: styleObject.fontFamily || "Tahoma" }}>
+              {renderMarkdownText(line.text || "")}
+            </span>
+          </div>
         </div>
       </div>
     </React.Fragment>
