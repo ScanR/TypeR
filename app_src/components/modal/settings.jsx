@@ -382,6 +382,17 @@ const SettingsModal = React.memo(function SettingsModal() {
     );
   };
 
+  const resetShortcuts = () => {
+    nativeConfirm(
+      locale.settingsResetShortcutsConfirm || "Voulez-vous vraiment réinitialiser les raccourcis ?",
+      locale.confirmTitle || "Confirmation",
+      (confirmed) => {
+        if (!confirmed) return;
+        context.dispatch({ type: "resetShortcut" });
+      }
+    );
+  };
+
   // Save current working snapshot as a named state
   const saveCurrentState = (e) => {
     e.preventDefault();
@@ -667,6 +678,11 @@ const SettingsModal = React.memo(function SettingsModal() {
               {Object.entries(context.state.shortcut).map(([index, value]) => (
                 <Shortcut key={index} value={value} index={index}></Shortcut>
               ))}
+            </div>
+            <div className="field">
+              <button type="button" className="topcoat-button--large" onClick={resetShortcuts}>
+                {locale.settingsResetShortcuts || "Reset shortcuts"}
+              </button>
             </div>
           </div>
         );

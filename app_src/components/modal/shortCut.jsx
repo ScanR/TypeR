@@ -3,6 +3,11 @@ import { FiX } from "react-icons/fi";
 import { locale } from "../../utils";
 
 const Shortcut = (props) => {
+  React.useEffect(() => {
+    const input = document.getElementById(`shortcut_${props.index}`);
+    if (input) input.value = (props.value || []).join(" + ");
+  }, [props.index, props.value]);
+
   const changeShortCut = (e) => {
     e.preventDefault();
     let shortCut = "";

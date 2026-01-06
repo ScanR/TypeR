@@ -44,7 +44,7 @@ const defaultShortcut = {
   decrease: ["CTRL", "SHIFT", "MINUS"],
   insertText: ["WIN", "V"],
   nextPage: ["SHIFT", "X"],
-  toggleMultiBubble: ["CTRL", "SHIFT", "M"],
+  toggleMultiBubble: ["CTRL", "ALT", "M"],
 };
 
 const normalizeFolders = (folders) => {
@@ -576,6 +576,11 @@ const reducer = (state, action) => {
     case "updateShortcut": {
       // console.log(action);
       newState.shortcut = { ...defaultShortcut, ...state.shortcut, ...action.shortcut };
+      break;
+    }
+
+    case "resetShortcut": {
+      newState.shortcut = { ...defaultShortcut };
       break;
     }
 
