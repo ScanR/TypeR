@@ -47,6 +47,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [showQuickStyleSize, setShowQuickStyleSize] = React.useState(
     context.state.showQuickStyleSize !== false
   );
+  const [styleSizeStep, setStyleSizeStep] = React.useState(
+    context.state.styleSizeStep !== undefined ? String(context.state.styleSizeStep) : "0.1"
+  );
   const [internalPadding, setInternalPadding] = React.useState(
     context.state.internalPadding !== undefined ? context.state.internalPadding : 10
   );
@@ -123,6 +126,24 @@ const SettingsModal = React.memo(function SettingsModal() {
   const changeShowQuickStyleSize = (e) => {
     setShowQuickStyleSize(e.target.checked);
     setEdited(true);
+  };
+  const changeStyleSizeStep = (e) => {
+    const value = e.target.value;
+    if (value === "") {
+      setStyleSizeStep("");
+      setEdited(true);
+      return;
+    }
+    const normalized = value.replace(",", ".");
+    if (!isNaN(normalized) && isFinite(parseFloat(normalized))) {
+      setStyleSizeStep(normalized);
+      setEdited(true);
+    }
+  };
+  const resetStyleSizeStep = () => {
+    if (styleSizeStep === "") {
+      setStyleSizeStep(String(context.state.styleSizeStep ?? 0.1));
+    }
   };
 
   const changeResizeTextBoxOnCenter = (e) => {
@@ -257,6 +278,17 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setShowQuickStyleSize",
         value: showQuickStyleSize,
+      });
+    }
+    const parsedStyleSizeStep = parseFloat(String(styleSizeStep).replace(",", "."));
+    if (
+      Number.isFinite(parsedStyleSizeStep) &&
+      parsedStyleSizeStep > 0 &&
+      parsedStyleSizeStep !== context.state.styleSizeStep
+    ) {
+      context.dispatch({
+        type: "setStyleSizeStep",
+        step: parsedStyleSizeStep,
       });
     }
     if (internalPadding !== context.state.internalPadding) {
@@ -699,6 +731,23 @@ const SettingsModal = React.memo(function SettingsModal() {
                       </div>
                     </div>
                   </label>
+                </div>
+              </div>
+              <div className="field">
+                <div className="field-label">{locale.settingsQuickStyleSizeStepLabel || "Quick size step"}</div>
+                <div className="field-input">
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="any"
+                    value={styleSizeStep}
+                    onChange={changeStyleSizeStep}
+                    onBlur={resetStyleSizeStep}
+                    className="topcoat-text-input--large"
+                  />
+                </div>
+                <div className="field-descr">
+                  {locale.settingsQuickStyleSizeStepHint || "Choose how much the quick size buttons increment the font size."}
                 </div>
               </div>
             </div>

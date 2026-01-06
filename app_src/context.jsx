@@ -35,6 +35,7 @@ const storeFields = [
   "showQuickStyleSize",
   "internalPadding",
   "interpretMarkdown",
+  "styleSizeStep",
 ];
 
 const defaultShortcut = {
@@ -148,6 +149,7 @@ const initialState = {
   multiBubbleMode: false,
   internalPadding: 10,
   interpretMarkdown: storage.data?.interpretMarkdown === true,
+  styleSizeStep: 0.1,
   ...storage.data,
   theme: "default",
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
@@ -560,6 +562,13 @@ const reducer = (state, action) => {
       if (!action.value) {
         newState.storedSelections = [];
       }
+      break;
+    }
+
+    case "setStyleSizeStep": {
+      let step = parseFloat(action.step);
+      if (!Number.isFinite(step) || step <= 0) step = 0.1;
+      newState.styleSizeStep = step;
       break;
     }
 

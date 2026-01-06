@@ -212,6 +212,12 @@ const StyleItem = React.memo(function StyleItem(props) {
   const sizeValue = textStyle.size || "";
   const unit = props.style.textProps?.typeUnit ? props.style.textProps.typeUnit.substr(0, 3) : "px";
   const showQuickStyleSize = context.state.showQuickStyleSize !== false;
+  const sizeStep = Number(context.state.styleSizeStep) > 0 ? Number(context.state.styleSizeStep) : 0.1;
+  const sizeStepDecimals = (sizeStep.toString().split(".")[1] || "").length;
+  const normalizeSizeStep = (value) => {
+    const rounded = Math.round(value / sizeStep) * sizeStep;
+    return parseFloat(rounded.toFixed(sizeStepDecimals));
+  };
 
   React.useEffect(() => {
     setQuickSize(sizeValue);
@@ -287,7 +293,7 @@ const StyleItem = React.memo(function StyleItem(props) {
   const nudgeQuickSize = (delta) => (e) => {
     stopQuickEvent(e);
     const baseValue = parseFloat(quickSize || textStyle.size || 1);
-    const nextValue = Math.max(1, Math.round((baseValue + delta) * 10) / 10);
+    const nextValue = Math.max(1, normalizeSizeStep(baseValue + delta * sizeStep));
     setQuickSize(nextValue);
     applyQuickSize(nextValue);
   };
@@ -333,7 +339,7 @@ const StyleItem = React.memo(function StyleItem(props) {
                 ref={quickInputRef}
                 type="number"
                 min={1}
-                step="0.1"
+                step={sizeStep}
                 value={quickSize}
                 onChange={changeQuickSize}
                 onBlur={resetQuickSize}
