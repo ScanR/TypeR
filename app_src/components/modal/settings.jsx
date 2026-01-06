@@ -684,6 +684,11 @@ const SettingsModal = React.memo(function SettingsModal() {
                 {locale.settingsResetShortcuts || "Reset shortcuts"}
               </button>
             </div>
+            <div className="field">
+              <div className="field-descr">
+                {locale.settingsShortcutsTip || "If shortcuts feel buggy or stop working, resetting them often fixes it."}
+              </div>
+            </div>
           </div>
         );
 
