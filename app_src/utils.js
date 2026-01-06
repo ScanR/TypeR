@@ -651,7 +651,9 @@ const convertHtmlToMarkdown = (html) => {
 
     const inlineStyle = node.getAttribute("style") || "";
     if (/font-weight\s*:\s*(bold|[6-9]00)/i.test(inlineStyle)) nextStyle.bold = true;
+    if (/font-weight\s*:\s*(normal|[1-5]00)/i.test(inlineStyle)) nextStyle.bold = false;
     if (/font-style\s*:\s*italic/i.test(inlineStyle)) nextStyle.italic = true;
+    if (/font-style\s*:\s*normal/i.test(inlineStyle)) nextStyle.italic = false;
 
     const isBlock = /^(p|div|li|ul|ol|tr)$/i.test(tag);
     if (isBlock && runs.length && !runs[runs.length - 1].text.endsWith("\n")) {
