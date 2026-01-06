@@ -89,7 +89,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     });
   };
 
-  const [clearButtonTimeout, setClearButtonTimeout] = React.useState(null);
+  const clearButtonTimeout = React.useRef(null);
 
   const clearStoredSelections = () => {
     const storedSelections = context.state.storedSelections || [];
@@ -101,23 +101,23 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   const handleClearMouseDown = () => {
     const timeout = setTimeout(() => {
       context.dispatch({ type: "clearSelections" });
-      setClearButtonTimeout(null);
+      clearButtonTimeout.current = null;
     }, 1000);
-    setClearButtonTimeout(timeout);
+    clearButtonTimeout.current = timeout;
   };
 
   const handleClearMouseUp = () => {
-    if (clearButtonTimeout) {
-      clearTimeout(clearButtonTimeout);
-      setClearButtonTimeout(null);
+    if (clearButtonTimeout.current) {
+      clearTimeout(clearButtonTimeout.current);
+      clearButtonTimeout.current = null;
       clearStoredSelections();
     }
   };
 
   const handleClearMouseLeave = () => {
-    if (clearButtonTimeout) {
-      clearTimeout(clearButtonTimeout);
-      setClearButtonTimeout(null);
+    if (clearButtonTimeout.current) {
+      clearTimeout(clearButtonTimeout.current);
+      clearButtonTimeout.current = null;
     }
   };
 
@@ -172,6 +172,9 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       }
       if (clearAllTipTimeout.current) {
         clearTimeout(clearAllTipTimeout.current);
+      }
+      if (clearButtonTimeout.current) {
+        clearTimeout(clearButtonTimeout.current);
       }
     };
   }, [context.state.multiBubbleMode, checkForSelectionChange]);
