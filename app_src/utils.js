@@ -560,13 +560,19 @@ const parseMarkdownRuns = (input) => {
     }
   };
 
-  const pushOverlaySegment = (segment, style, hidden) => {
+  const pushOverlaySegment = (segment, style, hidden, marker) => {
     if (!segment) return;
     const last = overlaySegments[overlaySegments.length - 1];
-    if (last && last.hidden === hidden && last.bold === style.bold && last.italic === style.italic) {
+    if (
+      last &&
+      last.hidden === hidden &&
+      last.marker === marker &&
+      last.bold === style.bold &&
+      last.italic === style.italic
+    ) {
       last.text += segment;
     } else {
-      overlaySegments.push({ text: segment, bold: style.bold, italic: style.italic, hidden });
+      overlaySegments.push({ text: segment, bold: style.bold, italic: style.italic, hidden, marker });
     }
   };
 
@@ -620,16 +626,16 @@ const parseMarkdownRuns = (input) => {
         cursor = afterOpen;
         continue;
       }
-      // Opening marker: hidden but keeps width
-      pushOverlaySegment(match.marker.token, style, true);
+      // Opening marker: keep width for alignment
+      pushOverlaySegment(match.marker.token, style, true, "open");
       const inner = segment.slice(afterOpen, closeIndex);
       const nextStyle = {
         bold: style.bold || match.marker.bold,
         italic: style.italic || match.marker.italic,
       };
       walk(inner, nextStyle);
-      // Closing marker: hidden but keeps width
-      pushOverlaySegment(match.marker.token, style, true);
+      // Closing marker: keep width for alignment
+      pushOverlaySegment(match.marker.token, style, true, "close");
       cursor = closeIndex + match.marker.token.length;
     }
   };

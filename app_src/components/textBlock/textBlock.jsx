@@ -62,7 +62,18 @@ const TextBlock = React.memo(function TextBlock() {
         const style = {};
         if (segment.bold) style.fontWeight = "bold";
         if (segment.italic) style.fontStyle = "italic";
-        if (segment.hidden) style.visibility = "hidden";
+        if (segment.hidden && !segment.marker) style.visibility = "hidden";
+        if (segment.marker) {
+          style.opacity = 0.4;
+          style.fontWeight = "normal";
+          style.fontStyle = "normal";
+          style.display = "inline-block";
+          style.position = "relative";
+          style.transform = "scale(0.65)";
+          style.transformOrigin = "left center";
+          if (segment.marker === "open") style.left = "0.2ch";
+          if (segment.marker === "close") style.left = "-0.2ch";
+        }
         return (
           <span key={`overlay-${index}`} style={style}>
             {segment.text || " "}
