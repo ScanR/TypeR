@@ -145,7 +145,7 @@ const initialState = {
   storedSelections: [],
   multiBubbleMode: false,
   internalPadding: 10,
-  interpretMarkdown: storage.data?.interpretMarkdown !== false,
+  interpretMarkdown: storage.data?.interpretMarkdown === true,
   ...storage.data,
   theme: "default",
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },

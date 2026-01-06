@@ -594,7 +594,7 @@ const parseMarkdownRuns = (input) => {
   return { text: plainText, runs, hasFormatting };
 };
 
-const isMarkdownEnabled = () => readStorage("interpretMarkdown") !== false;
+const isMarkdownEnabled = () => readStorage("interpretMarkdown") === true;
 
 const buildRichTextPayload = (text, allowMarkdown = isMarkdownEnabled()) => {
   if (typeof text !== "string" || !allowMarkdown) {
