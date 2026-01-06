@@ -339,7 +339,6 @@ const StyleItem = React.memo(function StyleItem(props) {
                 onBlur={resetQuickSize}
                 className="style-quick-size-input"
               />
-              <span className="style-quick-size-unit">{unit}</span>
               <button className="style-quick-size-btn" title={locale.shortcut_increase || "Increase text size"} onClick={nudgeQuickSize(1)}>
                 <FiPlus size={12} />
               </button>

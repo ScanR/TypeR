@@ -263,9 +263,9 @@
   font-size: 10px;
   line-height: 14px;
   border-radius: 2px;
-  border: 1px solid rgba(#000, 0.4);
-  background: rgba(#fff, 0.95);
-  color: #111;
+  border: 1px solid rgba(#000, 0.6);
+  background: #454646;
+  color: #fff;
   text-align: center;
   appearance: textfield;
 }
@@ -283,15 +283,16 @@
   width: 16px;
   padding: 0;
   border-radius: 2px;
-  border: 1px solid rgba(#000, 0.4);
-  background: rgba(#fff, 0.95);
+  border: 1px solid rgba(#000, 0.6);
+  background: #454646;
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
 .style-quick-size-btn:hover {
-  background: rgba(#fff, 1);
+  background: #525353;
 }
 .style-item.m-current .style-quick-size {
   background: rgba(#1b4e6f, 0.6);
