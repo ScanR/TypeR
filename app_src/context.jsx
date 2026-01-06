@@ -31,7 +31,11 @@ const storeFields = [
   "lastOpenedImagePath",
   "storedSelections",
   "multiBubbleMode",
+  "showTips",
+  "showQuickStyleSize",
   "internalPadding",
+  "interpretMarkdown",
+  "styleSizeStep",
 ];
 
 const defaultShortcut = {
@@ -44,7 +48,7 @@ const defaultShortcut = {
   decrease: ["CTRL", "SHIFT", "MINUS"],
   insertText: ["WIN", "V"],
   nextPage: ["SHIFT", "X"],
-  toggleMultiBubble: ["CTRL", "SHIFT", "M"],
+  toggleMultiBubble: ["CTRL", "ALT", "M"],
 };
 
 const normalizeFolders = (folders) => {
@@ -131,6 +135,8 @@ const initialState = {
   autoScrollStyle: storage.data?.autoScrollStyle !== false,
   currentFolderTagPriority: storage.data?.currentFolderTagPriority !== false,
   resizeTextBoxOnCenter: false,
+  showTips: storage.data?.showTips !== false,
+  showQuickStyleSize: storage.data?.showQuickStyleSize !== false,
   modalType: null,
   modalData: {},
   images: [],
@@ -142,6 +148,8 @@ const initialState = {
   storedSelections: [],
   multiBubbleMode: false,
   internalPadding: 10,
+  interpretMarkdown: storage.data?.interpretMarkdown === true,
+  styleSizeStep: 0.1,
   ...storage.data,
   theme: "default",
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
@@ -557,6 +565,23 @@ const reducer = (state, action) => {
       break;
     }
 
+    case "setStyleSizeStep": {
+      let step = parseFloat(action.step);
+      if (!Number.isFinite(step) || step <= 0) step = 0.1;
+      newState.styleSizeStep = step;
+      break;
+    }
+
+    case "setShowTips": {
+      newState.showTips = !!action.value;
+      break;
+    }
+
+    case "setShowQuickStyleSize": {
+      newState.showQuickStyleSize = !!action.value;
+      break;
+    }
+
     case "setLastOpenedImagePath": {
       newState.lastOpenedImagePath = action.path || null;
       break;
@@ -576,6 +601,11 @@ const reducer = (state, action) => {
     case "updateShortcut": {
       // console.log(action);
       newState.shortcut = { ...defaultShortcut, ...state.shortcut, ...action.shortcut };
+      break;
+    }
+
+    case "resetShortcut": {
+      newState.shortcut = { ...defaultShortcut };
       break;
     }
 
@@ -613,6 +643,11 @@ const reducer = (state, action) => {
       if (padding < 0) padding = 0;
       if (padding > 100) padding = 100;
       newState.internalPadding = padding;
+      break;
+    }
+
+    case "setInterpretMarkdown": {
+      newState.interpretMarkdown = action.value !== false;
       break;
     }
   }

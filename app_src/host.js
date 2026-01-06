@@ -705,11 +705,50 @@ function _applyTextDirection(direction, textLength) {
   }
 }
 
+function _buildRichTextRanges(baseRange, textRuns, textLength) {
+  if (!baseRange || !baseRange.textStyle || !textRuns || !textRuns.length) return null;
+  var ranges = [];
+  var offset = 0;
+  for (var i = 0; i < textRuns.length; i++) {
+    var run = textRuns[i] || {};
+    var runText = run.text || "";
+    var runLength = runText.length;
+    if (!runLength) continue;
+    var textStyle = _clone(baseRange.textStyle);
+    if (run.bold) textStyle.syntheticBold = true;
+    if (run.italic) textStyle.syntheticItalic = true;
+    ranges.push({
+      from: offset,
+      to: offset + runLength,
+      textStyle: textStyle,
+    });
+    offset += runLength;
+  }
+  if (offset < textLength) {
+    ranges.push({
+      from: offset,
+      to: textLength,
+      textStyle: _clone(baseRange.textStyle),
+    });
+  }
+  return ranges.length ? ranges : null;
+}
+
+function _applyRichTextRanges(textParams, textRuns, textLength) {
+  if (!textParams || !textParams.layerText || !textRuns || !textRuns.length) return false;
+  var baseRange = textParams.layerText.textStyleRange && textParams.layerText.textStyleRange[0];
+  var ranges = _buildRichTextRanges(baseRange, textRuns, textLength);
+  if (!ranges) return false;
+  textParams.layerText.textStyleRange = ranges;
+  return true;
+}
+
 function _createAndSetLayerText(data, width, height) {
   var style = _ensureStyle(data.style);
   style.textProps.layerText.textKey = data.text.replace(/\n+/g, "");
   style.textProps.layerText.textStyleRange[0].to = data.text.length;
   style.textProps.layerText.paragraphStyleRange[0].to = data.text.length;
+  _applyRichTextRanges(style.textProps, data.richTextRuns, data.text.length);
   var sizeProp = style.textProps.layerText.textStyleRange[0].textStyle.size;
   if (typeof sizeProp !== "number") {
     try {
@@ -849,6 +888,7 @@ function _setActiveLayerText() {
   }
   var dataText = payload.text;
   var dataStyle = payload.style;
+  var dataRuns = payload.richTextRuns;
   var targetTextLength = 0;
 
   _forEachSelectedLayer(function () {
@@ -869,6 +909,7 @@ function _setActiveLayerText() {
       newTextParams.layerText.textStyleRange[0].to = dataText.length;
       newTextParams.layerText.paragraphStyleRange[0].to = dataText.length;
       targetTextLength = dataText.length;
+      _applyRichTextRanges(newTextParams, dataRuns, targetTextLength);
     } else if (dataText) {
       newTextParams = {
         layerText: {
@@ -899,6 +940,7 @@ function _setActiveLayerText() {
         }];
       }
       targetTextLength = dataText.length;
+      _applyRichTextRanges(newTextParams, dataRuns, targetTextLength);
     } else if (dataStyle) {
       var text = oldTextParams.layerText.textKey || "";
       newTextParams = dataStyle.textProps;
@@ -1406,29 +1448,46 @@ function _createTextLayersInStoredSelections() {
   var maxCount = Math.min(texts.length, state.selections.length);
   
   for (var i = 0; i < maxCount; i++) {
-    var text = texts[i] || texts[texts.length - 1] || "";
-    var baseStyle = styles[i] || styles[styles.length - 1] || null;
-    var style = _ensureStyle(baseStyle);
-    var selection = state.selections[i];
-    
-    if (!text) continue;
-    
-    var dimensions = _calculateSelectionDimensions(selection, state.padding);
+    try {
+      var text = texts[i] || texts[texts.length - 1] || "";
+      var textRuns = state.data.richTextRuns
+        ? (state.data.richTextRuns[i] || state.data.richTextRuns[state.data.richTextRuns.length - 1])
+        : null;
+      var baseStyle = styles[i] || styles[styles.length - 1] || null;
+      var style = _ensureStyle(baseStyle);
+      var selection = state.selections[i];
 
-    // Créer le layer de texte
-    var data = { text: text, style: style, direction: state.data.direction };
-    _createAndSetLayerText(data, dimensions.width, dimensions.height);
-    
-    var bounds = _getCurrentTextLayerBounds();
-    if (state.point) {
-      _changeToPointText();
-    } else {
-      _resizeTextBoxToContent(dimensions.width, bounds);
+      if (!selection || typeof selection.width !== "number" || typeof selection.height !== "number") {
+        state.result = "invalidSelection";
+        return;
+      }
+
+      if (!text) continue;
+
+      var dimensions = _calculateSelectionDimensions(selection, state.padding);
+      if (!dimensions || isNaN(dimensions.width) || isNaN(dimensions.height) || dimensions.width <= 0 || dimensions.height <= 0) {
+        state.result = "invalidSelection";
+        return;
+      }
+
+      // Créer le layer de texte
+      var data = { text: text, style: style, direction: state.data.direction, richTextRuns: textRuns };
+      _createAndSetLayerText(data, dimensions.width, dimensions.height);
+
+      var bounds = _getCurrentTextLayerBounds();
+      if (state.point) {
+        _changeToPointText();
+      } else {
+        _resizeTextBoxToContent(dimensions.width, bounds);
+      }
+      bounds = _getCurrentTextLayerBounds();
+
+      // Positionner le layer à l'emplacement de la sélection stockée
+      _positionLayerWithinSelection(selection, bounds);
+    } catch (e) {
+      state.result = "scriptError: " + (e && e.message ? e.message : e);
+      return;
     }
-    bounds = _getCurrentTextLayerBounds();
-    
-    // Positionner le layer à l'emplacement de la sélection stockée
-    _positionLayerWithinSelection(selection, bounds);
   }
   
   // Vider les sélections stockées après utilisation

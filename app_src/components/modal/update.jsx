@@ -171,7 +171,7 @@ const UpdateModal = React.memo(function UpdateModal() {
           title={locale.updateAutoInstall || 'Download and install automatically'}
         >
           <FiRefreshCw size={14} style={{ marginRight: '4px' }} />
-          {locale.updateAutoUpdate || 'Auto Update'}
+          {locale.updateAutoUpdate || 'Install'}
         </button>
       </div>
       <style>{`

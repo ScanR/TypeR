@@ -502,6 +502,239 @@ const getActiveLayerText = (callback) => {
   });
 };
 
+const MARKDOWN_MARKERS = [
+  { token: "***", bold: true, italic: true },
+  { token: "___", bold: true, italic: true },
+  { token: "**", bold: true, italic: false },
+  { token: "__", bold: true, italic: false },
+  { token: "*", bold: false, italic: true },
+  { token: "_", bold: false, italic: true },
+];
+
+const isEscapedMarkdown = (text, index) => {
+  let backslashes = 0;
+  for (let i = index - 1; i >= 0 && text[i] === "\\"; i--) {
+    backslashes += 1;
+  }
+  return backslashes % 2 === 1;
+};
+
+const findUnescapedToken = (text, token, start) => {
+  let index = text.indexOf(token, start);
+  while (index !== -1 && isEscapedMarkdown(text, index)) {
+    index = text.indexOf(token, index + 1);
+  }
+  return index;
+};
+
+const findNextMarker = (text, start) => {
+  let best = null;
+  for (const marker of MARKDOWN_MARKERS) {
+    const index = findUnescapedToken(text, marker.token, start);
+    if (index === -1) continue;
+    if (!best || index < best.index || (index === best.index && marker.token.length > best.marker.token.length)) {
+      best = { index, marker };
+    }
+  }
+  return best;
+};
+
+const unescapeMarkdownText = (text) => {
+  return text.replace(/\\\\/g, "\\").replace(/\\\*/g, "*").replace(/\\_/g, "_");
+};
+
+const parseMarkdownRuns = (input) => {
+  const text = typeof input === "string" ? input : "";
+  const runs = [];
+  const overlaySegments = [];
+
+  const pushRun = (segment, style) => {
+    if (!segment) return;
+    const cleaned = unescapeMarkdownText(segment);
+    if (!cleaned) return;
+    const last = runs[runs.length - 1];
+    if (last && last.bold === style.bold && last.italic === style.italic) {
+      last.text += cleaned;
+    } else {
+      runs.push({ text: cleaned, bold: style.bold, italic: style.italic });
+    }
+  };
+
+  const pushOverlaySegment = (segment, style, hidden, marker) => {
+    if (!segment) return;
+    const last = overlaySegments[overlaySegments.length - 1];
+    if (
+      last &&
+      last.hidden === hidden &&
+      last.marker === marker &&
+      last.bold === style.bold &&
+      last.italic === style.italic
+    ) {
+      last.text += segment;
+    } else {
+      overlaySegments.push({ text: segment, bold: style.bold, italic: style.italic, hidden, marker });
+    }
+  };
+
+  const pushOverlayText = (segment, style) => {
+    if (!segment) return;
+    let buffer = "";
+    for (let i = 0; i < segment.length; i++) {
+      const char = segment[i];
+      const next = segment[i + 1];
+      const isEscaped = char === "\\" && (next === "\\" || next === "*" || next === "_");
+      if (isEscaped) {
+        if (buffer) {
+          pushOverlaySegment(buffer, style, false);
+          buffer = "";
+        }
+        // Keep the backslash width for caret alignment but hide it
+        pushOverlaySegment("\\", style, true);
+        // Render the escaped character visibly
+        pushOverlaySegment(next === "\\" ? "\\" : next, style, false);
+        i += 1;
+        continue;
+      }
+      buffer += char;
+    }
+    if (buffer) {
+      pushOverlaySegment(buffer, style, false);
+    }
+  };
+
+  const walk = (segment, style) => {
+    let cursor = 0;
+    while (cursor < segment.length) {
+      const match = findNextMarker(segment, cursor);
+      if (!match) {
+        const tail = segment.slice(cursor);
+        pushRun(tail, style);
+        pushOverlayText(tail, style);
+        break;
+      }
+      if (match.index > cursor) {
+        const before = segment.slice(cursor, match.index);
+        pushRun(before, style);
+        pushOverlayText(before, style);
+      }
+      const afterOpen = match.index + match.marker.token.length;
+      const closeIndex = findUnescapedToken(segment, match.marker.token, afterOpen);
+      if (closeIndex === -1) {
+        const unmatched = segment.slice(match.index, afterOpen);
+        pushRun(unmatched, style);
+        pushOverlayText(unmatched, style);
+        cursor = afterOpen;
+        continue;
+      }
+      // Opening marker: keep width for alignment
+      pushOverlaySegment(match.marker.token, style, true, "open");
+      const inner = segment.slice(afterOpen, closeIndex);
+      const nextStyle = {
+        bold: style.bold || match.marker.bold,
+        italic: style.italic || match.marker.italic,
+      };
+      walk(inner, nextStyle);
+      // Closing marker: keep width for alignment
+      pushOverlaySegment(match.marker.token, style, true, "close");
+      cursor = closeIndex + match.marker.token.length;
+    }
+  };
+
+  walk(text, { bold: false, italic: false });
+
+  const plainText = runs.map((run) => run.text).join("");
+  const hasFormatting = runs.some((run) => run.bold || run.italic);
+  return { text: plainText, runs, hasFormatting, overlaySegments };
+};
+
+const isMarkdownEnabled = () => readStorage("interpretMarkdown") === true;
+
+const buildRichTextPayload = (text, allowMarkdown = isMarkdownEnabled()) => {
+  if (typeof text !== "string" || !allowMarkdown) {
+    return { text, richTextRuns: null };
+  }
+  const parsed = parseMarkdownRuns(text);
+  return {
+    text: parsed.text,
+    richTextRuns: parsed.hasFormatting ? parsed.runs : null,
+  };
+};
+
+const escapeMarkdownText = (text) => {
+  return text.replace(/\\/g, "\\\\").replace(/\*/g, "\\*").replace(/_/g, "\\_");
+};
+
+const applyMarkdownStyle = (text, bold, italic) => {
+  if (!bold && !italic) return text;
+  const marker = bold && italic ? "***" : bold ? "**" : "*";
+  const parts = text.split("\n");
+  return parts.map((part) => (part === "" ? part : `${marker}${part}${marker}`)).join("\n");
+};
+
+const convertHtmlToMarkdown = (html) => {
+  if (!html) return "";
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const runs = [];
+
+  const pushRun = (text, style) => {
+    if (!text) return;
+    const last = runs[runs.length - 1];
+    if (last && last.bold === style.bold && last.italic === style.italic) {
+      last.text += text;
+    } else {
+      runs.push({ text, bold: style.bold, italic: style.italic });
+    }
+  };
+
+  const walk = (node, style) => {
+    if (node.nodeType === 3) {
+      const value = (node.nodeValue || "").replace(/\u00a0/g, " ");
+      pushRun(value, style);
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    const tag = node.tagName.toLowerCase();
+    if (tag === "br") {
+      pushRun("\n", style);
+      return;
+    }
+
+    const nextStyle = { bold: style.bold, italic: style.italic };
+    if (tag === "b" || tag === "strong") nextStyle.bold = true;
+    if (tag === "i" || tag === "em") nextStyle.italic = true;
+
+    const inlineStyle = node.getAttribute("style") || "";
+    if (/font-weight\s*:\s*(bold|[6-9]00)/i.test(inlineStyle)) nextStyle.bold = true;
+    if (/font-weight\s*:\s*(normal|[1-5]00)/i.test(inlineStyle)) nextStyle.bold = false;
+    if (/font-style\s*:\s*italic/i.test(inlineStyle)) nextStyle.italic = true;
+    if (/font-style\s*:\s*normal/i.test(inlineStyle)) nextStyle.italic = false;
+
+    const isBlock = /^(p|div|li|ul|ol|tr)$/i.test(tag);
+    if (isBlock && runs.length && !runs[runs.length - 1].text.endsWith("\n")) {
+      pushRun("\n", style);
+    }
+    for (const child of Array.from(node.childNodes)) {
+      walk(child, nextStyle);
+    }
+    if (isBlock) {
+      pushRun("\n", style);
+    }
+  };
+
+  walk(doc.body, { bold: false, italic: false });
+
+  let markdown = runs
+    .map((run) => {
+      const escaped = escapeMarkdownText(run.text);
+      return applyMarkdownStyle(escaped, run.bold, run.italic);
+    })
+    .join("");
+
+  markdown = markdown.replace(/\n{3,}/g, "\n\n");
+  return markdown;
+};
+
 const setActiveLayerText = (text, style, direction, callback = () => {}) => {
   // Support legacy calls where direction is omitted and callback is 3rd parameter
   if (typeof direction === "function") {
@@ -513,7 +746,13 @@ const setActiveLayerText = (text, style, direction, callback = () => {}) => {
     callback(false);
     return false;
   }
-  const data = JSON.stringify({ text, style, direction });
+  const parsed = buildRichTextPayload(text);
+  const data = JSON.stringify({
+    text: parsed.text,
+    style,
+    direction,
+    richTextRuns: parsed.richTextRuns,
+  });
   csInterface.evalScript("setActiveLayerText(" + data + ")", (error) => {
     if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
     callback(!error);
@@ -575,7 +814,14 @@ const createTextLayerInSelection = (text, style, pointText, padding, direction, 
   if (!style) {
     style = { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
   }
-  const data = JSON.stringify({ text, style, padding: padding || 0, direction });
+  const parsed = buildRichTextPayload(text);
+  const data = JSON.stringify({
+    text: parsed.text,
+    style,
+    padding: padding || 0,
+    direction,
+    richTextRuns: parsed.richTextRuns,
+  });
   csInterface.evalScript("createTextLayerInSelection(" + data + ", " + !!pointText + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
@@ -606,10 +852,20 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
     callback(false);
     return false;
   }
-  const data = JSON.stringify({ texts, styles, selections, padding: padding || 0, direction });
+  const parsedTexts = texts.map((line) => buildRichTextPayload(line));
+  const data = JSON.stringify({
+    texts: parsedTexts.map((entry) => entry.text),
+    richTextRuns: parsedTexts.map((entry) => entry.richTextRuns),
+    styles,
+    selections,
+    padding: padding || 0,
+    direction,
+  });
   csInterface.evalScript("createTextLayersInStoredSelections(" + data + ", " + !!pointText + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    else if (error === "invalidSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    else if (error && error.indexOf("scriptError:") === 0) nativeAlert(error.replace("scriptError: ", ""), locale.errorTitle, true);
     else if (error) nativeAlert("Error: " + error, locale.errorTitle, true);
     callback(!error);
   });
@@ -759,4 +1015,4 @@ const openFile = (path, autoClose = false) => {
   );
 };
 
-export { csInterface, locale, openUrl, readStorage, writeToStorage, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate, downloadAndInstallUpdate };
+export { csInterface, locale, openUrl, readStorage, writeToStorage, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, getActiveLayerText, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getHotkeyPressed, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, checkUpdate, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };

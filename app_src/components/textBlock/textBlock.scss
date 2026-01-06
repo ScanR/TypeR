@@ -161,11 +161,31 @@
   margin-left: 50px;
   line-height: 17px;
   font-size: 14px;
-  color: #000;
+  color: rgba(#000, 0);
+  caret-color: #000;
   border: none;
   resize: none;
   width: 100%;
+  z-index: 4;
+}
+.text-area-overlay {
+  box-sizing: border-box;
+  font-family: monospace;
+  word-break: break-word;
+  white-space: pre-wrap;
+  position: absolute;
+  overflow: hidden;
+  background: none;
+  padding: 4px 6px;
+  line-height: 17px;
+  font-size: 14px;
+  color: #000;
+  border: none;
+  left: 50px;
+  right: 20px;
   z-index: 3;
+  top: 0;
+  pointer-events: none;
 }
 .text-message {
   display: flex;

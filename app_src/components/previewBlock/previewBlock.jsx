@@ -3,11 +3,11 @@ import "./previewBlock.scss";
 import _ from "lodash";
 import React from "react";
 import PropTypes from "prop-types";
-import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown, FiAlertTriangle } from "react-icons/fi";
+import { FiArrowRightCircle, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown, FiAlertTriangle, FiX } from "react-icons/fi";
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { MdCenterFocusWeak } from "react-icons/md";
 
-import { locale, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine } from "../../utils";
+import { locale, setActiveLayerText, getCurrentSelection, getSelectionBoundsHash, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, scrollToLine, parseMarkdownRuns } from "../../utils";
 import { useContext } from "../../context";
 
 const PreviewBlock = React.memo(function PreviewBlock() {
@@ -16,12 +16,33 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   const line = context.state.currentLine || { text: "" };
   const textStyle = style.textProps?.layerText.textStyleRange[0].textStyle || {};
   const styleObject = getStyleObject(textStyle);
+  const markdownEnabled = context.state.interpretMarkdown !== false;
+  const renderMarkdownText = React.useCallback((text) => {
+    if (!markdownEnabled) return text;
+    const parsed = parseMarkdownRuns(text || "");
+    if (!parsed.hasFormatting) {
+      return parsed.text;
+    }
+    return parsed.runs.map((run, index) => {
+      const runStyle = {};
+      if (run.bold) runStyle.fontWeight = "bold";
+      if (run.italic) runStyle.fontStyle = "italic";
+      return (
+        <span key={`md-${index}`} style={runStyle}>
+          {run.text}
+        </span>
+      );
+    });
+  }, [markdownEnabled]);
 
   // État pour la détection automatique des sélections
   const [lastSelectionHash, setLastSelectionHash] = React.useState(null);
   const selectionCheckInterval = React.useRef(null);
   const [shiftSelectionWarning, setShiftSelectionWarning] = React.useState(false);
   const shiftTipTimeout = React.useRef(null);
+  const [showClearAllTip, setShowClearAllTip] = React.useState(false);
+  const clearAllTipTimeout = React.useRef(null);
+  const [clearAllTipShown, setClearAllTipShown] = React.useState(false);
 
   const showShiftTip = React.useCallback(() => {
     setShiftSelectionWarning(true);
@@ -30,6 +51,23 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     }
     shiftTipTimeout.current = setTimeout(() => setShiftSelectionWarning(false), 3500);
   }, []);
+
+  const showClearAllTipFunc = React.useCallback(() => {
+    if (clearAllTipShown) return; // Ne montrer qu'une seule fois
+    setShowClearAllTip(true);
+    setClearAllTipShown(true);
+    if (clearAllTipTimeout.current) {
+      clearTimeout(clearAllTipTimeout.current);
+    }
+    clearAllTipTimeout.current = setTimeout(() => setShowClearAllTip(false), 5000);
+  }, [clearAllTipShown]);
+
+  const closeClearAllTip = () => {
+    setShowClearAllTip(false);
+    if (clearAllTipTimeout.current) {
+      clearTimeout(clearAllTipTimeout.current);
+    }
+  };
 
   const addSelectionAndAdvance = (selection) => {
     if (!selection) return;
@@ -51,7 +89,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     });
   };
 
-  const [clearButtonTimeout, setClearButtonTimeout] = React.useState(null);
+  const clearButtonTimeout = React.useRef(null);
 
   const clearStoredSelections = () => {
     const storedSelections = context.state.storedSelections || [];
@@ -63,23 +101,23 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   const handleClearMouseDown = () => {
     const timeout = setTimeout(() => {
       context.dispatch({ type: "clearSelections" });
-      setClearButtonTimeout(null);
+      clearButtonTimeout.current = null;
     }, 1000);
-    setClearButtonTimeout(timeout);
+    clearButtonTimeout.current = timeout;
   };
 
   const handleClearMouseUp = () => {
-    if (clearButtonTimeout) {
-      clearTimeout(clearButtonTimeout);
-      setClearButtonTimeout(null);
+    if (clearButtonTimeout.current) {
+      clearTimeout(clearButtonTimeout.current);
+      clearButtonTimeout.current = null;
       clearStoredSelections();
     }
   };
 
   const handleClearMouseLeave = () => {
-    if (clearButtonTimeout) {
-      clearTimeout(clearButtonTimeout);
-      setClearButtonTimeout(null);
+    if (clearButtonTimeout.current) {
+      clearTimeout(clearButtonTimeout.current);
+      clearButtonTimeout.current = null;
     }
   };
 
@@ -132,6 +170,12 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       if (shiftTipTimeout.current) {
         clearTimeout(shiftTipTimeout.current);
       }
+      if (clearAllTipTimeout.current) {
+        clearTimeout(clearAllTipTimeout.current);
+      }
+      if (clearButtonTimeout.current) {
+        clearTimeout(clearButtonTimeout.current);
+      }
     };
   }, [context.state.multiBubbleMode, checkForSelectionChange]);
   React.useEffect(() => {
@@ -139,6 +183,19 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       setShiftSelectionWarning(false);
     }
   }, [context.state.multiBubbleMode, shiftSelectionWarning]);
+
+  // Afficher le tip "hold to clear all" quand on dépasse 10 sélections
+  React.useEffect(() => {
+    const storedSelections = context.state.storedSelections || [];
+    if (context.state.multiBubbleMode && storedSelections.length > 10 && !clearAllTipShown) {
+      showClearAllTipFunc();
+    }
+    // Réinitialiser le flag quand on quitte le mode multi-bubble ou qu'on vide les sélections
+    if (!context.state.multiBubbleMode || storedSelections.length === 0) {
+      setClearAllTipShown(false);
+      setShowClearAllTip(false);
+    }
+  }, [context.state.multiBubbleMode, context.state.storedSelections, clearAllTipShown, showClearAllTipFunc]);
 
   const createLayer = () => {
     const storedSelections = context.state.storedSelections || [];
@@ -305,10 +362,23 @@ const PreviewBlock = React.memo(function PreviewBlock() {
             </div>
           </div>
         )}
-        {context.state.multiBubbleMode && shiftSelectionWarning && (
+        {context.state.multiBubbleMode && context.state.showTips !== false && shiftSelectionWarning && (
           <div className="preview-top_selection-warning">
             <FiAlertTriangle size={14} />
             <span>{locale.multiBubbleShiftTip || "Le mode multi-bubble fonctionne avec une sélection à la fois. Relâchez Shift et faites vos sélections une par une."}</span>
+          </div>
+        )}
+        {context.state.multiBubbleMode && context.state.showTips !== false && showClearAllTip && (
+          <div className="preview-top_selection-tip">
+            <FiMinusCircle size={14} />
+            <span>{locale.multiBubbleClearAllTip || "Tip: Hold the - button for 1 second to clear all selections at once"}</span>
+            <button 
+              className="preview-top_selection-tip-close" 
+              onClick={closeClearAllTip}
+              title={locale.close || "Close"}
+            >
+              <FiX size={14} />
+            </button>
           </div>
         )}
         <div className="preview-top_main-controls">
@@ -361,7 +431,11 @@ const PreviewBlock = React.memo(function PreviewBlock() {
               <FiArrowRightCircle size={16} onClick={insertStyledText} />
             </div>
           </div>
-          <div className="preview-line-text" style={styleObject} dangerouslySetInnerHTML={{ __html: `<span style='font-family: "${styleObject.fontFamily || "Tahoma"}"'>${line.text || ""}</span>` }}></div>
+          <div className="preview-line-text" style={styleObject}>
+            <span style={{ fontFamily: styleObject.fontFamily || "Tahoma" }}>
+              {renderMarkdownText(line.text || "")}
+            </span>
+          </div>
         </div>
       </div>
     </React.Fragment>

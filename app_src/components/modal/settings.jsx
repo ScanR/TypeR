@@ -41,8 +41,20 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [multiBubbleMode, setMultiBubbleMode] = React.useState(
     !!context.state.multiBubbleMode
   );
+  const [showTips, setShowTips] = React.useState(
+    context.state.showTips !== false
+  );
+  const [showQuickStyleSize, setShowQuickStyleSize] = React.useState(
+    context.state.showQuickStyleSize !== false
+  );
+  const [styleSizeStep, setStyleSizeStep] = React.useState(
+    context.state.styleSizeStep !== undefined ? String(context.state.styleSizeStep) : "0.1"
+  );
   const [internalPadding, setInternalPadding] = React.useState(
     context.state.internalPadding !== undefined ? context.state.internalPadding : 10
+  );
+  const [interpretMarkdown, setInterpretMarkdown] = React.useState(
+    context.state.interpretMarkdown !== false
   );
   const [edited, setEdited] = React.useState(false);
 
@@ -111,6 +123,28 @@ const SettingsModal = React.memo(function SettingsModal() {
     setCurrentFolderTagPriority(e.target.checked);
     setEdited(true);
   };
+  const changeShowQuickStyleSize = (e) => {
+    setShowQuickStyleSize(e.target.checked);
+    setEdited(true);
+  };
+  const changeStyleSizeStep = (e) => {
+    const value = e.target.value;
+    if (value === "") {
+      setStyleSizeStep("");
+      setEdited(true);
+      return;
+    }
+    const normalized = value.replace(",", ".");
+    if (!isNaN(normalized) && isFinite(parseFloat(normalized))) {
+      setStyleSizeStep(normalized);
+      setEdited(true);
+    }
+  };
+  const resetStyleSizeStep = () => {
+    if (styleSizeStep === "") {
+      setStyleSizeStep(String(context.state.styleSizeStep ?? 0.1));
+    }
+  };
 
   const changeResizeTextBoxOnCenter = (e) => {
     setResizeTextBoxOnCenter(e.target.checked);
@@ -127,6 +161,11 @@ const SettingsModal = React.memo(function SettingsModal() {
     setEdited(true);
   };
 
+  const changeShowTips = (e) => {
+    setShowTips(e.target.checked);
+    setEdited(true);
+  };
+
   const changeInternalPadding = (e) => {
     const value = e.target.value;
     // Allow empty string or valid numbers
@@ -134,6 +173,11 @@ const SettingsModal = React.memo(function SettingsModal() {
       setInternalPadding(value);
       setEdited(true);
     }
+  };
+
+  const changeInterpretMarkdown = (e) => {
+    setInterpretMarkdown(e.target.checked);
+    setEdited(true);
   };
 
   const save = (e) => {
@@ -224,10 +268,39 @@ const SettingsModal = React.memo(function SettingsModal() {
         value: multiBubbleMode,
       });
     }
+    if (showTips !== context.state.showTips) {
+      context.dispatch({
+        type: "setShowTips",
+        value: showTips,
+      });
+    }
+    if (showQuickStyleSize !== context.state.showQuickStyleSize) {
+      context.dispatch({
+        type: "setShowQuickStyleSize",
+        value: showQuickStyleSize,
+      });
+    }
+    const parsedStyleSizeStep = parseFloat(String(styleSizeStep).replace(",", "."));
+    if (
+      Number.isFinite(parsedStyleSizeStep) &&
+      parsedStyleSizeStep > 0 &&
+      parsedStyleSizeStep !== context.state.styleSizeStep
+    ) {
+      context.dispatch({
+        type: "setStyleSizeStep",
+        step: parsedStyleSizeStep,
+      });
+    }
     if (internalPadding !== context.state.internalPadding) {
       context.dispatch({
         type: "setInternalPadding",
         value: internalPadding,
+      });
+    }
+    if (interpretMarkdown !== context.state.interpretMarkdown) {
+      context.dispatch({
+        type: "setInterpretMarkdown",
+        value: interpretMarkdown,
       });
     }
     const shortcut = {};
@@ -378,6 +451,17 @@ const SettingsModal = React.memo(function SettingsModal() {
             true
           );
         }
+      }
+    );
+  };
+
+  const resetShortcuts = () => {
+    nativeConfirm(
+      locale.settingsResetShortcutsConfirm || "Voulez-vous vraiment réinitialiser les raccourcis ?",
+      locale.confirmTitle || "Confirmation",
+      (confirmed) => {
+        if (!confirmed) return;
+        context.dispatch({ type: "resetShortcut" });
       }
     );
   };
@@ -612,6 +696,59 @@ const SettingsModal = React.memo(function SettingsModal() {
                     </div>
                   </label>
                 </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={showTips} onChange={changeShowTips} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsShowTipsLabel || "Show tips"}</span>
+                      <div className="settings-checkbox-hint">
+                        {locale.settingsShowTipsHint || "Display tips in the interface (multi-bubble hints, etc.)"}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={showQuickStyleSize} onChange={changeShowQuickStyleSize} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsQuickStyleSizeLabel || "Quick style size editor"}</span>
+                      <div className="settings-checkbox-hint">
+                        {locale.settingsQuickStyleSizeHint || "Show the mini size editor when hovering the style edit button."}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={interpretMarkdown} onChange={changeInterpretMarkdown} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsMarkdownLabel || "Interpret markdown (bold/italic)"}</span>
+                      <div className="settings-checkbox-hint">
+                        {locale.settingsMarkdownHint || "Convert markdown and rich text on paste and apply bold/italic in the text block."}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              <div className="field">
+                <div className="field-label">{locale.settingsQuickStyleSizeStepLabel || "Quick size step"}</div>
+                <div className="field-input">
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="any"
+                    value={styleSizeStep}
+                    onChange={changeStyleSizeStep}
+                    onBlur={resetStyleSizeStep}
+                    className="topcoat-text-input--large"
+                  />
+                </div>
+                <div className="field-descr">
+                  {locale.settingsQuickStyleSizeStepHint || "Choose how much the quick size buttons increment the font size."}
+                </div>
               </div>
             </div>
             <div className="settings-group">
@@ -667,6 +804,16 @@ const SettingsModal = React.memo(function SettingsModal() {
               {Object.entries(context.state.shortcut).map(([index, value]) => (
                 <Shortcut key={index} value={value} index={index}></Shortcut>
               ))}
+            </div>
+            <div className="field">
+              <button type="button" className="topcoat-button--large" onClick={resetShortcuts}>
+                {locale.settingsResetShortcuts || "Reset shortcuts"}
+              </button>
+            </div>
+            <div className="field">
+              <div className="field-descr">
+                {locale.settingsShortcutsTip || "If shortcuts feel buggy or stop working, resetting them often fixes it."}
+              </div>
             </div>
           </div>
         );
