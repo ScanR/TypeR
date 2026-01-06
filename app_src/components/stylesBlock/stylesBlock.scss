@@ -248,8 +248,7 @@
   z-index: 2;
 }
 .style-quick-size-wrap:hover .style-quick-size,
-.style-quick-size-wrap.m-open .style-quick-size,
-.style-quick-size-wrap:focus-within .style-quick-size {
+.style-quick-size-wrap.m-open .style-quick-size {
   opacity: 1;
   pointer-events: auto;
   transform: translate(-2px, -50%);
@@ -268,6 +267,12 @@
   background: rgba(#fff, 0.95);
   color: #111;
   text-align: center;
+  appearance: textfield;
+}
+.style-quick-size-input::-webkit-outer-spin-button,
+.style-quick-size-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 .style-quick-size-unit {
   font-size: 9px;

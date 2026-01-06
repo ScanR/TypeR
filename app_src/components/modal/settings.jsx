@@ -44,6 +44,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [showTips, setShowTips] = React.useState(
     context.state.showTips !== false
   );
+  const [showQuickStyleSize, setShowQuickStyleSize] = React.useState(
+    context.state.showQuickStyleSize !== false
+  );
   const [internalPadding, setInternalPadding] = React.useState(
     context.state.internalPadding !== undefined ? context.state.internalPadding : 10
   );
@@ -115,6 +118,10 @@ const SettingsModal = React.memo(function SettingsModal() {
   };
   const changeCurrentFolderTagPriority = (e) => {
     setCurrentFolderTagPriority(e.target.checked);
+    setEdited(true);
+  };
+  const changeShowQuickStyleSize = (e) => {
+    setShowQuickStyleSize(e.target.checked);
     setEdited(true);
   };
 
@@ -244,6 +251,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setShowTips",
         value: showTips,
+      });
+    }
+    if (showQuickStyleSize !== context.state.showQuickStyleSize) {
+      context.dispatch({
+        type: "setShowQuickStyleSize",
+        value: showQuickStyleSize,
       });
     }
     if (internalPadding !== context.state.internalPadding) {
@@ -659,6 +672,18 @@ const SettingsModal = React.memo(function SettingsModal() {
                       <span>{locale.settingsShowTipsLabel || "Show tips"}</span>
                       <div className="settings-checkbox-hint">
                         {locale.settingsShowTipsHint || "Display tips in the interface (multi-bubble hints, etc.)"}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={showQuickStyleSize} onChange={changeShowQuickStyleSize} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsQuickStyleSizeLabel || "Quick style size editor"}</span>
+                      <div className="settings-checkbox-hint">
+                        {locale.settingsQuickStyleSizeHint || "Show the mini size editor when hovering the style edit button."}
                       </div>
                     </div>
                   </label>

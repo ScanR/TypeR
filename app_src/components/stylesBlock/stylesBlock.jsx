@@ -207,8 +207,11 @@ const StyleItem = React.memo(function StyleItem(props) {
   const [quickSize, setQuickSize] = React.useState(textStyle.size || "");
   const [quickOpen, setQuickOpen] = React.useState(false);
   const quickCloseTimeout = React.useRef(null);
+  const quickWrapRef = React.useRef(null);
+  const quickInputRef = React.useRef(null);
   const sizeValue = textStyle.size || "";
   const unit = props.style.textProps?.typeUnit ? props.style.textProps.typeUnit.substr(0, 3) : "px";
+  const showQuickStyleSize = context.state.showQuickStyleSize !== false;
 
   React.useEffect(() => {
     setQuickSize(sizeValue);
@@ -251,6 +254,9 @@ const StyleItem = React.memo(function StyleItem(props) {
   const scheduleCloseQuickSize = () => {
     if (quickCloseTimeout.current) clearTimeout(quickCloseTimeout.current);
     quickCloseTimeout.current = setTimeout(() => setQuickOpen(false), 150);
+    if (quickWrapRef.current && quickWrapRef.current.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
   };
   const applyQuickSize = React.useCallback(
     (nextSize) => {
@@ -305,37 +311,45 @@ const StyleItem = React.memo(function StyleItem(props) {
       </div>
       <div className="style-name" style={styleObject} dangerouslySetInnerHTML={{ __html: `<span style='font-family: "${styleObject.fontFamily || "Tahoma"}"'>${props.style.name}</span>` }}></div>
       <div className="style-actions">
-        <div
-          className={"style-quick-size-wrap" + (quickOpen ? " m-open" : "")}
-          onMouseEnter={openQuickSize}
-          onMouseLeave={scheduleCloseQuickSize}
-          onFocus={openQuickSize}
-          onBlur={scheduleCloseQuickSize}
-          onMouseDown={stopQuickEvent}
-          onClick={stopQuickEvent}
-        >
+        {showQuickStyleSize ? (
+          <div
+            className={"style-quick-size-wrap" + (quickOpen ? " m-open" : "")}
+            ref={quickWrapRef}
+            onMouseEnter={openQuickSize}
+            onMouseLeave={scheduleCloseQuickSize}
+            onFocus={openQuickSize}
+            onBlur={scheduleCloseQuickSize}
+            onMouseDown={stopQuickEvent}
+            onClick={stopQuickEvent}
+          >
+            <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} title={locale.editStyle} onClick={openStyle}>
+              <MdEdit size={16} />
+            </button>
+            <div className="style-quick-size hostBrdContrast" title={locale.editStyleFontSize || "Font size"} onMouseDown={stopQuickEvent} onClick={stopQuickEvent}>
+              <button className="style-quick-size-btn" title={locale.shortcut_decrease || "Decrease text size"} onClick={nudgeQuickSize(-1)}>
+                <FiMinus size={12} />
+              </button>
+              <input
+                ref={quickInputRef}
+                type="number"
+                min={1}
+                step="0.1"
+                value={quickSize}
+                onChange={changeQuickSize}
+                onBlur={resetQuickSize}
+                className="style-quick-size-input"
+              />
+              <span className="style-quick-size-unit">{unit}</span>
+              <button className="style-quick-size-btn" title={locale.shortcut_increase || "Increase text size"} onClick={nudgeQuickSize(1)}>
+                <FiPlus size={12} />
+              </button>
+            </div>
+          </div>
+        ) : (
           <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} title={locale.editStyle} onClick={openStyle}>
             <MdEdit size={16} />
           </button>
-          <div className="style-quick-size hostBrdContrast" title={locale.editStyleFontSize || "Font size"} onMouseDown={stopQuickEvent} onClick={stopQuickEvent}>
-            <button className="style-quick-size-btn" title={locale.shortcut_decrease || "Decrease text size"} onClick={nudgeQuickSize(-1)}>
-              <FiMinus size={12} />
-            </button>
-            <input
-              type="number"
-              min={1}
-              step="0.1"
-              value={quickSize}
-              onChange={changeQuickSize}
-              onBlur={resetQuickSize}
-              className="style-quick-size-input"
-            />
-            <span className="style-quick-size-unit">{unit}</span>
-            <button className="style-quick-size-btn" title={locale.shortcut_increase || "Increase text size"} onClick={nudgeQuickSize(1)}>
-              <FiPlus size={12} />
-            </button>
-          </div>
-        </div>
+        )}
         <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} title={locale.duplicateStyle} onClick={duplicateStyle}>
           <FiCopy size={16} />
         </button>

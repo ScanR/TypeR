@@ -32,6 +32,7 @@ const storeFields = [
   "storedSelections",
   "multiBubbleMode",
   "showTips",
+  "showQuickStyleSize",
   "internalPadding",
   "interpretMarkdown",
 ];
@@ -134,6 +135,7 @@ const initialState = {
   currentFolderTagPriority: storage.data?.currentFolderTagPriority !== false,
   resizeTextBoxOnCenter: false,
   showTips: storage.data?.showTips !== false,
+  showQuickStyleSize: storage.data?.showQuickStyleSize !== false,
   modalType: null,
   modalData: {},
   images: [],
@@ -563,6 +565,11 @@ const reducer = (state, action) => {
 
     case "setShowTips": {
       newState.showTips = !!action.value;
+      break;
+    }
+
+    case "setShowQuickStyleSize": {
+      newState.showQuickStyleSize = !!action.value;
       break;
     }
 
