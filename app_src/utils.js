@@ -546,6 +546,7 @@ const unescapeMarkdownText = (text) => {
 const parseMarkdownRuns = (input) => {
   const text = typeof input === "string" ? input : "";
   const runs = [];
+  const overlaySegments = [];
 
   const pushRun = (segment, style) => {
     if (!segment) return;
@@ -559,30 +560,76 @@ const parseMarkdownRuns = (input) => {
     }
   };
 
+  const pushOverlaySegment = (segment, style, hidden) => {
+    if (!segment) return;
+    const last = overlaySegments[overlaySegments.length - 1];
+    if (last && last.hidden === hidden && last.bold === style.bold && last.italic === style.italic) {
+      last.text += segment;
+    } else {
+      overlaySegments.push({ text: segment, bold: style.bold, italic: style.italic, hidden });
+    }
+  };
+
+  const pushOverlayText = (segment, style) => {
+    if (!segment) return;
+    let buffer = "";
+    for (let i = 0; i < segment.length; i++) {
+      const char = segment[i];
+      const next = segment[i + 1];
+      const isEscaped = char === "\\" && (next === "\\" || next === "*" || next === "_");
+      if (isEscaped) {
+        if (buffer) {
+          pushOverlaySegment(buffer, style, false);
+          buffer = "";
+        }
+        // Keep the backslash width for caret alignment but hide it
+        pushOverlaySegment("\\", style, true);
+        // Render the escaped character visibly
+        pushOverlaySegment(next === "\\" ? "\\" : next, style, false);
+        i += 1;
+        continue;
+      }
+      buffer += char;
+    }
+    if (buffer) {
+      pushOverlaySegment(buffer, style, false);
+    }
+  };
+
   const walk = (segment, style) => {
     let cursor = 0;
     while (cursor < segment.length) {
       const match = findNextMarker(segment, cursor);
       if (!match) {
-        pushRun(segment.slice(cursor), style);
+        const tail = segment.slice(cursor);
+        pushRun(tail, style);
+        pushOverlayText(tail, style);
         break;
       }
       if (match.index > cursor) {
-        pushRun(segment.slice(cursor, match.index), style);
+        const before = segment.slice(cursor, match.index);
+        pushRun(before, style);
+        pushOverlayText(before, style);
       }
       const afterOpen = match.index + match.marker.token.length;
       const closeIndex = findUnescapedToken(segment, match.marker.token, afterOpen);
       if (closeIndex === -1) {
-        pushRun(segment.slice(match.index, afterOpen), style);
+        const unmatched = segment.slice(match.index, afterOpen);
+        pushRun(unmatched, style);
+        pushOverlayText(unmatched, style);
         cursor = afterOpen;
         continue;
       }
+      // Opening marker: hidden but keeps width
+      pushOverlaySegment(match.marker.token, style, true);
       const inner = segment.slice(afterOpen, closeIndex);
       const nextStyle = {
         bold: style.bold || match.marker.bold,
         italic: style.italic || match.marker.italic,
       };
       walk(inner, nextStyle);
+      // Closing marker: hidden but keeps width
+      pushOverlaySegment(match.marker.token, style, true);
       cursor = closeIndex + match.marker.token.length;
     }
   };
@@ -591,7 +638,7 @@ const parseMarkdownRuns = (input) => {
 
   const plainText = runs.map((run) => run.text).join("");
   const hasFormatting = runs.some((run) => run.bold || run.italic);
-  return { text: plainText, runs, hasFormatting };
+  return { text: plainText, runs, hasFormatting, overlaySegments };
 };
 
 const isMarkdownEnabled = () => readStorage("interpretMarkdown") === true;

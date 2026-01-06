@@ -51,6 +51,27 @@ const TextBlock = React.memo(function TextBlock() {
     },
     [markdownEnabled]
   );
+
+  const renderMarkdownOverlay = React.useCallback(
+    (text) => {
+      if (!markdownEnabled) return text;
+      const parsed = parseMarkdownRuns(text || "");
+      const segments = parsed.overlaySegments || [];
+      if (!segments.length) return text;
+      return segments.map((segment, index) => {
+        const style = {};
+        if (segment.bold) style.fontWeight = "bold";
+        if (segment.italic) style.fontStyle = "italic";
+        if (segment.hidden) style.visibility = "hidden";
+        return (
+          <span key={`overlay-${index}`} style={style}>
+            {segment.text || " "}
+          </span>
+        );
+      });
+    },
+    [markdownEnabled]
+  );
   const renderHighlightedText = React.useCallback(
     (text) => {
       if (text === undefined || text === null || text === "") {
@@ -208,7 +229,7 @@ const TextBlock = React.memo(function TextBlock() {
         ))}
       </div>
       <div className="text-area-overlay" dir={direction}>
-        {renderMarkdownText(context.state.text || "")}
+        {renderMarkdownOverlay(context.state.text || "")}
       </div>
       <textarea
         ref={textAreaRef}
