@@ -1,9 +1,10 @@
 import "./stylesBlock.scss";
 
 import React from "react";
+import _ from "lodash";
 import PropTypes from "prop-types";
 import { ReactSortable } from "react-sortablejs";
-import { FiArrowRightCircle, FiPlus, FiFolderPlus, FiChevronDown, FiChevronUp, FiCopy, FiEye, FiEyeOff } from "react-icons/fi";
+import { FiArrowRightCircle, FiPlus, FiFolderPlus, FiChevronDown, FiChevronUp, FiCopy, FiEye, FiEyeOff, FiMinus } from "react-icons/fi";
 import { MdEdit, MdLock } from "react-icons/md";
 import { CiExport } from "react-icons/ci";
 
@@ -203,6 +204,22 @@ const StyleItem = React.memo(function StyleItem(props) {
   const textStyle = props.style.textProps.layerText.textStyleRange[0]?.textStyle || {};
   const styleObject = getStyleObject(textStyle);
   const context = useContext();
+  const [quickSize, setQuickSize] = React.useState(textStyle.size || "");
+  const [quickOpen, setQuickOpen] = React.useState(false);
+  const quickCloseTimeout = React.useRef(null);
+  const sizeValue = textStyle.size || "";
+  const unit = props.style.textProps?.typeUnit ? props.style.textProps.typeUnit.substr(0, 3) : "px";
+
+  React.useEffect(() => {
+    setQuickSize(sizeValue);
+  }, [sizeValue]);
+
+  React.useEffect(() => {
+    return () => {
+      if (quickCloseTimeout.current) clearTimeout(quickCloseTimeout.current);
+    };
+  }, []);
+
   const openStyle = (e) => {
     e.stopPropagation();
     props.openStyle();
@@ -227,6 +244,50 @@ const StyleItem = React.memo(function StyleItem(props) {
     e.stopPropagation();
     context.dispatch({ type: "toggleStylePrefixes", id: props.style.id });
   };
+  const openQuickSize = () => {
+    if (quickCloseTimeout.current) clearTimeout(quickCloseTimeout.current);
+    setQuickOpen(true);
+  };
+  const scheduleCloseQuickSize = () => {
+    if (quickCloseTimeout.current) clearTimeout(quickCloseTimeout.current);
+    quickCloseTimeout.current = setTimeout(() => setQuickOpen(false), 150);
+  };
+  const applyQuickSize = React.useCallback(
+    (nextSize) => {
+      if (!props.style.textProps?.layerText?.textStyleRange?.length) return;
+      const parsed = parseFloat(nextSize);
+      if (!Number.isFinite(parsed) || parsed <= 0) return;
+      const newTextProps = _.cloneDeep(props.style.textProps);
+      const newStyle = newTextProps.layerText.textStyleRange[0].textStyle;
+      newStyle.size = parsed;
+      if (newStyle.impliedFontSize != null) newStyle.impliedFontSize = parsed;
+      context.dispatch({
+        type: "saveStyle",
+        data: { ...props.style, textProps: newTextProps, edited: Date.now() },
+      });
+    },
+    [context, props.style]
+  );
+  const stopQuickEvent = (e) => {
+    e.stopPropagation();
+  };
+  const changeQuickSize = (e) => {
+    stopQuickEvent(e);
+    const value = e.target.value;
+    setQuickSize(value);
+    if (value === "") return;
+    applyQuickSize(value);
+  };
+  const nudgeQuickSize = (delta) => (e) => {
+    stopQuickEvent(e);
+    const baseValue = parseFloat(quickSize || textStyle.size || 1);
+    const nextValue = Math.max(1, Math.round((baseValue + delta) * 10) / 10);
+    setQuickSize(nextValue);
+    applyQuickSize(nextValue);
+  };
+  const resetQuickSize = () => {
+    if (quickSize === "") setQuickSize(sizeValue || "");
+  };
   return (
     <div id={props.style.id} className={"style-item hostBgdLight" + (props.active ? " m-current" : "") + (props.style.prefixesDisabled ? " m-disabled" : "")} onClick={props.selectStyle}>
       <div className="style-marker">
@@ -244,9 +305,37 @@ const StyleItem = React.memo(function StyleItem(props) {
       </div>
       <div className="style-name" style={styleObject} dangerouslySetInnerHTML={{ __html: `<span style='font-family: "${styleObject.fontFamily || "Tahoma"}"'>${props.style.name}</span>` }}></div>
       <div className="style-actions">
-        <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} title={locale.editStyle} onClick={openStyle}>
-          <MdEdit size={16} />
-        </button>
+        <div
+          className={"style-quick-size-wrap" + (quickOpen ? " m-open" : "")}
+          onMouseEnter={openQuickSize}
+          onMouseLeave={scheduleCloseQuickSize}
+          onFocus={openQuickSize}
+          onBlur={scheduleCloseQuickSize}
+          onMouseDown={stopQuickEvent}
+          onClick={stopQuickEvent}
+        >
+          <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} title={locale.editStyle} onClick={openStyle}>
+            <MdEdit size={16} />
+          </button>
+          <div className="style-quick-size hostBrdContrast" title={locale.editStyleFontSize || "Font size"} onMouseDown={stopQuickEvent} onClick={stopQuickEvent}>
+            <button className="style-quick-size-btn" title={locale.shortcut_decrease || "Decrease text size"} onClick={nudgeQuickSize(-1)}>
+              <FiMinus size={12} />
+            </button>
+            <input
+              type="number"
+              min={1}
+              step="0.1"
+              value={quickSize}
+              onChange={changeQuickSize}
+              onBlur={resetQuickSize}
+              className="style-quick-size-input"
+            />
+            <span className="style-quick-size-unit">{unit}</span>
+            <button className="style-quick-size-btn" title={locale.shortcut_increase || "Increase text size"} onClick={nudgeQuickSize(1)}>
+              <FiPlus size={12} />
+            </button>
+          </div>
+        </div>
         <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} title={locale.duplicateStyle} onClick={duplicateStyle}>
           <FiCopy size={16} />
         </button>
