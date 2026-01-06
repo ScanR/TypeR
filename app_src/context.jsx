@@ -33,6 +33,7 @@ const storeFields = [
   "multiBubbleMode",
   "showTips",
   "internalPadding",
+  "interpretMarkdown",
 ];
 
 const defaultShortcut = {
@@ -144,6 +145,7 @@ const initialState = {
   storedSelections: [],
   multiBubbleMode: false,
   internalPadding: 10,
+  interpretMarkdown: storage.data?.interpretMarkdown !== false,
   ...storage.data,
   theme: "default",
   shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
@@ -625,6 +627,11 @@ const reducer = (state, action) => {
       if (padding < 0) padding = 0;
       if (padding > 100) padding = 100;
       newState.internalPadding = padding;
+      break;
+    }
+
+    case "setInterpretMarkdown": {
+      newState.interpretMarkdown = action.value !== false;
       break;
     }
   }

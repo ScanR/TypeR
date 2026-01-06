@@ -594,8 +594,10 @@ const parseMarkdownRuns = (input) => {
   return { text: plainText, runs, hasFormatting };
 };
 
-const buildRichTextPayload = (text) => {
-  if (typeof text !== "string") {
+const isMarkdownEnabled = () => readStorage("interpretMarkdown") !== false;
+
+const buildRichTextPayload = (text, allowMarkdown = isMarkdownEnabled()) => {
+  if (typeof text !== "string" || !allowMarkdown) {
     return { text, richTextRuns: null };
   }
   const parsed = parseMarkdownRuns(text);
@@ -809,6 +811,8 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
   csInterface.evalScript("createTextLayersInStoredSelections(" + data + ", " + !!pointText + ")", (error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    else if (error === "invalidSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    else if (error && error.indexOf("scriptError:") === 0) nativeAlert(error.replace("scriptError: ", ""), locale.errorTitle, true);
     else if (error) nativeAlert("Error: " + error, locale.errorTitle, true);
     callback(!error);
   });

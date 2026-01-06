@@ -13,6 +13,7 @@ const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const TextBlock = React.memo(function TextBlock() {
   const context = useContext();
   const direction = context.state.direction || "ltr";
+  const markdownEnabled = context.state.interpretMarkdown !== false;
   const [focused, setFocused] = React.useState(false);
   const lastOpenedPath = React.useRef(null);
   const textAreaRef = React.useRef(null);
@@ -30,22 +31,26 @@ const TextBlock = React.memo(function TextBlock() {
     const pattern = ignoreTags.map((tag) => escapeRegExp(tag)).join("|");
     return pattern || null;
   }, [ignoreTags]);
-  const renderMarkdownText = React.useCallback((text, keyPrefix = "md") => {
-    const parsed = parseMarkdownRuns(text);
-    if (!parsed.hasFormatting) {
-      return parsed.text;
-    }
-    return parsed.runs.map((run, index) => {
-      const runStyle = {};
-      if (run.bold) runStyle.fontWeight = "bold";
-      if (run.italic) runStyle.fontStyle = "italic";
-      return (
-        <span key={`${keyPrefix}-${index}`} style={runStyle}>
-          {run.text}
-        </span>
-      );
-    });
-  }, []);
+  const renderMarkdownText = React.useCallback(
+    (text, keyPrefix = "md") => {
+      if (!markdownEnabled) return text;
+      const parsed = parseMarkdownRuns(text);
+      if (!parsed.hasFormatting) {
+        return parsed.text;
+      }
+      return parsed.runs.map((run, index) => {
+        const runStyle = {};
+        if (run.bold) runStyle.fontWeight = "bold";
+        if (run.italic) runStyle.fontStyle = "italic";
+        return (
+          <span key={`${keyPrefix}-${index}`} style={runStyle}>
+            {run.text}
+          </span>
+        );
+      });
+    },
+    [markdownEnabled]
+  );
   const renderHighlightedText = React.useCallback(
     (text) => {
       if (text === undefined || text === null || text === "") {
@@ -137,6 +142,7 @@ const TextBlock = React.memo(function TextBlock() {
     (event) => {
       const clipboard = event.clipboardData;
       if (!clipboard) return;
+      if (!markdownEnabled) return;
       const html = clipboard.getData("text/html");
       if (!html) return;
       const markdown = convertHtmlToMarkdown(html);
@@ -158,7 +164,7 @@ const TextBlock = React.memo(function TextBlock() {
         textArea.selectionEnd = cursor;
       });
     },
-    [context.state.text, context.dispatch]
+    [context.state.text, context.dispatch, markdownEnabled]
   );
 
   return (

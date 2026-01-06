@@ -47,6 +47,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [internalPadding, setInternalPadding] = React.useState(
     context.state.internalPadding !== undefined ? context.state.internalPadding : 10
   );
+  const [interpretMarkdown, setInterpretMarkdown] = React.useState(
+    context.state.interpretMarkdown !== false
+  );
   const [edited, setEdited] = React.useState(false);
 
   // States manager
@@ -142,6 +145,11 @@ const SettingsModal = React.memo(function SettingsModal() {
       setInternalPadding(value);
       setEdited(true);
     }
+  };
+
+  const changeInterpretMarkdown = (e) => {
+    setInterpretMarkdown(e.target.checked);
+    setEdited(true);
   };
 
   const save = (e) => {
@@ -242,6 +250,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setInternalPadding",
         value: internalPadding,
+      });
+    }
+    if (interpretMarkdown !== context.state.interpretMarkdown) {
+      context.dispatch({
+        type: "setInterpretMarkdown",
+        value: interpretMarkdown,
       });
     }
     const shortcut = {};
@@ -645,6 +659,18 @@ const SettingsModal = React.memo(function SettingsModal() {
                       <span>{locale.settingsShowTipsLabel || "Show tips"}</span>
                       <div className="settings-checkbox-hint">
                         {locale.settingsShowTipsHint || "Display tips in the interface (multi-bubble hints, etc.)"}
+                      </div>
+                    </div>
+                  </label>
+                </div>
+                <div className="settings-checkbox-item">
+                  <label className="settings-checkbox-label">
+                    <input type="checkbox" checked={interpretMarkdown} onChange={changeInterpretMarkdown} />
+                    <div className="settings-checkbox-custom"></div>
+                    <div className="settings-checkbox-content">
+                      <span>{locale.settingsMarkdownLabel || "Interpret markdown (bold/italic)"}</span>
+                      <div className="settings-checkbox-hint">
+                        {locale.settingsMarkdownHint || "Convert markdown and rich text on paste and apply bold/italic in the text block."}
                       </div>
                     </div>
                   </label>

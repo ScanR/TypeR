@@ -1448,32 +1448,46 @@ function _createTextLayersInStoredSelections() {
   var maxCount = Math.min(texts.length, state.selections.length);
   
   for (var i = 0; i < maxCount; i++) {
-    var text = texts[i] || texts[texts.length - 1] || "";
-    var textRuns = state.data.richTextRuns
-      ? (state.data.richTextRuns[i] || state.data.richTextRuns[state.data.richTextRuns.length - 1])
-      : null;
-    var baseStyle = styles[i] || styles[styles.length - 1] || null;
-    var style = _ensureStyle(baseStyle);
-    var selection = state.selections[i];
-    
-    if (!text) continue;
-    
-    var dimensions = _calculateSelectionDimensions(selection, state.padding);
+    try {
+      var text = texts[i] || texts[texts.length - 1] || "";
+      var textRuns = state.data.richTextRuns
+        ? (state.data.richTextRuns[i] || state.data.richTextRuns[state.data.richTextRuns.length - 1])
+        : null;
+      var baseStyle = styles[i] || styles[styles.length - 1] || null;
+      var style = _ensureStyle(baseStyle);
+      var selection = state.selections[i];
 
-    // Créer le layer de texte
-    var data = { text: text, style: style, direction: state.data.direction, richTextRuns: textRuns };
-    _createAndSetLayerText(data, dimensions.width, dimensions.height);
-    
-    var bounds = _getCurrentTextLayerBounds();
-    if (state.point) {
-      _changeToPointText();
-    } else {
-      _resizeTextBoxToContent(dimensions.width, bounds);
+      if (!selection || typeof selection.width !== "number" || typeof selection.height !== "number") {
+        state.result = "invalidSelection";
+        return;
+      }
+
+      if (!text) continue;
+
+      var dimensions = _calculateSelectionDimensions(selection, state.padding);
+      if (!dimensions || isNaN(dimensions.width) || isNaN(dimensions.height) || dimensions.width <= 0 || dimensions.height <= 0) {
+        state.result = "invalidSelection";
+        return;
+      }
+
+      // Créer le layer de texte
+      var data = { text: text, style: style, direction: state.data.direction, richTextRuns: textRuns };
+      _createAndSetLayerText(data, dimensions.width, dimensions.height);
+
+      var bounds = _getCurrentTextLayerBounds();
+      if (state.point) {
+        _changeToPointText();
+      } else {
+        _resizeTextBoxToContent(dimensions.width, bounds);
+      }
+      bounds = _getCurrentTextLayerBounds();
+
+      // Positionner le layer à l'emplacement de la sélection stockée
+      _positionLayerWithinSelection(selection, bounds);
+    } catch (e) {
+      state.result = "scriptError: " + (e && e.message ? e.message : e);
+      return;
     }
-    bounds = _getCurrentTextLayerBounds();
-    
-    // Positionner le layer à l'emplacement de la sélection stockée
-    _positionLayerWithinSelection(selection, bounds);
   }
   
   // Vider les sélections stockées après utilisation

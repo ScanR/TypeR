@@ -16,7 +16,9 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   const line = context.state.currentLine || { text: "" };
   const textStyle = style.textProps?.layerText.textStyleRange[0].textStyle || {};
   const styleObject = getStyleObject(textStyle);
+  const markdownEnabled = context.state.interpretMarkdown !== false;
   const renderMarkdownText = React.useCallback((text) => {
+    if (!markdownEnabled) return text;
     const parsed = parseMarkdownRuns(text || "");
     if (!parsed.hasFormatting) {
       return parsed.text;
@@ -31,7 +33,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         </span>
       );
     });
-  }, []);
+  }, [markdownEnabled]);
 
   // État pour la détection automatique des sélections
   const [lastSelectionHash, setLastSelectionHash] = React.useState(null);
