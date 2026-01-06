@@ -19,7 +19,7 @@ TypeR is an updated version of TyperTools, a Photoshop extension designed for ty
 - **Export a Single Folder**: No need to export all parameters and font styles, just export/import one (or more) folder as needed to share it your team members.
 - **Tag priority**: Style with the same prefix matching is now prioritized based on the currently selected folder.
 
-
+And many, many more...
 
 ## Requirements
 
