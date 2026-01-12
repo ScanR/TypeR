@@ -686,7 +686,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                           href="#"
                           onClick={(e) => {
                             e.preventDefault();
-                            window.cep && window.cep.util && window.cep.util.openURLInDefaultBrowser('https://youtu.be/bQBvB0w3S0s');
+                            window.cep && window.cep.util && window.cep.util.openURLInDefaultBrowser('https://youtu.be/gmIh-eEj2HY');
                           }}
                           style={{color: '#007acc', textDecoration: 'underline', cursor: 'pointer'}}
                         >
