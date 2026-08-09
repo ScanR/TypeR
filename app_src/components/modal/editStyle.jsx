@@ -384,16 +384,67 @@ const EditStyleModal = React.memo(function EditStyleModal() {
   );
 });
 
+
 const StyleDetails = React.memo(function StyleDetails(props) {
   const fonts = React.useMemo(() => getUserFonts(), []);
   const textStyle = props.textProps.layerText.textStyleRange[0].textStyle;
   const paragStyle = props.textProps.layerText.paragraphStyleRange[0].paragraphStyle;
   const sizeStep = Number(props.styleSizeStep) > 0 ? Number(props.styleSizeStep) : 1;
-  const currentFont = fonts.find((font) => font.postScriptName === textStyle.fontPostScriptName) || {
-    family: "[" + (textStyle.fontName || "none") + "]",
-    style: "[" + (textStyle.fontStyleName || "none") + "]",
-    notFound: true,
-  };
+  const currentFont = React.useMemo(() => {
+    if (!fonts || !fonts.length) {
+      return {
+        family: "[" + (textStyle.fontName || textStyle.fontPostScriptName || "none") + "]",
+        style: "[" + (textStyle.fontStyleName || "none") + "]",
+        notFound: true,
+      };
+    }
+    const ps = textStyle.fontPostScriptName || "";
+    const fontName = textStyle.fontName || "";
+    const fontStyleName = textStyle.fontStyleName || "Regular";
+
+    // 1. Exact match on postScriptName
+    let font = fonts.find((f) => f.postScriptName === ps);
+    if (font) return font;
+
+    // 2. Case-insensitive match on postScriptName
+    const psLower = ps.toLowerCase();
+    if (psLower) {
+      font = fonts.find((f) => (f.postScriptName || "").toLowerCase() === psLower);
+      if (font) return font;
+    }
+
+    // 3. Match normalized postScriptName (ignoring hyphens/spaces/underscores)
+    const psClean = psLower.replace(/[-_\s]+/g, "");
+    if (psClean) {
+      font = fonts.find((f) => (f.postScriptName || "").toLowerCase().replace(/[-_\s]+/g, "") === psClean);
+      if (font) return font;
+    }
+
+    // 4. Match font.family === fontName AND font.style === fontStyleName
+    const familyLower = fontName.toLowerCase();
+    const styleLower = fontStyleName.toLowerCase();
+    if (familyLower) {
+      font = fonts.find((f) => (f.family || "").toLowerCase() === familyLower && (f.style || "").toLowerCase() === styleLower);
+      if (font) return font;
+
+      // 5. Match font.family === fontName (any style)
+      font = fonts.find((f) => (f.family || "").toLowerCase() === familyLower);
+      if (font) return font;
+    }
+
+    // 6. Match font.name === fontName or font.name === ps
+    if (fontName) {
+      const nameLower = fontName.toLowerCase();
+      font = fonts.find((f) => (f.name || "").toLowerCase() === nameLower);
+      if (font) return font;
+    }
+
+    return {
+      family: "[" + (textStyle.fontName || textStyle.fontPostScriptName || "none") + "]",
+      style: "[" + (textStyle.fontStyleName || "none") + "]",
+      notFound: true,
+    };
+  }, [fonts, textStyle.fontPostScriptName, textStyle.fontName, textStyle.fontStyleName]);
 
   const [family, setFamily] = React.useState(currentFont.family || "");
   const [colorPickerOpen, setColorPickerOpen] = React.useState(false);

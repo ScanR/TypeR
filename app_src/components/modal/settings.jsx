@@ -27,6 +27,8 @@ import ThemeEditor from "./themeEditor";
 import BackgroundEditor from "./backgroundEditor";
 import Shortcut from "./shortCut";
 import FontScanPromo from "./fontScanPromo";
+import TplImportPromo from "./tplImportPromo";
+import { convertTplHexToTypeRFormat } from "../../tplConverter";
 import ProfileSettings from "./profileSettings";
 import UnsavedChangesDialog from "./unsavedChangesDialog";
 import FontViewer from "./fontViewer";
@@ -806,91 +808,136 @@ const SettingsModal = React.memo(function SettingsModal() {
     closeModal();
   };
 
-  const importSettings = () => {
-    const pathSelect = window.cep.fs.showOpenDialogEx(true, false, null, null, ["json"]);
+  const importSettings = (allowedExtensions) => {
+    const filters = Array.isArray(allowedExtensions) ? allowedExtensions : ["json", "tpl", "TPL"];
+    const pathSelect = window.cep.fs.showOpenDialogEx(true, false, null, null, filters);
     if (!pathSelect?.data?.length) return false;
     let foldersImported = 0;
     pathSelect.data.forEach((path) => {
-      const result = window.cep.fs.readFile(path);
-      if (result.err) {
-        nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
-      } else {
-        try {
-          const data = JSON.parse(result.data);
-          if (data.pastePointText === undefined && data.textItemKind !== undefined) {
-            data.pastePointText = !!data.textItemKind;
+      const filename = path.split(/[/\\]/).pop();
+      if (path.toLowerCase().endsWith(".tpl")) {
+        console.log("[TPL Import] Attempting import for file:", path);
+        const encodingFlag = (window.cep && window.cep.encoding && window.cep.encoding.Base64) ? window.cep.encoding.Base64 : 2;
+        const result = window.cep.fs.readFile(path, encodingFlag);
+        console.log("[TPL Import] CEP readFile result status code:", result.err);
+        if (result.err) {
+          console.error("[TPL Import] CEP readFile failed. Error code:", result.err);
+          nativeAlert(`Could not read file "${filename}" (CEP error code: ${result.err}).`, locale.errorTitle || "Import Error", true);
+        } else {
+          try {
+            const rawData = result.data || "";
+            console.log("[TPL Import] Raw data retrieved, length:", rawData.length);
+            if (!rawData) {
+              throw new Error("The selected file is empty.");
+            }
+            const cleanBase64 = rawData.replace(/\s+/g, "");
+            const binaryString = window.atob(cleanBase64);
+            console.log("[TPL Import] Decoded binary length:", binaryString.length, "bytes");
+            let hexData = "";
+            for (let i = 0; i < binaryString.length; i++) {
+              hexData += binaryString.charCodeAt(i).toString(16).padStart(2, "0");
+            }
+            console.log("[TPL Import] Converted hex length:", hexData.length, "chars");
+            const importedData = convertTplHexToTypeRFormat(hexData, filename);
+            if (importedData && importedData.folders && importedData.styles && importedData.styles.length > 0) {
+              console.log(`[TPL Import] Success: Imported ${importedData.styles.length} style(s) into folder "${importedData.folders[0]?.name}".`);
+              context.dispatch({
+                type: "importStyleLibrary",
+                folders: importedData.folders,
+                styles: importedData.styles,
+              });
+              foldersImported += importedData.folders.length;
+            } else {
+              throw new Error("No text tool presets found in this .TPL file.");
+            }
+          } catch (error) {
+            console.error("[TPL Import Exception]", error);
+            const detailMsg = error.message || String(error);
+            nativeAlert(`Error importing TPL file "${filename}":\n${detailMsg}`, locale.errorTitle || "Import Error", true);
           }
-          if (data.typerTextShapeRTuning) {
-            // A shared TextShapeR learning file: route it to its own flow so
-            // it never falls through to the full-settings import (which
-            // replaces storage and reloads the panel)
-            const tuningValue = sanitizeTextShapeRTuning(data.typerTextShapeRTuning);
-            if (!tuningValue.samples) throw new Error("format");
-            context.dispatch({ type: "setTextShapeRTuning", value: tuningValue });
-            nativeAlert(locale.textShapeRTuningImportSuccess || "TextShapeR learning imported — suggestions now follow this style.", locale.successTitle, false);
-          } else if (data.exportedStyles) {
-            const folderId = Math.random().toString(36).substring(2, 8);
-            const importedAt = Date.now();
-            const dataFolder = { id: folderId, name: data.name };
-            const styles = data.exportedStyles.map((style) => ({
-                name: style.name,
+        }
+      } else {
+        const result = window.cep.fs.readFile(path);
+        if (result.err) {
+          nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
+        } else {
+          try {
+            const data = JSON.parse(result.data);
+            if (data.pastePointText === undefined && data.textItemKind !== undefined) {
+              data.pastePointText = !!data.textItemKind;
+            }
+            if (data.typerTextShapeRTuning) {
+              // A shared TextShapeR learning file: route it to its own flow so
+              // it never falls through to the full-settings import (which
+              // replaces storage and reloads the panel)
+              const tuningValue = sanitizeTextShapeRTuning(data.typerTextShapeRTuning);
+              if (!tuningValue.samples) throw new Error("format");
+              context.dispatch({ type: "setTextShapeRTuning", value: tuningValue });
+              nativeAlert(locale.textShapeRTuningImportSuccess || "TextShapeR learning imported — suggestions now follow this style.", locale.successTitle, false);
+            } else if (data.exportedStyles) {
+              const folderId = Math.random().toString(36).substring(2, 8);
+              const importedAt = Date.now();
+              const dataFolder = { id: folderId, name: data.name };
+              const styles = data.exportedStyles.map((style) => ({
+                  name: style.name,
+                  id: Math.random().toString(36).substring(2, 8),
+                  folder: folderId,
+                  textType: style.textType || "inherit",
+                  textProps: style.textProps,
+                  prefixes: style.prefixes || [],
+                  prefixColor: style.prefixColor,
+                  stroke: style.stroke,
+                  edited: importedAt,
+              }));
+              context.dispatch({ type: "importStyleFolder", folder: dataFolder, styles });
+              foldersImported++;
+            } else if (
+              data.folders &&
+              data.styles &&
+              data.includesSettings !== true &&
+              !data.ignoreLinePrefixes &&
+              !data.ignoreTags &&
+              !data.defaultStyleId &&
+              !data.language &&
+              !data.autoClosePSD &&
+              !data.autoScrollStyle &&
+              !data.pastePointText &&
+              !data.textItemKind
+            ) {
+              const idMap = {};
+              const foldersWithNewIds = data.folders.map((folder) => {
+                const newId = Math.random().toString(36).substring(2, 8);
+                idMap[folder.id] = newId;
+                return { folder, newId };
+              });
+              const folders = foldersWithNewIds.map(({ folder, newId }) => ({
+                id: newId,
+                name: folder.name,
+                parentId: folder.parentId ? idMap[folder.parentId] || null : null,
+                order: typeof folder.order === "number" ? folder.order : undefined,
+              }));
+              const importedAt = Date.now();
+              const styles = data.styles.map((style) => ({
                 id: Math.random().toString(36).substring(2, 8),
-                folder: folderId,
+                name: style.name,
+                folder: style.folder ? idMap[style.folder] : null,
                 textType: style.textType || "inherit",
                 textProps: style.textProps,
                 prefixes: style.prefixes || [],
                 prefixColor: style.prefixColor,
                 stroke: style.stroke,
                 edited: importedAt,
-            }));
-            context.dispatch({ type: "importStyleFolder", folder: dataFolder, styles });
-            foldersImported++;
-          } else if (
-            data.folders &&
-            data.styles &&
-            data.includesSettings !== true &&
-            !data.ignoreLinePrefixes &&
-            !data.ignoreTags &&
-            !data.defaultStyleId &&
-            !data.language &&
-            !data.autoClosePSD &&
-            !data.autoScrollStyle &&
-            !data.pastePointText &&
-            !data.textItemKind
-          ) {
-            const idMap = {};
-            const foldersWithNewIds = data.folders.map((folder) => {
-              const newId = Math.random().toString(36).substring(2, 8);
-              idMap[folder.id] = newId;
-              return { folder, newId };
-            });
-            const folders = foldersWithNewIds.map(({ folder, newId }) => ({
-              id: newId,
-              name: folder.name,
-              parentId: folder.parentId ? idMap[folder.parentId] || null : null,
-              order: typeof folder.order === "number" ? folder.order : undefined,
-            }));
-            const importedAt = Date.now();
-            const styles = data.styles.map((style) => ({
-              id: Math.random().toString(36).substring(2, 8),
-              name: style.name,
-              folder: style.folder ? idMap[style.folder] : null,
-              textType: style.textType || "inherit",
-              textProps: style.textProps,
-              prefixes: style.prefixes || [],
-              prefixColor: style.prefixColor,
-              stroke: style.stroke,
-              edited: importedAt,
-            }));
-            context.dispatch({ type: "importStyleLibrary", folders, styles });
-            foldersImported += folders.length;
-          } else {
-            context.dispatch({ type: "import", data });
-            setTimeout(() => window.location.reload(), 100);
-            closeModal();
+              }));
+              context.dispatch({ type: "importStyleLibrary", folders, styles });
+              foldersImported += folders.length;
+            } else {
+              context.dispatch({ type: "import", data });
+              setTimeout(() => window.location.reload(), 100);
+              closeModal();
+            }
+          } catch (error) {
+            nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
           }
-        } catch (error) {
-          nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
         }
       }
     });
@@ -904,6 +951,10 @@ const SettingsModal = React.memo(function SettingsModal() {
       );
     }
   };
+
+  const importTplSettings = React.useCallback(() => {
+    importSettings(["tpl", "TPL"]);
+  }, []);
 
   const exportSettings = () => {
     context.dispatch({ type: "setModal", modal: "export" });
@@ -957,7 +1008,6 @@ const SettingsModal = React.memo(function SettingsModal() {
   const openWalkthrough = () => {
     context.dispatch({ type: "setModal", modal: "walkthrough", data: { source: "settings" } });
   };
-
   const checkUpdatesNow = () => {
     checkUpdate(config.appVersion).then((data) => {
       if (data) {
@@ -1834,6 +1884,7 @@ const SettingsModal = React.memo(function SettingsModal() {
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupImportExport || "Import/Export"}</div>
               <FontScanPromo />
+              <TplImportPromo onImportTpl={importTplSettings} />
               <div className="field">
                 <button className="topcoat-button--large" onClick={importSettings}>
                   <FaFileImport size={18} /> {locale.settingsImport}

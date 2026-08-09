@@ -21,6 +21,7 @@ const EditFolderModal = React.memo(function EditFolderModal() {
     const folderStyleIds = currentData.id ? context.state.styles.filter(s => (s.folder === currentData.id)).map(s => s.id) : [];
     const [name, setName] = React.useState(currentData.name || '');
     const [styleIds, setStyleIds] = React.useState(folderStyleIds);
+    const [deleteStyles, setDeleteStyles] = React.useState(false);
     const [edited, setEdited] = React.useState(false);
     const [discardConfirmOpen, setDiscardConfirmOpen] = React.useState(false);
     const initialParentId = React.useMemo(() => {
@@ -97,8 +98,10 @@ const EditFolderModal = React.memo(function EditFolderModal() {
     const deleteFolder = e => {
         e.preventDefault();
         if (!currentData.id) return;
-        const permanent = e.shiftKey;
-        const confirmText = permanent ? locale.confirmDeleteFolderPermanent : (locale.confirmDeleteFolderWithChildren || locale.confirmDeleteFolder);
+        const permanent = deleteStyles || e.shiftKey;
+        const confirmText = permanent
+            ? (locale.confirmDeleteFolderPermanent || 'Are you sure you want to delete this folder AND all presets inside it?')
+            : (locale.confirmDeleteFolderWithChildren || locale.confirmDeleteFolder || 'Are you sure you want to delete this folder?');
         nativeConfirm(confirmText, locale.confirmTitle, ok => {
             if (!ok) return;
             context.dispatch({type: 'deleteFolder', id: currentData.id, permanent});
@@ -231,6 +234,19 @@ const EditFolderModal = React.memo(function EditFolderModal() {
                                 </div>
                             </div>
                         </div>
+                        {!currentData.create && (
+                            <div className="field hostBrdTopContrast" style={{ paddingTop: 10 }}>
+                                <label className="topcoat-checkbox" style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', opacity: 0.85, fontSize: 13, gap: 8 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={deleteStyles}
+                                        onChange={e => setDeleteStyles(e.target.checked)}
+                                    />
+                                    <div className="topcoat-checkbox__checkmark"></div>
+                                    <span>{locale.deleteFolderStylesLabel || 'Delete all presets/styles inside this folder'}</span>
+                                </label>
+                            </div>
+                        )}
                     </div>
                     <div className="fields folder-edit-actions hostBrdTopContrast">
                         <button type="submit" className={'folder-edit-save ' + (edited ? 'topcoat-button--large--cta' : 'topcoat-button--large')}>

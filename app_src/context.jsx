@@ -717,7 +717,20 @@ const baseReducer = (state, action) => {
       const importedFolders = action.folders || [];
       const importedStyles = action.styles || [];
       const folderIds = new Set(importedFolders.map((folder) => folder.id));
-      newState.folders = normalizeFolders(state.folders.concat(importedFolders));
+
+      const updatedFolders = state.folders.concat([]);
+      importedFolders.forEach((impFolder) => {
+        const parentId = impFolder.parentId || null;
+        const siblings = updatedFolders.filter((f) => (f.parentId || null) === parentId);
+        const maxOrder = siblings.reduce((max, f) => Math.max(max, typeof f.order === "number" ? f.order : 0), -1);
+        updatedFolders.push({
+          ...impFolder,
+          parentId,
+          order: maxOrder + 1,
+        });
+      });
+
+      newState.folders = normalizeFolders(updatedFolders);
       newState.styles = state.styles.concat(
         importedStyles.map((style) => ({
           ...style,
