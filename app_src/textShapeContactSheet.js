@@ -253,7 +253,8 @@ const createTextShapeContactSheet = async ({
         lines: variant.lines,
         lineCount: variant.lines.length,
         score: variant.score == null ? null : variant.score,
-        fits: maxOverflowRatio <= 1,
+        fits: maxOverflowRatio <= 1 && lines.length * lineHeight <= bubbleDisplay.height * 0.9,
+        approximate: true,
         maxOverflowRatio: Math.round(maxOverflowRatio * 1000) / 1000,
         renderedFontSize: Math.round(renderedFontSize * 10) / 10,
       });
@@ -263,11 +264,13 @@ const createTextShapeContactSheet = async ({
     const os = nodeRequire("os");
     const fs = nodeRequire("fs");
     const { Buffer } = nodeRequire("buffer");
-    const outputPath = nodePath.join(os.tmpdir(), "typer-text-shape-preview.png");
+    const outputPath = nodePath.join(os.tmpdir(), `typer-text-shape-preview-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
     const base64 = canvas.toDataURL("image/png").split(",")[1];
     fs.writeFileSync(outputPath, Buffer.from(base64, "base64"));
     return {
       path: outputPath,
+      temporary: true,
+      measurementEngine: "canvas_estimate",
       imageWidth: canvas.width,
       imageHeight: canvas.height,
       fontPostScriptName: textStyle.fontPostScriptName || textStyle.fontName || null,

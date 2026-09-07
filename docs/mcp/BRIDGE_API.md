@@ -1,5 +1,12 @@
 # TypeR MCP Bridge API
 
+> MCP v2 validates commands and arguments against the shared contract in
+> `plugins/typer/mcp/contract.mjs`. Mutations require `requestId`; document
+> writes require `documentId`. See [AI_TYPESETTING_V2.md](AI_TYPESETTING_V2.md)
+> for new commands, units, page boundaries, operation recovery and undo.
+> The legacy command descriptions below describe the original v1 payloads;
+> use the live `tools/list` schemas as the authoritative v2 input contract.
+
 Contract between the HTTP bridge hosted inside the TypeR CEP panel
 (`app_src/mcpBridge.jsx`) and the standalone MCP stdio server (`mcp/server.js`).
 
@@ -273,5 +280,5 @@ Tool names are prefixed `typer_`. 1:1 with bridge commands except:
 Server behavior:
 - Reads the discovery file at every call (cheap) → no stale port/token.
 - 404/ECONNREFUSED → error message "TypeR bridge not running. Open Photoshop
-  with the TypeR panel (v3.1+) and retry."
+  with the TypeR panel and retry."
 - No state kept server-side; the panel is the source of truth.

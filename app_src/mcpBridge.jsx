@@ -5,32 +5,31 @@ import {
   buildRichTextPayload,
   csInterface,
   deselectDocument,
-  exportDocumentSnapshot,
-  getAllLayersRenderedTexts,
   getDefaultStroke,
   getDefaultStyle,
   getUserFonts,
-  openFile,
   readStorage,
   refreshUserFonts,
   rgbToHex,
   trackHostAction,
-  undoLastTextChange,
+  writeToStorage,
 } from "./utils";
 import { useContext } from "./context";
 import { getScaledStyle, resolveStylePointText } from "./textLayerPayload";
 import {
-  assignLinesToBubbles,
   bubbleToSelection,
   detectLearnedBubbles,
   getDetectionOptions,
-  getNextUsableLineIndex,
   normalizeBubbleLearning,
   orderBubbles,
 } from "./bubbleDetection";
-import { createPageImageLookup, getImageForPage } from "./pageImageMapping";
+import { getImagePageNumber } from "./pageImageMapping";
 import { createFontContactSheet } from "./fontContactSheet";
 import { createTextShapeContactSheet, sampleBubbleShapeProfile } from "./textShapeContactSheet";
+import { parsePageMarker } from "./pageMarker";
+import { scriptRevision, pageRange, nextPageLine, validateBounds, createOperationStore, polygonProfile } from "./mcpLogic";
+import { createAdvancedCommands } from "./mcpAdvanced";
+import contract from "../plugins/typer/mcp/contract.mjs";
 
 // Local HTTP bridge for the TypeR MCP server (see docs/mcp/BRIDGE_API.md and
 // mcp/). It listens on 127.0.0.1 only and requires the random token written
@@ -42,6 +41,7 @@ const MAX_BODY_BYTES = 20 * 1024 * 1024;
 const DEFAULT_TIMEOUT = 30000;
 const LONG_TIMEOUT = 120000;
 const LONG_COMMANDS = [
+  "get_layers", "measure_text", "fit_text", "review_page", "get_region_image", "export_page", "sample_bubble", "learning",
   "detect_bubbles",
   "get_snapshot",
   "preview_fonts",
@@ -69,25 +69,40 @@ const fail = (message) => {
 // dispatch comes from useReducer and is asynchronous: after dispatching, the
 // new state only reaches getState() on the next render. Poll until the
 // predicate holds instead of guessing with a fixed delay.
-const waitForState = (getState, predicate, timeout = 1500) => new Promise((resolve) => {
+const waitForState = (getState, predicate, timeout = 1500) => new Promise((resolve, reject) => {
   const startedAt = Date.now();
   const check = () => {
     const state = getState();
     if (predicate(state)) return resolve(state);
-    if (Date.now() - startedAt >= timeout) return resolve(state);
+    if (Date.now() - startedAt >= timeout) return reject(new BridgeError("state_timeout"));
     setTimeout(check, 16);
   };
   check();
 });
 
-const evalHost = (expression) => new Promise((resolve) => {
-  csInterface.evalScript(expression, trackHostAction(resolve));
+let expectedHostDocument = null;
+let expectedHostKey = null;
+const evalHost = (expression) => new Promise((resolve, reject) => {
+  const guarded = `evalTypeRMcpHost(${JSON.stringify(expression)},${JSON.stringify(expectedHostDocument)},${JSON.stringify(expectedHostKey)})`;
+  csInterface.evalScript(guarded, trackHostAction(result => {
+    if (/^(wrongDocument|wrongDocumentSession|EvalScript error|scriptError:)/.test(String(result))) reject(new BridgeError(String(result)));
+    else resolve(result);
+  }));
 });
+const hostJSON = async expression => {
+  const raw = await evalHost(expression);
+  let result;
+  try { result = JSON.parse(raw); } catch (error) { fail(`host_error: ${raw || "empty_response"}`); }
+  if (!result || result.error) fail(result && result.error || "empty_host_result");
+  return result;
+};
 
 const lineSummary = (line) => (line ? {
   rawIndex: line.rawIndex,
   displayIndex: line.ignore ? null : line.index,
   text: line.text,
+  rawText: line.rawText,
+  page: parsePageMarker(line.rawText),
   ignore: !!line.ignore,
   styleId: (line.usedStyle || line.style || {}).id || null,
   styleName: (line.usedStyle || line.style || {}).name || null,
@@ -110,7 +125,10 @@ const styleSummary = (style, folders) => {
     fontStyle: textStyle.fontStyleName || null,
     fontSize: typeof textStyle.size === "number" ? textStyle.size : null,
     alignment: paragraphStyle.alignment || "center",
-    pointText: style.pointText === true,
+    pointText: resolveStylePointText(style, false),
+    textStyle,
+    paragraphStyle,
+    stroke: style.stroke || null,
     colorHex: color ? rgbToHex({ r: color.red, g: color.green, b: color.blue }) : null,
   };
 };
@@ -124,33 +142,12 @@ const boundsSummary = (selection) => ({
   height: selection.height,
 });
 
-const requireBounds = (bounds) => {
-  if (!bounds || !["left", "top", "right", "bottom"].every((key) => typeof bounds[key] === "number")) {
-    fail("bad_params: bounds requires numeric left/top/right/bottom");
-  }
-  if (bounds.right - bounds.left < 2 || bounds.bottom - bounds.top < 2) {
-    fail("bad_params: bounds too small");
-  }
-  const left = Math.round(bounds.left);
-  const top = Math.round(bounds.top);
-  const right = Math.round(bounds.right);
-  const bottom = Math.round(bounds.bottom);
-  return {
-    left,
-    top,
-    right,
-    bottom,
-    width: right - left,
-    height: bottom - top,
-    xMid: (left + right) / 2,
-    yMid: (top + bottom) / 2,
-  };
-};
+const requireBounds = bounds => validateBounds(bounds);
 
 // Same flow as the bubbleDetect modal scan: host snapshot PNG, decoded to
 // ImageData through an off-screen canvas (the bridge runs in the panel DOM).
 const decodeSnapshot = (maxDim) => new Promise((resolve, reject) => {
-  exportDocumentSnapshot(maxDim || SNAPSHOT_MAX_DIM, (result) => {
+  hostJSON(`typeRMcpExport(${JSON.stringify({ maxDim: maxDim || SNAPSHOT_MAX_DIM })})`).then((result) => {
     if (!result || result.error || !result.path) {
       return reject(new BridgeError(result && result.error === "doc" ? "no_document" : "snapshot_failed"));
     }
@@ -178,7 +175,8 @@ const decodeSnapshot = (maxDim) => new Promise((resolve, reject) => {
     };
     image.onerror = () => reject(new BridgeError("snapshot_decode_failed"));
     image.src = "data:image/png;base64," + read.data;
-  });
+    if (result.temporary) { try { getNodeRequire()("fs").unlinkSync(result.path); } catch (cleanupError) {} }
+  }).catch(reject);
 });
 
 const resolveStyle = (state, styleId, line) => {
@@ -224,7 +222,18 @@ const applyStyleOverrides = async (baseStyle, params) => {
   if (params.color && [params.color.r, params.color.g, params.color.b].every((value) => typeof value === "number")) {
     textStyle.color = { red: params.color.r, green: params.color.g, blue: params.color.b };
   }
-  if (typeof params.pointText === "boolean") style.pointText = params.pointText;
+  if (typeof params.pointText === "boolean") style.textType = params.pointText ? "point" : "paragraph";
+  if (params.textType) style.textType = params.textType;
+  if (params.prefixes) style.prefixes = params.prefixes;
+  if (params.folderId !== undefined) style.folder = params.folderId || null;
+  for (const key of ["leading", "autoLeading", "tracking", "horizontalScale", "verticalScale", "baselineShift"]) {
+    if (params[key] !== undefined) textStyle[key] = params[key];
+  }
+  if (params.leading != null && params.autoLeading !== true) textStyle.autoLeading = false;
+  if (params.autoLeading === true) delete textStyle.leading;
+  if (params.fontSize != null) style.sizePresets = [];
+  if (params.stroke) style.stroke = { ...style.stroke, ...params.stroke };
+  if (params.direction) paragraphStyle.directionType = params.direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
   return style;
 };
 
@@ -264,9 +273,9 @@ const hostBatchPaste = async (state, texts, styles, selections, pointText, paddi
     selections,
     padding: padding || 0,
     direction: state.direction,
+    mcp: true,
   });
-  const error = await evalHost("createTextLayersInStoredSelections(" + data + ", " + !!pointText + ")");
-  if (error) fail(String(error));
+  return hostJSON("createTextLayersInStoredSelections(" + data + ", " + !!pointText + ")");
 };
 
 const buildPasteEntries = async (state, entries, options) => {
@@ -276,25 +285,30 @@ const buildPasteEntries = async (state, entries, options) => {
   const commitEntries = [];
   let fallbackCursor = state.currentLineIndex;
   const capturedAt = Date.now();
+  const range = options.allowCrossPage ? { start: 0, end: state.lines.length } : pageRange(state.lines || [], state.currentLineIndex);
+  const documentInfo = await commands.document_info();
 
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index];
-    const selection = requireBounds(entry.bounds);
+    const selection = validateBounds(entry.bounds, documentInfo);
+    const outline = entry.polygon ? polygonProfile(entry.polygon, selection) : entry.shapeProfile || null;
     let line = null;
     if (typeof entry.lineIndex === "number") {
+      if (entry.lineIndex < range.start || entry.lineIndex >= range.end) fail("page_boundary: line belongs to another page");
       line = (state.lines || [])[entry.lineIndex];
       if (!line || line.ignore) fail(`bad_params: entry ${index} lineIndex ${entry.lineIndex} is not a usable line`);
       fallbackCursor = Math.max(fallbackCursor, entry.lineIndex + 1);
     } else if (entry.text == null) {
-      const usable = getNextUsableLineIndex(state.lines || [], fallbackCursor);
+      const usable = nextPageLine(state.lines || [], fallbackCursor, range);
       if (usable === null) fail(`bad_params: entry ${index} has no text and no script line is left`);
       line = state.lines[usable];
       fallbackCursor = usable + 1;
     }
     let text = entry.text != null ? String(entry.text) : line.text;
     if (!text) fail(`bad_params: entry ${index} resolves to empty text`);
-    const style = resolveStyle(state, entry.styleId, line)
+    let style = resolveStyle(state, entry.styleId, line)
       || { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
+    style = await applyStyleOverrides(getScaledStyle(style, state.textScale), entry.typography || {});
     const autoShape = entry.autoShape != null ? !!entry.autoShape : options.autoShape !== false;
     if (autoShape && (entry.forceShape || text.indexOf("\n") === -1)) {
       const variants = await generateShapeVariants(state, text, {
@@ -303,15 +317,18 @@ const buildPasteEntries = async (state, entries, options) => {
         profile: entry.profile || options.profile,
         width: selection.width,
         height: selection.height,
-        shapeProfile: entry.shapeProfile || null,
+        shapeProfile: outline,
       });
       if (variants[0]) text = variants[0].text;
     }
     texts.push(text);
-    styles.push(getScaledStyle(style, state.textScale));
+    styles.push(style);
     selections.push({
       ...selection,
       capturedAt,
+      documentKey: documentInfo.documentKey,
+      bubbleId: entry.bubbleId || null,
+      shapeProfile: outline,
       styleId: style.id || null,
       lineIndex: line ? line.rawIndex : undefined,
     });
@@ -339,6 +356,9 @@ const commands = {
   get_state: async ({ getState }, params) => {
     const state = getState();
     const result = {
+      scriptRevision: scriptRevision(state.text),
+      pageRange: pageRange(state.lines || [], state.currentLineIndex),
+      currentTabId: state.currentTabId,
       lines: (state.lines || []).map(lineSummary),
       currentLineIndex: state.currentLineIndex,
       currentLine: lineSummary(state.currentLine),
@@ -349,7 +369,7 @@ const commands = {
       images: (state.images || []).map((image) => ({
         name: image.name,
         path: image.path,
-        page: (image.name || "").match(/[0-9]+/) ? Number((image.name || "").match(/[0-9]+/)[0]) : null,
+        page: getImagePageNumber(image),
       })),
       lastOpenedImagePath: state.lastOpenedImagePath || null,
       settings: {
@@ -364,6 +384,7 @@ const commands = {
 
   set_text: async ({ getState, dispatch }, params) => {
     if (typeof params.text !== "string") fail("bad_params: text must be a string");
+    if (params.expectedScriptRevision && params.expectedScriptRevision !== scriptRevision(getState().text)) fail("script_changed");
     dispatch({ type: "setText", text: params.text });
     const state = await waitForState(getState, (next) => next.text === params.text);
     return { linesTotal: (state.lines || []).length };
@@ -378,18 +399,20 @@ const commands = {
     return { currentLineIndex: next.currentLineIndex };
   },
 
-  next_line: async ({ getState, dispatch }) => {
-    const before = getState().currentLineIndex;
-    dispatch({ type: "nextLine" });
-    const state = await waitForState(getState, (next) => next.currentLineIndex !== before, 500);
-    return { currentLineIndex: state.currentLineIndex };
+  next_line: async (ctx) => {
+    const state = ctx.getState();
+    const next = nextPageLine(state.lines, state.currentLineIndex + 1, pageRange(state.lines, state.currentLineIndex));
+    if (next === null) return { boundary: true, currentLineIndex: state.currentLineIndex };
+    return commands.set_current_line(ctx, { rawIndex: next });
   },
 
-  prev_line: async ({ getState, dispatch }) => {
-    const before = getState().currentLineIndex;
-    dispatch({ type: "prevLine" });
-    const state = await waitForState(getState, (next) => next.currentLineIndex !== before, 500);
-    return { currentLineIndex: state.currentLineIndex };
+  prev_line: async (ctx) => {
+    const state = ctx.getState();
+    const range = pageRange(state.lines, state.currentLineIndex);
+    for (let index = state.currentLineIndex - 1; index >= range.start; index--) {
+      if (!state.lines[index].ignore && !parsePageMarker(state.lines[index].rawText)) return commands.set_current_line(ctx, { rawIndex: index });
+    }
+    return { boundary: true, currentLineIndex: state.currentLineIndex };
   },
 
   get_styles: async ({ getState }) => {
@@ -397,6 +420,7 @@ const commands = {
     return {
       styles: (state.styles || []).map((style) => styleSummary(style, state.folders)),
       currentStyleId: state.currentStyleId || null,
+      folders: state.folders || [],
     };
   },
 
@@ -435,6 +459,7 @@ const commands = {
   save_style: async ({ getState, dispatch }, params) => {
     const state = getState();
     const styles = state.styles || [];
+    if (params.folderId && !(state.folders || []).some(folder => folder.id === params.folderId)) fail("unknown_folder");
     const existing = params.styleId
       ? resolveStyle(state, params.styleId, null)
       : (state.currentStyle || styles[0] || { textProps: getDefaultStyle(), stroke: getDefaultStroke() });
@@ -444,25 +469,12 @@ const commands = {
     style.name = params.name || style.name || "MCP Style";
     dispatch({ type: "saveStyle", id, data: style });
     if (params.select !== false) dispatch({ type: "setCurrentStyleId", id });
-    const next = await waitForState(getState, (candidate) => (candidate.styles || []).some((item) => item.id === id));
+    const next = await waitForState(getState, (candidate) => (candidate.styles || []).some((item) => item.id === id && item.name === style.name && item.textProps === style.textProps));
     return { style: styleSummary((next.styles || []).find((item) => item.id === id) || style, next.folders) };
   },
 
   document_info: async () => {
-    const result = JSON.parse(await evalHost("getTypeRMcpDocumentInfo()") || "{}");
-    if (result.error) fail(result.error);
-    return result;
-  },
-
-  get_snapshot: async (ctx, params) => {
-    const snapshot = await decodeSnapshot(params.maxDim);
-    return {
-      path: snapshot.path,
-      docWidth: snapshot.docWidth,
-      docHeight: snapshot.docHeight,
-      imageWidth: snapshot.imageWidth,
-      imageHeight: snapshot.imageHeight,
-    };
+    return hostJSON("getTypeRMcpDocumentInfo()");
   },
 
   detect_bubbles: async ({ getState }, params) => {
@@ -476,13 +488,15 @@ const commands = {
     const ordered = orderBubbles(bubbles, rtl);
     const scaleX = snapshot.docWidth / snapshot.imageWidth;
     const scaleY = snapshot.docHeight / snapshot.imageHeight;
-    const startRawIndex = getNextUsableLineIndex(state.lines || [], state.currentLineIndex);
-    const assignments = assignLinesToBubbles(
-      ordered,
-      state.lines || [],
-      startRawIndex === null ? state.currentLineIndex : startRawIndex
-    );
+    const assignments = {};
+    const range = pageRange(state.lines || [], state.currentLineIndex);
+    let cursor = state.currentLineIndex;
+    ordered.forEach(bubble => { const line = nextPageLine(state.lines || [], cursor, range); assignments[bubble.id] = line; if (line !== null) cursor = line + 1; });
+    const documentInfo = await commands.document_info();
     return {
+      documentId: documentInfo.id,
+      documentKey: documentInfo.documentKey,
+      pageRange: range,
       docWidth: snapshot.docWidth,
       docHeight: snapshot.docHeight,
       snapshotPath: snapshot.path,
@@ -520,7 +534,7 @@ const commands = {
         })),
       };
     }
-    await hostBatchPaste(state, texts, styles, selections, pointText, padding);
+    const created = await hostBatchPaste(state, texts, styles, selections, pointText, padding);
     // If the caller already received busy_timeout, don't mutate the panel line
     // state behind its back: the paste happened in Photoshop, but the cursor
     // stays where the client believes it is.
@@ -530,15 +544,19 @@ const commands = {
     let nextLineIndex = state.currentLineIndex;
     if (params.advanceLines !== false && commitEntries.length) {
       const lastLineIndex = Math.max(...commitEntries.map((entry) => entry.lineIndex));
-      const usable = getNextUsableLineIndex(state.lines || [], lastLineIndex + 1);
+      const usable = nextPageLine(state.lines || [], lastLineIndex + 1, pageRange(state.lines || [], state.currentLineIndex));
       nextLineIndex = usable === null ? lastLineIndex : usable;
       dispatch({ type: "commitLineBatch", entries: commitEntries, nextLineIndex });
       await waitForState(getState, (next) => next.currentLineIndex === nextLineIndex, 500);
     }
+    await commands.record_placements(ctx, { created, selections, texts, state });
     return {
+      documentId: created.documentId,
       pasted: texts.length,
       nextLineIndex,
       placements: selections.map((selection, index) => ({
+        layerId: created.layers[index].layerId,
+        renderedBounds: created.layers[index].bounds,
         bounds: boundsSummary(selection),
         text: texts[index],
         lineIndex: selection.lineIndex,
@@ -552,17 +570,17 @@ const commands = {
     if (typeof params.text !== "string" || !params.text) fail("bad_params: text is required");
     if (params.bounds) {
       const result = await commands.batch_paste(ctx, {
-        entries: [{ bounds: params.bounds, text: params.text, styleId: params.styleId || null }],
+        entries: [{ bounds: params.bounds, text: params.text, styleId: params.styleId || null, typography: params.typography, autoShape: params.autoShape === true }],
         pointText: params.pointText,
         padding: params.padding,
         advanceLines: false,
       });
-      return { pasted: result.pasted };
+      return result;
     }
     const state = getState();
     const style = resolveStyle(state, params.styleId, null)
       || { textProps: getDefaultStyle(), stroke: getDefaultStroke() };
-    const scaledStyle = getScaledStyle(style, state.textScale);
+    const scaledStyle = await applyStyleOverrides(getScaledStyle(style, state.textScale), params.typography || {});
     const pointText = params.pointText != null ? !!params.pointText : !!state.pastePointText;
     const parsed = buildRichTextPayload(params.text);
     const data = JSON.stringify({
@@ -576,7 +594,7 @@ const commands = {
       "createTextLayerInSelection(" + data + ", " + resolveStylePointText(scaledStyle, pointText) + ")"
     );
     if (error) fail(String(error));
-    return { pasted: 1 };
+    return { pasted: 1, layer: (await commands.document_info()).activeLayer };
   },
 
   apply_to_active: async ({ getState }, params) => {
@@ -606,7 +624,7 @@ const commands = {
     const state = ctx.getState();
     if (params.layerId != null) await commands.select_layer(ctx, { layerId: params.layerId });
     if (params.bounds) {
-      const bounds = requireBounds(params.bounds);
+      const bounds = validateBounds(params.bounds, await commands.document_info());
       const selectionError = await evalHost("selectTypeRMcpBounds(" + JSON.stringify(bounds) + ")");
       if (selectionError) fail(String(selectionError));
     }
@@ -639,9 +657,7 @@ const commands = {
     return { ok: true, layerId: Math.round(params.layerId), deltaX, deltaY };
   },
 
-  get_layers: async (ctx, params) => new Promise((resolve) => {
-    getAllLayersRenderedTexts(!!params.scanBubbles, (entries) => resolve({ layers: entries }));
-  }),
+  get_layers: async (ctx, params) => hostJSON(`typeRMcpLayers(${JSON.stringify({ ...params, textOnly: true })})`),
 
   shape_text: async ({ getState }, params) => {
     if (typeof params.text !== "string" || !params.text) fail("bad_params: text is required");
@@ -721,50 +737,6 @@ const commands = {
     });
   },
 
-  next_page: async ({ getState, dispatch }) => {
-    const before = getState();
-    dispatch({ type: "nextPage" });
-    await waitForState(getState, (next) => next.currentLineIndex !== before.currentLineIndex, 800);
-    // The page image opens from a textBlock effect watching currentLineIndex;
-    // give it a moment to run so lastOpenedImagePath is fresh (best effort).
-    const state = await waitForState(
-      getState,
-      (next) => next.lastOpenedImagePath !== before.lastOpenedImagePath,
-      1200
-    );
-    return { currentLineIndex: state.currentLineIndex, openedImagePath: state.lastOpenedImagePath || null };
-  },
-
-  previous_page: async ({ getState, dispatch }) => {
-    const before = getState();
-    dispatch({ type: "previousPage" });
-    await waitForState(getState, (next) => next.currentLineIndex !== before.currentLineIndex, 800);
-    const state = await waitForState(
-      getState,
-      (next) => next.lastOpenedImagePath !== before.lastOpenedImagePath,
-      1200
-    );
-    return { currentLineIndex: state.currentLineIndex, openedImagePath: state.lastOpenedImagePath || null };
-  },
-
-  open_image: async ({ getState, dispatch }, params) => {
-    const state = getState();
-    let path = null;
-    if (typeof params.path === "string" && params.path) {
-      path = params.path;
-    } else if (typeof params.page === "number") {
-      const lookup = createPageImageLookup(state.images || []);
-      const image = getImageForPage(state.images || [], params.page, lookup);
-      if (!image) fail(`bad_params: no image mapped to page ${params.page}`);
-      path = image.path;
-    } else {
-      fail("bad_params: path or page is required");
-    }
-    openFile(path, state.autoClosePSD);
-    dispatch({ type: "setLastOpenedImagePath", path });
-    return { opened: path };
-  },
-
   select_layer: async (ctx, params) => {
     if (typeof params.layerId !== "number") fail("bad_params: layerId must be a number");
     const error = await evalHost(`selectLayerById(${Math.round(params.layerId)})`);
@@ -791,7 +763,9 @@ const commands = {
       });
       if (variants[0]) text = variants[0].text;
     }
-    const applied = await commands.apply_to_active(ctx, { text, styleId: params.styleId });
+    const applied = params.typography || params.textRuns
+      ? await commands.apply_typography(ctx, { ...params, text })
+      : await commands.apply_to_active(ctx, { text, styleId: params.styleId });
     if (params.align) {
       await commands.align_active(ctx, {
         ...params,
@@ -802,9 +776,18 @@ const commands = {
   },
 
   save_document: async (ctx, params) => {
+    if (params.path && (!getNodeRequire()("path").isAbsolute(params.path) || !/\.psd$/i.test(params.path))) fail("bad_params: absolute .psd path required");
+    const previous = await commands.document_info();
     const data = JSON.stringify({ path: params.path || null, asCopy: !!params.asCopy });
-    const result = JSON.parse(await evalHost(`saveTypeRMcpDocument(${data})`) || "{}");
-    if (result.error) fail(result.error);
+    const result = await hostJSON(`saveTypeRMcpDocument(${data})`);
+    const current = await commands.document_info();
+    const previousIdentity = previous.path || previous.documentKey;
+    const currentIdentity = current.path || current.documentKey;
+    if (previousIdentity !== currentIdentity) {
+      const links = (ctx.getState().mcpProgress || []).map(link => link.document === previousIdentity && link.documentId === current.id ? { ...link, document: currentIdentity } : link);
+      ctx.dispatch({ type: "setMcpProgress", links });
+      await waitForState(ctx.getState, state => state.mcpProgress === links);
+    }
     return result;
   },
 
@@ -812,45 +795,96 @@ const commands = {
     deselectDocument(() => resolve({ ok: true }));
   }),
 
-  undo: async () => new Promise((resolve, reject) => {
-    undoLastTextChange((ok) => (ok ? resolve({ ok: true }) : reject(new BridgeError("undo_failed"))));
-  }),
+
 };
 
-const runCommand = async (ctx, command, params) => {
-  const handler = commands[command];
-  if (!handler) fail("unknown_command");
-  const timeout = LONG_COMMANDS.indexOf(command) !== -1 ? LONG_TIMEOUT : DEFAULT_TIMEOUT;
-  let cancelled = false;
-  const scopedCtx = { ...ctx, isCancelled: () => cancelled };
-  const pending = Promise.resolve().then(() => handler(scopedCtx, params || {}));
-  // Side branch so the abandoned promise never surfaces as an unhandled
-  // rejection once the timeout has already answered the client.
-  const settled = pending.catch(() => {});
-  let timer = null;
-  try {
-    return await Promise.race([
-      pending,
-      new Promise((resolve, reject) => {
-        timer = setTimeout(() => {
-          cancelled = true;
-          reject(new BridgeError("busy_timeout"));
-        }, timeout);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-    if (cancelled) {
-      // busy_timeout was already reported, but an in-flight evalScript chain
-      // cannot be aborted: hold the queue (bounded) so the next command never
-      // interleaves with it, and let handlers check isCancelled() before any
-      // late dispatch.
-      await Promise.race([settled, new Promise((resolve) => setTimeout(resolve, timeout))]);
+Object.assign(commands, createAdvancedCommands({ commands, hostJSON, evalHost, applyStyleOverrides, resolveStyle, generateShapeVariants, waitForState, decodeSnapshot, sampleBubbleShapeProfile, getNodeRequire }));
+
+const transactional = new Set(["batch_paste", "paste_text", "apply_to_active", "align_active", "nudge_layer", "change_text_size", "edit_layer", "transform_layer", "manage_layers"]);
+const publicSpecs = new Map(contract.specs.map(spec => [spec[1], spec]));
+const isReadOnlyCommand = (command, params) => contract.readOnly.includes(command) || params.dryRun === true || (["manage_layers", "manage_tabs"].includes(command) && params.action === "list") || command === "capture_style" && !params.save || command === "learning" && params.action === "get";
+const panelSnapshot = state => ({ tabId: state.currentTabId, text: state.text, currentLineIndex: state.currentLineIndex, usedLineStyles: state.usedLineStyles || {}, mcpProgress: state.mcpProgress || [] });
+const restorePanel = async (ctx, snapshot) => {
+  if (ctx.getState().currentTabId !== snapshot.tabId || ctx.getState().text !== snapshot.text) fail("panel_changed: Photoshop recovered but script state needs review");
+  ctx.dispatch({ type: "restoreMcpPanel", ...snapshot });
+  await waitForState(ctx.getState, next => next.currentLineIndex === snapshot.currentLineIndex && next.mcpProgress === snapshot.mcpProgress);
+};
+commands.get_operation = async (ctx, params) => {
+  const record = ctx.operations.get(params.operationId);
+  if (!record) fail("unknown_operation");
+  const { fingerprint, beforePanel, ...publicRecord } = record;
+  return publicRecord;
+};
+commands.undo = async (ctx, params) => {
+  const info = await commands.document_info();
+  const record = params.operationId ? ctx.operations.get(params.operationId) : ctx.operations.list().filter(item => item.undoable && item.documentKey === info.documentKey && item.status === "completed").sort((a, b) => b.finishedAt - a.finishedAt)[0];
+  if (!record || !record.undoable || record.status !== "completed") fail("no_undoable_mcp_operation");
+  const state = ctx.getState();
+  if (state.currentTabId !== record.beforePanel.tabId || state.text !== record.beforePanel.text) fail("panel_changed: restore the original tab and script before undo");
+  await hostJSON(`typeRMcpCheckpoint(${JSON.stringify({ action: "undo", id: record.operationId })})`);
+  await restorePanel(ctx, record.beforePanel);
+  ctx.operations.finish(record.operationId, { status: "undone", undoable: false });
+  return { undoneOperationId: record.operationId };
+};
+
+const runCommand = async (ctx, command, params = {}) => {
+  const spec = publicSpecs.get(command);
+  if (!spec || !commands[command]) fail("unknown_command");
+  contract.validate(spec[3], params);
+  if (command === "get_operation") return commands.get_operation(ctx, params);
+  const readOnly = isReadOnlyCommand(command, params);
+  let before = null, info = null, checkpoint = false;
+  if (!readOnly && ctx.preparedRequestId !== params.requestId) {
+    const entry = ctx.operations.begin(params.requestId, command, params);
+    if (!entry.fresh) {
+      if (entry.record.status === "completed") return entry.record.result;
+      fail(`${entry.record.status}: ${entry.record.error || "query typer_get_operation; do not replay with another requestId"}`);
     }
+  }
+  expectedHostDocument = params.documentId == null ? null : params.documentId;
+  expectedHostKey = params.expectedDocumentKey || null;
+  window.__typerMcpNavigating = true;
+  try {
+    if (spec[3].properties.documentId || transactional.has(command) && !readOnly) {
+      info = await commands.document_info();
+      expectedHostDocument = info.id;
+      expectedHostKey = info.documentKey;
+    }
+    if (transactional.has(command) && !readOnly) {
+      before = panelSnapshot(ctx.getState());
+      await hostJSON(`typeRMcpCheckpoint(${JSON.stringify({ action: "begin", id: params.requestId })})`);
+      checkpoint = true;
+    }
+    const result = await commands[command](ctx, params);
+    if (checkpoint) await hostJSON(`typeRMcpCheckpoint(${JSON.stringify({ action: "commit", id: params.requestId })})`);
+    const response = readOnly ? result : { ...result, operationId: params.requestId };
+    if (!readOnly) ctx.operations.finish(params.requestId, { status: "completed", result: response, beforePanel: before, documentKey: info && info.documentKey, undoable: checkpoint });
+    return response;
+  } catch (error) {
+    let message = error.message || String(error);
+    if (checkpoint) {
+      try {
+        await hostJSON(`typeRMcpCheckpoint(${JSON.stringify({ action: "rollback", id: params.requestId })})`);
+        await restorePanel(ctx, before);
+      } catch (rollbackError) { message += `; recovery_failed: ${rollbackError.message}`; }
+    }
+    if (!readOnly) ctx.operations.finish(params.requestId, { status: "failed", error: message, undoable: false });
+    throw new BridgeError(message);
+  } finally {
+    expectedHostDocument = null;
+    expectedHostKey = null;
+    window.__typerMcpNavigating = false;
   }
 };
 
 const createBridge = (nodeRequire, ctx) => {
+  ctx.operations = createOperationStore(readStorage("mcpOperations") || {}, records => {
+    // Host checkpoints cannot survive a reload. Persist recovery results, not
+    // a full duplicate of the chapter script/progress for every undo record.
+    const durable = Object.create(null);
+    Object.keys(records).forEach(id => { const { beforePanel, ...record } = records[id]; durable[id] = { ...record, undoable: false }; });
+    if (!writeToStorage({ mcpOperations: durable }, false)) fail("operation_log_write_failed");
+  });
   const http = nodeRequire("http");
   const fs = nodeRequire("fs");
   const os = nodeRequire("os");
@@ -912,18 +946,37 @@ const createBridge = (nodeRequire, ctx) => {
       } catch (error) {
         return respond(res, 400, { ok: false, error: "bad_json" });
       }
-      queue = queue.then(async () => {
-        try {
-          const result = await runCommand(ctx, parsed.command, parsed.params);
-          respond(res, 200, { ok: true, result });
-        } catch (error) {
-          const message = error instanceof BridgeError
-            ? error.message
-            : `internal: ${(error && error.message) || String(error)}`;
-          if (!(error instanceof BridgeError)) console.error("TypeR MCP bridge:", error);
-          respond(res, 200, { ok: false, error: message });
+      let commandCtx = ctx;
+      try {
+        if (!parsed || typeof parsed !== "object") fail("bad_request");
+        const spec = publicSpecs.get(parsed.command);
+        if (!spec) fail("unknown_command");
+        contract.validate(spec[3], parsed.params || {});
+        if (!isReadOnlyCommand(parsed.command, parsed.params || {})) {
+          const entry = ctx.operations.begin(parsed.params.requestId, parsed.command, parsed.params);
+          if (!entry.fresh) {
+            if (entry.record.status === "completed") return respond(res, 200, { ok: true, result: entry.record.result });
+            return respond(res, 200, { ok: false, error: `${entry.record.status}: query typer_get_operation with the original requestId` });
+          }
+          commandCtx = { ...ctx, preparedRequestId: parsed.params.requestId };
         }
-      });
+      } catch (error) { return respond(res, 200, { ok: false, error: error.message || String(error) }); }
+      const execute = async () => {
+        let replied = false;
+        const timeout = LONG_COMMANDS.includes(parsed.command) ? LONG_TIMEOUT : DEFAULT_TIMEOUT;
+        const timer = setTimeout(() => {
+          replied = true;
+          respond(res, 200, { ok: false, error: `busy_timeout: query typer_get_operation with ${parsed.params && parsed.params.requestId || "the original request ID"}` });
+        }, timeout);
+        try {
+          const result = await runCommand(commandCtx, parsed.command, parsed.params || {});
+          if (!replied) respond(res, 200, { ok: true, result });
+        } catch (error) {
+          if (!replied) respond(res, 200, { ok: false, error: error.message || String(error) });
+        } finally { clearTimeout(timer); }
+      };
+      if (parsed.command === "get_operation") execute();
+      else queue = queue.then(execute, execute);
     });
     req.on("error", () => {});
   };
@@ -936,7 +989,8 @@ const createBridge = (nodeRequire, ctx) => {
         pid: (window.cep_node && window.cep_node.process && window.cep_node.process.pid) || null,
         version: appVersion,
         startedAt: Date.now(),
-      }));
+      }), { mode: 0o600 });
+      fs.chmodSync(discoveryPath, 0o600);
     } catch (error) {
       console.error("TypeR MCP bridge: discovery write failed", error);
     }

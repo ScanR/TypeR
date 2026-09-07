@@ -1,5 +1,10 @@
 # typer-mcp
 
+**MCP v2:** 47 tools, a shared dependency-free transport, document-checked
+writes and retry IDs. See [the v2 workflow and tool guide](../docs/mcp/AI_TYPESETTING_V2.md).
+The schemas returned by `tools/list` are authoritative. Mutations require
+`requestId`; document writes require `documentId` from `typer_get_document`.
+
 MCP stdio server that lets an LLM drive the TypeR Photoshop panel: read/write
 the script, look at the current page, detect speech bubbles, and typeset
 dialogue — all by proxying to the HTTP bridge exposed by the TypeR CEP panel
@@ -8,17 +13,20 @@ contract.
 
 ## Prerequisites
 
-- Photoshop running with the **TypeR panel open** (v3.1+). The panel hosts the
+- Photoshop running with the **TypeR panel open**. The panel hosts the
   HTTP bridge; without it, every tool call fails with a clear
   "TypeR bridge not running" error.
 - Node.js >= 18 (uses the native `fetch`/`AbortController`).
 
-## Install
+## Install (optional for smoke-test package metadata)
 
 ```bash
 cd mcp
 npm install
 ```
+
+The server itself has no third-party npm dependencies. Both entry points use
+`plugins/typer/mcp/contract.mjs` and `plugins/typer/mcp/server.mjs`.
 
 ## Run standalone
 

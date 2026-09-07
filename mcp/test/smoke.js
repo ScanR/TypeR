@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // Smoke test for the TypeR MCP server. Talks raw JSON-RPC over stdio to
-// mcp/server.js (no MCP client SDK on this side, to keep the check independent
-// of the server's own dependency on @modelcontextprotocol/sdk), then spins up a
+// mcp/server.js without relying on a client SDK, then spins up a
 // fake HTTP bridge and exercises one real tool call end to end.
 
 import http from "node:http";
@@ -46,6 +45,10 @@ const EXPECTED_TOOLS = [
   "typer_save_document",
   "typer_deselect",
   "typer_undo",
+  "typer_get_region_image", "typer_measure_text", "typer_fit_text", "typer_capture_style",
+  "typer_transform_layer", "typer_manage_layers", "typer_set_page_mapping", "typer_manage_tabs",
+  "typer_edit_script_lines", "typer_get_progress", "typer_set_progress", "typer_review_page",
+  "typer_get_operation", "typer_export_page", "typer_sample_bubble", "typer_learning",
 ];
 
 let failures = 0;
@@ -186,6 +189,13 @@ async function main() {
     } else {
       fail("typer_preview_text_shapes is missing bounds/style schema fields");
     }
+
+    const invalid = await client.send("tools/call", { name: "typer_edit_layer", arguments: { layerId: 1, documentId: 1, requestId: "invalid", typography: { fontSize: -10 } } });
+    if (invalid.result?.isError && invalid.result.content[0].text.includes("out of range")) pass("invalid typography is rejected before contacting the bridge");
+    else fail("invalid typography was not rejected by the shared validator");
+    const unsafe = await client.send("tools/call", { name: "typer_typeset_bubbles", arguments: { entries: [{ bounds: { left: 0, top: 0, right: 100, bottom: 100 } }] } });
+    if (unsafe.result?.isError && unsafe.result.content[0].text.includes("documentId")) pass("document writes require explicit document identity");
+    else fail("document identity was not required");
 
     // --- Part 2: fake HTTP bridge + typer_status tool call. ---
     const token = "smoke-test-token";

@@ -1,6 +1,6 @@
 {
   "name": "typer-mcp",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "MCP stdio server that proxies commands to the TypeR HTTP bridge running inside the Photoshop CEP panel.",
   "type": "module",
   "main": "server.js",
@@ -10,9 +10,5 @@
   "scripts": {
     "start": "node server.js",
     "test": "node test/smoke.js"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "zod": "^4.4.3"
   }
 }

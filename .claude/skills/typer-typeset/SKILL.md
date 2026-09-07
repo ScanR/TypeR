@@ -48,3 +48,17 @@ Pilote TypeR uniquement avec les tools MCP `typer_*`. Termine chaque page avec u
 ## Critères de fin
 
 Une page est terminée lorsque chaque bulle attendue possède le bon texte, dans le bon ordre et le bon style, que la police a été validée visuellement lorsqu'elle est nouvelle, que les lignes restent dans la bulle, que les tailles de dialogue courant sont harmonisées (hors bold/emphase volontaire), que les calques sont centrés optiquement après correction manuelle si nécessaire et que le PSD est sauvegardé.
+
+
+## MCP v2: measured composition and recovery
+
+- Read `typer_get_document` first. Pass its `documentId` to every document write and preferably every document read. Keep `expectedDocumentKey` when continuing a session.
+- Assign a unique `requestId` to each mutation. Retry only with the identical ID and arguments. On a timeout, query `typer_get_operation`; pending/interrupted/failed outcomes are not permission to blindly create another batch.
+- Use `typer_get_region_image` for detail. Canvas contact sheets are estimates. Use `typer_measure_text` or `typer_fit_text` to measure candidates in real Photoshop before applying them. Copy the returned exact text and typography into batch entries with `autoShape:false`.
+- A fit is a rectangular bound check; inspect the bubble contour, tails, emphasis and optical balance yourself. Text must remain faithful to the script. Fit results never authorize rewriting dialogue.
+- Batch results contain stable `layerId` values and automatically persist associations for entries with `lineIndex`. Review with `typer_review_page`, then inspect image crops. Missing links are reported as missing dialogue; associate pre-existing text using `typer_set_progress`.
+- `typer_edit_layer` accepts absolute point sizes, leading, tracking, scales, baseline shift, outline and UTF-16 text ranges. `typer_capture_style` can copy a reference layer. `typer_transform_layer` handles rotation, paragraph boxes and editable warps.
+- Use `typer_manage_layers` for explicit group/layer changes, `typer_set_page_mapping` for chapter inputs, and `typer_manage_tabs` for script tabs. `typer_edit_script_lines` requires the script revision from `get_state`.
+- Undo the exact operation using `typer_undo` and its `operationId`. Newer Photoshop edits block undo rather than discarding them. Panel reloads preserve request results but invalidate host checkpoints.
+- Save layered PSDs with `typer_save_document`, export delivery images with `typer_export_page`, then navigate. MCP navigation keeps existing documents open; save them explicitly.
+- Train with `typer_learning` only from explicitly validated links, never from unreviewed AI output. A changed script or layer invalidates that validation.

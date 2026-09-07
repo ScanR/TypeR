@@ -1028,10 +1028,10 @@ function _getLayerStroke(layerIndex) {
 /**
  * Apply or update a stroke on the active layer.
  * @param {Object} stroke - {size, color:{r,g,b}, opacity, enabled}
- *                          position is forced to "outer".
+ *                          position may be inner, center or outer.
  */
 function _setLayerStroke(stroke) {
-  if (!stroke || (stroke.size <= 0 && stroke.enabled !== true)) return;
+  if (!stroke || stroke.enabled === false || (stroke.size <= 0 && stroke.enabled !== true)) return;
 
   var d = new ActionDescriptor();
   var r = new ActionReference();
@@ -1047,12 +1047,12 @@ function _setLayerStroke(stroke) {
   fr.putBoolean(stringIDToTypeID("present"), true);
   fr.putBoolean(stringIDToTypeID("showInDialog"), true);
 
-  fr.putEnumerated(charIDToTypeID("Styl"), charIDToTypeID("FStl"), charIDToTypeID("OutF"));
+  fr.putEnumerated(charIDToTypeID("Styl"), charIDToTypeID("FStl"), stringIDToTypeID(stroke.position === "inner" ? "insetFrame" : stroke.position === "center" ? "centeredFrame" : "outsetFrame"));
   fr.putEnumerated(charIDToTypeID("PntT"), charIDToTypeID("FrFl"), charIDToTypeID("SClr"));
   fr.putEnumerated(charIDToTypeID("Md  "), charIDToTypeID("BlnM"), charIDToTypeID("Nrml"));
 
   fr.putUnitDouble(charIDToTypeID("Sz  "), charIDToTypeID("#Pxl"), stroke.size || 3);
-  fr.putUnitDouble(charIDToTypeID("Opct"), charIDToTypeID("#Prc"), stroke.opacity || 100);
+  fr.putUnitDouble(charIDToTypeID("Opct"), charIDToTypeID("#Prc"), stroke.opacity == null ? 100 : stroke.opacity);
 
   var c = new ActionDescriptor();
   c.putDouble(charIDToTypeID("Rd  "), stroke.color.r);
@@ -3242,7 +3242,7 @@ function undoLastTyperChange() {
     if (activeIndex < 0) activeIndex = 0;
     if (activeIndex > states.length - 1) activeIndex = states.length - 1;
     for (var search = activeIndex; search > 0; search--) {
-      if (states[search].name === "TyperTools Change") {
+      if (states[search].name === "TyperTools Change" || states[search].name === "TyperTools Multiple Paste" || states[search].name === "TyperTools Optical Center") {
         doc.activeHistoryState = states[search - 1];
         return "";
       }
@@ -3511,6 +3511,7 @@ function _createTextLayersInStoredSelections() {
 
       // Position the layer inside the stored selection.
       _positionLayerWithinSelection(selection, bounds);
+      if (state.data.mcp) state.createdLayers.push({ layerId: _getActiveLayerId(), bounds: _getCurrentTextLayerBounds(), text: text });
     } catch (e) {
       state.result = "scriptError: " + (e && e.message ? e.message : e);
       return;
@@ -3524,6 +3525,7 @@ function _createTextLayersInStoredSelections() {
 
 function createTextLayersInStoredSelections(data, point) {
   var state = _hostState.createTextLayersInStoredSelections;
+  state.createdLayers = [];
   state.data = data;
   state.point = point;
   state.padding = data.padding || 0;
@@ -3558,6 +3560,7 @@ function createTextLayersInStoredSelections(data, point) {
     try { doc.activeHistoryState = previousHistory; }
     catch (rollbackError) { return "rollbackFailed"; }
   }
+  if (data.mcp && !state.result) return jamJSON.stringify({ layers: state.createdLayers, documentKey: documentKey, documentId: doc.id });
   return state.result;
 }
 
@@ -3592,6 +3595,7 @@ function getTypeRMcpDocumentInfo() {
     } catch (layerError) {}
     return jamJSON.stringify({
       id: doc.id,
+      documentKey: getTypeRDocumentKey(),
       name: doc.name,
       path: path,
       width: Math.round(doc.width.as ? doc.width.as("px") : parseFloat(doc.width)),
@@ -3624,7 +3628,7 @@ function saveTypeRMcpDocument(data) {
     try {
       savedPath = doc.fullName.fsName;
     } catch (pathError) {}
-    return jamJSON.stringify({ saved: true, path: savedPath, asCopy: !!data.asCopy });
+    return jamJSON.stringify({ saved: true, path: data.path ? file.fsName : savedPath, activePath: savedPath, asCopy: !!data.asCopy });
   } catch (e) {
     return jamJSON.stringify({ error: "scriptError: " + e.message });
   } finally {
@@ -3814,6 +3818,405 @@ function openFile(path, autoClose) {
     return jamJSON.stringify({ ok: true, path: path, documentKey: getTypeRDocumentKey() });
   } catch (error) {
     return jamJSON.stringify({ ok: false, path: path, error: String(error.message || error) });
+  }
+}
+
+// MCP host operations keep document checks inside the same ExtendScript call
+// as the action. The panel never exposes this expression wrapper as a tool.
+function evalTypeRMcpHost(expression, expectedId, expectedKey) {
+  if (expectedId != null && (!documents.length || app.activeDocument.id !== expectedId)) return "wrongDocument";
+  if (expectedKey && getTypeRDocumentKey() !== expectedKey) return "wrongDocumentSession";
+  try { return eval(expression); }
+  catch (error) { return "scriptError: " + error.message; }
+}
+
+function typeRMcpCheckpoint(data) {
+  try {
+    if (!documents.length) throw new Error("document");
+    var doc = app.activeDocument;
+    var checkpoints = _hostState.mcpCheckpoints || (_hostState.mcpCheckpoints = {});
+    var key = "op:" + data.id;
+    var entry = checkpoints[key];
+    if (data.action === "begin") {
+      if (entry) throw new Error("operation_exists");
+      checkpoints[key] = { documentKey: getTypeRDocumentKey(), before: doc.activeHistoryState, after: null };
+      var order = _hostState.mcpCheckpointOrder || (_hostState.mcpCheckpointOrder = []);
+      order.push(key);
+      while (order.length > 16) delete checkpoints[order.shift()];
+    } else {
+      if (!entry || entry.documentKey !== getTypeRDocumentKey()) throw new Error("checkpoint_unavailable");
+      if (data.action === "commit") entry.after = doc.activeHistoryState;
+      else if (data.action === "rollback" || data.action === "undo") {
+        if (data.action === "undo" && (!entry.after || doc.activeHistoryState !== entry.after)) throw new Error("history_changed: newer edits must be undone first");
+        doc.activeHistoryState = entry.before;
+        delete checkpoints[key];
+      }
+    }
+    return jamJSON.stringify({ ok: true });
+  } catch (error) { return jamJSON.stringify({ error: String(error.message || error) }); }
+}
+
+function _typeRMcpFindLayer(container, id) {
+  for (var i = 0; i < container.layers.length; i++) {
+    var layer = container.layers[i];
+    if (layer.id === id) return layer;
+    if (layer.typename === "LayerSet") {
+      var child = _typeRMcpFindLayer(layer, id);
+      if (child) return child;
+    }
+  }
+  return null;
+}
+
+function _typeRMcpSelectedLayerIds() {
+  var active = _getActiveLayerId();
+  var ids = [];
+  try {
+    var ref = new ActionReference();
+    var key = stringIDToTypeID("targetLayersIDs");
+    ref.putProperty(stringIDToTypeID("property"), key);
+    ref.putEnumerated(stringIDToTypeID("document"), stringIDToTypeID("ordinal"), stringIDToTypeID("targetEnum"));
+    var list = executeActionGet(ref).getList(key);
+    for (var i = 0; i < list.count; i++) {
+      var id = list.getReference(i).getIdentifier();
+      if (id !== active) ids.push(id);
+    }
+  } catch (selectionError) {}
+  ids.push(active);
+  return ids;
+}
+
+function _typeRMcpLayerInfo(layer, includeStyles) {
+  var text = layer.typename === "ArtLayer" && layer.kind === LayerKind.TEXT;
+  var info = { layerId: layer.id, name: layer.name, visible: !!layer.visible, isText: text, isGroup: layer.typename === "LayerSet", parentId: layer.parent.typename === "LayerSet" ? layer.parent.id : null };
+  var parent = layer.parent;
+  while (parent && parent.typename === "LayerSet") { if (!parent.visible) info.visible = false; parent = parent.parent; }
+  try {
+    var b = layer.bounds;
+    info.bounds = { left: b[0].as("px"), top: b[1].as("px"), right: b[2].as("px"), bottom: b[3].as("px") };
+    info.bounds.width = info.bounds.right - info.bounds.left;
+    info.bounds.height = info.bounds.bottom - info.bounds.top;
+  } catch (boundsError) { info.bounds = null; }
+  if (text) {
+    info.text = layer.textItem.contents;
+    info.fontPostScriptName = layer.textItem.font;
+    info.fontSize = layer.textItem.size.as("pt");
+    info.textType = layer.textItem.kind === TextType.POINTTEXT ? "point" : "paragraph";
+    info.fontMissing = false;
+    try { app.fonts.getByName(info.fontPostScriptName); } catch (fontError) { info.fontMissing = true; }
+    if (includeStyles) {
+      _selectLayersById([layer.id]);
+      info.textProps = jamText.getLayerText();
+      info.stroke = _getLayerStroke();
+    }
+  }
+  return info;
+}
+
+function typeRMcpLayers(data) {
+  var originalId = null;
+  var selectedIds = null;
+  var source = null, work = null, previousDialogs = app.displayDialogs;
+  try {
+    if (!documents.length) throw new Error("document");
+    source = app.activeDocument;
+    originalId = _getActiveLayerId();
+    selectedIds = _typeRMcpSelectedLayerIds();
+    var layers = [];
+    var visit = function (container) {
+      for (var i = 0; i < container.layers.length; i++) {
+        var layer = container.layers[i];
+        var info = _typeRMcpLayerInfo(layer, !!data.includeStyles);
+        if ((!data.textOnly || info.isText) && (data.includeHidden || info.visible)) layers.push(info);
+        if (info.isGroup) visit(layer);
+      }
+    };
+    visit(app.activeDocument);
+    var offset = data.offset || 0;
+    var limit = data.limit || 100;
+    var page = layers.slice(offset, offset + limit);
+    for (var n = 0; n < page.length; n++) {
+      var item = page[n];
+      if (!item.isText) continue;
+      if (data.textOnly && item.textType === "paragraph") {
+        if (!work) {
+          app.displayDialogs = DialogModes.NO;
+          work = app.documents.add(source.width, source.height, source.resolution, "TypeR MCP Read", NewDocumentMode.RGB, DocumentFill.WHITE);
+        }
+        app.activeDocument = source;
+        var original = _typeRMcpFindLayer(source, item.layerId);
+        var copy = original.duplicate(work, ElementPlacement.PLACEATBEGINNING);
+        app.activeDocument = work;
+        work.activeLayer = copy;
+        _changeToPointText();
+        item.text = copy.textItem.contents;
+        copy.remove();
+        app.activeDocument = source;
+      }
+      if (data.scanBubbles) {
+        _selectLayerById(item.layerId);
+        var scan = jamJSON.parse(getActiveLayerBubbleShape({ samples: 21, tolerance: 20 }));
+        item.bubble = scan.error ? null : scan;
+        if (scan.error) item.bubbleError = scan.error;
+      }
+    }
+    return jamJSON.stringify({ documentId: source.id, documentKey: getTypeRDocumentKey(), layers: page, total: layers.length, offset: offset, nextOffset: offset + page.length < layers.length ? offset + page.length : null, truncated: offset + page.length < layers.length, textIncludesAutomaticWraps: !!data.textOnly });
+  } catch (error) { return jamJSON.stringify({ error: String(error.message || error) }); }
+  finally {
+    if (work) { try { work.close(SaveOptions.DONOTSAVECHANGES); } catch (closeError) {} }
+    if (source) { try { app.activeDocument = source; } catch (restoreDocumentError) {} }
+    if (originalId !== null) { try { _selectLayersById(selectedIds || [originalId]); } catch (restoreError) {} }
+    app.displayDialogs = previousDialogs;
+  }
+}
+
+function typeRMcpCaptureStyle(layerId) {
+  var originalId = null;
+  var selectedIds = null;
+  try {
+    if (!documents.length) throw new Error("document");
+    originalId = _getActiveLayerId();
+    selectedIds = _typeRMcpSelectedLayerIds();
+    var layer = _typeRMcpFindLayer(app.activeDocument, layerId);
+    if (!layer || layer.typename !== "ArtLayer" || layer.kind !== LayerKind.TEXT) throw new Error("no_text_layer");
+    return jamJSON.stringify(_typeRMcpLayerInfo(layer, true));
+  } catch (error) { return jamJSON.stringify({ error: String(error.message || error) }); }
+  finally { if (originalId !== null) { try { _selectLayersById(selectedIds || [originalId]); } catch (restoreError) {} } }
+}
+
+function typeRMcpManageLayers(data) {
+  try {
+    var doc = app.activeDocument;
+    var parent = data.parentId != null ? _typeRMcpFindLayer(doc, data.parentId) : doc;
+    if (!parent || (parent !== doc && parent.typename !== "LayerSet")) throw new Error("invalid_parent_group");
+    var ids = data.layerIds || [];
+    if (data.action !== "create_group" && !ids.length) throw new Error("layerIds_required");
+    var targets = [];
+    for (var i = 0; i < ids.length; i++) {
+      var layer = _typeRMcpFindLayer(doc, ids[i]);
+      if (!layer) throw new Error("layer_not_found");
+      if (layer.allLocked || layer.isBackgroundLayer) throw new Error("layer_locked");
+      targets.push(layer);
+    }
+    var error = null;
+    var result = [];
+    _withSuspendedHistory("TyperTools MCP Layers", function () {
+      try {
+        if (data.action === "create_group") {
+          var group = parent.layerSets.add();
+          group.name = data.name || "TypeR";
+          result.push(group.id);
+        }
+        for (var n = 0; n < targets.length; n++) {
+          var target = targets[n];
+          if (data.action === "rename") { if (!data.name) throw new Error("name_required"); target.name = data.name; }
+          else if (data.action === "visibility") { if (typeof data.visible !== "boolean") throw new Error("visible_required"); target.visible = data.visible; }
+          else if (data.action === "duplicate") { var copy = target.duplicate(); if (data.name) copy.name = data.name; result.push(copy.id); }
+          else if (data.action === "move") {
+            var ancestor = parent;
+            while (ancestor && ancestor !== doc) { if (ancestor.id === target.id) throw new Error("cyclic_group_move"); ancestor = ancestor.parent; }
+            target.move(parent, ElementPlacement.INSIDE);
+          } else if (data.action === "delete") target.remove();
+          if (data.action !== "duplicate") result.push(ids[n]);
+        }
+      } catch (actionError) { error = actionError; }
+    });
+    if (error) throw error;
+    return jamJSON.stringify({ layerIds: result, action: data.action });
+  } catch (error) { return jamJSON.stringify({ error: String(error.message || error) }); }
+}
+
+function typeRMcpTypography(data) {
+  try {
+    if (selectLayerById(data.layerId)) throw new Error("layer_not_found");
+    if (!_layerIsTextLayer()) throw new Error("no_text_layer");
+    var props = jamText.getLayerText();
+    var layerText = props.layerText;
+    var length = layerText.textKey.length;
+    var overrides = data.typography || {};
+    var runs = data.textRuns || [];
+    var boundaries = [0, length];
+    var oldRanges = layerText.textStyleRange;
+    for (var i = 0; i < oldRanges.length; i++) { boundaries.push(Math.min(length, oldRanges[i].from)); boundaries.push(Math.min(length, oldRanges[i].to)); }
+    for (var r = 0; r < runs.length; r++) {
+      if (runs[r].from < 0 || runs[r].to > length || runs[r].from >= runs[r].to) throw new Error("invalid_text_run");
+      if (runs[r].typography.alignment || runs[r].typography.direction || runs[r].typography.stroke) throw new Error("paragraph_and_stroke_attributes_are_layer_wide");
+      boundaries.push(runs[r].from); boundaries.push(runs[r].to);
+    }
+    boundaries.sort(function (a, b) { return a - b; });
+    var apply = function (style, patch) {
+      var keys = ["tracking", "leading", "autoLeading", "horizontalScale", "verticalScale", "baselineShift"];
+      for (var k = 0; k < keys.length; k++) if (patch[keys[k]] != null) style[keys[k]] = patch[keys[k]];
+      if (patch.fontSize != null) { style.size = patch.fontSize; style.impliedFontSize = patch.fontSize; }
+      if (patch.leading != null && patch.autoLeading !== true) style.autoLeading = false;
+      if (patch.autoLeading === true) delete style.leading;
+      if (patch.fontPostScriptName) {
+        var font = app.fonts.getByName(patch.fontPostScriptName);
+        style.fontPostScriptName = font.postScriptName;
+        style.fontName = font.name;
+        style.fontStyleName = font.style;
+      }
+      if (patch.color) style.color = { red: patch.color.r, green: patch.color.g, blue: patch.color.b };
+    };
+    var newRanges = [];
+    for (var b = 0; b < boundaries.length - 1; b++) {
+      var from = boundaries[b], to = boundaries[b + 1];
+      if (to <= from) continue;
+      var base = oldRanges[0].textStyle;
+      for (var o = 0; o < oldRanges.length; o++) if (oldRanges[o].from <= from && oldRanges[o].to > from) base = oldRanges[o].textStyle;
+      var style = _clone(base);
+      apply(style, overrides);
+      for (var n = 0; n < runs.length; n++) if (runs[n].from <= from && runs[n].to >= to) apply(style, runs[n].typography);
+      newRanges.push({ from: from, to: to, textStyle: style });
+    }
+    layerText.textStyleRange = newRanges;
+    for (var p = 0; p < layerText.paragraphStyleRange.length; p++) {
+      var paragraph = layerText.paragraphStyleRange[p].paragraphStyle;
+      if (overrides.alignment) paragraph.alignment = overrides.alignment;
+      if (overrides.direction) paragraph.directionType = overrides.direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
+    }
+    jamText.setLayerText(props);
+    if (overrides.stroke) _typeRMcpStroke(overrides.stroke);
+    return jamJSON.stringify({ layerId: data.layerId, textStyleRange: newRanges });
+  } catch (error) { return jamJSON.stringify({ error: String(error.message || error) }); }
+}
+
+function _typeRMcpStroke(patch) {
+  var ref = new ActionReference();
+  ref.putProperty(stringIDToTypeID("property"), stringIDToTypeID("layerEffects"));
+  ref.putEnumerated(stringIDToTypeID("layer"), stringIDToTypeID("ordinal"), stringIDToTypeID("targetEnum"));
+  var current = executeActionGet(ref);
+  var effectsKey = stringIDToTypeID("layerEffects"), strokeKey = stringIDToTypeID("frameFX");
+  var effects = current.hasKey(effectsKey) ? current.getObjectValue(effectsKey) : new ActionDescriptor();
+  var stroke = effects.hasKey(strokeKey) ? effects.getObjectValue(strokeKey) : new ActionDescriptor();
+  stroke.putBoolean(stringIDToTypeID("enabled"), patch.enabled !== false);
+  stroke.putEnumerated(stringIDToTypeID("style"), stringIDToTypeID("frameStyle"), stringIDToTypeID(patch.position === "inner" ? "insetFrame" : patch.position === "center" ? "centeredFrame" : "outsetFrame"));
+  stroke.putEnumerated(stringIDToTypeID("paintType"), stringIDToTypeID("frameFill"), stringIDToTypeID("solidColor"));
+  stroke.putEnumerated(stringIDToTypeID("mode"), stringIDToTypeID("blendMode"), stringIDToTypeID("normal"));
+  if (patch.size != null) stroke.putUnitDouble(stringIDToTypeID("size"), stringIDToTypeID("pixelsUnit"), patch.size);
+  if (patch.opacity != null) stroke.putUnitDouble(stringIDToTypeID("opacity"), stringIDToTypeID("percentUnit"), patch.opacity);
+  if (patch.color) {
+    var color = new ActionDescriptor();
+    color.putDouble(stringIDToTypeID("red"), patch.color.r); color.putDouble(stringIDToTypeID("green"), patch.color.g); color.putDouble(stringIDToTypeID("blue"), patch.color.b);
+    stroke.putObject(stringIDToTypeID("color"), stringIDToTypeID("RGBColor"), color);
+  }
+  effects.putObject(strokeKey, strokeKey, stroke);
+  var set = new ActionDescriptor();
+  set.putReference(stringIDToTypeID("null"), ref);
+  set.putObject(stringIDToTypeID("to"), effectsKey, effects);
+  executeAction(stringIDToTypeID("set"), set, DialogModes.NO);
+}
+
+function typeRMcpTransform(data) {
+  try {
+    var layer = _typeRMcpFindLayer(app.activeDocument, data.layerId);
+    if (!layer || layer.typename !== "ArtLayer" || layer.kind !== LayerKind.TEXT) throw new Error("no_text_layer");
+    _selectLayerById(layer.id);
+    var error = null;
+    _withSuspendedHistory("TyperTools MCP Transform", function () {
+      try {
+        if (data.width != null || data.height != null) {
+          if (layer.textItem.kind !== TextType.PARAGRAPHTEXT) throw new Error("paragraph_text_required");
+          if (data.width != null) layer.textItem.width = UnitValue(data.width, "px");
+          if (data.height != null) layer.textItem.height = UnitValue(data.height, "px");
+        }
+        if (data.scaleX != null || data.scaleY != null) layer.resize(data.scaleX == null ? 100 : data.scaleX, data.scaleY == null ? 100 : data.scaleY, AnchorPosition.MIDDLECENTER);
+        if (data.rotation) layer.rotate(data.rotation, AnchorPosition.MIDDLECENTER);
+        if (data.warp) {
+          var desc = new ActionDescriptor();
+          var ref = new ActionReference();
+          ref.putEnumerated(stringIDToTypeID("textLayer"), stringIDToTypeID("ordinal"), stringIDToTypeID("targetEnum"));
+          desc.putReference(stringIDToTypeID("null"), ref);
+          var textDesc = new ActionDescriptor();
+          var warp = new ActionDescriptor();
+          warp.putEnumerated(stringIDToTypeID("warpStyle"), stringIDToTypeID("warpStyle"), stringIDToTypeID(data.warp.style));
+          warp.putDouble(stringIDToTypeID("warpValue"), data.warp.bend || 0);
+          warp.putDouble(stringIDToTypeID("warpPerspective"), data.warp.horizontal || 0);
+          warp.putDouble(stringIDToTypeID("warpPerspectiveOther"), data.warp.vertical || 0);
+          warp.putEnumerated(stringIDToTypeID("warpRotate"), stringIDToTypeID("orientation"), stringIDToTypeID("horizontal"));
+          textDesc.putObject(stringIDToTypeID("warp"), stringIDToTypeID("warp"), warp);
+          desc.putObject(stringIDToTypeID("to"), stringIDToTypeID("textLayer"), textDesc);
+          executeAction(stringIDToTypeID("set"), desc, DialogModes.NO);
+        }
+        var bounds = _getCurrentTextLayerBounds();
+        if (data.x != null || data.y != null) layer.translate(UnitValue(data.x == null ? 0 : data.x - bounds.left, "px"), UnitValue(data.y == null ? 0 : data.y - bounds.top, "px"));
+      } catch (transformError) { error = transformError; }
+    });
+    if (error) throw error;
+    return jamJSON.stringify(_typeRMcpLayerInfo(layer, false));
+  } catch (error) { return jamJSON.stringify({ error: String(error.message || error) }); }
+}
+
+function typeRMcpExport(data) {
+  var source = null, work = null, dialogs = app.displayDialogs;
+  try {
+    source = app.activeDocument;
+    app.displayDialogs = DialogModes.NO;
+    var originalWidth = source.width.as("px"), originalHeight = source.height.as("px");
+    var rect = data.bounds || { left: 0, top: 0, right: originalWidth, bottom: originalHeight };
+    work = source.duplicate("TypeR MCP Export", true);
+    app.activeDocument = work;
+    if (data.bounds) work.crop([UnitValue(rect.left, "px"), UnitValue(rect.top, "px"), UnitValue(rect.right, "px"), UnitValue(rect.bottom, "px")]);
+    work.flatten();
+    if (work.mode !== DocumentMode.RGB) work.changeMode(ChangeMode.RGB);
+    work.bitsPerChannel = BitsPerChannelType.EIGHT;
+    var scale = data.maxDim ? Math.min(1, data.maxDim / Math.max(work.width.as("px"), work.height.as("px"))) : 1;
+    if (scale < 1) work.resizeImage(UnitValue(Math.max(1, Math.round(work.width.as("px") * scale)), "px"), UnitValue(Math.max(1, Math.round(work.height.as("px") * scale)), "px"), null, ResampleMethod.BILINEAR);
+    var file = new File(data.path || Folder.temp.fsName + "/typer-mcp-" + new Date().getTime() + "-" + Math.floor(Math.random() * 1000000) + ".png");
+    var options = data.format === "jpeg" ? new JPEGSaveOptions() : new PNGSaveOptions();
+    if (data.format === "jpeg") options.quality = data.quality == null ? 10 : data.quality;
+    work.saveAs(file, options, true, Extension.LOWERCASE);
+    return jamJSON.stringify({ path: file.fsName, temporary: !data.path, bounds: rect, documentId: source.id, docWidth: originalWidth, docHeight: originalHeight, imageWidth: work.width.as("px"), imageHeight: work.height.as("px") });
+  } catch (error) { return jamJSON.stringify({ error: String(error.message || error) }); }
+  finally {
+    if (work) { try { work.close(SaveOptions.DONOTSAVECHANGES); } catch (closeError) {} }
+    if (source) { try { app.activeDocument = source; } catch (restoreError) {} }
+    app.displayDialogs = dialogs;
+  }
+}
+
+function typeRMcpMeasure(data) {
+  var source = null, work = null, dialogs = app.displayDialogs;
+  try {
+    source = app.activeDocument;
+    app.displayDialogs = DialogModes.NO;
+    // A fresh document uses the source resolution without copying its layers,
+    // history, selection or unsaved state. No temporary edits reach the PSD.
+    work = app.documents.add(source.width, source.height, source.resolution, "TypeR MCP Measurement", NewDocumentMode.RGB, DocumentFill.WHITE);
+    var results = [];
+    for (var i = 0; i < data.candidates.length; i++) {
+      var candidate = data.candidates[i];
+      var b = candidate.bounds, padding = candidate.padding || 0;
+      var width = b.right - b.left - 2 * padding, height = b.bottom - b.top - 2 * padding;
+      if (width < 2 || height < 2) throw new Error("padding_exceeds_bounds");
+      var payload = { text: candidate.text, style: candidate.style, richTextRuns: candidate.richTextRuns, direction: candidate.direction };
+      // Never measure inside the target height: Photoshop can discard overset
+      // lines when converting a short paragraph box to point text. A generous
+      // temporary height reveals all wraps before checking the target height.
+      var textStyle = candidate.style.textProps.layerText.textStyleRange[0].textStyle;
+      var linePixels = Math.max(textStyle.size || 36, textStyle.leading || 0) * source.resolution / 72 * Math.max(1, (textStyle.verticalScale || 100) / 100);
+      var measureHeight = Math.max(height, (candidate.text.length + 1) * linePixels * 3);
+      if (measureHeight > 1000000) throw new Error("measurement_limit: text is too long at this size");
+      _createAndSetLayerText(payload, width, measureHeight);
+      var layer = work.activeLayer;
+      _changeToPointText();
+      var rendered = layer.textItem.contents;
+      var complete = rendered.replace(/\s/g, "") === candidate.text.replace(/\s/g, "");
+      var measured = _getCurrentTextLayerBounds();
+      var actualFont = layer.textItem.font;
+      var requestedFont = candidate.style.textProps.layerText.textStyleRange[0].textStyle.fontPostScriptName;
+      var xOverflow = Math.max(0, measured.width - width), yOverflow = Math.max(0, measured.height - height);
+      results.push({ index: i, text: candidate.text, renderedText: rendered, lines: rendered.split(/\r\n|\r|\n/), fontSize: layer.textItem.size.as("pt"), fontPostScriptName: actualFont, fontSubstituted: !!requestedFont && actualFont !== requestedFont,
+        measuredWidth: measured.width, measuredHeight: measured.height, availableWidth: width, availableHeight: height, overflowX: xOverflow, overflowY: yOverflow, contentComplete: complete, fits: complete && xOverflow <= 0.5 && yOverflow <= 0.5 && (!requestedFont || actualFont === requestedFont),
+        bounds: { left: b.left + (b.right - b.left - measured.width) / 2, top: b.top + (b.bottom - b.top - measured.height) / 2, right: b.right - (b.right - b.left - measured.width) / 2, bottom: b.bottom - (b.bottom - b.top - measured.height) / 2 }, measurementEngine: "photoshop", contourChecked: false });
+      layer.remove();
+    }
+    return jamJSON.stringify({ documentId: source.id, resolution: source.resolution, measurements: results });
+  } catch (error) { return jamJSON.stringify({ error: String(error.message || error) }); }
+  finally {
+    if (work) { try { work.close(SaveOptions.DONOTSAVECHANGES); } catch (closeError) {} }
+    if (source) { try { app.activeDocument = source; } catch (restoreError) {} }
+    app.displayDialogs = dialogs;
   }
 }
 

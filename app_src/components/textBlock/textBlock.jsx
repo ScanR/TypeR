@@ -269,6 +269,7 @@ const TextBlock = React.memo(function TextBlock() {
 
   React.useEffect(() => {
     let active = true;
+    if (window.__typerMcpNavigating) return undefined;
     let image = context.state.images[0] || null;
     for (const line of context.state.lines) {
       if (line.ignore) {

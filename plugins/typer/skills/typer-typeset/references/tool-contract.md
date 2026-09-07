@@ -1,5 +1,7 @@
 # TypeR tool contract
 
+MCP v2 requires `requestId` on mutations and `documentId` on document writes. Both MCP entry points use `plugins/typer/mcp/contract.mjs`. Tool schemas are authoritative.
+
 ## State and identifiers
 
 `typer_get_state` returns raw script indexes. Use `rawIndex`/`lineIndex` in tool calls; display numbers are presentation-only and may restart on every page.
@@ -57,7 +59,7 @@ Only then call `typer_save_style`. Prefer `fontPostScriptName` because it unique
 
 Use `typer_get_layers` after writing. Its `text` includes rendered line breaks and `bounds` reveal gross overflow or misplaced layers. Enable `scanBubbles` only for a precise review because it is slower.
 
-Use `typer_get_page_image` for final visual review. If a whole batch is mapped incorrectly, call `typer_undo` once and rebuild it. For one or two defects, prefer targeted edits.
+Use `typer_get_page_image` for final visual review. If a whole batch is mapped incorrectly, call `typer_undo` with the batch `operationId` and rebuild it. For one or two defects, prefer targeted edits.
 
 `typer_save_document` without a path saves the active document. Provide a `.psd` path for a new destination. `asCopy` preserves the active document's current path.
 
@@ -70,3 +72,5 @@ Use `typer_get_page_image` for final visual review. If a whole batch is mapped i
 - **Font not installed:** use `typer_search_fonts`; do not silently substitute a materially different face.
 - **Preview fallback or wrong face:** refresh the TypeR panel's Photoshop font list and call `typer_preview_fonts` again with exact PostScript names.
 - **Alignment failure:** pass `layerId` explicitly, clear an unrelated selection with `typer_deselect`, then retry `typer_align`. If geometry is correct but the result still looks optically off-center, finish with `typer_nudge_layer`.
+
+See `docs/mcp/AI_TYPESETTING_V2.md` in the TypeR repository for the complete v2 workflow, units, recovery behavior and limitations.

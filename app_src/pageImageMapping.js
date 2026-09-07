@@ -5,6 +5,7 @@ const getImageBaseName = (image) => {
 };
 
 export const getImagePageNumber = (image) => {
+  if (Number.isSafeInteger(image && image.page) && image.page > 0) return image.page;
   const matches = getImageBaseName(image).match(/[0-9]+/g);
   if (!matches?.length) return null;
 

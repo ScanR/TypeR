@@ -34,6 +34,7 @@ const TEXT_SHAPER_LEARN_TIP_THRESHOLD = 5;
 const hasTextShapeRLearning = (value) => Number(value?.samples) > 0;
 
 const storeFields = [
+  "mcpProgress",
   "notFirstTime",
   "text",
   "styles",
@@ -422,6 +423,19 @@ const baseReducer = (state, action) => {
 
     case "setText": {
       newState.text = action.text;
+      break;
+    }
+
+    case "setMcpProgress": {
+      newState.mcpProgress = Array.isArray(action.links) ? action.links : [];
+      break;
+    }
+
+    case "restoreMcpPanel": {
+      if (action.tabId !== state.currentTabId || action.text !== state.text) break;
+      newState.currentLineIndex = action.currentLineIndex;
+      newState.usedLineStyles = action.usedLineStyles;
+      newState.mcpProgress = action.mcpProgress;
       break;
     }
 
@@ -1326,6 +1340,8 @@ const baseReducer = (state, action) => {
       break;
     }
   }
+
+  if (newState.mcpProgress != null && !Array.isArray(newState.mcpProgress)) newState.mcpProgress = [];
 
   // Detect which fields changed to skip unnecessary recomputation
   const stylesChanged = newState.styles !== state.styles;
