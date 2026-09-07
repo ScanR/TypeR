@@ -2229,6 +2229,97 @@ function getAllRenderedTextLines(data) {
   return state.result;
 }
 
+// Training reads run on a disposable document. Existing PSDs, their layer
+// selections, pixel selections and history must remain untouched.
+function _collectTrainingTextLayers(container, entries, parentPath, parentVisible) {
+  for (var index = 0; index < container.layers.length; index++) {
+    var layer = container.layers[index];
+    var layerPath = parentPath ? parentPath + " / " + layer.name : layer.name;
+    var visible = parentVisible && layer.visible;
+    if (layer.typename === "LayerSet") {
+      _collectTrainingTextLayers(layer, entries, layerPath, visible);
+    } else if (layer.kind === LayerKind.TEXT) {
+      entries.push({ layerId: layer.id, name: layer.name, layerPath: layerPath, visible: visible });
+    }
+  }
+}
+
+function _readTextShapeRTrainingLayers() {
+  var state = _hostState.textShapeRTraining;
+  var entries = [];
+  _collectTrainingTextLayers(app.activeDocument, entries, "", true);
+  for (var index = 0; index < entries.length; index++) {
+    var entry = entries[index];
+    entry.text = "";
+    try {
+      _selectLayerById(entry.layerId);
+      if (_textLayerIsPointText()) {
+        var params = jamText.getLayerText();
+        entry.text = params && params.layerText ? params.layerText.textKey || "" : "";
+      } else {
+        _hostState.getRenderedTextLines.result = "";
+        _getRenderedTextLines();
+        entry.text = _hostState.getRenderedTextLines.result || "";
+        if (!entry.text) entry.error = "readFailed";
+      }
+    } catch (readError) {
+      entry.error = "readFailed";
+    }
+  }
+  state.entries = entries;
+}
+
+// An empty path means the current page, including unsaved edits. A supplied
+// path reuses the open document when present, otherwise opens it without saving.
+function scanTextShapeRTraining(path) {
+  var previousDoc = null;
+  var source = null;
+  var workDoc = null;
+  var file = null;
+  var saveDialogs = app.displayDialogs;
+  try { previousDoc = app.activeDocument; } catch (noDocument) {}
+  try {
+    if (path) {
+      if (!/\.psd$/i.test(path)) return jamJSON.stringify({ error: "badPath" });
+      file = new File(path);
+      if (!file.exists) return jamJSON.stringify({ error: "notFound" });
+      for (var index = 0; index < app.documents.length; index++) {
+        try {
+          if (app.documents[index].fullName.fsName === file.fsName) {
+            source = app.documents[index];
+            break;
+          }
+        } catch (unsavedDocument) {}
+      }
+    } else {
+      source = previousDoc;
+      if (!source) return jamJSON.stringify({ error: "document" });
+    }
+    app.displayDialogs = DialogModes.NO;
+    if (source) {
+      app.activeDocument = source;
+      workDoc = source.duplicate("TypeR Training Preview", false);
+    } else {
+      workDoc = app.open(file);
+    }
+    app.activeDocument = workDoc;
+    _hostState.textShapeRTraining = { entries: [] };
+    workDoc.suspendHistory("TypeR Read Training", "_readTextShapeRTrainingLayers()");
+    return jamJSON.stringify({ entries: _hostState.textShapeRTraining.entries });
+  } catch (scanError) {
+    return jamJSON.stringify({ error: "scanFailed" });
+  } finally {
+    if (workDoc) {
+      try { workDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (closeError) {}
+    }
+    if (previousDoc) {
+      try { app.activeDocument = previousDoc; } catch (restoreError) {}
+    }
+    app.displayDialogs = saveDialogs;
+    _hostState.textShapeRTraining = null;
+  }
+}
+
 function setActiveLayerText(data) {
   var state = _hostState.setActiveLayerText;
   state.data = data;

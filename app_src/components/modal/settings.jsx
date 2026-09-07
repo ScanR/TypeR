@@ -32,6 +32,7 @@ import FontScanPromo from "./fontScanPromo";
 import ProfileSettings from "./profileSettings";
 import UnsavedChangesDialog from "./unsavedChangesDialog";
 import FontViewer from "./fontViewer";
+import TextShapeRTraining from "./textShapeRTraining";
 import FontFinderLogo from "./fontFinderLogo";
 import { getFontViewerStatus } from "../../fontViewerApi";
 import { shortcutCommands } from "../../shortcutCommands";
@@ -1888,22 +1889,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                 </button>
               </div>
             </div>
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupShapeTuning || "TextShapeR learning"}</div>
-              <div className="field">
-                <button className="topcoat-button--large" onClick={importShapeTuning}>
-                  <FaFileImport size={18} /> {locale.settingsShapeTuningImport || "Import learning"}
-                </button>
-              </div>
-              <div className="field">
-                <button className="topcoat-button--large" onClick={exportShapeTuning}>
-                  <FaFileExport size={18} /> {locale.settingsShapeTuningExport || "Export learning"}
-                </button>
-              </div>
-              <div className="field-descr">
-                {locale.settingsShapeTuningHint || "Share your TextShapeR algorithm learned from your feedback as a small .json file. Importing replaces your current learning."}
-              </div>
-            </div>
+            <TextShapeRTraining onImportLearning={importShapeTuning} onExportLearning={exportShapeTuning} />
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupDiagnostics || "Diagnostics"}</div>
               <div className="settings-checkbox-grid">
