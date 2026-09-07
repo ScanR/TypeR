@@ -1397,7 +1397,10 @@ const PreviewBlock = React.memo(function PreviewBlock() {
                     <span className="preview-textshaper-learn-tip" role="status">
                       <FiInfo size={12} />
                       <span className="preview-textshaper-learn-tip-text">
-                        {locale.textShapeRLearnTip || "Improve TextShapeR with your own typesets: click the star to teach it your style."}
+                        {locale.textShapeRLearnTip || "Improve TextShapeR with your own typesets: click the star to teach it your style. Ctrl-click the star to automatically learn from the visible text layers on the current page."}
+                        <span className="preview-textshaper-learn-info">
+                          {locale.textShapeRLearnInfo || "TextShapeR does not use generative AI."}
+                        </span>
                       </span>
                       <button
                         type="button"
