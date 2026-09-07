@@ -2,6 +2,8 @@
   --fv-border: rgba(255, 255, 255, 0.14);
   --fv-panel: rgba(0, 0, 0, 0.14);
   --fv-panel-strong: rgba(0, 0, 0, 0.22);
+  --fv-option-background: #292929;
+  --fv-option-text: #f5f5f5;
   display: flex;
   flex-direction: column;
   gap: 9px;
@@ -14,12 +16,19 @@
     box-sizing: border-box;
     font: inherit;
   }
+
+  select option {
+    background-color: var(--fv-option-background);
+    color: var(--fv-option-text);
+  }
 }
 
 .light-theme .font-viewer {
   --fv-border: rgba(0, 0, 0, 0.14);
   --fv-panel: rgba(0, 0, 0, 0.045);
   --fv-panel-strong: rgba(0, 0, 0, 0.075);
+  --fv-option-background: #ffffff;
+  --fv-option-text: #202020;
 }
 
 .font-finder-logo {
@@ -284,6 +293,43 @@
   border: 1px solid var(--fv-border);
   border-radius: 4px;
   background: var(--fv-panel);
+}
+
+.font-viewer-availability-filter {
+  display: inline-flex;
+  flex: 1 1 180px;
+  align-items: center;
+  gap: 6px;
+  min-height: 25px;
+  padding: 4px 7px;
+  border: 1px solid var(--fv-border);
+  border-radius: 3px;
+  background: var(--fv-panel-strong);
+  color: inherit;
+  cursor: pointer;
+  font-size: 10px;
+  text-align: left;
+
+  &.m-active {
+    border-color: #288edf;
+    background: rgba(40, 142, 223, 0.18);
+    color: #9bd2ff;
+  }
+}
+
+.font-viewer-filter-check {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--fv-border);
+  border-radius: 2px;
+}
+
+.light-theme .font-viewer-availability-filter.m-active {
+  color: #1976d2;
 }
 
 .font-viewer-filter-group {

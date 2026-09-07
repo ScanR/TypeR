@@ -1,3 +1,4 @@
+import { useModalClose } from "../../modalClose";
 import React from 'react';
 import { FiX, FiDownload, FiRefreshCw, FiCheckCircle } from 'react-icons/fi';
 
@@ -42,6 +43,7 @@ const UpdateModal = React.memo(function UpdateModal() {
     if (isUpdating) return; // Prevent closing during update
     context.dispatch({ type: 'setModal' });
   };
+  useModalClose(close);
   
   const download = () => {
     openUrl('https://github.com/ScanR/TypeR/releases/latest');
@@ -87,7 +89,7 @@ const UpdateModal = React.memo(function UpdateModal() {
             locale.successTitle,
             false
           );
-          close();
+          context.dispatch({ type: "setModal", modal: null });
         }
       },
       // onError
@@ -99,7 +101,8 @@ const UpdateModal = React.memo(function UpdateModal() {
           locale.errorTitle,
           true
         );
-      }
+      },
+      { expectedVersion: version }
     );
   };
   

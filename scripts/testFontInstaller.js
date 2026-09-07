@@ -10,7 +10,7 @@ const transformed = babel.transformSync(source, {
   presets: [["@babel/preset-env", { modules: "commonjs", targets: { node: "current" } }]],
 }).code;
 const installerModule = { exports: {} };
-new Function("require", "module", "exports", transformed)(require, installerModule, installerModule.exports);
+new Function("require", "module", "exports", transformed)(name => name === "./nodeCompat" ? require("./helpers/loadAppModule")()("app_src/nodeCompat.js") : require(name), installerModule, installerModule.exports);
 const {
   FONT_REGISTRY_PATH,
   buildWindowsRegistrationScript,

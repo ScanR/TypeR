@@ -1,3 +1,5 @@
+import { validateImportData, repairFolderHierarchy } from "./librarySerialization";
+import { parsePageMarker } from "./pageMarker";
 import React from "react";
 import PropTypes from "prop-types";
 import { locale, readStorage, writeToStorage, scrollToLine, scrollToStyle, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, nativeAlert } from "./utils";
@@ -7,9 +9,9 @@ import { getNextLineNumberState } from "./lineNumbering";
 import { CUSTOM_IMAGE_THEME_ID, normalizeCustomThemes, normalizeEditorTheme, normalizePageLineColor, setCustomEditorThemes } from "./themePresets";
 import { normalizeBackgroundImage } from "./backgroundImage";
 import { applyThemeState } from "./lib/themeManager";
-import { getDefaultShortcuts } from "./shortcutCommands";
+import { getDefaultShortcuts, migrateShortcutDefaults } from "./shortcutCommands";
 import { getStoredSelectionLineIndex } from "./multiBubbleHistory";
-import { getAutomaticTagStyles } from "./folderUtils";
+import { collectDescendantIds, getAutomaticTagStyles } from "./folderUtils";
 import { perfMeasure } from "./perfDebug";
 import { TAB_FIELDS, createTab, migrateTabStorage } from "./tabStorage";
 import {
@@ -57,7 +59,6 @@ const storeFields = [
   "direction",
   "middleEast",
   "lastOpenedImagePath",
-  "storedSelections",
   "multiBubbleMode",
   "showTips",
   "exportFolderFontTipDismissed",
@@ -184,8 +185,10 @@ const showStyleSizeTipIfEligible = (state) => {
 };
 
 const defaultShortcut = getDefaultShortcuts();
+const shortcutMigration = migrateShortcutDefaults(storage.data?.shortcut, defaultShortcut);
 
 const normalizeFolders = (folders) => {
+  folders = repairFolderHierarchy(folders);
   const normalized = (folders || []).map((folder) => {
     const parentId = folder?.parentId === undefined || folder?.parentId === null || folder?.parentId === "" ? null : folder.parentId;
     return {
@@ -218,21 +221,6 @@ const normalizeFolders = (folders) => {
       });
   });
   return normalized;
-};
-
-const collectDescendantFolderIds = (folders, folderId) => {
-  const ids = [];
-  if (!folderId) return ids;
-  const queue = [folderId];
-  while (queue.length) {
-    const current = queue.shift();
-    const children = (folders || []).filter((folder) => (folder.parentId || null) === current);
-    for (const child of children) {
-      ids.push(child.id);
-      queue.push(child.id);
-    }
-  }
-  return ids;
 };
 
 const buildPrefixIndex = (prefixes) => {
@@ -285,11 +273,7 @@ const initialState = {
   inlineTextShapeR: storage.data?.inlineTextShapeR !== false,
   textShapeRPerformanceTipShown: storage.data?.textShapeRPerformanceTipShown === true,
   textShapeRPerformanceTipVisible: false,
-  textShapeRUsageCount: 0,
-  textShapeRLearnUsed: false,
-  textShapeRLearnTipShown: false,
-  textShapeRLearnTipVisible: false,
-  textShapeRBubbleAware: storage.data?.textShapeRBubbleAware !== false,
+  textShapeRBubbleAware: storage.data?.textShapeRBubbleAware === true,
   dehyphenateTextShapeR: storage.data?.dehyphenateTextShapeR === true,
   textShapeRTuning: storage.data?.textShapeRTuning || null,
   modalType: null,
@@ -304,10 +288,6 @@ const initialState = {
   internalPadding: 10,
   interpretMarkdown: storage.data?.interpretMarkdown !== false,
   styleSizeStep: 1,
-  styleSizeTipCount: 0,
-  styleSizeTipLastChangeAt: 0,
-  styleSizeTipShown: false,
-  styleSizeTipVisible: false,
   resetLineCounterOnPage: storage.data?.resetLineCounterOnPage !== false,
   multiTabEnabled: storage.data?.multiTabEnabled !== false,
   ...storage.data,
@@ -322,7 +302,10 @@ const initialState = {
   styleSizeTipLastChangeAt: Math.max(0, Number(storage.data?.styleSizeTipLastChangeAt) || 0),
   styleSizeTipShown: storage.data?.styleSizeTipShown === true,
   styleSizeTipVisible: false,
-  shortcut: { ...defaultShortcut, ...(storage.data?.shortcut || {}) },
+  shortcut: shortcutMigration.shortcuts,
+  // Live keyboard state (is the keep-size modifier held right now); never
+  // persisted, and placed after the storage spread so it always starts false
+  keepSizeHeld: false,
   uiLayout: normalizeUiLayout(storage.data?.uiLayout),
   // The theme registry is filled by the theme manager at import time, so the
   // stored id can already point at a custom theme here
@@ -344,8 +327,12 @@ initialState.tabs = tabStorage.tabs;
 initialState.currentTabId = tabStorage.currentTabId;
 const activeTab = initialState.tabs.find((tab) => tab.id === initialState.currentTabId) || initialState.tabs[0];
 loadTabIntoState(initialState, activeTab);
-// Keep stored selections across restarts (loadTabIntoState clears them)
-initialState.storedSelections = storage.data?.storedSelections || [];
+// Captured coordinates belong to a live Photoshop session and must be recaptured.
+initialState.storedSelections = [];
+
+if (shortcutMigration.migrated) {
+  writeToStorage({ shortcut: initialState.shortcut });
+}
 
 if (tabStorage.migrated) {
   const migratedData = {
@@ -361,6 +348,12 @@ if (tabStorage.migrated) {
 }
 
 const baseReducer = (state, action) => {
+  if (action.type === "import" || action.type === "importStyleLibrary" || action.type === "importStyleFolder") {
+    try {
+      const data = action.type === "import" ? action.data : { folders: action.folders || (action.folder ? [action.folder] : []), styles: action.styles || [] };
+      validateImportData(data);
+    } catch (error) { nativeAlert(locale.errorImportStyles, locale.errorTitle, true); return state; }
+  }
   let thenScroll = false;
   let thenSelectStyle = false;
   let forceStylePrefixRefresh = false;
@@ -390,8 +383,8 @@ const baseReducer = (state, action) => {
 
     case "import": {
       for (const field in action.data) {
-        if (!action.data.hasOwnProperty(field)) continue;
-        if (!initialState.hasOwnProperty(field)) continue;
+        if (!Object.prototype.hasOwnProperty.call(action.data, field)) continue;
+        if (!storeFields.includes(field)) continue;
         if (field === "styles" && state.styles) {
           const styles = [];
           let asked = false;
@@ -508,7 +501,7 @@ const baseReducer = (state, action) => {
       let foundNextPage = false;
       for (let i = state.currentLineIndex + 1; i < state.lines.length; i++) {
         const line = state.lines[i];
-        if (line.rawText.match(/Page [0-9]+/i)) {
+        if (parsePageMarker(line.rawText)) {
           // Select the first usable line after that page marker.
           for (let j = i + 1; j < state.lines.length; j++) {
             if (!state.lines[j].ignore) {
@@ -531,13 +524,13 @@ const baseReducer = (state, action) => {
       if (!state.text) break;
       const pageMarkers = [];
       for (let i = 0; i < state.currentLineIndex; i++) {
-        if (state.lines[i].rawText.match(/Page [0-9]+/i)) pageMarkers.push(i);
+        if (parsePageMarker(state.lines[i].rawText)) pageMarkers.push(i);
       }
       // The nearest marker is the current page; move to the one before it.
       const targetMarker = pageMarkers.length > 1 ? pageMarkers[pageMarkers.length - 2] : -1;
       if (targetMarker < 0) break;
       for (let i = targetMarker + 1; i < state.lines.length; i++) {
-        if (state.lines[i].rawText.match(/Page [0-9]+/i)) break;
+        if (parsePageMarker(state.lines[i].rawText)) break;
         if (!state.lines[i].ignore) {
           newState.currentLineIndex = state.lines[i].rawIndex;
           thenScroll = true;
@@ -727,7 +720,7 @@ const baseReducer = (state, action) => {
 
     case "deleteFolder": {
       if (!action.id) break;
-      const idsToRemove = [action.id].concat(collectDescendantFolderIds(state.folders, action.id));
+      const idsToRemove = [action.id].concat(collectDescendantIds(state.folders, action.id));
       const folders = state.folders.filter((folder) => !idsToRemove.includes(folder.id)).map((folder) => ({ ...folder }));
       let styles = state.styles.concat([]);
       if (action.permanent) {
@@ -976,6 +969,11 @@ const baseReducer = (state, action) => {
       break;
     }
 
+    case "setKeepSizeHeld": {
+      newState.keepSizeHeld = !!action.value;
+      break;
+    }
+
     case "setMultiBubbleMode": {
       newState.multiBubbleMode = !!action.value;
       if (!action.value) {
@@ -1036,7 +1034,6 @@ const baseReducer = (state, action) => {
     case "setInlineTextShapeR": {
       newState.inlineTextShapeR = !!action.value;
       if (newState.inlineTextShapeR) {
-        newState.textShapeRBubbleAware = true;
         if (
           state.showTips !== false &&
           state.uiLayout?.visible?.preview !== false &&
@@ -1273,12 +1270,6 @@ const baseReducer = (state, action) => {
     case "setMultiTabEnabled": {
       const enabled = action.value !== false;
       newState.multiTabEnabled = enabled;
-      if (!enabled && state.tabs.length > 1) {
-        // Disabling multi-tab keeps only the first tab; the rest is discarded
-        const firstTab = state.tabs[0];
-        newState.tabs = [firstTab];
-        loadTabIntoState(newState, firstTab);
-      }
       break;
     }
 
@@ -1502,7 +1493,7 @@ const baseReducer = (state, action) => {
         text = text.replace(ignoreTagsRegex, "");
       }
       text = text.trim();
-      const isPage = rawText.match(/Page [0-9]+/i);
+      const isPage = parsePageMarker(rawText);
       const ignore = !!ignorePrefix || !text || isPage;
       if (isPage && newState.images.length && lastTextLine) lastTextLine.last = true;
       const lineNumberState = getNextLineNumberState({
@@ -1635,7 +1626,7 @@ const baseReducer = (state, action) => {
     }
   }
   if (hasStorageChange) {
-    const dataToStore = {};
+    const dataToStore = { storedSelections: undefined };
     let shouldDebounceStorage = false;
     for (let i = 0; i < persistedFields.length; i++) {
       const field = persistedFields[i];
@@ -1806,7 +1797,7 @@ const ContextProvider = React.memo(function ContextProvider(props) {
             // Silent install failed: fall back to the interactive modal
             dispatch({ type: "setModal", modal: "update", data });
           },
-          { inPlaceOnly: true }
+          { expectedVersion: data.version }
         );
         return;
       }
@@ -1814,7 +1805,7 @@ const ContextProvider = React.memo(function ContextProvider(props) {
       // Fetch the zip in the background so the Install click is instant
       prefetchUpdateZip(data.downloadUrl);
       dispatch({ type: "setModal", modal: "update", data });
-    });
+    }).catch(error => console.warn("Automatic update check failed:", error));
   }, [state.checkUpdates, state.autoUpdate]);
   return <Context.Provider value={contextValue}>{props.children}</Context.Provider>;
 });

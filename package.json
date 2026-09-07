@@ -4,58 +4,62 @@
   "author": "Sakushi, SeanR",
   "main": "app/index.js",
   "browserslist": [
-    "since 2012"
+    "Chrome >= 41"
   ],
   "scripts": {
-    "build": "node clean.js app && webpack --mode=production",
-    "build_dev": "node clean.js app && webpack --mode=development",
-    "build_watch": "node clean.js app && webpack --mode=development --watch",
-    "test": "node scripts/testTextLayerPayload.js && node scripts/testLineNumbering.js && node scripts/testFolderTagIsolation.js && node scripts/testLocales.js && node scripts/testFontViewerApi.js && node scripts/testFontViewerRandom.js && node scripts/testFontInstaller.js && node scripts/testMarkdownFormatting.js && node scripts/testFontVariantResolver.js && node scripts/testStyleSizePresets.js && node scripts/testStyleSizeTip.js && node scripts/testUpdateLogic.js && node scripts/testUpdateTestMode.js && node scripts/testShortcuts.js && node scripts/testMouseShortcuts.js && node scripts/testCleaningLayerToggle.js && node scripts/testMultiBubbleHistory.js && node scripts/testBubbleDetection.js && node scripts/testPageImageMapping.js && node scripts/testSelectionOpening.js && node scripts/testTabStorage.js && node scripts/testProfileStorage.js && node scripts/testTextShapeRTracking.js && node scripts/testCepCache.js && node scripts/testTextShapeR.js && node scripts/testFontScan.js && node scripts/testFontPreview.js && node scripts/testMcpFontPreview.js",
+    "build": "node clean.js app && webpack --mode=production && node scripts/finalizeBuild.js",
+    "build_dev": "node clean.js app && webpack --mode=development && node scripts/finalizeBuild.js",
+    "build_watch": "npm run build_dev && webpack --mode=development --watch",
+    "test": "node scripts/runTests.js",
     "test:update:prepare": "node scripts/prepareUpdateTest.js",
     "test:update:server": "node scripts/updateTestServer.js",
     "test:build": "node scripts/testBuildArtifacts.js",
-    "verify": "npm test && npm run build && npm run test:build"
+    "verify": "npm test && npm run build && npm run test:build",
+    "release": "npm run verify && node scripts/buildRelease.js"
   },
   "dependencies": {
-    "@babel/core": "^7.15.5",
-    "@babel/plugin-proposal-class-properties": "^7.14.5",
-    "@babel/plugin-proposal-optional-chaining": "^7.14.5",
-    "@babel/plugin-syntax-dynamic-import": "^7.8.3",
-    "@babel/plugin-transform-runtime": "^7.15.0",
-    "@babel/preset-env": "^7.15.6",
-    "@babel/preset-react": "^7.14.5",
     "@babel/runtime": "^7.15.4",
-    "autoprefixer": "^10.3.6",
-    "babel-loader": "^8.2.2",
-    "babel-preset-minify": "^0.5.1",
-    "base64-inline-loader": "^2.0.1",
     "core-js": "^3.49.0",
-    "css-loader": "^6.3.0",
-    "cssnano": "^5.0.8",
+    "css-vars-ponyfill": "^2.4.9",
     "fflate": "^0.8.3",
-    "file-loader": "^6.2.0",
-    "html-webpack-plugin": "^5.3.2",
-    "mini-css-extract-plugin": "^2.3.0",
-    "postcss-loader": "^6.1.1",
-    "postcss-preset-env": "^6.7.0",
     "prop-types": "^15.7.2",
     "react": "^17.0.2",
     "react-color": "^2.19.3",
     "react-dom": "^17.0.2",
     "react-icons": "^5.5.0",
-    "sass-loader": "^12.1.0",
-    "uglify-js": "^3.14.2",
-    "webpack": "^5.54.0",
-    "webpack-cli": "^4.8.0",
-    "webpack-merge-and-include-globally": "^2.3.4"
+    "resize-observer-polyfill": "^1.5.1",
+    "whatwg-fetch": "^3.6.20"
   },
   "devDependencies": {
+    "cssnano": "^7.1.9",
     "cz-conventional-changelog": "^3.3.0",
-    "sass": "^1.89.0"
+    "postcss-preset-env": "^11.5.1",
+    "sass": "^1.89.0",
+    "sass-loader": "^16.0.8",
+    "@babel/core": "^7.15.5",
+    "@babel/plugin-transform-runtime": "^7.15.0",
+    "@babel/preset-env": "^7.15.6",
+    "@babel/preset-react": "^7.14.5",
+    "autoprefixer": "^10.3.6",
+    "babel-loader": "^8.2.2",
+    "base64-inline-loader": "^2.0.1",
+    "css-loader": "^6.3.0",
+    "file-loader": "^6.2.0",
+    "html-webpack-plugin": "^5.3.2",
+    "mini-css-extract-plugin": "^2.3.0",
+    "postcss-loader": "^6.1.1",
+    "uglify-js": "^3.14.2",
+    "webpack": "^5.54.0",
+    "webpack-cli": "^6.0.1",
+    "webpack-merge-and-include-globally": "^2.3.4",
+    "acorn": "^8.15.0"
   },
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-conventional-changelog"
     }
+  },
+  "engines": {
+    "node": ">=22.12"
   }
 }

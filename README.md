@@ -69,7 +69,7 @@ flowchart LR
 
 Paste your translated script directly into TypeR. Each usable line becomes a step in the typesetting queue, while empty lines and configured translator-note prefixes can be skipped automatically.
 
-Use `Page 1`, `Page 2`, and similar markers to connect the script to imported page files. TypeR can open the matching page as you advance, and can optionally save and close the previous PSD to keep long chapters manageable.
+Use `Page 1`, `Page 2`, `Page 12 :`, `Page 12 : title`, `Page 12 - title`, `[Page 12]` or `## Page 12` headings to connect the script to imported page files. TypeR can open the matching page as you advance, and can optionally save and close the previous PSD to keep long chapters manageable.
 
 ```text
 Page 1
@@ -162,7 +162,7 @@ When an installed font cannot be found, TypeR reports it instead of silently omi
 | Operating system | Windows or macOS |
 | Photoshop build | Standard desktop installation with CEP extension support |
 
-Photoshop 16.0+ and CEP 6+ are declared by the extension manifest. The project does not yet maintain a verified OS/version matrix, so compatibility is not guaranteed for every Photoshop and operating-system combination. Portable or heavily modified Photoshop builds may not load CEP panels correctly.
+Photoshop 16.0+ and CEP 6+ are declared by the extension manifest. TypeR 3.0 contains two builds of the same application: Photoshop 2020+ with Chromium 74+ loads the modern build; older or unknown runtimes load the compatibility build automatically. The project does not yet maintain a verified OS/version matrix, so compatibility is not guaranteed for every Photoshop and operating-system combination. Portable or heavily modified Photoshop builds may not load CEP panels correctly.
 
 TypeR is distributed as an unsigned CEP extension. Both installers place it in the user-level Adobe CEP extensions folder and configure the required CSXS debug setting.
 
@@ -196,7 +196,7 @@ Keep the standalone updater from the downloaded archive and run it whenever you 
 - On Windows, double-click `update_typer_win.cmd`.
 - On macOS, run `chmod +x update_typer_mac.sh` once, then `./update_typer_mac.sh`.
 
-The updater downloads the latest `TypeR.zip` release directly from GitHub. It does nothing when the installed version is already current, preserves all `storage*` user data, and rolls back the application files if installation fails. Restart Photoshop after a successful update; TypeR itself does not need to be open.
+The updater downloads the latest `TypeR.zip` release directly from GitHub. It validates the complete package before replacing files, preserves all `storage*` user data, and rolls back application files if installation fails. Reinstalling the same version can repair damaged application files. TypeR 3.0 packages include the integrity inventory required by these installers. Restart Photoshop after a successful update; TypeR itself does not need to be open.
 
 ## Your first typesetting session
 
@@ -224,7 +224,9 @@ Every binding is customizable in **Settings → Shortcuts**. `Win` is TypeR's la
 | Previous line | `Ctrl + Tab` |
 | Increase text size | `Ctrl + Shift + Plus` |
 | Decrease text size | `Ctrl + Shift + Minus` |
-| Insert text into the active layer without changing its style | `Win + V` |
+| Insert text into the active layer without changing its style | `Win + Shift + V` |
+| Keep the active text size while creating or applying text | Hold `Alt` with the action |
+| Select style 1 to 9 in the current folder, panel focused outside a text field | Numeric keypad `1` to `9` |
 | Jump to the next page marker | `Shift + X` |
 | Toggle multi-bubble mode | `Ctrl + Alt + M` |
 | Jump to the previous page marker | Not assigned |
@@ -285,7 +287,7 @@ If the problem continues, [open an issue](https://github.com/ScanR/TypeR/issues/
 
 ## Build from source
 
-You only need Node.js and npm when developing TypeR or installing the current unreleased branch.
+You only need Node.js and npm when developing TypeR or installing the current unreleased branch. Use Node 24 (see `.nvmrc`); the minimum build-tool version is Node 22.12. This does not change the Photoshop runtime requirement.
 
 ```sh
 git clone --branch develop https://github.com/ScanR/TypeR.git
@@ -317,3 +319,11 @@ For code changes, run `npm run verify` before submitting a pull request.
 TypeR is maintained by **Sakushi** and is based on [TyperTools](https://swirt.github.io/typertools/) by **Swirt**.
 
 The project is distributed under the [MIT License](./LICENSE.md). For TypeR help, join the [ScanR support server](https://discord.com/invite/Pdmfmqk).
+
+### Preparing a release
+
+Run `npm run release` to test, build both runtimes, verify the artifacts and generate `Releases/TypeR.zip` with a SHA-256 checksum. `build_release.cmd` runs the same pipeline on Windows. Publish this built ZIP, which includes documentation and the license, rather than GitHub's source archive.
+
+See [the release acceptance checklist](docs/release-3.0.0.md) for remaining real-Photoshop checks and recovery procedures. The existing video guide shows an earlier version; the in-panel walkthrough describes the current workflow.
+
+For a full workspace backup, close Photoshop and copy every `storage*` file/directory from the TypeR extension folder. A settings export from one profile does not back up the other profiles.

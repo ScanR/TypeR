@@ -9,12 +9,13 @@ const transformed = babel.transformSync(source, {
   presets: [["@babel/preset-env", { modules: "commonjs" }]],
 }).code;
 const apiModule = { exports: {} };
-new Function("require", "module", "exports", transformed)(require, apiModule, apiModule.exports);
+new Function("require", "module", "exports", transformed)(name => name === "./network" ? require("./helpers/loadAppModule")()("app_src/network.js") : require(name), apiModule, apiModule.exports);
 const {
   buildFontQuery,
   clearFontViewerMemoryCache,
   getFontFamilies,
   getDownloadManifest,
+  getFontFilters,
   getFontViewerStatus,
 } = apiModule.exports;
 
@@ -66,6 +67,18 @@ Promise.all([
     json: async () => ({ enabled: false }),
   }));
   assert.strictEqual(disabledStatus.enabled, false, "a disabled status must remain a valid response");
+
+  clearFontViewerMemoryCache();
+  const filters = await getFontFilters(async () => ({
+    ok: true,
+    json: async () => ({
+      success: true,
+      tags: ["SFX"],
+      tag_counts: { SFX: 163 },
+      tag_descriptions: { SFX: "Sound effects" },
+    }),
+  }));
+  assert.strictEqual(filters.tag_descriptions.SFX, "Sound effects", "filter responses should expose API tag descriptions");
   console.log("font viewer API tests passed");
 }).catch((error) => {
   console.error(error);

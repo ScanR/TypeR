@@ -1,3 +1,4 @@
+import { serializeStyle } from "../../librarySerialization";
 import "./stylesBlock.scss";
 
 import React from "react";
@@ -521,6 +522,7 @@ const FolderItem = React.memo(function FolderItem(props) {
     const exportedFolder = {};
     exportedFolder.name = props.data.name;
     const exportedStyles = styles.map((style) => ({
+      ...serializeStyle(style),
       name: style.name,
       textType: style.textType || "inherit",
       textProps: style.textProps,
@@ -550,7 +552,8 @@ const FolderItem = React.memo(function FolderItem(props) {
       }
       return;
     }
-    window.cep.fs.writeFile(pathSelect.data, JSON.stringify(exportedFolder));
+    const written = window.cep.fs.writeFile(pathSelect.data, JSON.stringify(exportedFolder));
+    if (!written || written.err) { nativeAlert(locale.saveError, locale.errorTitle, true); return; }
     // Plain export done: surface the Ctrl+Click zip shortcut once in a while
     props.dispatch({ type: "showExportFolderFontTip" });
   }, [props.data.name, styles, props.dispatch]);

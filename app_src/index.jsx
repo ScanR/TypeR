@@ -1,3 +1,5 @@
+import { locale } from "./utils";
+import StorageNotice from "./components/storageNotice";
 import './index.scss';
 import './rtl.scss';
 import './lib/CSInterface';
@@ -36,9 +38,9 @@ class ErrorBoundary extends React.Component {
       const message = (this.state.error && this.state.error.message) || String(this.state.error);
       return (
         <div style={{ padding: 16, fontFamily: "Tahoma, sans-serif", fontSize: 12, color: "#ccc" }}>
-          <p style={{ marginBottom: 8 }}>TypeR encountered an unexpected error.</p>
+          <p style={{ marginBottom: 8 }}>{locale.unexpectedError}</p>
           <pre style={{ whiteSpace: "pre-wrap", maxHeight: 160, overflow: "auto", opacity: 0.7, marginBottom: 12 }}>{message}</pre>
-          <button className="topcoat-button--large" onClick={() => window.location.reload()}>Reload TypeR</button>
+          <button className="topcoat-button--large" onClick={() => window.location.reload()}>{locale.reloadApp}</button>
         </div>
       );
     }
@@ -54,6 +56,7 @@ const App = React.memo(function App() {
         <McpBridge />
         <MainComponent />
         <GlobalTooltip />
+        <StorageNotice />
       </ContextProvider>
     </ErrorBoundary>
   );

@@ -1,3 +1,4 @@
+import { readJsonStorage, writeJsonStorage } from "./storageIO";
 const PROFILE_REGISTRY_VERSION = 1;
 const DEFAULT_PROFILE_ID = "default";
 const DEFAULT_PROFILE_NAME = "Default";
@@ -38,21 +39,8 @@ const getProfileAssetPath = (profileId, assetName) => {
   return `${getExtensionPath()}/storage_profile_${safeId}_${safeAsset}`;
 };
 
-const readJsonFile = (filePath) => {
-  const result = window.cep.fs.readFile(filePath);
-  if (!result || result.err) return { exists: false, data: {} };
-  try {
-    const data = JSON.parse(result.data || "{}");
-    return { exists: true, data: data && typeof data === "object" ? data : {} };
-  } catch (error) {
-    return { exists: true, data: {} };
-  }
-};
-
-const writeJsonFile = (filePath, data) => {
-  const result = window.cep.fs.writeFile(filePath, JSON.stringify(data || {}));
-  return !result || !result.err;
-};
+const readJsonFile = (filePath) => readJsonStorage(filePath);
+const writeJsonFile = (filePath, data) => writeJsonStorage(filePath, data || {});
 
 const deleteFile = (filePath) => {
   const result = window.cep.fs.deleteFile(filePath);
@@ -65,8 +53,13 @@ const deleteFile = (filePath) => {
 const migrateFile = (sourcePath, destinationPath) => {
   const source = window.cep.fs.readFile(sourcePath);
   if (!source || source.err) return false;
-  const written = window.cep.fs.writeFile(destinationPath, source.data);
-  if (written && written.err) return false;
+  if (destinationPath.indexOf("background") === -1) {
+    try { if (!writeJsonFile(destinationPath, JSON.parse(source.data))) return false; }
+    catch (error) { return false; }
+  } else {
+    const written = window.cep.fs.writeFile(destinationPath, source.data);
+    if (written && written.err) return false;
+  }
   deleteFile(sourcePath);
   return true;
 };
@@ -116,6 +109,7 @@ const ensureProfileRegistry = () => {
   const storedRegistry = readJsonFile(getRegistryPath());
   if (storedRegistry.exists) {
     registryCache = normalizeRegistry(storedRegistry.data);
+    if (storedRegistry.error) return registryCache;
     writeJsonFile(getRegistryPath(), registryCache);
 
     // Migrate back from the short-lived storage_profile_default layout. The

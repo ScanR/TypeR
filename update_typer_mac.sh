@@ -78,37 +78,20 @@ printf '%s\n\n' '+--------------------------------------------------------------
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/typer-update.XXXXXX")"
 ARCHIVE_PATH="$WORK_DIR/TypeR.zip"
 EXTRACT_DIR="$WORK_DIR/extracted"
-BACKUP_DIR="$WORK_DIR/backup"
 FOLDERS="app CSXS icons locale"
-MOVED_FOLDERS=""
-COPIED_FOLDERS=""
-INSTALL_STARTED=0
-
-rollback_installation() {
-  for folder in $COPIED_FOLDERS; do
-    rm -rf "$DEST_DIR/$folder"
-  done
-  for folder in $MOVED_FOLDERS; do
-    if [ -e "$BACKUP_DIR/$folder" ]; then mv "$BACKUP_DIR/$folder" "$DEST_DIR/$folder"; fi
-  done
-}
-
-cleanup() {
-  status=$?
-  if [ "$INSTALL_STARTED" -eq 1 ]; then rollback_installation; fi
-  rm -rf "$WORK_DIR"
-  exit "$status"
-}
-trap cleanup EXIT
-
-mkdir -p "$EXTRACT_DIR" "$BACKUP_DIR"
+trap 'rm -rf "$WORK_DIR"' EXIT
+mkdir -p "$EXTRACT_DIR"
 printf '%s\n' "$DOWNLOADING"
 if [ -n "${TYPER_UPDATE_ARCHIVE:-}" ]; then
   cp "$TYPER_UPDATE_ARCHIVE" "$ARCHIVE_PATH"
 else
-  curl -fL --retry 2 --connect-timeout 15 "$RELEASE_URL" -o "$ARCHIVE_PATH"
+  curl -fL --retry 2 --connect-timeout 15 --max-time 180 "$RELEASE_URL" -o "$ARCHIVE_PATH"
 fi
 
+if zipinfo -l "$ARCHIVE_PATH" | awk 'substr($1,1,1) == "l" { found=1 } END { exit !found }'; then
+  printf '%s %s\n' "$FAILURE" "$INVALID_PACKAGE" >&2
+  exit 1
+fi
 if unzip -Z1 "$ARCHIVE_PATH" 2>/dev/null | tr '\\' '/' | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
   printf '%s %s\n' "$FAILURE" "$INVALID_PACKAGE" >&2
   exit 1
@@ -151,46 +134,6 @@ if [ -z "$PACKAGE_VERSION" ]; then
   exit 1
 fi
 
-INSTALLED_VERSION=""
-if [ -f "$DEST_DIR/CSXS/manifest.xml" ]; then
-  INSTALLED_VERSION="$(package_version "$DEST_DIR/CSXS/manifest.xml" || true)"
-fi
-INSTALLATION_COMPLETE=1
-for folder in $FOLDERS; do
-  if [ ! -d "$DEST_DIR/$folder" ]; then INSTALLATION_COMPLETE=0; break; fi
-done
-
-if [ -n "$INSTALLED_VERSION" ] && [ "$INSTALLATION_COMPLETE" -eq 1 ] && [ "$(compare_versions "$PACKAGE_VERSION" "$INSTALLED_VERSION")" -le 0 ]; then
-  format_version_message "$ALREADY_CURRENT" "$INSTALLED_VERSION"
-  printf '\n'
-  exit 0
-fi
-
-format_version_message "$INSTALLING" "$PACKAGE_VERSION"
-printf '\n'
-mkdir -p "$DEST_DIR"
-INSTALL_STARTED=1
-
-for folder in $FOLDERS; do
-  if [ -e "$DEST_DIR/$folder" ]; then
-    mv "$DEST_DIR/$folder" "$BACKUP_DIR/$folder"
-    MOVED_FOLDERS="$MOVED_FOLDERS $folder"
-  fi
-done
-for folder in $FOLDERS; do
-  COPIED_FOLDERS="$COPIED_FOLDERS $folder"
-  cp -R "$PACKAGE_ROOT/$folder" "$DEST_DIR/$folder"
-done
-
-if [ -z "${TYPER_UPDATE_SKIP_DEBUG:-}" ]; then
-  for version in {6..18}; do
-    if defaults read "com.adobe.CSXS.$version" >/dev/null 2>&1; then
-      defaults write "com.adobe.CSXS.$version" PlayerDebugMode 1
-    fi
-  done
-  killall -u "$(whoami)" cfprefsd >/dev/null 2>&1 || true
-fi
-
-INSTALL_STARTED=0
+TYPER_INSTALL_SOURCE="$PACKAGE_ROOT" TYPER_INSTALL_TARGET="$DEST_DIR" TYPER_INSTALL_SKIP_DEBUG="${TYPER_UPDATE_SKIP_DEBUG:-}" bash "$SCRIPT_DIR/install_mac.sh" --silent
 format_version_message "$SUCCESS" "$PACKAGE_VERSION"
 printf '\n'

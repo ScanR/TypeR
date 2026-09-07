@@ -40,26 +40,16 @@ const collectDescendantIds = (folders, folderId) => {
   const ids = [];
   if (!folderId) return ids;
   const queue = [folderId];
+  const visited = new Set([folderId]);
   while (queue.length) {
     const current = queue.shift();
     const children = (folders || []).filter((folder) => (folder.parentId || null) === current);
     children.forEach((child) => {
+      if (visited.has(child.id)) return;
+      visited.add(child.id);
       ids.push(child.id);
       queue.push(child.id);
     });
-  }
-  return ids;
-};
-
-const collectAncestorIds = (folders, folderId) => {
-  const foldersById = new Map((folders || []).map((folder) => [folder.id, folder]));
-  const ids = [];
-  const visited = new Set();
-  let current = foldersById.get(folderId);
-  while (current?.parentId && !visited.has(current.parentId)) {
-    visited.add(current.parentId);
-    ids.push(current.parentId);
-    current = foldersById.get(current.parentId);
   }
   return ids;
 };
@@ -78,6 +68,5 @@ export {
   buildFolderTree,
   flattenFolderTree,
   collectDescendantIds,
-  collectAncestorIds,
   getAutomaticTagStyles,
 };

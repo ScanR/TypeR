@@ -13,7 +13,7 @@ const transformedHistory = babel.transformSync(historySource, {
 }).code;
 const historyModule = { exports: {} };
 new Function("require", "module", "exports", transformedHistory)(
-  require,
+  (name) => name === "./pageMarker" ? require("./helpers/loadAppModule")()("app_src/pageMarker.js") : require(name),
   historyModule,
   historyModule.exports
 );

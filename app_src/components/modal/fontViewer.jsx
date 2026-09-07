@@ -1,3 +1,4 @@
+import { fetchBody } from "../../network";
 import React from "react";
 import {
   FiCheck,
@@ -15,7 +16,7 @@ import {
   FiSliders,
   FiX,
 } from "react-icons/fi";
-import { locale, openUrl, refreshUserFonts } from "../../utils";
+import { getUserFonts, locale, openUrl, refreshUserFonts } from "../../utils";
 import { uint8ToBase64 } from "../../updateInstaller";
 import { FONT_VIEWER_API_BASE, getDownloadManifest, getFontFamilies, getFontFilters } from "../../fontViewerApi";
 import { installFontFiles, isFontInstallSupported } from "../../fontInstaller";
@@ -171,6 +172,28 @@ const uniqueById = (items) => {
   });
 };
 
+const normalizeFontName = (value) => String(value || "")
+  .toLowerCase()
+  .replace(/(\.(otf|ttf|ttc|woff2?))+$/i, "")
+  .replace(/[^a-z0-9]/g, "");
+
+const getInstalledFontNames = (fonts) => {
+  const names = new Set();
+  (fonts || []).forEach((font) => {
+    [font.name, font.postScriptName, `${font.family || ""}${font.style || ""}`].forEach((name) => {
+      const normalized = normalizeFontName(name);
+      if (normalized) names.add(normalized);
+    });
+  });
+  return names;
+};
+
+const isFontInstalled = (font, installedIds, installedNames) => {
+  if (!font) return false;
+  if (installedIds[font.id]) return true;
+  return [font.name, font.file_name].some((name) => installedNames.has(normalizeFontName(name)));
+};
+
 const sortFamilies = (families, sort) => {
   const copy = (families || []).slice();
   if (sort === "recent") {
@@ -246,13 +269,16 @@ const LazyFontPreview = ({ font, text, uppercase }) => {
 
 // Memoized so typing in the toolbar, scroll-driven letter highlighting and
 // download progress updates only re-render the cards whose props changed.
-const FontCard = React.memo(({ family, letter, letterStart, previewText, uppercase, selected, installed, installSupported, onToggleSelected, onDownload, onInstall }) => {
+const FontCard = React.memo(({ family, letter, letterStart, previewText, uppercase, selected, installed, installSupported, tagDescriptions, onToggleSelected, onDownload, onInstall }) => {
   const fallback = family.fonts.find((font) => font.id === family.default_font_id) || family.fonts[0];
   const [activeFontId, setActiveFontId] = React.useState(fallback.id);
   const activeFont = family.fonts.find((font) => font.id === activeFontId) || fallback;
   const isSelected = !!selected[activeFont.id];
   const isInstalled = !!installed[activeFont.id];
-  const chips = (family.tags || []).concat(family.genres || []).slice(0, 5);
+  const chips = (family.tags || [])
+    .map((value) => ({ type: "tag", value, description: tagDescriptions[value] || "" }))
+    .concat((family.genres || []).map((value) => ({ type: "genre", value, description: "" })))
+    .slice(0, 5);
 
   return (
     <article
@@ -296,7 +322,9 @@ const FontCard = React.memo(({ family, letter, letterStart, previewText, upperca
         )}
       </div>
       <div className="font-viewer-chips">
-        {chips.map((chip) => <span key={chip}>{chip}</span>)}
+        {chips.map((chip) => (
+          <span key={`${chip.type}-${chip.value}`} title={chip.description || null}>{chip.value}</span>
+        ))}
       </div>
       <LazyFontPreview font={activeFont} text={previewText} uppercase={uppercase} />
       <div className="font-viewer-card-foot">
@@ -320,7 +348,7 @@ const FontCard = React.memo(({ family, letter, letterStart, previewText, upperca
   );
 });
 
-const FilterGroup = ({ label, values, counts, selected, onToggle }) => {
+const FilterGroup = ({ label, values, counts, descriptions = {}, selected, onToggle }) => {
   const [open, setOpen] = React.useState(false);
   if (!values || !values.length) return null;
   return (
@@ -337,6 +365,7 @@ const FilterGroup = ({ label, values, counts, selected, onToggle }) => {
               type="button"
               key={value}
               className={selected.includes(value) ? "m-active" : ""}
+              title={descriptions[value] || null}
               onClick={() => onToggle(value)}
             >
               {value}<small>{counts && counts[value] !== undefined ? counts[value] : ""}</small>
@@ -362,6 +391,8 @@ const FontViewer = () => {
   const [filterData, setFilterData] = React.useState(null);
   const [filterError, setFilterError] = React.useState(false);
   const [selectedFilters, setSelectedFilters] = React.useState({ tags: [], genres: [], styles: [], collections: [] });
+  const [hideInstalled, setHideInstalled] = React.useState(false);
+  const [showOnlyInstalled, setShowOnlyInstalled] = React.useState(false);
   const [page, setPage] = React.useState(1);
   // Last default first page (no query, no filters), persisted so reopening the
   // viewer paints instantly while a fresh request revalidates in background.
@@ -375,6 +406,7 @@ const FontViewer = () => {
   const [pendingLetter, setPendingLetter] = React.useState(null);
   const [selected, setSelected] = React.useState({});
   const [installed, setInstalled] = React.useState(readInstalledIds);
+  const [systemFonts, setSystemFonts] = React.useState(getUserFonts);
   const [currentLetter, setCurrentLetter] = React.useState(null);
   const [downloadState, setDownloadState] = React.useState({ busy: false, message: "", error: false });
   const installSupported = React.useMemo(isFontInstallSupported, []);
@@ -445,6 +477,10 @@ const FontViewer = () => {
 
   React.useEffect(loadFilters, [loadFilters]);
 
+  React.useEffect(() => {
+    refreshUserFonts(setSystemFonts);
+  }, []);
+
   const requestSignature = JSON.stringify({ query, selectedFilters });
   requestSignatureRef.current = requestSignature;
   React.useEffect(() => {
@@ -504,10 +540,14 @@ const FontViewer = () => {
     }));
   };
 
-  const activeFilterCount = Object.values(selectedFilters).reduce((sum, values) => sum + values.length, 0);
+  const activeFilterCount = Object.values(selectedFilters).reduce((sum, values) => sum + values.length, 0)
+    + (hideInstalled ? 1 : 0)
+    + (showOnlyInstalled ? 1 : 0);
   const clearFilters = () => {
     setPage(1);
     setSelectedFilters({ tags: [], genres: [], styles: [], collections: [] });
+    setHideInstalled(false);
+    setShowOnlyInstalled(false);
   };
 
   const changePreviewText = (event) => {
@@ -529,21 +569,10 @@ const FontViewer = () => {
     setSelected((current) => {
       const next = { ...current };
       if (next[font.id]) delete next[font.id];
-      else next[font.id] = { ...font, family: family.family };
+      else next[font.id] = { ...font, family: family.family, familyFonts: family.fonts };
       return next;
     });
   }, []);
-
-  const selectPage = () => {
-    setSelected((current) => {
-      const next = { ...current };
-      families.forEach((family) => {
-        const font = family.fonts.find((item) => item.id === family.default_font_id) || family.fonts[0];
-        if (font) next[font.id] = { ...font, family: family.family };
-      });
-      return next;
-    });
-  };
 
   // Shared by download and install: resolves the original files for the given
   // fonts and fetches their bytes with progress feedback.
@@ -559,9 +588,7 @@ const FontViewer = () => {
     const namedFonts = makeUniqueFileNames(manifestFonts);
     let completed = 0;
     return fetchWithConcurrency(namedFonts, async (font) => {
-      const response = await fetch(font.download_url, { headers: { Accept: "application/octet-stream" } });
-      if (!response.ok) throw new Error("downloadFailed");
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      const bytes = new Uint8Array(await fetchBody(font.download_url, { headers: { Accept: "application/octet-stream" } }, "arrayBuffer", 60000));
       completed += 1;
       if (mounted.current) {
         setDownloadState({
@@ -611,11 +638,15 @@ const FontViewer = () => {
   }, [fetchFontFiles]);
 
   const installFonts = React.useCallback(async (fonts) => {
-    if (!fonts.length || downloadBusyRef.current || !installSupported) return;
+    const familyFonts = uniqueById(fonts.reduce((allFonts, font) => {
+      const family = families.find((item) => (item.fonts || []).some((variant) => variant.id === font.id));
+      return allFonts.concat(family ? family.fonts : (font.familyFonts || [font]));
+    }, []));
+    if (!familyFonts.length || downloadBusyRef.current || !installSupported) return;
     downloadBusyRef.current = true;
     setDownloadState({ busy: true, message: locale.fontViewerPreparing, error: false });
     try {
-      const files = await fetchFontFiles(fonts);
+      const files = await fetchFontFiles(familyFonts);
       if (mounted.current) setDownloadState({ busy: true, error: false, message: locale.fontViewerInstalling });
       await installFontFiles(files.map((file) => ({ saveName: file.name, displayName: file.displayName, bytes: file.bytes })));
       if (mounted.current) {
@@ -637,17 +668,43 @@ const FontViewer = () => {
     } finally {
       downloadBusyRef.current = false;
     }
-  }, [fetchFontFiles, installSupported]);
+  }, [families, fetchFontFiles, installSupported]);
 
   const selectedFonts = Object.values(selected);
-  const visibleFamilies = React.useMemo(
-    () => {
-      const available = families.filter((family) => family && family.fonts && family.fonts.length);
-      if (sort !== "random") return sortFamilies(available, sort);
-      return shuffleFamilies(available, randomSeed).slice(randomOffset, randomOffset + RANDOM_BATCH_SIZE);
-    },
-    [families, sort, randomSeed, randomOffset]
+  const installedFontNames = React.useMemo(() => getInstalledFontNames(systemFonts), [systemFonts]);
+  const effectiveInstalled = React.useMemo(() => {
+    const next = { ...installed };
+    families.forEach((family) => {
+      (family.fonts || []).forEach((font) => {
+        if (isFontInstalled(font, installed, installedFontNames)) next[font.id] = true;
+      });
+    });
+    return next;
+  }, [families, installed, installedFontNames]);
+  const availableFamilies = React.useMemo(
+    () => families
+      .filter((family) => family && family.fonts && family.fonts.length)
+      .map((family) => {
+        if (!hideInstalled && !showOnlyInstalled) return family;
+        const fonts = family.fonts.filter((font) => (
+          hideInstalled ? !effectiveInstalled[font.id] : effectiveInstalled[font.id]
+        ));
+        if (!fonts.length) return null;
+        return {
+          ...family,
+          fonts,
+          default_font_id: fonts.some((font) => font.id === family.default_font_id)
+            ? family.default_font_id
+            : fonts[0].id,
+        };
+      })
+      .filter(Boolean),
+    [families, hideInstalled, showOnlyInstalled, effectiveInstalled]
   );
+  const visibleFamilies = React.useMemo(() => {
+    if (sort !== "random") return sortFamilies(availableFamilies, sort);
+    return shuffleFamilies(availableFamilies, randomSeed).slice(randomOffset, randomOffset + RANDOM_BATCH_SIZE);
+  }, [availableFamilies, sort, randomSeed, randomOffset]);
   const availableLetters = React.useMemo(
     () => new Set(visibleFamilies.map((family) => getFamilyLetter(family.family))),
     [visibleFamilies]
@@ -762,9 +819,20 @@ const FontViewer = () => {
     else scrollRoot.scrollTop = 0;
   };
 
+  const getRandomPageCandidates = () => {
+    const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / PER_PAGE));
+    const sequentialPages = Math.max(1, Number(pagination.page) || page || 1);
+    const candidates = [];
+    for (let randomPage = sequentialPages + 1; randomPage <= totalPages; randomPage += 1) {
+      const key = `${requestSignature}:${randomPage}`;
+      if (!randomPageKeysRef.current.has(key)) candidates.push({ key, page: randomPage });
+    }
+    return candidates;
+  };
+
   const shuffleLoadedFonts = async () => {
     if (randomLoading) return;
-    const availableCount = families.filter((family) => family && family.fonts && family.fonts.length).length;
+    const availableCount = availableFamilies.length;
     const nextOffset = sort === "random" ? randomOffset + RANDOM_BATCH_SIZE : 0;
     if (sort === "random" && nextOffset < availableCount) {
       setRandomOffset(nextOffset);
@@ -779,13 +847,7 @@ const FontViewer = () => {
 
     // Fetch one unseen catalogue page only when starting Random or after the
     // local reservoir has been consumed. Each page then powers several clicks.
-    const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / PER_PAGE));
-    const sequentialPages = Math.max(1, Number(pagination.page) || page || 1);
-    const candidates = [];
-    for (let randomPage = sequentialPages + 1; randomPage <= totalPages; randomPage += 1) {
-      const key = `${requestSignature}:${randomPage}`;
-      if (!randomPageKeysRef.current.has(key)) candidates.push({ key, page: randomPage });
-    }
+    const candidates = getRandomPageCandidates();
     if (!candidates.length) return;
 
     const candidate = candidates[Math.floor(Math.random() * candidates.length)];
@@ -811,6 +873,17 @@ const FontViewer = () => {
     } finally {
       if (mounted.current) setRandomLoading(false);
     }
+  };
+
+  const canLoadMore = sort === "random"
+    ? randomOffset + RANDOM_BATCH_SIZE < availableFamilies.length || getRandomPageCandidates().length > 0
+    : pagination.has_more;
+  const loadMoreFonts = () => {
+    if (sort === "random") {
+      shuffleLoadedFonts();
+      return;
+    }
+    setPage((value) => value + 1);
   };
 
   return (
@@ -895,13 +968,34 @@ const FontViewer = () => {
         <span className="font-viewer-result-count">
           {locale.fontViewerResults.replace("{count}", pagination.total || 0)}
         </span>
-        {!!families.length && (
-          <button type="button" className="font-viewer-text-button" onClick={selectPage}>{locale.fontViewerSelectLoaded}</button>
-        )}
       </div>
 
       {filtersOpen && (
         <div className="font-viewer-filter-panel">
+          <button
+            type="button"
+            className={`font-viewer-availability-filter${hideInstalled ? " m-active" : ""}`}
+            onClick={() => {
+              setHideInstalled((value) => !value);
+              setShowOnlyInstalled(false);
+            }}
+            aria-pressed={hideInstalled}
+          >
+            <span className="font-viewer-filter-check">{hideInstalled ? <FiCheck size={11} /> : null}</span>
+            {locale.fontViewerHideInstalled}
+          </button>
+          <button
+            type="button"
+            className={`font-viewer-availability-filter${showOnlyInstalled ? " m-active" : ""}`}
+            onClick={() => {
+              setShowOnlyInstalled((value) => !value);
+              setHideInstalled(false);
+            }}
+            aria-pressed={showOnlyInstalled}
+          >
+            <span className="font-viewer-filter-check">{showOnlyInstalled ? <FiCheck size={11} /> : null}</span>
+            {locale.fontViewerShowOnlyInstalled}
+          </button>
           {filterError ? (
             <button type="button" className="font-viewer-retry" onClick={loadFilters}><FiRefreshCw size={13} /> {locale.fontViewerRetryFilters}</button>
           ) : !filterData ? (
@@ -909,12 +1003,12 @@ const FontViewer = () => {
           ) : (
             <React.Fragment>
               <FilterGroup label={locale.fontViewerStyles} values={filterData.styles} counts={filterData.style_counts} selected={selectedFilters.styles} onToggle={(value) => toggleFilter("styles", value)} />
-              <FilterGroup label={locale.fontViewerTags} values={filterData.tags} counts={filterData.tag_counts} selected={selectedFilters.tags} onToggle={(value) => toggleFilter("tags", value)} />
+              <FilterGroup label={locale.fontViewerTags} values={filterData.tags} counts={filterData.tag_counts} descriptions={filterData.tag_descriptions} selected={selectedFilters.tags} onToggle={(value) => toggleFilter("tags", value)} />
               <FilterGroup label={locale.fontViewerGenres} values={filterData.genres} counts={filterData.genre_counts} selected={selectedFilters.genres} onToggle={(value) => toggleFilter("genres", value)} />
               <FilterGroup label={locale.fontViewerCollections} values={filterData.collections} counts={filterData.collection_counts} selected={selectedFilters.collections} onToggle={(value) => toggleFilter("collections", value)} />
-              {!!activeFilterCount && <button type="button" className="font-viewer-clear-filters" onClick={clearFilters}><FiX size={12} /> {locale.fontViewerClearFilters}</button>}
             </React.Fragment>
           )}
+          {!!activeFilterCount && <button type="button" className="font-viewer-clear-filters" onClick={clearFilters}><FiX size={12} /> {locale.fontViewerClearFilters}</button>}
         </div>
       )}
 
@@ -991,8 +1085,9 @@ const FontViewer = () => {
                 previewText={previewText}
                 uppercase={uppercase}
                 selected={selected}
-                installed={installed}
+                installed={effectiveInstalled}
                 installSupported={installSupported}
+                tagDescriptions={(filterData && filterData.tag_descriptions) || {}}
                 onToggleSelected={toggleSelected}
                 onDownload={downloadFonts}
                 onInstall={installFonts}
@@ -1003,8 +1098,15 @@ const FontViewer = () => {
         </div>
       )}
 
-      {!error && !loading && sort !== "random" && pagination.has_more && (
-        <button type="button" className="font-viewer-load-more" onClick={() => setPage((value) => value + 1)}>{locale.fontViewerLoadMore}</button>
+      {!error && !loading && !!visibleFamilies.length && canLoadMore && (
+        <button
+          type="button"
+          className="font-viewer-load-more"
+          disabled={randomLoading || alphabetLoading}
+          onClick={loadMoreFonts}
+        >
+          {randomLoading && <i className="font-viewer-spinner" />} {locale.fontViewerLoadMore}
+        </button>
       )}
 
       {!!selectedFonts.length && (

@@ -87,7 +87,13 @@ const Shortcut = (props) => {
   const changeShortCut = (e) => {
     e.preventDefault();
     const input = e.target;
-    const localKeys = getLocalKeys(e);
+    const capturedKeys = getLocalKeys(e);
+    const localKeys = props.modifierOnly
+      ? capturedKeys.filter((key) => MODIFIERS.includes(key))
+      : capturedKeys;
+    // A plain key press carries no modifier: keep the current binding instead
+    // of silently clearing a modifier-only shortcut.
+    if (props.modifierOnly && !localKeys.length) return;
     input.value = localKeys.join(" + ");
     setDisplayKeys(localKeys);
     props.onChange(props.index, localKeys);
@@ -123,6 +129,7 @@ const Shortcut = (props) => {
   const changeShortCutFromMouse = (e) => {
     const mouseKey = MOUSE_BUTTON_KEYS[e.button];
     if (!mouseKey || !recording) return;
+    if (props.modifierOnly) return;
     e.preventDefault();
     e.stopPropagation();
     hostQueryRef.current++;
@@ -152,9 +159,13 @@ const Shortcut = (props) => {
   };
 
   const label = locale[`shortcut_${props.index}`];
+  const description = locale[`shortcut_${props.index}Descr`];
   return (
     <div className={"shortcut-row" + (props.conflict ? " m-conflict" : "")} key={props.index} onClick={focusShortcut} onMouseDown={changeShortCutFromMouse}>
-      <div className="shortcut-row-label" title={label}>{label}</div>
+      <div className="shortcut-row-copy">
+        <div className="shortcut-row-label" title={label}>{label}</div>
+        {description ? <div className="shortcut-row-descr">{description}</div> : null}
+      </div>
       <div className={"shortcut-capture" + (recording ? " m-recording" : "")}>
         <input
           ref={inputRef}
@@ -175,7 +186,9 @@ const Shortcut = (props) => {
           ) : (
             <span className="shortcut-empty">
               {recording
-                ? locale.shortcutPressKeys || "Press keys..."
+                ? (props.modifierOnly
+                  ? locale.shortcutPressModifiers || "Hold a modifier key..."
+                  : locale.shortcutPressKeys || "Press keys...")
                 : locale.shortcutNotSet || "Not set"}
             </span>
           )}
@@ -199,6 +212,7 @@ Shortcut.propTypes = {
   value: PropTypes.arrayOf(PropTypes.string).isRequired,
   onChange: PropTypes.func.isRequired,
   conflict: PropTypes.string,
+  modifierOnly: PropTypes.bool,
 };
 
 export default Shortcut;

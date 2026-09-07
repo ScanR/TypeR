@@ -29,7 +29,9 @@ assert.deepStrictEqual(parseVersion("3.1"), [3, 1]);
 assert.deepStrictEqual(parseVersion(null), [0]);
 assert.strictEqual(compareVersions("3.1.0", "3.0.9"), 1);
 assert.strictEqual(compareVersions("v3.0.0", "3.0.0"), 0);
-assert.strictEqual(compareVersions("3.0.0", "3.0.0.1"), -1);
+assert.strictEqual(compareVersions("3.0.0", "3.0.0-rc.1"), 1);
+assert.strictEqual(compareVersions("3.0.0-rc.10", "3.0.0-rc.2"), 1);
+assert.strictEqual(compareVersions("3.0.0+build.1", "3.0.0"), 0);
 assert.strictEqual(compareVersions("2.10.0", "2.9.9"), 1, "numeric compare, not lexicographic");
 
 // --- pickUpdateDownloadUrl ---
@@ -50,10 +52,15 @@ assert.strictEqual(pickUpdateDownloadUrl({ assets: [{ name: "other-tool.zip" }] 
 
 // --- findNewerReleases ---
 const releases = [
-  { tag_name: "v3.0.0" },
-  { tag_name: "v3.2.0" },
-  { tag_name: "v3.1.0" },
+  { assets: [builtAsset], tag_name: "v3.0.0" },
+  { assets: [builtAsset], tag_name: "v3.2.0" },
+  { assets: [builtAsset], tag_name: "v3.1.0" },
   { tag_name: null },
+  { assets: [builtAsset], tag_name: "4.0.0", prerelease: true },
+  { assets: [builtAsset], tag_name: "4.0.0-beta.1" },
+  { assets: [builtAsset], tag_name: "garbage" },
+  { assets: [builtAsset], tag_name: "4.0.0", draft: true },
+  { tag_name: "5.0.0", assets: [] },
 ];
 assert.deepStrictEqual(
   findNewerReleases(releases, "3.0.0").map((r) => r.tag_name),

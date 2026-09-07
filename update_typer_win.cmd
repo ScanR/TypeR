@@ -120,7 +120,7 @@ try {
         Copy-Item -LiteralPath $env:TYPER_UPDATE_ARCHIVE -Destination $ArchivePath -Force
     } else {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $ReleaseUrl -OutFile $ArchivePath -UseBasicParsing
+        Invoke-WebRequest -Uri $ReleaseUrl -OutFile $ArchivePath -UseBasicParsing -TimeoutSec 180
     }
 
     Assert-SafeArchive $ArchivePath
@@ -147,50 +147,10 @@ try {
     if (-not $PackageRoot) { throw $InvalidPackage }
 
     $PackageVersion = Get-PackageVersion $ManifestPath
-    $InstalledManifest = Join-Path $TargetDir "CSXS\manifest.xml"
-    $InstalledVersion = $null
-    if (Test-Path -LiteralPath $InstalledManifest -PathType Leaf) {
-        try { $InstalledVersion = Get-PackageVersion $InstalledManifest } catch { $InstalledVersion = $null }
-    }
-    $InstallationComplete = $true
-    foreach ($Folder in $Folders) {
-        if (-not (Test-Path -LiteralPath (Join-Path $TargetDir $Folder) -PathType Container)) {
-            $InstallationComplete = $false
-            break
-        }
-    }
-
-    if ($InstalledVersion -and $InstallationComplete -and (Compare-TypeRVersions $PackageVersion $InstalledVersion) -le 0) {
-        Write-Host (Format-VersionMessage $AlreadyCurrent $InstalledVersion) -ForegroundColor Green
-        return
-    }
-
-    Write-Host (Format-VersionMessage $Installing $PackageVersion) -ForegroundColor Cyan
-    New-Item -Path $TargetDir -ItemType Directory -Force | Out-Null
-    $InstallStarted = $true
-
-    foreach ($Folder in $Folders) {
-        $Destination = Join-Path $TargetDir $Folder
-        if (Test-Path -LiteralPath $Destination) {
-            Move-Item -LiteralPath $Destination -Destination (Join-Path $BackupDir $Folder)
-            $MovedFolders += $Folder
-        }
-    }
-    foreach ($Folder in $Folders) {
-        $CopiedFolders += $Folder
-        Copy-Item -LiteralPath (Join-Path $PackageRoot $Folder) -Destination $TargetDir -Recurse -Force
-    }
-
-    if (-not $env:TYPER_UPDATE_SKIP_DEBUG) {
-        6..18 | ForEach-Object {
-            $RegistryPath = "HKCU:\Software\Adobe\CSXS.$_"
-            if (Test-Path $RegistryPath) {
-                Set-ItemProperty -Path $RegistryPath -Name "PlayerDebugMode" -Value 1 -Type String -ErrorAction SilentlyContinue
-            }
-        }
-    }
-
-    $InstallStarted = $false
+    $env:TYPER_INSTALL_SOURCE = $PackageRoot
+    $env:TYPER_INSTALL_TARGET = $TargetDir
+    $env:TYPER_INSTALL_SKIP_DEBUG = $env:TYPER_UPDATE_SKIP_DEBUG
+    & (Join-Path $ScriptDir 'install.ps1') -Silent
     Write-Host (Format-VersionMessage $Success $PackageVersion) -ForegroundColor Green
 } catch {
     if ($InstallStarted) {

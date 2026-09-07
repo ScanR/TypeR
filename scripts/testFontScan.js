@@ -1,28 +1,5 @@
 const assert = require("assert");
-const fs = require("fs");
-const Module = require("module");
-const path = require("path");
-process.env.BROWSERSLIST_IGNORE_OLD_DATA = "1";
-const babel = require("@babel/core");
-
-const rootDir = path.resolve(__dirname, "..");
-
-const loadAppModule = (relativePath) => {
-  const filePath = path.resolve(rootDir, relativePath);
-  const source = fs.readFileSync(filePath, "utf8");
-  const { code } = babel.transformSync(source, {
-    filename: filePath,
-    babelrc: false,
-    configFile: false,
-    plugins: ["@babel/plugin-transform-modules-commonjs"],
-  });
-
-  const mod = new Module(filePath, module);
-  mod.filename = filePath;
-  mod.paths = Module._nodeModulePaths(path.dirname(filePath));
-  mod._compile(code, filePath);
-  return mod.exports;
-};
+const loadAppModule = require("./helpers/loadAppModule")();
 
 const { buildFontGroups, getFontGroupKey } = loadAppModule("app_src/fontScan.js");
 

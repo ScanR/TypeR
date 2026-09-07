@@ -1,3 +1,5 @@
+import { getNumpadStyleId } from "./numpadStyleShortcuts";
+import { requestModalClose } from "./modalClose";
 import React from "react";
 
 import { csInterface, getHotkeyPressed, isHostActionPending, isPanelIdle, isPanelInteracting, notePanelActivity, onMouseShortcut, startForegroundWatcher } from "./utils";
@@ -21,6 +23,7 @@ const matchBinding = (state, shortcut) => {
   let best = null;
   let bestLength = 0;
   shortcutCommands.forEach((command) => {
+    if (command.modifierOnly) return;
     const ref = shortcut[command.id];
     if (checkShortcut(state, ref) && ref.length > bestLength) {
       best = command;
@@ -28,6 +31,32 @@ const matchBinding = (state, shortcut) => {
     }
   });
   return best;
+};
+
+const getCommandOptions = (state, shortcut) => ({
+  preserveActiveTextSize: checkShortcut(state, shortcut.keepTextSize),
+});
+
+// The paste buttons show a live badge while the keep-size modifier is held.
+// The state is fed from two sources: the host keyboard poll (works while
+// Photoshop has focus) and DOM key events (work while the panel has focus,
+// where the poll backs off). Both go through here so the flag only
+// dispatches on actual changes.
+const syncKeepSizeHeld = (context, pressedKeys) => {
+  const ctxState = context.getState();
+  const held = checkShortcut(pressedKeys, ctxState.shortcut.keepTextSize);
+  if (held !== ctxState.keepSizeHeld) {
+    context.dispatch({ type: "setKeepSizeHeld", value: held });
+  }
+};
+
+const getDomModifierKeys = (e) => {
+  const keys = [];
+  if (e.metaKey) keys.push("WIN");
+  if (e.ctrlKey) keys.push("CTRL");
+  if (e.altKey) keys.push("ALT");
+  if (e.shiftKey) keys.push("SHIFT");
+  return keys;
 };
 
 // Mouse bindings are matched on their own so the mouse path can only ever add
@@ -40,6 +69,7 @@ const matchMouseBinding = (state, shortcut) => {
   let best = null;
   let bestLength = 0;
   shortcutCommands.forEach((command) => {
+    if (command.modifierOnly) return;
     const ref = shortcut[command.id];
     if (hasMouseKey(ref) && checkShortcut(state, ref) && ref.length > bestLength) {
       best = command;
@@ -82,13 +112,14 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       // Pressed keys are activity: restore fast polling before matching so a
       // hotkey burst after an idle period is never throttled
       if (realState.length) notePanelActivity();
+      syncKeepSizeHeld(context, realState);
       const command = matchBinding(realState, ctx.state.shortcut);
       if (!command) {
         keyUpRef.current = true;
         return;
       }
       if (!checkRepeatTime(command.repeatDelay || 0)) return;
-      command.handler(ctx);
+      command.handler(ctx, getCommandOptions(realState, ctx.state.shortcut));
     };
 
     const interval = setInterval(() => {
@@ -110,14 +141,38 @@ const HotkeysListner = React.memo(function HotkeysListner() {
 
     const handleKeyDown = (e) => {
       if (e.key === "Escape" && context.getState().modalType) {
-        context.dispatch({ type: "setModal" });
+        e.preventDefault();
+        requestModalClose(() => context.dispatch({ type: "setModal" }));
+      }
+      syncKeepSizeHeld(context, getDomModifierKeys(e));
+      if (!e.repeat && !context.getState().modalType && !isFormFieldActive() && getDomModifierKeys(e).length === 0 && (e.location === 3 || /^Numpad[1-9]$/.test(e.code || ''))) {
+        const state = context.getState();
+        const styleId = getNumpadStyleId(state.styles, state.currentStyleId, [e.code || ('NUMPAD' + e.key)]);
+        if (styleId !== null) {
+          e.preventDefault();
+          context.dispatch({ type: 'setCurrentStyleId', id: styleId });
+        }
       }
     };
+    // On keyup the released modifier is already reported as false, so the
+    // same event-flag read clears the badge
+    const handleKeyUp = (e) => {
+      syncKeepSizeHeld(context, getDomModifierKeys(e));
+    };
+    // Neither source sees the release once the panel and Photoshop both lose
+    // focus; never leave a stale "held" badge behind
+    const handleWindowBlur = () => {
+      syncKeepSizeHeld(context, []);
+    };
     document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
 
     return () => {
       clearInterval(interval);
       document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
     };
   }, []);
 
@@ -136,7 +191,10 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       const now = Date.now();
       if (now - lastActionRef.current < (command.repeatDelay || 0)) return;
       lastActionRef.current = now;
-      command.handler({ state: ctxState, dispatch: context.dispatch, getState: context.getState });
+      command.handler(
+        { state: ctxState, dispatch: context.dispatch, getState: context.getState },
+        getCommandOptions(state, ctxState.shortcut)
+      );
     });
 
     // CEF maps these buttons to history back/forward, which blanks the panel.

@@ -1,4 +1,5 @@
 ﻿param([switch]$Silent)
+$ErrorActionPreference = "Stop"
 
 # Encodage pour les accents dans la console
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -13,7 +14,7 @@ try {
 
 # --- 1. Définition robuste du dossier du script ---
 # $PSScriptRoot est une variable native fiable, contrairement à %~dp0
-$ScriptDir = $PSScriptRoot
+$ScriptDir = if ($env:TYPER_INSTALL_SOURCE) { [IO.Path]::GetFullPath($env:TYPER_INSTALL_SOURCE).TrimEnd("\") } else { $PSScriptRoot }
 Set-Location -Path $ScriptDir
 
 # --- 2. Vérification du Manifest ---
@@ -78,7 +79,7 @@ elseif ($Lang -eq "pt") {
     $msg_discord  = "Discord do ScanR se precisar de ajuda: https://discord.com/invite/Pdmfmqk"
 }
 
-Clear-Host
+if ($Interactive) { Clear-Host }
 Write-Host "+------------------------------------------------------------------+" -ForegroundColor Cyan
 Write-Host "|                          TypeR Installer                         |" -ForegroundColor Cyan
 Write-Host "+------------------------------------------------------------------+" -ForegroundColor Cyan
@@ -89,39 +90,89 @@ Write-Host $msg_close -ForegroundColor Yellow
 Write-Host ""
 if ($Interactive) { Read-Host -Prompt $msg_pause }
 
-# --- 5. Mode Debug (CSXS 6 à 18) ---
-# Ne nécessite pas les droits admin car c'est dans HKCU (utilisateur courant)
-6..18 | ForEach-Object {
-    $RegPath = "HKCU:\Software\Adobe\CSXS.$_"
-    if (Test-Path $RegPath) {
-        Set-ItemProperty -Path $RegPath -Name "PlayerDebugMode" -Value 1 -Type String -ErrorAction SilentlyContinue
+# Use .NET directly: Get-FileHash may be absent from older Windows PowerShell
+# or from child processes inheriting a PowerShell Core module search path.
+function Get-TypeRFileHash([string]$FilePath) {
+    $Stream = [IO.File]::OpenRead($FilePath)
+    $Algorithm = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($Algorithm.ComputeHash($Stream)).Replace('-', '').ToLowerInvariant() }
+    finally { $Algorithm.Dispose(); $Stream.Dispose() }
+}
+$Folders = @('app', 'CSXS', 'icons', 'locale')
+$Inventory = Join-Path $ScriptDir 'app/package.sha256'
+if (-not (Test-Path -LiteralPath $Inventory -PathType Leaf)) { throw 'Incomplete TypeR package: missing inventory' }
+$Required = @('app/index.html','app/index.js','app/modern.html','app/legacy.html','app/modern.index.js','app/legacy.index.js','app/modern.css','app/legacy.css','app/host.jsx','CSXS/manifest.xml','locale/messages.properties','icons/iconNormal.png')
+$Listed = @{}
+foreach ($Line in Get-Content -LiteralPath $Inventory) {
+    if ($Line -notmatch '^([a-f0-9]{64})  ((app|CSXS|icons|locale)/[A-Za-z0-9_@./-]+)$') { throw 'Invalid package inventory' }
+    $Hash = $Matches[1]; $Relative = $Matches[2]
+    if ($Relative -match '(^|/)\.\.?($|/)|//' -or $Relative -eq 'app/package.sha256' -or $Listed.ContainsKey($Relative)) { throw 'Unsafe or duplicate package path' }
+    $File = Join-Path $ScriptDir $Relative
+    if (-not (Test-Path -LiteralPath $File -PathType Leaf)) { throw "Missing file: $Relative" }
+    if ((Get-TypeRFileHash $File) -ne $Hash) { throw "Checksum mismatch: $Relative" }
+    $Listed[$Relative] = $true
+}
+foreach ($Relative in $Required) {
+    if (-not $Listed.ContainsKey($Relative) -or (Get-Item -LiteralPath (Join-Path $ScriptDir $Relative)).Length -eq 0) { throw "Incomplete package: $Relative" }
+}
+[xml]$Manifest = Get-Content -LiteralPath (Join-Path $ScriptDir 'CSXS/manifest.xml') -Raw
+$Extension = $Manifest.ExtensionManifest.ExtensionList.Extension | Where-Object { $_.Id -eq 'typer' }
+if ($Manifest.ExtensionManifest.ExtensionBundleId -ne 'com.scanr.typer' -or $Extension.Version -notmatch '^\d+\.\d+\.\d+$' -or $Manifest.ExtensionManifest.ExtensionBundleVersion -ne $Extension.Version) { throw 'Invalid TypeR identity or version' }
+foreach ($Folder in $Folders) {
+    $FolderPath = Join-Path $ScriptDir $Folder
+    if ((Get-Item -LiteralPath $FolderPath).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Package contains a link' }
+    foreach ($Item in Get-ChildItem -LiteralPath $FolderPath -Recurse -Force) {
+        if ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Package contains a link' }
+        if (-not $Item.PSIsContainer) {
+            $Relative = $Item.FullName.Substring($ScriptDir.Length + 1).Replace('\', '/')
+            if ($Relative -ne 'app/package.sha256' -and -not $Listed.ContainsKey($Relative)) { throw "Unlisted file: $Relative" }
+        }
     }
 }
-
-# --- 6. Copie des fichiers ---
-# On remplace uniquement les dossiers applicatifs : les réglages de
-# l'utilisateur (storage*) ne sont jamais touchés, donc plus besoin de
-# sauvegarde/restauration (et plus aucun risque de les perdre en cours de route)
-$AppData = $env:APPDATA
-$TargetDir = Join-Path $AppData "Adobe\CEP\extensions\typertools"
-New-Item -Path $TargetDir -ItemType Directory -Force | Out-Null
-
-$FoldersToCopy = @("app", "CSXS", "icons", "locale")
-
-foreach ($folder in $FoldersToCopy) {
-    $Source = Join-Path $ScriptDir $folder
-    $Dest = Join-Path $TargetDir $folder
-    if (Test-Path $Source) {
-        if (Test-Path $Dest) { Remove-Item $Dest -Recurse -Force -ErrorAction SilentlyContinue }
-        Copy-Item $Source -Destination $Dest -Recurse -Force
+if ($env:TYPER_INSTALL_VALIDATE_ONLY) { return }
+$TargetDir = if ($env:TYPER_INSTALL_TARGET) { $env:TYPER_INSTALL_TARGET } else { Join-Path $env:APPDATA 'Adobe\CEP\extensions\typertools' }
+$TargetDir = [IO.Path]::GetFullPath($TargetDir).TrimEnd('\')
+if ($TargetDir -eq $ScriptDir -or $TargetDir -eq [IO.Path]::GetPathRoot($TargetDir).TrimEnd('\')) { throw 'Invalid installation target' }
+if ((Test-Path -LiteralPath $TargetDir) -and ((Get-Item -LiteralPath $TargetDir).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Target is a link' }
+New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
+$WorkDir = Join-Path $TargetDir ('.typer-install-' + [Guid]::NewGuid().ToString('N'))
+$Stage = Join-Path $WorkDir 'stage'; $Backup = Join-Path $WorkDir 'backup'
+$Moved = @(); $Installed = @(); $KeepBackup = $false
+try {
+    New-Item -ItemType Directory -Path $Stage, $Backup -Force | Out-Null
+    foreach ($Folder in $Folders) { Copy-Item -LiteralPath (Join-Path $ScriptDir $Folder) -Destination $Stage -Recurse }
+    foreach ($Line in Get-Content -LiteralPath $Inventory) {
+        $Parts = $Line -split '  ', 2
+        if ((Get-TypeRFileHash (Join-Path $Stage $Parts[1])) -ne $Parts[0]) { throw 'Staged package verification failed' }
     }
+    foreach ($Folder in $Folders) {
+        $Destination = Join-Path $TargetDir $Folder
+        if (Test-Path -LiteralPath $Destination) {
+            Move-Item -LiteralPath $Destination -Destination (Join-Path $Backup $Folder)
+            $Moved += $Folder
+        }
+        Move-Item -LiteralPath (Join-Path $Stage $Folder) -Destination $Destination
+        $Installed += $Folder
+    }
+} catch {
+    $Failure = $_
+    try {
+        foreach ($Folder in $Installed) { Remove-Item -LiteralPath (Join-Path $TargetDir $Folder) -Recurse -Force }
+        foreach ($Folder in $Moved) { Move-Item -LiteralPath (Join-Path $Backup $Folder) -Destination (Join-Path $TargetDir $Folder) }
+    } catch { $KeepBackup = $true; Write-Warning "Recovery backup retained: $WorkDir" }
+    throw $Failure
+} finally {
+    if (-not $KeepBackup -and (Test-Path -LiteralPath $WorkDir)) { Remove-Item -LiteralPath $WorkDir -Recurse -Force }
 }
-
-# Cas particulier : thèmes
-if (Test-Path "$ScriptDir\themes") {
-    $ThemeDest = "$TargetDir\app\themes"
-    if (-not (Test-Path $ThemeDest)) { New-Item $ThemeDest -ItemType Directory -Force | Out-Null }
-    Copy-Item "$ScriptDir\themes\*" -Destination $ThemeDest -Recurse -Force
+# A complete offline repair supersedes an interrupted in-place transaction.
+$OldJournal = Join-Path $TargetDir '.typer-update-journal.json'
+if (Test-Path -LiteralPath $OldJournal -PathType Leaf) { Remove-Item -LiteralPath $OldJournal }
+if (-not $env:TYPER_INSTALL_SKIP_DEBUG) {
+    6..18 | ForEach-Object {
+        $RegistryPath = "HKCU:\Software\Adobe\CSXS.$_"
+        New-Item -Path $RegistryPath -Force | Out-Null
+        New-ItemProperty -Path $RegistryPath -Name PlayerDebugMode -Value '1' -PropertyType String -Force | Out-Null
+    }
 }
 
 # --- 7. Fin ---

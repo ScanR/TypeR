@@ -132,10 +132,8 @@ var _hostState = {
     selections: [],
   },
   hiddenCleaningLayerIdsByDocument: {},
-  bubbleTrainer: {
-    workDoc: null,
-    previousDoc: null,
-  },
+  documentSession: String(new Date().getTime()) + ":" + String(Math.random()),
+  bubbleTrainer: { workDoc: null, previousDoc: null },
   lastOpenedDocId: null,
   suspendedRun: null,
   pathScanFails: 0,
@@ -166,6 +164,84 @@ function _withSuspendedHistory(name, fn) {
     _hostState.suspendedRun();
   }
   _hostState.suspendedRun = null;
+  return result;
+}
+
+// Shape detection reads pixels through temporary channels, paths and selections.
+// Grouping those operations still retains a full scan in Photoshop history.
+// Roll back and delete only that new state, never the user's undo/redo states.
+function _withTemporaryHistory(name, fn) {
+  var doc = app.activeDocument;
+  var scanName = name;
+  var historyLimit = null;
+  var reservedHistorySlot = false;
+  try {
+    var count = doc.historyStates.length;
+    // Starting a new operation after Undo would discard the redo branch.
+    if (_hostState.temporaryHistoryFailed || count < 2 ||
+        _getActiveHistoryIndex() !== count - 1) {
+      return { error: "historyBusy" };
+    }
+    // A no-op or failed suspension must never match an existing user state.
+    if (doc.historyStates[count - 1].name === scanName) scanName += " (temporary)";
+    // Reserve room only when needed, then restore the preference in finally.
+    // Otherwise the scan itself could evict a real undo state at capacity.
+    historyLimit = app.preferences.numberOfHistoryStates;
+    if (!(historyLimit > 0)) return { error: "historyBusy" };
+    if (count >= historyLimit) {
+      reservedHistorySlot = true;
+      app.preferences.numberOfHistoryStates = count + 1;
+      if (app.preferences.numberOfHistoryStates <= count) throw new Error("historyCapacity");
+    }
+  } catch (historyError) {
+    if (reservedHistorySlot) {
+      try { app.preferences.numberOfHistoryStates = historyLimit; } catch (limitError) {}
+    }
+    return { error: "historyBusy" };
+  }
+
+  var result = null;
+  var previousRun = _hostState.suspendedRun;
+  _hostState.suspendedRun = function () {
+    try {
+      result = fn();
+    } catch (scanError) {
+      result = null;
+    }
+  };
+  try {
+    // Never retry unsuspended: one failed scan could otherwise leave dozens
+    // of history entries and evict the user's work before cleanup runs.
+    doc.suspendHistory(scanName, "_hostState.suspendedRun()");
+  } catch (suspendError) {
+    result = null;
+  } finally {
+    _hostState.suspendedRun = previousRun;
+    try {
+      var scanIndex = doc.historyStates.length - 1;
+      if (scanIndex > 0 && doc.historyStates[scanIndex].name === scanName) {
+        doc.activeHistoryState = doc.historyStates[scanIndex - 1];
+        var reference = new ActionReference();
+        reference.putIndex(stringIDToTypeID("historyState"), scanIndex + 1);
+        var descriptor = new ActionDescriptor();
+        descriptor.putReference(charID.Null, reference);
+        executeAction(charID.Delete, descriptor, DialogModes.NO);
+      }
+    } catch (restoreError) {
+      // A host that cannot clean up must not accumulate more scan states.
+      _hostState.temporaryHistoryFailed = true;
+      result = { error: "historyBusy" };
+    } finally {
+      if (reservedHistorySlot) {
+        try {
+          app.preferences.numberOfHistoryStates = historyLimit;
+        } catch (limitError) {
+          _hostState.temporaryHistoryFailed = true;
+          result = { error: "historyBusy" };
+        }
+      }
+    }
+  }
   return result;
 }
 
@@ -270,6 +346,20 @@ function _ensureStyle(style) {
     normalized.stroke = _getHostDefaultStroke();
   }
   return normalized;
+}
+
+function _overrideStyleTextSize(style, size) {
+  if (!style || !(size > 0)) return style;
+  var ranges = style.textProps && style.textProps.layerText && style.textProps.layerText.textStyleRange;
+  if (!ranges || !ranges.length) return style;
+  for (var i = 0; i < ranges.length; i++) {
+    if (!ranges[i] || !ranges[i].textStyle) continue;
+    ranges[i].textStyle.size = size;
+    if (ranges[i].textStyle.impliedFontSize != null) {
+      ranges[i].textStyle.impliedFontSize = size;
+    }
+  }
+  return style;
 }
 
 function _resolveStyleSizeForDocument(style) {
@@ -1097,6 +1187,9 @@ function _applyRichTextRanges(textParams, textRuns, textLength) {
 
 function _createAndSetLayerText(data, width, height) {
   var style = _resolveStyleSizeForDocument(_ensureStyle(data.style));
+  if (data.textSizeOverride > 0) {
+    _overrideStyleTextSize(style, data.textSizeOverride);
+  }
   style.textProps.layerText.textKey = _normalizeTextKey(data.text);
   style.textProps.layerText.textStyleRange[0].to = data.text.length;
   style.textProps.layerText.paragraphStyleRange[0].to = data.text.length;
@@ -1292,6 +1385,10 @@ function _setActiveLayerText() {
     var targetPoint = _resolveStylePointText(dataStyle, isPoint);
     if (isPoint) _changeToBoxText();
     var oldTextParams = jamText.getLayerText();
+    if (payload.preserveActiveTextSize && dataStyle && oldTextParams.layerText.textStyleRange &&
+        oldTextParams.layerText.textStyleRange[0] && oldTextParams.layerText.textStyleRange[0].textStyle) {
+      _overrideStyleTextSize(dataStyle, oldTextParams.layerText.textStyleRange[0].textStyle.size);
+    }
     var newTextParams;
     if (dataText && dataStyle) {
       newTextParams = dataStyle.textProps;
@@ -1629,6 +1726,13 @@ function _createTextLayerInSelection() {
   if (!documents.length) {
     state.result = "doc";
     return;
+  }
+  if (state.data.preserveActiveTextSize) {
+    if (!_layerIsTextLayer()) {
+      state.result = "sizeSource";
+      return;
+    }
+    state.data.textSizeOverride = _getTextLayerSize();
   }
   
   var selection = _checkSelection({ adaptiveOpen: true });
@@ -2161,6 +2265,97 @@ function getAllRenderedTextLines(data) {
   state.result = jamJSON.stringify({ entries: [] });
   app.activeDocument.suspendHistory("TyperTools Read Shapes", "_getAllRenderedTextLines()");
   return state.result;
+}
+
+// Training reads run on a disposable document. Existing PSDs, their layer
+// selections, pixel selections and history must remain untouched.
+function _collectTrainingTextLayers(container, entries, parentPath, parentVisible) {
+  for (var index = 0; index < container.layers.length; index++) {
+    var layer = container.layers[index];
+    var layerPath = parentPath ? parentPath + " / " + layer.name : layer.name;
+    var visible = parentVisible && layer.visible;
+    if (layer.typename === "LayerSet") {
+      _collectTrainingTextLayers(layer, entries, layerPath, visible);
+    } else if (layer.kind === LayerKind.TEXT) {
+      entries.push({ layerId: layer.id, name: layer.name, layerPath: layerPath, visible: visible });
+    }
+  }
+}
+
+function _readTextShapeRTrainingLayers() {
+  var state = _hostState.textShapeRTraining;
+  var entries = [];
+  _collectTrainingTextLayers(app.activeDocument, entries, "", true);
+  for (var index = 0; index < entries.length; index++) {
+    var entry = entries[index];
+    entry.text = "";
+    try {
+      _selectLayerById(entry.layerId);
+      if (_textLayerIsPointText()) {
+        var params = jamText.getLayerText();
+        entry.text = params && params.layerText ? params.layerText.textKey || "" : "";
+      } else {
+        _hostState.getRenderedTextLines.result = "";
+        _getRenderedTextLines();
+        entry.text = _hostState.getRenderedTextLines.result || "";
+        if (!entry.text) entry.error = "readFailed";
+      }
+    } catch (readError) {
+      entry.error = "readFailed";
+    }
+  }
+  state.entries = entries;
+}
+
+// An empty path means the current page, including unsaved edits. A supplied
+// path reuses the open document when present, otherwise opens it without saving.
+function scanTextShapeRTraining(path) {
+  var previousDoc = null;
+  var source = null;
+  var workDoc = null;
+  var file = null;
+  var saveDialogs = app.displayDialogs;
+  try { previousDoc = app.activeDocument; } catch (noDocument) {}
+  try {
+    if (path) {
+      if (!/\.psd$/i.test(path)) return jamJSON.stringify({ error: "badPath" });
+      file = new File(path);
+      if (!file.exists) return jamJSON.stringify({ error: "notFound" });
+      for (var index = 0; index < app.documents.length; index++) {
+        try {
+          if (app.documents[index].fullName.fsName === file.fsName) {
+            source = app.documents[index];
+            break;
+          }
+        } catch (unsavedDocument) {}
+      }
+    } else {
+      source = previousDoc;
+      if (!source) return jamJSON.stringify({ error: "document" });
+    }
+    app.displayDialogs = DialogModes.NO;
+    if (source) {
+      app.activeDocument = source;
+      workDoc = source.duplicate("TypeR Training Preview", false);
+    } else {
+      workDoc = app.open(file);
+    }
+    app.activeDocument = workDoc;
+    _hostState.textShapeRTraining = { entries: [] };
+    workDoc.suspendHistory("TypeR Read Training", "_readTextShapeRTrainingLayers()");
+    return jamJSON.stringify({ entries: _hostState.textShapeRTraining.entries });
+  } catch (scanError) {
+    return jamJSON.stringify({ error: "scanFailed" });
+  } finally {
+    if (workDoc) {
+      try { workDoc.close(SaveOptions.DONOTSAVECHANGES); } catch (closeError) {}
+    }
+    if (previousDoc) {
+      try { app.activeDocument = previousDoc; } catch (restoreError) {}
+    }
+    app.displayDialogs = saveDialogs;
+    _hostState.textShapeRTraining = null;
+  }
 }
 
 function setActiveLayerText(data) {
@@ -2714,7 +2909,7 @@ function getCurrentSelectionShape(data) {
     return jamJSON.stringify({ error: "noSelection" });
   }
   var sampleCount = _normalizeShapeSampleCount(data && data.samples, 17);
-  var shape = _withSuspendedHistory("TypeR Shape Scan", function () {
+  var shape = _withTemporaryHistory("TypeR Shape Scan", function () {
     return _withDialogsSuppressed(function () {
       return (
         _sampleSelectionShapeViaPath(bounds, sampleCount, true) ||
@@ -2722,6 +2917,7 @@ function getCurrentSelectionShape(data) {
       );
     });
   });
+  if (shape && shape.error) return jamJSON.stringify(shape);
   shape = shape || _buildBoundsShapeRows(bounds, sampleCount);
   // scan/scanError lead the object so they survive the debug log preview cap
   var out = { scan: shape.scan || "legacy" };
@@ -2799,7 +2995,7 @@ function getActiveLayerBubbleShape(data) {
   if (isNaN(tolerance)) tolerance = 20;
   var sampleCount = _normalizeShapeSampleCount(data && data.samples, 21);
 
-  var result = _withSuspendedHistory("TypeR Bubble Scan", function () {
+  var result = _withTemporaryHistory("TypeR Bubble Scan", function () {
     return _scanActiveLayerBubble(tolerance, sampleCount);
   });
   if (!result) {
@@ -3057,7 +3253,28 @@ function undoLastTyperChange() {
   }
 }
 
+function getTypeRDocumentKey() {
+  return documents.length ? _hostState.documentSession + ":" + String(app.activeDocument.id) : "";
+}
+
 function getSelectionChanged() {
+  var monitor = _hostState.selectionMonitor;
+  var documentKey = getTypeRDocumentKey();
+  if (monitor.documentKey !== documentKey) {
+    monitor.documentKey = documentKey;
+    monitor.lastBoundsKey = null;
+    monitor.lastBounds = null;
+    monitor.multiWarnBounds = null;
+    return jamJSON.stringify({ documentChanged: true, documentKey: documentKey });
+  }
+  var result = jamJSON.parse(_getSelectionChanged());
+  result.documentKey = documentKey;
+  var selections = result.multiSelection || [];
+  for (var i = 0; i < selections.length; i++) selections[i].documentKey = documentKey;
+  return jamJSON.stringify(result);
+}
+
+function _getSelectionChanged() {
   try {
     var monitor = _hostState.selectionMonitor;
     var keyboardState = ScriptUI.environment && ScriptUI.environment.keyboardState;
@@ -3189,10 +3406,10 @@ function getSelectionChanged() {
     // captured selection while its real outline is still available.
     var payloadBounds = merged;
     if (merged.length === 1) {
-      var openedBounds = _withSuspendedHistory("TypeR Selection Capture", function () {
+      var openedBounds = _withTemporaryHistory("TypeR Selection Capture", function () {
         return _getAdaptiveOpenedSelectionBounds(merged[0]);
       });
-      payloadBounds = [openedBounds || merged[0]];
+      payloadBounds = [openedBounds && !openedBounds.error ? openedBounds : merged[0]];
     }
 
     monitor.lastBounds = merged[0];
@@ -3236,6 +3453,14 @@ function _createTextLayersInStoredSelections() {
     state.result = "doc";
     return;
   }
+  var textSizeOverride = null;
+  if (state.data.preserveActiveTextSize) {
+    if (!_layerIsTextLayer()) {
+      state.result = "sizeSource";
+      return;
+    }
+    textSizeOverride = _getTextLayerSize();
+  }
   
   var texts = state.data.texts || [];
   var styles = state.data.styles || [];
@@ -3271,7 +3496,7 @@ function _createTextLayersInStoredSelections() {
       }
 
       // Create the text layer.
-      var data = { text: text, style: style, direction: state.data.direction, richTextRuns: textRuns };
+      var data = { text: text, style: style, direction: state.data.direction, richTextRuns: textRuns, textSizeOverride: textSizeOverride };
       _createAndSetLayerText(data, dimensions.width, dimensions.height);
 
       var bounds = _getCurrentTextLayerBounds();
@@ -3311,7 +3536,28 @@ function createTextLayersInStoredSelections(data, point) {
     state.selections = [];
   }
   
-  app.activeDocument.suspendHistory("TyperTools Multiple Paste", "_createTextLayersInStoredSelections()");
+  if (!documents.length) return "doc";
+  var documentKey = getTypeRDocumentKey();
+  var count = state.selections.length;
+  if (!count || !data.texts || data.texts.length !== count) return "noSelection";
+  for (var index = 0; index < count; index++) {
+    var selection = state.selections[index];
+    if (!selection || !selection.documentKey || selection.documentKey !== documentKey) return "wrongDocument";
+    if (!data.texts[index]) return "noText";
+    var dimensions = _calculateSelectionDimensions(selection, state.padding);
+    if (!dimensions || !isFinite(dimensions.width) || !isFinite(dimensions.height) || dimensions.width <= 0 || dimensions.height <= 0) return "invalidSelection";
+  }
+  var doc = app.activeDocument;
+  var previousHistory = doc.activeHistoryState;
+  try {
+    doc.suspendHistory("TyperTools Multiple Paste", "_createTextLayersInStoredSelections()");
+  } catch (error) {
+    state.result = "scriptError: " + error.message;
+  }
+  if (state.result) {
+    try { doc.activeHistoryState = previousHistory; }
+    catch (rollbackError) { return "rollbackFailed"; }
+  }
   return state.result;
 }
 
@@ -3548,20 +3794,26 @@ function closeBubbleTrainingDocument() {
 }
 
 function openFile(path, autoClose) {
-  if (autoClose && _hostState.lastOpenedDocId !== null) {
-    for (var i = 0; i < app.documents.length; i++) {
-      var doc = app.documents[i];
-      if (doc.id === _hostState.lastOpenedDocId) {
-        try {
-          doc.close(SaveOptions.SAVECHANGES);
-        } catch (e) {}
-        break;
+  try {
+    var file = File(path);
+    if (!file.exists) throw new Error("File not found");
+    var previousId = _hostState.lastOpenedDocId;
+    var newDoc = app.open(file);
+    if (autoClose && previousId !== null && previousId !== newDoc.id) {
+      for (var i = 0; i < app.documents.length; i++) {
+        var doc = app.documents[i];
+        if (doc.id === previousId) {
+          try { doc.close(SaveOptions.SAVECHANGES); }
+          catch (saveError) { app.activeDocument = doc; throw saveError; }
+          break;
+        }
       }
     }
-  }
-  var newDoc = app.open(File(path));
-  if (autoClose) {
+    app.activeDocument = newDoc;
     _hostState.lastOpenedDocId = newDoc.id;
+    return jamJSON.stringify({ ok: true, path: path, documentKey: getTypeRDocumentKey() });
+  } catch (error) {
+    return jamJSON.stringify({ ok: false, path: path, error: String(error.message || error) });
   }
 }
 

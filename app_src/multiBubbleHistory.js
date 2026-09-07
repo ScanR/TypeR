@@ -1,4 +1,4 @@
-const PAGE_MARKER_PATTERN = /Page [0-9]+/i;
+import { parsePageMarker } from "./pageMarker";
 
 const getFirstUsableLineIndexOnCurrentPage = (lines, currentLineIndex) => {
   if (!Array.isArray(lines) || !lines.length) return currentLineIndex;
@@ -8,7 +8,7 @@ const getFirstUsableLineIndexOnCurrentPage = (lines, currentLineIndex) => {
 
   let pageStartPosition = 0;
   for (let index = currentPosition; index >= 0; index -= 1) {
-    if (PAGE_MARKER_PATTERN.test(lines[index].rawText || "")) {
+    if (parsePageMarker(lines[index].rawText || "")) {
       pageStartPosition = index + 1;
       break;
     }

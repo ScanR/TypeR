@@ -1,3 +1,4 @@
+import { parsePageMarker } from "../../pageMarker";
 import "./textBlock.scss";
 
 import React from "react";
@@ -5,7 +6,7 @@ import PropTypes from "prop-types";
 import { FiArrowRightCircle, FiBold, FiItalic, FiTarget } from "react-icons/fi";
 
 import config from "../../config";
-import { locale, setActiveLayerText, resizeTextArea, scrollToLine, openFile, convertHtmlToMarkdown, parseMarkdownRuns } from "../../utils";
+import { nativeAlert, locale, setActiveLayerText, resizeTextArea, scrollToLine, openFile, convertHtmlToMarkdown, parseMarkdownRuns } from "../../utils";
 import { useContext } from "../../context";
 import { notePerfRender } from "../../perfDebug";
 import { formatMarkdownSelection } from "../../markdownFormatting";
@@ -71,7 +72,7 @@ const LineItem = React.memo(function LineItem({ line, direction, isCurrent, disp
   const className = "text-line" +
     (line.ignore ? " m-empty" : "") +
     (isCurrent ? " m-current" : "") +
-    (line.rawText.match(/Page [0-9]+/i) ? " m-page" : "");
+    (parsePageMarker(line.rawText) ? " m-page" : "");
 
   const handleSelect = React.useCallback(() => {
     dispatch({ type: "setCurrentLineIndex", index: line.rawIndex });
@@ -261,22 +262,19 @@ const TextBlock = React.memo(function TextBlock() {
     [ignoreTagsRegex, renderMarkdownText]
   );
 
-  // An image can also be opened outside this component (MCP bridge open_image
-  // dispatches setLastOpenedImagePath directly): keep the dedup ref in sync so
-  // the effect below doesn't re-open the same file.
+  // Keep the page-opening effect in sync with explicit MCP navigation.
   React.useEffect(() => {
-    if (context.state.lastOpenedImagePath) {
-      lastOpenedPath.current = context.state.lastOpenedImagePath;
-    }
+    if (context.state.lastOpenedImagePath) lastOpenedPath.current = context.state.lastOpenedImagePath;
   }, [context.state.lastOpenedImagePath]);
 
   React.useEffect(() => {
+    let active = true;
     let image = context.state.images[0] || null;
     for (const line of context.state.lines) {
       if (line.ignore) {
-        const page = line.rawText.match(/Page ([0-9]+)/i);
+        const page = parsePageMarker(line.rawText);
         const pageImage = page
-          ? getImageForPage(context.state.images, Number(page[1]), pageImageLookup)
+          ? getImageForPage(context.state.images, page, pageImageLookup)
           : null;
         if (pageImage) image = pageImage;
       }
@@ -285,10 +283,18 @@ const TextBlock = React.memo(function TextBlock() {
       }
     }
     if (image && image.path !== lastOpenedPath.current) {
-      openFile(image.path, context.state.autoClosePSD);
-      lastOpenedPath.current = image.path;
-      context.dispatch({ type: "setLastOpenedImagePath", path: image.path });
+      openFile(image.path, context.state.autoClosePSD, (result) => {
+        if (!active || result.superseded) return;
+        if (!result.ok) {
+          nativeAlert(locale.errorOpenPage.replace("{path}", image.path), locale.errorTitle, true);
+          return;
+        }
+        lastOpenedPath.current = image.path;
+        context.dispatch({ type: "clearSelections", preserveLine: true });
+        context.dispatch({ type: "setLastOpenedImagePath", path: image.path });
+      });
     }
+    return () => { active = false; };
   }, [context.state.currentLineIndex, context.state.autoClosePSD, context.state.images, context.state.lines, pageImageLookup]);
 
   // Precompute line numbers (handles the cumulative page counter)
@@ -296,9 +302,9 @@ const TextBlock = React.memo(function TextBlock() {
     return context.state.lines.map((line) => {
       let lineNum;
       if (line.ignore) {
-        const page = line.rawText.match(/Page ([0-9]+)/i);
+        const page = parsePageMarker(line.rawText);
         const currentImage = page
-          ? getImageForPage(context.state.images, Number(page[1]), pageImageLookup)
+          ? getImageForPage(context.state.images, page, pageImageLookup)
           : null;
         if (currentImage) {
           lineNum = currentImage.name;

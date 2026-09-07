@@ -1,3 +1,4 @@
+import { makeBuffer, allocateBuffer, homeDirectory } from "./nodeCompat";
 // Export styles JSON together with the matching installed font files
 // (.ttf/.otf/.ttc) into a single .zip archive. Runs on the CEP Node runtime
 // (--enable-nodejs in the manifest); every entry point returns an error
@@ -13,6 +14,7 @@ const getNode = () => {
       fs: nodeRequire("fs"),
       path: nodeRequire("path"),
       os: nodeRequire("os"),
+      env: nodeRequire("process").env,
       zlib: nodeRequire("zlib"),
       Buffer: nodeRequire("buffer").Buffer,
     };
@@ -28,14 +30,14 @@ const getFontDirs = (node) => {
     const env = (window.cep_node && window.cep_node.process && window.cep_node.process.env) || {};
     return [
       node.path.join(env.WINDIR || "C:\\Windows", "Fonts"),
-      node.path.join(node.os.homedir(), "AppData", "Local", "Microsoft", "Windows", "Fonts"),
+      node.path.join(homeDirectory(node.os, node.env), "AppData", "Local", "Microsoft", "Windows", "Fonts"),
     ];
   }
   return [
     "/System/Library/Fonts",
     "/System/Library/Fonts/Supplemental",
     "/Library/Fonts",
-    node.path.join(node.os.homedir(), "Library", "Fonts"),
+    node.path.join(homeDirectory(node.os, node.env), "Library", "Fonts"),
   ];
 };
 
@@ -65,7 +67,7 @@ const listFontFiles = (node, dir, depth, out) => {
 };
 
 const readAt = (node, fd, position, length) => {
-  const buf = node.Buffer.alloc(length);
+  const buf = allocateBuffer(node.Buffer, length);
   const bytes = node.fs.readSync(fd, buf, 0, length, position);
   return bytes === length ? buf : buf.slice(0, bytes);
 };
@@ -217,7 +219,7 @@ const buildZip = (node, entries) => {
   let offset = 0;
   const { time, day } = toDosDateTime(new Date());
   entries.forEach((entry) => {
-    const nameBuf = node.Buffer.from(entry.name, "utf8");
+    const nameBuf = makeBuffer(node.Buffer, entry.name, "utf8");
     const crc = crc32(entry.data);
     let method = 8;
     let compressed = node.zlib.deflateRawSync(entry.data);
@@ -225,7 +227,7 @@ const buildZip = (node, entries) => {
       method = 0;
       compressed = entry.data;
     }
-    const local = node.Buffer.alloc(30);
+    const local = allocateBuffer(node.Buffer, 30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
     local.writeUInt16LE(0x0800, 6); // UTF-8 file names
@@ -237,7 +239,7 @@ const buildZip = (node, entries) => {
     local.writeUInt32LE(entry.data.length, 22);
     local.writeUInt16LE(nameBuf.length, 26);
     local.writeUInt16LE(0, 28);
-    const header = node.Buffer.alloc(46);
+    const header = allocateBuffer(node.Buffer, 46);
     header.writeUInt32LE(0x02014b50, 0);
     header.writeUInt16LE(20, 4);
     header.writeUInt16LE(20, 6);
@@ -255,7 +257,7 @@ const buildZip = (node, entries) => {
     offset += local.length + nameBuf.length + compressed.length;
   });
   const centralBuf = node.Buffer.concat(central);
-  const eocd = node.Buffer.alloc(22);
+  const eocd = allocateBuffer(node.Buffer, 22);
   eocd.writeUInt32LE(0x06054b50, 0);
   eocd.writeUInt16LE(entries.length, 8);
   eocd.writeUInt16LE(entries.length, 10);
@@ -301,7 +303,7 @@ const exportZipWithFonts = ({ zipPath, jsonFileName, jsonString, fontRefs }) => 
         files.push(file);
       }
     });
-    const entries = [{ name: jsonFileName, data: node.Buffer.from(jsonString, "utf8") }];
+    const entries = [{ name: jsonFileName, data: makeBuffer(node.Buffer, jsonString, "utf8") }];
     const usedNames = new Set();
     files.forEach((file) => {
       const base = node.path.basename(file);

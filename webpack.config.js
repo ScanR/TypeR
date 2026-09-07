@@ -27,7 +27,7 @@ const defaultConfig = {
     output: {
         path: __dirname + '/app/',
         filename: 'index.js',
-        chunkFilename: '[name].index.js',
+        chunkFilename: '[name].[contenthash:12].index.js',
         publicPath: './'
     },
     resolve: {
@@ -41,7 +41,7 @@ const devConfig = {
     module: {
         rules: [
             {
-                test: /\.jsx?$/,
+                test: /\.m?jsx?$/,
                 exclude: /node_modules/,
                 use: {
                     loader: 'babel-loader'
@@ -93,7 +93,7 @@ const devConfig = {
             template: './app_src/index.html',
             filename: 'index.html'
         }),
-        new MiniCssExtractPlugin(),
+        new MiniCssExtractPlugin({ chunkFilename: "[name].[contenthash:12].css" }),
         new MergeIntoSingleFilePlugin({
             files: {
                 'host.jsx': hostFiles
@@ -107,7 +107,7 @@ const prodConfig = {
     module: {
         rules: [
             {
-                test: /\.jsx?$/,
+                test: /\.m?jsx?$/,
                 exclude: /node_modules/,
                 use: {
                     loader: 'babel-loader'
@@ -162,7 +162,7 @@ const prodConfig = {
                 removeStyleLinkTypeAttributes: true
             }
         }),
-        new MiniCssExtractPlugin(),
+        new MiniCssExtractPlugin({ chunkFilename: "[name].[contenthash:12].css" }),
         new MergeIntoSingleFilePlugin({
             files: {
                 'host.jsx': hostFiles
@@ -177,9 +177,36 @@ const prodConfig = {
     ]
 };
 
-function clientConfig(env, argv) {
-    const envConfig = (argv.mode === 'development') ? devConfig : prodConfig;
-    return Object.assign({}, defaultConfig, envConfig);
+function clientConfig(env, argv, legacy) {
+    const source = argv.mode === 'development' ? devConfig : prodConfig;
+    const flavor = legacy ? 'legacy' : 'modern';
+    const rules = source.module.rules.map(rule => {
+        if (String(rule.test) !== String(/\.m?jsx?$/)) {
+            if (!legacy || !Array.isArray(rule.use)) return rule;
+            return Object.assign({}, rule, { use: rule.use.map(loader => {
+                if (loader.loader !== 'postcss-loader') return loader;
+                return Object.assign({}, loader, { options: { postcssOptions: { plugins: [postcssPresetEnv(), autoprefixer(), require('./scripts/legacyCss')()] } } });
+            }) });
+        }
+        return {
+            test: /\.m?jsx?$/,
+            exclude: /node_modules[\\/](?!react-icons[\\/]|fflate[\\/])/,
+            use: { loader: 'babel-loader', options: {
+                babelrc: false, configFile: false,
+                presets: ['@babel/preset-react', ['@babel/preset-env', { targets: { chrome: legacy ? '41' : '74' }, forceAllTransforms: legacy, useBuiltIns: 'usage', corejs: 3 }]],
+                plugins: ['@babel/plugin-transform-runtime']
+            } }
+        };
+    });
+    const plugins = source.plugins.filter(plugin => !(plugin instanceof HtmlWebpackPlugin) && !(plugin instanceof MiniCssExtractPlugin) && !(legacy && plugin instanceof MergeIntoSingleFilePlugin));
+    plugins.push(new HtmlWebpackPlugin({ template: './app_src/index.html', filename: flavor + '.html' }));
+    plugins.push(new MiniCssExtractPlugin({ filename: flavor + '.css', chunkFilename: flavor + '.[name].[contenthash:12].css' }));
+    return Object.assign({}, defaultConfig, source, {
+        name: flavor,
+        target: ['web', legacy ? 'es5' : 'es2017'],
+        entry: { index: legacy ? ['./app_src/legacyCompat.js', './app_src/index.jsx'] : ['./app_src/index.jsx'] },
+        output: Object.assign({}, defaultConfig.output, { filename: flavor + '.index.js', chunkFilename: flavor + '.[name].[contenthash:12].index.js' }),
+        module: { rules }, plugins
+    });
 }
-
-module.exports = [clientConfig];
+module.exports = (env, argv) => [clientConfig(env, argv, false), clientConfig(env, argv, true)];

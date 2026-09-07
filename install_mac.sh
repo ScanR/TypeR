@@ -1,10 +1,10 @@
-#!/bin/sh
-set -e
+#!/bin/bash
+set -euo pipefail
 
 # —————————————————————————————————————————————————————————————
 # Répertoire du script (pour pointer sur manifest.xml)
 # —————————————————————————————————————————————————————————————
-SRCDIR=$(cd "$(dirname "$0")" && pwd)
+SRCDIR=$(cd "${TYPER_INSTALL_SOURCE:-$(dirname "$0")}" && pwd)
 
 # —————————————————————————————————————————————————————————————
 # Récupération de la version depuis CSXS/manifest.xml
@@ -18,7 +18,7 @@ EXT_VERSION=$(grep -oE '<Extension Id="typer" Version="[^"]+"' "$MANIFEST" \
 # —————————————————————————————————————————————————————————————
 # Détection de la langue système
 # —————————————————————————————————————————————————————————————
-LANGUAGE=$(defaults read -g AppleLocale | cut -d"_" -f1)
+LANGUAGE=$((defaults read -g AppleLocale 2>/dev/null || printf 'en') | cut -d"_" -f1)
 
 # —————————————————————————————————————————————————————————————
 # Messages en anglais
@@ -117,76 +117,76 @@ else
   MSG_DISCORD=$MSG_DISCORD_EN
 fi
 
-# —————————————————————————————————————————————————————————————
-# Affichage des messages et pause
-# —————————————————————————————————————————————————————————————
-cat << EOF
-$MSG_INSTALL
-
-$MSG_CLOSE_PHOTOSHOP
-
-EOF
-read -n 1 -p "$MSG_PRESS_KEY"
-echo
-
-# —————————————————————————————————————————————————————————————
-# Activation du mode debug pour CSXS 6 à 18
-# —————————————————————————————————————————————————————————————
-is_preferences_domain_exists() {
-  defaults read "$1" > /dev/null 2> /dev/null
-}
-
-for version in {6..18}; do
-  if is_preferences_domain_exists com.adobe.CSXS.${version} ; then
-    defaults write com.adobe.CSXS.${version} PlayerDebugMode 1
-  fi
-done
-killall -u "$(whoami)" csprefsd > /dev/null 2> /dev/null || true
-
-# —————————————————————————————————————————————————————————————
-# Copie des fichiers d'extension
-# —————————————————————————————————————————————————————————————
-DESTDIR="${HOME}/Library/Application Support/Adobe/CEP/extensions/typertools"
-STORAGE_BACKUP="${TMPDIR:-/tmp}/typer_storage_backup"
-
-rm -rf "${STORAGE_BACKUP}"
-mkdir -p "${STORAGE_BACKUP}"
-for storage_item in "${DESTDIR}"/storage*; do
-  [ -e "${storage_item}" ] || continue
-  cp -Rf "${storage_item}" "${STORAGE_BACKUP}/"
-done
-
-rm -rf "${DESTDIR}"
-mkdir -p "${DESTDIR}"
-
-for item in app CSXS icons locale; do
-  if [ -e "${SRCDIR}/${item}" ]; then
-    cp -rf "${SRCDIR}/${item}" "${DESTDIR}/${item}"
-  fi
-done
-
-if [ -e "${SRCDIR}/themes" ]; then
-  cp -rf "${SRCDIR}/themes" "${DESTDIR}/app/"
+if [ -t 0 ] && [ "${1:-}" != "--silent" ] && [ "${TYPER_INSTALL_VALIDATE_ONLY:-}" != 1 ]; then
+  printf '%s\n' "$MSG_INSTALL" "$MSG_CLOSE_PHOTOSHOP"
+  read -r -p "$MSG_PRESS_ENTER "
 fi
-
-for storage_item in "${STORAGE_BACKUP}"/storage*; do
-  [ -e "${storage_item}" ] || continue
-  cp -Rf "${storage_item}" "${DESTDIR}/"
+# Validate the entire source before creating or moving destination files.
+[ -f "$SRCDIR/app/package.sha256" ] || { echo 'Incomplete TypeR package: missing inventory' >&2; exit 1; }
+for required in app/index.html app/index.js app/modern.html app/legacy.html app/modern.index.js app/legacy.index.js app/modern.css app/legacy.css app/host.jsx CSXS/manifest.xml locale/messages.properties icons/iconNormal.png; do
+  [ -s "$SRCDIR/$required" ] || { echo "Incomplete TypeR package: $required" >&2; exit 1; }
 done
-rm -rf "${STORAGE_BACKUP}"
+[ -n "$EXT_VERSION" ] || { echo 'Invalid TypeR version' >&2; exit 1; }
+grep -q 'ExtensionBundleId="com.scanr.typer"' "$MANIFEST"
+grep -q "ExtensionBundleVersion=\"$EXT_VERSION\"" "$MANIFEST"
+if ! awk '
+  !/^[a-f0-9]+  (app|CSXS|icons|locale)\/[A-Za-z0-9_@.\/-]+$/ { exit 1 }
+  length($1) != 64 || $2 ~ /(^|\/)\.\.?($|\/)/ || $2 ~ /\/\// || $2 == "app/package.sha256" { exit 1 }
+  { if (seen[tolower($2)]++) exit 1; count++ }
+  END { if (!count) exit 1 }
+' "$SRCDIR/app/package.sha256"; then echo 'Invalid package inventory' >&2; exit 1; fi
+for folder in app CSXS icons locale; do
+  [ -d "$SRCDIR/$folder" ] && [ ! -L "$SRCDIR/$folder" ] || exit 1
+  [ -z "$(find "$SRCDIR/$folder" -type l -print -quit)" ] || { echo 'Package contains symbolic links' >&2; exit 1; }
+done
+(cd "$SRCDIR" && shasum -a 256 -c app/package.sha256 >/dev/null)
+# Every copied application file must be covered by the inventory.
+while IFS= read -r filename; do
+  relative="${filename#"$SRCDIR/"}"
+  [ "$relative" = app/package.sha256 ] && continue
+  awk -v name="$relative" '$2 == name { found=1 } END { exit !found }' "$SRCDIR/app/package.sha256" || { echo "Unlisted file: $relative" >&2; exit 1; }
+done < <(find "$SRCDIR/app" "$SRCDIR/CSXS" "$SRCDIR/icons" "$SRCDIR/locale" -type f -print)
+if [ "${TYPER_INSTALL_VALIDATE_ONLY:-}" = 1 ]; then exit 0; fi
 
-# —————————————————————————————————————————————————————————————
-# Fin et dernières info à l'utilisateur
-# —————————————————————————————————————————————————————————————
-cat << EOF
-
-$MSG_INSTALL_COMPLETE
-$MSG_OPEN_PHOTOSHOP
-
-$MSG_CREDITS
-$MSG_TYPERTOOLS
-$MSG_DISCORD
-
-EOF
-read -n 1 -p "$MSG_PRESS_ENTER"
-echo
+DESTDIR="${TYPER_INSTALL_TARGET:-${HOME}/Library/Application Support/Adobe/CEP/extensions/typertools}"
+[ "$DESTDIR" != / ] && [ ! -L "$DESTDIR" ] || exit 1
+mkdir -p "$DESTDIR"
+DESTDIR="$(cd "$DESTDIR" && pwd)"
+[ "$DESTDIR" != "$SRCDIR" ] || { echo 'Source and destination must differ' >&2; exit 1; }
+WORKDIR="$(mktemp -d "$DESTDIR/.typer-install.XXXXXX")"
+MOVED=""
+INSTALLED=""
+SUCCESS=0
+cleanup() {
+  status=$?
+  trap - EXIT INT TERM
+  if [ "$SUCCESS" -eq 0 ]; then
+    failed=0
+    for folder in $INSTALLED; do rm -rf "$DESTDIR/$folder" || failed=1; done
+    for folder in $MOVED; do mv "$WORKDIR/backup/$folder" "$DESTDIR/$folder" || failed=1; done
+    if [ "$failed" -ne 0 ]; then echo "Recovery backup retained: $WORKDIR" >&2; exit 1; fi
+  fi
+  rm -rf "$WORKDIR"
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+mkdir "$WORKDIR/stage" "$WORKDIR/backup"
+for folder in app CSXS icons locale; do cp -R "$SRCDIR/$folder" "$WORKDIR/stage/$folder"; done
+(cd "$WORKDIR/stage" && shasum -a 256 -c app/package.sha256 >/dev/null)
+for folder in app CSXS icons locale; do
+  if [ -e "$DESTDIR/$folder" ] || [ -L "$DESTDIR/$folder" ]; then
+    mv "$DESTDIR/$folder" "$WORKDIR/backup/$folder"
+    MOVED="$MOVED $folder"
+  fi
+  mv "$WORKDIR/stage/$folder" "$DESTDIR/$folder"
+  INSTALLED="$INSTALLED $folder"
+done
+SUCCESS=1
+# A complete offline repair supersedes any interrupted in-place transaction.
+if [ -f "$DESTDIR/.typer-update-journal.json" ]; then rm "$DESTDIR/.typer-update-journal.json"; fi
+if [ -z "${TYPER_INSTALL_SKIP_DEBUG:-}" ]; then
+  for version in {6..18}; do defaults write "com.adobe.CSXS.$version" PlayerDebugMode -string 1; done
+fi
+printf '%s\n' "$MSG_INSTALL_COMPLETE" "$MSG_OPEN_PHOTOSHOP"

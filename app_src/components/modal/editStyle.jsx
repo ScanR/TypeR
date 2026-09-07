@@ -1,3 +1,4 @@
+import { useModalClose } from "../../modalClose";
 import "./editStyle.scss";
 
 import React from "react";
@@ -80,6 +81,7 @@ const EditStyleModal = React.memo(function EditStyleModal() {
     }
     closeModal();
   };
+  useModalClose(close);
 
   const confirmClose = () => {
     setDiscardConfirmOpen(false);

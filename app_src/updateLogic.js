@@ -8,19 +8,27 @@ const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 // storage) is never listed here, so an update can never destroy it.
 const INSTALL_FOLDERS = ["app/", "CSXS/", "icons/", "locale/"];
 
-const parseVersion = (version) => {
-  const cleanVersion = String(version || "").replace(/^v/, "");
-  return cleanVersion.split(".").map((num) => parseInt(num, 10) || 0);
+const versionParts = (version) => {
+  const match = /^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(String(version || ''));
+  if (!match || (match[4] || '').split('.').some(part => /^0[0-9]+$/.test(part))) return null;
+  return { numbers: match.slice(1, match[3] === undefined ? 3 : 4).map(Number), pre: match[4] ? match[4].split('.') : [] };
 };
-
-const compareVersions = (v1, v2) => {
-  const version1 = parseVersion(v1);
-  const version2 = parseVersion(v2);
-  for (let i = 0; i < Math.max(version1.length, version2.length); i++) {
-    const num1 = version1[i] || 0;
-    const num2 = version2[i] || 0;
-    if (num1 > num2) return 1;
-    if (num1 < num2) return -1;
+const parseVersion = version => (versionParts(version) || { numbers: [0] }).numbers;
+const compareVersions = (left, right) => {
+  const a = versionParts(left), b = versionParts(right);
+  if (!a || !b) return a ? 1 : b ? -1 : 0;
+  for (let i = 0; i < 3; i++) {
+    const difference = (a.numbers[i] || 0) - (b.numbers[i] || 0);
+    if (difference) return difference > 0 ? 1 : -1;
+  }
+  if (!a.pre.length || !b.pre.length) return a.pre.length ? -1 : b.pre.length ? 1 : 0;
+  for (let i = 0; i < Math.max(a.pre.length, b.pre.length); i++) {
+    if (a.pre[i] === b.pre[i]) continue;
+    if (a.pre[i] === undefined) return -1;
+    if (b.pre[i] === undefined) return 1;
+    const an = /^[0-9]+$/.test(a.pre[i]), bn = /^[0-9]+$/.test(b.pre[i]);
+    if (an !== bn) return an ? -1 : 1;
+    return (an ? Number(a.pre[i]) > Number(b.pre[i]) : a.pre[i] > b.pre[i]) ? 1 : -1;
   }
   return 0;
 };
@@ -43,7 +51,7 @@ const pickUpdateDownloadUrl = (release) => {
 const findNewerReleases = (releases, currentVersion) => {
   const list = Array.isArray(releases) ? releases : [];
   const newer = list.filter(
-    (release) => release && release.tag_name && compareVersions(release.tag_name, currentVersion) > 0
+    (release) => release && !release.draft && !release.prerelease && versionParts(release.tag_name) && !versionParts(release.tag_name).pre.length && pickUpdateDownloadUrl(release) && compareVersions(release.tag_name, currentVersion) > 0
   );
   newer.sort((a, b) => compareVersions(b.tag_name, a.tag_name));
   return newer;

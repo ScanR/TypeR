@@ -45,7 +45,7 @@ const loadProfileStorage = (initialFiles = {}) => {
 
   const profileModule = { exports: {} };
   new Function("require", "module", "exports", transformed)(
-    require,
+    (name) => name === "./storageIO" ? require("./helpers/loadAppModule")()("app_src/storageIO.js") : require(name),
     profileModule,
     profileModule.exports
   );

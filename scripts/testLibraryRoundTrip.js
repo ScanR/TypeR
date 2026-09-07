@@ -1,0 +1,18 @@
+const assert = require('assert');
+const load = require('./helpers/loadAppModule')();
+const { validateImportData, serializeStyle, repairFolderHierarchy, selectExportStyles } = load('app_src/librarySerialization.js');
+const style = { id: 's', name: 'Dialogue', folder: null, textProps: {}, prefixes: ['REG:'], prefixesDisabled: true, sizePresets: [12, 16, 20], autoSizeByPageWidth: true, sizePresetDefaultIndex: 1, sizePresetMinWidths: [100, null, 2000] };
+assert.deepStrictEqual(JSON.parse(JSON.stringify(serializeStyle(style))), style);
+assert.deepStrictEqual(selectExportStyles([style], [null]), [style]);
+assert.strictEqual(validateImportData({ folders: [], styles: [style] }).styles[0], style);
+const cycle = [{ id: 'a', name: 'A', parentId: 'b' }, { id: 'b', name: 'B', parentId: 'a' }];
+for (const data of [null, [], { styles: 'bad' }, { folders: cycle }, { folders: [cycle[0], cycle[0]] }, { tabs: [null] }, { ignoreTags: [2] }, JSON.parse('{"__proto__":{}}'), { styles: [{ id: 's', name: 'X', prefixes: 'bad' }] }]) assert.throws(() => validateImportData(data));
+const repaired = repairFolderHierarchy(cycle);
+assert(repaired.some(folder => !folder.parentId));
+const { reducer, initial } = require('./helpers/loadContext')();
+assert.strictEqual(reducer(initial, { type: 'importStyleLibrary', folders: cycle, styles: [{ ...style, folder: 'a' }] }), initial);
+const state = reducer(initial, { type: 'importStyleLibrary', folders: [{ id: 'f', name: 'Folder' }], styles: [{ ...style, folder: 'f' }] });
+assert.deepStrictEqual(state.styles[0].sizePresets, [12, 16, 20]);
+const { collectDescendantIds } = load('app_src/folderUtils.js');
+assert.deepStrictEqual(collectDescendantIds(cycle, 'a'), ['b']);
+console.log('Library validation and round-trip tests passed');

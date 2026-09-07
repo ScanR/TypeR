@@ -1,10 +1,12 @@
+import { useModalClose } from "../../modalClose";
+import { serializeStyle, validateImportData } from "../../librarySerialization";
 import React from "react";
 import { FiX, FiSettings, FiEye, FiEyeOff, FiToggleLeft, FiDatabase, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiType, FiEdit2, FiPlus, FiImage, FiTrash2, FiUsers } from "react-icons/fi";
 import { MdSave } from "react-icons/md";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile } from "../../utils";
+import { backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile } from "../../utils";
 import { useContext, defaultUiLayout, normalizeUiLayout } from "../../context";
 import { sanitizeTextShapeRTuning } from "../../textShapeR";
 import {
@@ -30,6 +32,7 @@ import FontScanPromo from "./fontScanPromo";
 import ProfileSettings from "./profileSettings";
 import UnsavedChangesDialog from "./unsavedChangesDialog";
 import FontViewer from "./fontViewer";
+import TextShapeRTraining from "./textShapeRTraining";
 import FontFinderLogo from "./fontFinderLogo";
 import { getFontViewerStatus } from "../../fontViewerApi";
 import { shortcutCommands } from "../../shortcutCommands";
@@ -236,6 +239,36 @@ const SettingsModal = React.memo(function SettingsModal() {
     return conflicts;
   }, [shortcutDraft]);
 
+  // A modifier-only shortcut whose keys are all contained in one of its target
+  // bindings can never be released while that command fires: the command would
+  // permanently run in its modified form (e.g. keepTextSize=SHIFT with
+  // apply=WIN+SHIFT). Matching is subset-based, so warn about the overlap.
+  const shortcutModifierOverlaps = React.useMemo(() => {
+    const overlaps = {};
+    const normalize = (keys) => (keys || []).map((key) => String(key).toUpperCase());
+    shortcutCommands.forEach((command) => {
+      if (!command.modifierOnly || !Array.isArray(command.appliesTo)) return;
+      const modifierKeys = normalize(shortcutDraft[command.id]);
+      if (!modifierKeys.length) return;
+      const covered = command.appliesTo.filter((targetId) => {
+        const targetKeys = normalize(shortcutDraft[targetId]);
+        return targetKeys.length && modifierKeys.every((key) => targetKeys.includes(key));
+      });
+      if (!covered.length) return;
+      const names = covered
+        .map((targetId) => {
+          const target = shortcutCommands.find((other) => other.id === targetId);
+          return (target && locale[target.label]) || targetId;
+        })
+        .join(", ");
+      overlaps[command.id] = names;
+      covered.forEach((targetId) => {
+        overlaps[targetId] = locale[command.label] || command.id;
+      });
+    });
+    return overlaps;
+  }, [shortcutDraft]);
+
   const changeShortcut = React.useCallback((id, keys) => {
     setShortcutDraft((current) => ({ ...current, [id]: keys }));
     setEdited(true);
@@ -252,6 +285,7 @@ const SettingsModal = React.memo(function SettingsModal() {
     }
     closeModal();
   };
+  useModalClose(close);
 
   const confirmClose = () => {
     setDiscardConfirmOpen(false);
@@ -291,7 +325,6 @@ const SettingsModal = React.memo(function SettingsModal() {
   const changeMiddleEast = (e) => {
     const val = e.target.checked;
     setMiddleEast(val);
-    context.dispatch({ type: "setMiddleEast", value: val });
     setEdited(true);
   };
 
@@ -810,13 +843,18 @@ const SettingsModal = React.memo(function SettingsModal() {
     const pathSelect = window.cep.fs.showOpenDialogEx(true, false, null, null, ["json"]);
     if (!pathSelect?.data?.length) return false;
     let foldersImported = 0;
+    let backedUp = false;
     pathSelect.data.forEach((path) => {
       const result = window.cep.fs.readFile(path);
       if (result.err) {
         nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
       } else {
         try {
-          const data = JSON.parse(result.data);
+          const data = validateImportData(JSON.parse(result.data));
+          if (!backedUp) {
+            if (!backupStorage()) { nativeAlert(locale.storageWarning, locale.errorTitle, true); return; }
+            backedUp = true;
+          }
           if (data.pastePointText === undefined && data.textItemKind !== undefined) {
             data.pastePointText = !!data.textItemKind;
           }
@@ -833,6 +871,7 @@ const SettingsModal = React.memo(function SettingsModal() {
             const importedAt = Date.now();
             const dataFolder = { id: folderId, name: data.name };
             const styles = data.exportedStyles.map((style) => ({
+                ...serializeStyle(style),
                 name: style.name,
                 id: Math.random().toString(36).substring(2, 8),
                 folder: folderId,
@@ -872,6 +911,7 @@ const SettingsModal = React.memo(function SettingsModal() {
             }));
             const importedAt = Date.now();
             const styles = data.styles.map((style) => ({
+              ...serializeStyle(style),
               id: Math.random().toString(36).substring(2, 8),
               name: style.name,
               folder: style.folder ? idMap[style.folder] : null,
@@ -965,7 +1005,7 @@ const SettingsModal = React.memo(function SettingsModal() {
       } else {
         nativeAlert(locale.updateNoUpdate, locale.successTitle, false);
       }
-    });
+    }).catch(() => nativeAlert(locale.updateCheckFailed, locale.errorTitle, true));
   };
 
   const resetStorage = () => {
@@ -1191,6 +1231,14 @@ const SettingsModal = React.memo(function SettingsModal() {
                   </select>
                 </div>
                 <div className="field-descr">{locale.settingsDefaultStyleDescr}</div>
+              </div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  resizeTextBoxOnCenter,
+                  changeResizeTextBoxOnCenter,
+                  locale.settingsResizeTextBoxOnCenterLabel || "Fit text box to bubble when centering",
+                  locale.settingsResizeTextBoxOnCenterHint || "Fits the text box to the bubble before centering without changing the font size."
+                )}
               </div>
             </div>
             <div className="settings-group">
@@ -1692,12 +1740,6 @@ const SettingsModal = React.memo(function SettingsModal() {
               <div className="settings-group-title">{locale.settingsGroupTextPositioning || "Text positioning"}</div>
               <div className="settings-checkbox-grid">
                 {renderToggle(
-                  resizeTextBoxOnCenter,
-                  changeResizeTextBoxOnCenter,
-                  locale.settingsResizeTextBoxOnCenterLabel,
-                  locale.settingsResizeTextBoxOnCenterHint || "Resizes text box during automatic centering"
-                )}
-                {renderToggle(
                   multiBubbleMode,
                   changeMultiBubbleMode,
                   locale.multiBubbleModeToggle || "Multi-Bubble Mode",
@@ -1803,11 +1845,15 @@ const SettingsModal = React.memo(function SettingsModal() {
                     key={command.id}
                     value={shortcutDraft[command.id] || []}
                     index={command.id}
+                    modifierOnly={command.modifierOnly === true}
                     onChange={changeShortcut}
                     conflict={shortcutConflicts[command.id]
                       ? (locale.shortcutConflict || "Also assigned to: {actions}")
                         .replace("{actions}", shortcutConflicts[command.id])
-                      : ""}
+                      : shortcutModifierOverlaps[command.id]
+                        ? (locale.shortcutModifierOverlap || "Always combined with: {actions}")
+                          .replace("{actions}", shortcutModifierOverlaps[command.id])
+                        : ""}
                   />
                 ))}
               </div>
@@ -1843,22 +1889,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                 </button>
               </div>
             </div>
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupShapeTuning || "TextShapeR learning"}</div>
-              <div className="field">
-                <button className="topcoat-button--large" onClick={importShapeTuning}>
-                  <FaFileImport size={18} /> {locale.settingsShapeTuningImport || "Import learning"}
-                </button>
-              </div>
-              <div className="field">
-                <button className="topcoat-button--large" onClick={exportShapeTuning}>
-                  <FaFileExport size={18} /> {locale.settingsShapeTuningExport || "Export learning"}
-                </button>
-              </div>
-              <div className="field-descr">
-                {locale.settingsShapeTuningHint || "Share your TextShapeR algorithm learned from your feedback as a small .json file. Importing replaces your current learning."}
-              </div>
-            </div>
+            <TextShapeRTraining onImportLearning={importShapeTuning} onExportLearning={exportShapeTuning} />
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupDiagnostics || "Diagnostics"}</div>
               <div className="settings-checkbox-grid">
@@ -1938,7 +1969,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                   key={tab.id}
                   className={`settings-tab ${activeTab === tab.id ? 'settings-tab--active' : ''}${tab.disabled ? ' settings-tab--disabled' : ''}`}
                   aria-disabled={tab.disabled || undefined}
-                  title={tab.disabled ? tab.disabledTitle : undefined}
+                  title={tab.disabled ? tab.disabledTitle : tab.label}
                   onClick={() => {
                     if (!tab.disabled) setActiveTab(tab.id);
                   }}

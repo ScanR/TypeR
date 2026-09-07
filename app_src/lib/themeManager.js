@@ -1,3 +1,8 @@
+const setThemeProperty = (name, value) => {
+    if (value === null) document.documentElement.style.removeProperty(name);
+    else document.documentElement.style.setProperty(name, value);
+    if (window.typerLegacyCSSVariable) window.typerLegacyCSSVariable(name, value);
+};
 import './CSInterface';
 
 import LightTheme from './topcoat/css/topcoat-desktop-light.min.css';
@@ -101,7 +106,7 @@ function layoutBackgroundImage() {
         meta.height,
         meta.crop
     );
-    backgroundImageElement.style.inset = `${-pad}px`;
+    ["top", "right", "bottom", "left"].forEach(side => { backgroundImageElement.style[side] = `${-pad}px`; });
     backgroundImageElement.style.backgroundSize = layout.backgroundSize;
     backgroundImageElement.style.backgroundPosition = layout.backgroundPosition;
 }
@@ -133,7 +138,7 @@ function applyBackgroundLayer(preset) {
     backgroundImageElement.style.opacity = String(meta.opacity);
     backgroundImageElement.style.filter = meta.blur ? `blur(${meta.blur}px)` : "none";
     backgroundTintElement.style.background = (preset.background && preset.background.tint) || "transparent";
-    document.documentElement.style.setProperty(
+    setThemeProperty(
         "--typer-bg-base",
         (preset.background && preset.background.base) || "#1e1e1e"
     );
@@ -146,10 +151,10 @@ function applyBackgroundLayer(preset) {
 function applyPageLineColor(color) {
     currentPageLineColor = normalizePageLineColor(color);
     if (currentPageLineColor) {
-        document.documentElement.style.setProperty("--typer-page-line-color", currentPageLineColor);
+        setThemeProperty("--typer-page-line-color", currentPageLineColor);
         document.body.classList.add("m-page-line-custom");
     } else {
-        document.documentElement.style.removeProperty("--typer-page-line-color");
+        setThemeProperty("--typer-page-line-color", null);
         document.body.classList.remove("m-page-line-custom");
     }
 }
@@ -172,7 +177,7 @@ function applyEditorTheme(id) {
 
     var colors = preset.colors || {};
     Object.keys(colors).forEach(function (key) {
-        document.documentElement.style.setProperty("--editor-" + key, colors[key]);
+        setThemeProperty("--editor-" + key, colors[key]);
     });
 }
 

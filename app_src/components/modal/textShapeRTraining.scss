@@ -1,0 +1,104 @@
+.textshaper-training {
+  min-width: 0;
+
+  .textshaper-training-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: 4px;
+    background: rgba(128, 128, 128, 0.14);
+    font-size: 12px;
+    font-weight: 600;
+
+    svg { flex-shrink: 0; }
+  }
+
+  .textshaper-training-section {
+    padding: 10px;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 4px;
+
+    .field-descr { margin: 6px 0; }
+    button { white-space: normal; }
+  }
+
+  .textshaper-training-heading { font-size: 12px; font-weight: 600; }
+  .textshaper-training-sharing > button { flex: 1 1 120px; }
+
+
+  .textshaper-training-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0;
+  }
+
+  .textshaper-training-files {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin: 6px 0;
+  }
+
+  .textshaper-training-page-toggle,
+  .textshaper-training-layer {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 7px 4px;
+    cursor: pointer;
+
+    input { flex: 0 0 auto; margin: 2px 0; }
+  }
+
+  .textshaper-training-layers {
+    max-height: 260px;
+    overflow: auto;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 4px;
+  }
+
+  .textshaper-training-layer {
+    border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+    &:last-child { border-bottom: 0; }
+    &.is-excluded .textshaper-training-layer-content { opacity: 0.55; }
+  }
+
+  .textshaper-training-layer-content { min-width: 0; flex: 1; }
+  .textshaper-training-layer-name {
+    display: block;
+    font-size: 10px;
+    opacity: 0.7;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .textshaper-training-text {
+    display: block;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    font-size: 12px;
+    line-height: 1.45;
+    margin-top: 4px;
+  }
+
+  .textshaper-training-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 6px 0 12px;
+  }
+
+  .textshaper-training-progress {
+    margin: 8px 0;
+    span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    progress { display: block; width: 100%; margin-top: 6px; }
+  }
+
+  .textshaper-training-summary { margin-top: 12px; font-weight: 600; }
+  .textshaper-training-info { margin-top: 10px; font-size: 10px; opacity: 0.65; }
+  .textshaper-training-reset button { margin-inline-end: 6px; }
+}

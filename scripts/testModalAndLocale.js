@@ -1,0 +1,18 @@
+const assert = require('assert');
+const load = require('./helpers/loadAppModule')();
+const { mergeLocaleBundle } = load('app_src/localeBundle.js');
+assert.deepStrictEqual(mergeLocaleBundle({ close: 'Close', newKey: 'Fallback' }, { close: 'Fermer' }), { close: 'Fermer', newKey: 'Fallback' });
+assert.strictEqual(mergeLocaleBundle({ close: 'Close' }, { close: 'Fermer' }, { close: 'Schließen' }).close, 'Schließen');
+const { registerModalClose, requestModalClose } = load('app_src/modalClose.js');
+let busy = true, closed = 0, fallbacks = 0;
+const cleanup = registerModalClose(() => { if (!busy) closed++; });
+requestModalClose(() => fallbacks++);
+assert.strictEqual(closed, 0);
+assert.strictEqual(fallbacks, 0);
+busy = false;
+requestModalClose(() => fallbacks++);
+assert.strictEqual(closed, 1);
+cleanup();
+requestModalClose(() => fallbacks++);
+assert.strictEqual(fallbacks, 1);
+console.log('Modal closing and locale fallback tests passed');

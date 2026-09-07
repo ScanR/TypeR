@@ -1,3 +1,4 @@
+import { serializeStyle, selectExportStyles } from "../../librarySerialization";
 import React from "react";
 import { FiCheckSquare, FiFolder, FiType, FiX } from "react-icons/fi";
 import { MdSave } from "react-icons/md";
@@ -38,13 +39,17 @@ const ExportModal = React.memo(function ExportModal() {
       : readProfileStorage(selectedProfileId),
     [context.state, profileRegistry.activeProfileId, selectedProfileId]
   );
-  const sourceFolders = exportSource.folders || EMPTY_LIST;
+  const sourceFolders = React.useMemo(() => {
+    const folders = exportSource.folders || EMPTY_LIST;
+    return (exportSource.styles || []).some(style => !style.folder)
+      ? folders.concat({ id: null, name: locale.noFolderTitle, parentId: null }) : folders;
+  }, [exportSource.folders, exportSource.styles]);
   const sourceStyles = exportSource.styles || EMPTY_LIST;
   const folderTree = React.useMemo(() => buildFolderTree(sourceFolders), [sourceFolders]);
   const allFolderIds = React.useMemo(() => sourceFolders.map((folder) => folder.id), [sourceFolders]);
   const previousFontKeys = React.useRef([]);
   const selectedStyles = React.useMemo(
-    () => sourceStyles.filter((style) => selected.includes(style.folder)),
+    () => selectExportStyles(sourceStyles, selected),
     [sourceStyles, selected]
   );
   const fontOptions = React.useMemo(() => buildFontOptions(selectedStyles), [selectedStyles]);
@@ -132,8 +137,10 @@ const ExportModal = React.memo(function ExportModal() {
       getProfileExportFileName(selectedProfile.name, ext)
     );
     if (!pathSelect?.data) return false;
-    const folders = sourceFolders.filter((f) => selected.includes(f.id));
-    const styles = exportableStyles;
+    const folders = sourceFolders.filter((f) => f.id !== null && selected.includes(f.id)).map(folder => ({
+      ...folder, parentId: selected.includes(folder.parentId) ? folder.parentId : null,
+    }));
+    const styles = exportableStyles.map(serializeStyle);
     const data = {
       folders,
       styles,
@@ -174,7 +181,8 @@ const ExportModal = React.memo(function ExportModal() {
       close();
       return;
     }
-    window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
+    const written = window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
+    if (!written || written.err) { nativeAlert(locale.saveError, locale.errorTitle, true); return; }
     close();
   };
 

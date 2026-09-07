@@ -312,8 +312,6 @@ const setCustomEditorThemes = (list) => {
   return customEditorThemes;
 };
 
-const getCustomEditorThemes = () => customEditorThemes;
-
 const setBackgroundImageMeta = (meta) => {
   backgroundImageMeta = meta && typeof meta === "object" ? meta : null;
 };
@@ -370,14 +368,6 @@ const getEditorThemePreset = (id) => {
 
 const normalizeEditorTheme = (id) => getEditorThemePreset(id).id;
 
-// Built-in presets first, then user themes, then the image theme when one has
-// been configured. Used to render the theme grid in the settings.
-const getEditorThemeList = () => {
-  const list = EDITOR_THEME_PRESETS.concat(customEditorThemes);
-  const imageTheme = getImageThemePreset();
-  return imageTheme ? list.concat([imageTheme]) : list;
-};
-
 // Colors used to render the theme cards in settings; the "system" preset
 // has no fixed palette, so it falls back to a Photoshop-like mock.
 const getEditorThemePreviewColors = (preset) => {
@@ -418,13 +408,11 @@ export {
   getEditorThemePreset,
   normalizeEditorTheme,
   getEditorThemePreviewColors,
-  getEditorThemeList,
   normalizeCustomTheme,
   normalizeCustomThemes,
   createCustomThemeFrom,
   createCustomThemeId,
   setCustomEditorThemes,
-  getCustomEditorThemes,
   setBackgroundImageMeta,
   getBackgroundImageMeta,
   getImageThemePreset,

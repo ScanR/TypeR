@@ -1,7 +1,7 @@
 import "./previewBlock.scss";
 
 import React from "react";
-import { FiArrowRightCircle, FiChevronLeft, FiChevronRight, FiChevronsRight, FiCrosshair, FiPlay, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown, FiAlertTriangle, FiInfo, FiRotateCcw, FiStar, FiX } from "react-icons/fi";
+import { FiArrowRightCircle, FiChevronLeft, FiChevronRight, FiChevronsRight, FiLock, FiCrosshair, FiPlay, FiPlusCircle, FiMinusCircle, FiArrowUp, FiArrowDown, FiAlertTriangle, FiInfo, FiRotateCcw, FiStar, FiX } from "react-icons/fi";
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { MdCenterFocusWeak } from "react-icons/md";
 import { FaMagic } from "react-icons/fa";
@@ -10,7 +10,7 @@ import { csInterface, locale, nativeConfirm, setActiveLayerText, setLayerTextFas
 import { useContext } from "../../context";
 import { getScaledStyle } from "../../textLayerPayload";
 import { getBubbleCacheKey, haveSameLayerSize } from "../../textShapeRTracking";
-import { pasteInSelection, withShortcutHint } from "../../shortcutCommands";
+import { isShortcutActiveForEvent, pasteInSelection, withShortcutHint } from "../../shortcutCommands";
 import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPreview";
 import { notePerfRender } from "../../perfDebug";
 import TextShapeRFitPreview from "../textShapeRFitPreview";
@@ -144,6 +144,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     textShapeRLearnTipShown: state.textShapeRLearnTipShown,
     textShapeRLearnTipVisible: state.textShapeRLearnTipVisible,
     shortcut: state.shortcut,
+    keepSizeHeld: state.keepSizeHeld,
   }));
   const uiVisible = context.state.uiLayout?.visible || {};
   const showPreviewMainControls =
@@ -494,7 +495,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           const data = JSON.parse(result || "{}");
           // A transient "a selection is active" answer says nothing about the
           // bubble: never memoize it, or the layer stays shapeless afterwards
-          if (data && data.error === "hasSelection") return;
+          if (data && (data.error === "hasSelection" || data.error === "historyBusy")) return;
           // Cache failures too: retrying the wand on every poll would spam
           // the document with temporary selections
           inlineShapeKey.current = bubbleKey;
@@ -858,6 +859,11 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     getSelectionChanged((selection) => {
       selectionCheckPending.current = false;
       if (selection) {
+        if (selection.documentChanged) {
+          context.dispatch({ type: "clearSelections", preserveLine: true });
+          setTimeout(() => { if (selectionCheckCallbackRef.current) selectionCheckCallbackRef.current(); }, 0);
+          return;
+        }
         notePanelActivity();
         // The host detected a Shift-add growing the previous selection:
         // multi-bubble needs one selection at a time, so warn instead of
@@ -979,19 +985,23 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     }
   }, [context.state.multiBubbleMode, context.state.storedSelections, clearAllTipShown, showClearAllTipFunc]);
 
-  const createLayer = React.useCallback(() => {
-    pasteInSelection(context, batchOrderRef.current);
+  const createLayer = React.useCallback((event) => {
+    pasteInSelection(context, batchOrderRef.current, {
+      preserveActiveTextSize: isShortcutActiveForEvent(event, context.state.shortcut.keepTextSize),
+    });
   }, [context]);
 
-  const insertStyledText = () => {
+  const insertStyledText = (event) => {
     const storedSelections = context.state.storedSelections || [];
     
     if (context.state.multiBubbleMode && storedSelections.length > 0) {
-      createLayer();
+      createLayer(event);
     } else {
       const lineStyle = getScaledStyle(context.state.currentStyle, context.state.textScale);
       setActiveLayerText(line.text, lineStyle, context.state.direction, (ok) => {
         if (ok) context.dispatch({ type: "nextLine", add: true });
+      }, {
+        preserveActiveTextSize: isShortcutActiveForEvent(event, context.state.shortcut.keepTextSize),
       });
     }
   };
@@ -1266,13 +1276,18 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         )}
         {showPreviewMainControls && <div className="preview-top_main-controls">
           {uiVisible.previewCreateButton !== false && (
-            <button className="preview-top_big-btn preview-top_big-btn--small topcoat-button--large--cta" title={withShortcutHint(
+            <button className={"preview-top_big-btn preview-top_big-btn--small topcoat-button--large--cta" + (context.state.keepSizeHeld ? " m-keep-size" : "")} title={`${withShortcutHint(
               context.state.multiBubbleMode && context.state.storedSelections && context.state.storedSelections.length > 0
                 ? (locale.multiBubbleCreateLayersDescr || "Paste {count} text layer(s)").replace("{count}", context.state.storedSelections.length)
                 : locale.createLayerDescr,
               context.state.shortcut.add
-            )} onClick={createLayer}>
+            )}\n${withShortcutHint(locale.shortcut_keepTextSizeDescr || "Hold to keep the selected text layer size", context.state.shortcut.keepTextSize)}`} onClick={createLayer}>
               <AiOutlineBorderInner size={18} /> {locale.createLayer}
+              {context.state.keepSizeHeld && (
+                <span className="keep-size-badge" title={locale.shortcut_keepTextSize}>
+                  <FiLock size={9} />
+                </span>
+              )}
             </button>
           )}
           {uiVisible.previewAlignButton !== false && (
@@ -1398,7 +1413,10 @@ const PreviewBlock = React.memo(function PreviewBlock() {
                     <span className="preview-textshaper-learn-tip" role="status">
                       <FiInfo size={12} />
                       <span className="preview-textshaper-learn-tip-text">
-                        {locale.textShapeRLearnTip || "Improve TextShapeR with your own typesets: click the star to teach it your style."}
+                        {locale.textShapeRLearnTip || "Improve TextShapeR with your own typesets: click the star to teach it your style. Ctrl-click the star to automatically learn from the visible text layers on the current page."}
+                        <span className="preview-textshaper-learn-info">
+                          {locale.textShapeRLearnInfo || "TextShapeR does not use generative AI."}
+                        </span>
                       </span>
                       <button
                         type="button"
@@ -1490,7 +1508,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
                 </div>
               </div>
               <div className="preview-line-info-actions">
-                <FiArrowRightCircle size={16} onClick={insertStyledText} title={withShortcutHint(locale.insertStyledText, context.state.shortcut.apply)} />
+                <FiArrowRightCircle size={16} className={context.state.keepSizeHeld ? "m-keep-size" : ""} onClick={insertStyledText} title={`${withShortcutHint(locale.insertStyledText, context.state.shortcut.apply)}\n${withShortcutHint(locale.shortcut_keepTextSizeDescr || "Hold to keep the selected text layer size", context.state.shortcut.keepTextSize)}`} />
               </div>
             </div>
             <div className="preview-line-text" style={previewStyleObject}>

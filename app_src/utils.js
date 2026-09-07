@@ -1,7 +1,11 @@
+import { fetchBody } from "./network";
+import { createLatestTaskQueue } from "./latestTaskQueue";
+import { mergeLocaleBundle } from "./localeBundle";
+import { readJsonStorage, writeJsonStorage, reportStorageIssue } from "./storageIO";
 import "./lib/CSInterface";
 import { resolveStylePointText } from "./textLayerPayload";
 import { findNewerReleases, pickUpdateDownloadUrl } from "./updateLogic";
-import { installUpdateInPlace, uint8ToBase64 } from "./updateInstaller";
+import { installUpdateInPlace } from "./updateInstaller";
 import { UPDATE_TEST_CONFIG_FILE, parseUpdateTestConfig } from "./updateTestMode";
 import {
   PS_EVENT_SELECT,
@@ -43,12 +47,11 @@ const checkUpdate = async (currentVersion) => {
       ? testConfig.releasesUrl
       : "https://api.github.com/repos/ScanR/TypeR/releases";
     const comparisonVersion = testConfig ? testConfig.currentVersion : currentVersion;
-    const response = await fetch(
+    const releases = await fetchBody(
       releasesUrl,
       { headers: { Accept: "application/vnd.github.v3.html+json" } }
     );
-    if (!response.ok) return null;
-    const releases = await response.json();
+    if (!Array.isArray(releases)) throw new Error("invalidResponse");
     const newerReleases = findNewerReleases(releases, comparisonVersion);
     if (newerReleases.length > 0) {
       return {
@@ -64,6 +67,7 @@ const checkUpdate = async (currentVersion) => {
     }
   } catch (e) {
     console.error("Update check failed", e);
+    throw e;
   }
   return null;
 };
@@ -75,11 +79,7 @@ const fetchUpdateZip = (downloadUrl) => {
   if (cachedUpdateZip.url === downloadUrl && cachedUpdateZip.promise) {
     return cachedUpdateZip.promise;
   }
-  const promise = fetch(downloadUrl, { headers: { Accept: "application/octet-stream" } })
-    .then((response) => {
-      if (!response.ok) throw new Error(`Download failed: ${response.status}`);
-      return response.arrayBuffer();
-    })
+  const promise = fetchBody(downloadUrl, { headers: { Accept: "application/octet-stream" } }, 'arrayBuffer', 120000)
     .then((arrayBuffer) => new Uint8Array(arrayBuffer));
   cachedUpdateZip = { url: downloadUrl, promise };
   promise.catch(() => {
@@ -91,14 +91,6 @@ const fetchUpdateZip = (downloadUrl) => {
 };
 const prefetchUpdateZip = (downloadUrl) => {
   if (downloadUrl) fetchUpdateZip(downloadUrl).catch(() => {});
-};
-
-const getOSType = () => {
-  const os = csInterface.getOSInformation();
-  if (os && os.toLowerCase().indexOf('mac') !== -1) {
-    return 'mac';
-  }
-  return 'win';
 };
 
 const getExtendScriptString = (value) => JSON.stringify(String(value || ""));
@@ -141,8 +133,8 @@ const notePanelInteraction = () => {
 const isPanelInteracting = () => Date.now() - lastPanelInteractionAt < PANEL_INTERACTION_WINDOW;
 
 if (window.addEventListener) {
-  window.addEventListener("pointerdown", notePanelInteraction, true);
-  window.addEventListener("pointerup", notePanelInteraction, true);
+  window.addEventListener(window.PointerEvent ? "pointerdown" : "mousedown", notePanelInteraction, true);
+  window.addEventListener(window.PointerEvent ? "pointerup" : "mouseup", notePanelInteraction, true);
   window.addEventListener("keydown", notePanelActivity, true);
   window.addEventListener("wheel", notePanelInteraction, { capture: true, passive: true });
   window.addEventListener("focus", notePanelActivity);
@@ -152,7 +144,7 @@ if (window.addEventListener) {
 // TextShapeR) can back off instead of contending in the ExtendScript queue
 let hostActionsPending = 0;
 const isHostActionPending = () => hostActionsPending > 0;
-const trackHostAction = (callback) => {
+const trackHostAction = (callback, timeout = 15000) => {
   notePanelActivity();
   hostActionsPending++;
   let settled = false;
@@ -163,225 +155,23 @@ const trackHostAction = (callback) => {
     return true;
   };
   // Safety net: never let a lost CEP callback disable polling forever
-  const failsafe = setTimeout(release, 15000);
+  const failsafe = setTimeout(release, timeout);
   return (...args) => {
     if (release()) clearTimeout(failsafe);
     return callback(...args);
   };
 };
 
-const evalScriptAsync = (script) =>
-  new Promise((resolve) => csInterface.evalScript(script, resolve));
-
-// Windows fallback installer: fully unattended. Waits for Photoshop to close,
-// installs, relaunches Photoshop, cleans itself up. No Read-Host anywhere.
-const buildWindowsInstallScript = () => `# TypeR Auto-Update Script
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$ErrorActionPreference = "Stop"
-
-$ScriptDir = $PSScriptRoot
-$zipPath = Join-Path $ScriptDir "TypeR.zip"
-$extractPath = Join-Path $ScriptDir "extracted"
-$TargetDir = Join-Path $env:APPDATA "Adobe\\CEP\\extensions\\typertools"
-
-Write-Host "+------------------------------------------------------------------+" -ForegroundColor Cyan
-Write-Host "|                      TypeR Auto-Updater                          |" -ForegroundColor Cyan
-Write-Host "+------------------------------------------------------------------+" -ForegroundColor Cyan
-Write-Host ""
-
-$psProc = Get-Process -Name "Photoshop" -ErrorAction SilentlyContinue | Select-Object -First 1
-$psExe = $null
-if ($psProc) {
-    $psExe = $psProc.Path
-    Write-Host "[*] Waiting for Photoshop to close..." -ForegroundColor Yellow
-    Write-Host "    Close Photoshop - the update will then install itself automatically."
-    while (Get-Process -Name "Photoshop" -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 2 }
-}
-
-Write-Host "[*] Installing update..." -ForegroundColor Cyan
-
-if (Test-Path $extractPath) { Remove-Item $extractPath -Recurse -Force }
-New-Item -Path $extractPath -ItemType Directory -Force | Out-Null
-Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
-
-# Locate the folder that contains CSXS (zip may nest content one level down)
-if (Test-Path "$extractPath\\CSXS") {
-    $sourcePath = $extractPath
-} else {
-    $contentFolder = Get-ChildItem -Path $extractPath -Directory | Where-Object { Test-Path "$($_.FullName)\\CSXS" } | Select-Object -First 1
-    if ($contentFolder) { $sourcePath = $contentFolder.FullName } else { $sourcePath = $extractPath }
-}
-
-# Replace only the application folders; user settings (storage*) are never touched
-New-Item -Path $TargetDir -ItemType Directory -Force | Out-Null
-foreach ($folder in @("app", "CSXS", "icons", "locale")) {
-    $src = Join-Path $sourcePath $folder
-    $dst = Join-Path $TargetDir $folder
-    if (Test-Path $src) {
-        if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
-        Copy-Item $src -Destination $dst -Recurse -Force
-    }
-}
-if (Test-Path "$sourcePath\\themes") {
-    $themeDest = Join-Path $TargetDir "app\\themes"
-    New-Item -Path $themeDest -ItemType Directory -Force | Out-Null
-    Copy-Item "$sourcePath\\themes\\*" -Destination $themeDest -Recurse -Force
-}
-
-Write-Host ""
-Write-Host "+------------------------------------------------------------------+" -ForegroundColor Green
-Write-Host "|                      Update Complete!                            |" -ForegroundColor Green
-Write-Host "+------------------------------------------------------------------+" -ForegroundColor Green
-Write-Host ""
-
-if ($psExe) {
-    Write-Host "[*] Relaunching Photoshop..." -ForegroundColor Cyan
-    Start-Process $psExe
-}
-Start-Sleep -Seconds 3
-
-Set-Location (Split-Path $ScriptDir -Parent)
-Remove-Item $ScriptDir -Recurse -Force -ErrorAction SilentlyContinue
-`;
-
-// macOS fallback installer: same unattended behavior as the Windows script
-const buildMacInstallScript = () => `#!/bin/bash
-# TypeR Auto-Update Script
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ZIP_PATH="$SCRIPT_DIR/TypeR.zip"
-EXTRACT_PATH="$SCRIPT_DIR/extracted"
-DEST_DIR="$HOME/Library/Application Support/Adobe/CEP/extensions/typertools"
-
-echo "+------------------------------------------------------------------+"
-echo "|                      TypeR Auto-Updater                          |"
-echo "+------------------------------------------------------------------+"
-echo ""
-
-PS_PID=$(pgrep -f "Adobe Photoshop.app/Contents/MacOS" | head -1)
-PS_APP=""
-if [ -n "$PS_PID" ]; then
-    PS_BIN=$(ps -o comm= -p "$PS_PID")
-    PS_APP="\${PS_BIN%%.app/*}.app"
-    echo "[*] Waiting for Photoshop to close..."
-    echo "    Close Photoshop - the update will then install itself automatically."
-    while pgrep -f "Adobe Photoshop.app/Contents/MacOS" > /dev/null; do sleep 2; done
-fi
-
-echo "[*] Installing update..."
-
-rm -rf "$EXTRACT_PATH"
-mkdir -p "$EXTRACT_PATH"
-unzip -o -q "$ZIP_PATH" -d "$EXTRACT_PATH"
-
-# Locate the folder that contains CSXS (zip may nest content one level down)
-if [ -d "$EXTRACT_PATH/CSXS" ]; then
-    SOURCE_PATH="$EXTRACT_PATH"
-else
-    CONTENT_FOLDER=$(find "$EXTRACT_PATH" -maxdepth 2 -type d -name "CSXS" | head -1 | xargs dirname 2>/dev/null)
-    if [ -n "$CONTENT_FOLDER" ]; then SOURCE_PATH="$CONTENT_FOLDER"; else SOURCE_PATH="$EXTRACT_PATH"; fi
-fi
-
-# Replace only the application folders; user settings (storage*) are never touched
-mkdir -p "$DEST_DIR"
-for folder in app CSXS icons locale; do
-    if [ -d "$SOURCE_PATH/$folder" ]; then
-        rm -rf "$DEST_DIR/$folder"
-        cp -R "$SOURCE_PATH/$folder" "$DEST_DIR/"
-    fi
-done
-if [ -d "$SOURCE_PATH/themes" ]; then
-    mkdir -p "$DEST_DIR/app/themes"
-    cp -R "$SOURCE_PATH/themes/"* "$DEST_DIR/app/themes/"
-fi
-
-echo ""
-echo "+------------------------------------------------------------------+"
-echo "|                      Update Complete!                            |"
-echo "+------------------------------------------------------------------+"
-echo ""
-
-if [ -n "$PS_APP" ] && [ -d "$PS_APP" ]; then
-    echo "[*] Relaunching Photoshop..."
-    open "$PS_APP"
-fi
-sleep 3
-
-cd "$HOME"
-rm -rf "$SCRIPT_DIR"
-`;
-
-// Fallback when in-place install is impossible: drop the zip and an unattended
-// installer script in Downloads/TypeR_Update and launch it. The only remaining
-// user action is closing Photoshop whenever convenient.
-const runScriptFallback = async (zipBytes, onProgress, onComplete) => {
-  const osType = getOSType();
-  const userData = csInterface.getSystemPath(window.SystemPath.USER_DATA);
-  const userHome = osType === 'win'
-    ? userData.split('/AppData/')[0]
-    : userData.replace('/Library/Application Support', '');
-  const downloadsPath = `${userHome}/Downloads/TypeR_Update`;
-  const zipPath = `${downloadsPath}/TypeR.zip`;
-
-  await evalScriptAsync(`deleteFolder(${getExtendScriptString(downloadsPath)})`);
-  const mkdirResult = window.cep.fs.makedir(downloadsPath);
-  if (mkdirResult.err && mkdirResult.err !== 0 && mkdirResult.err !== 17) { // 17 = already exists
-    throw new Error('Failed to create download directory');
-  }
-
-  const writeResult = window.cep.fs.writeFile(zipPath, uint8ToBase64(zipBytes), window.cep.encoding.Base64);
-  if (writeResult.err) {
-    throw new Error('Failed to write ZIP file');
-  }
-
-  let launcherPath;
-  if (osType === 'win') {
-    const psScriptPath = `${downloadsPath}/install_update.ps1`;
-    launcherPath = `${downloadsPath}/install_update.cmd`;
-    window.cep.fs.writeFile(psScriptPath, buildWindowsInstallScript());
-    window.cep.fs.writeFile(launcherPath, `@echo off\r\ncd /d "%~dp0"\r\nPowerShell -NoProfile -ExecutionPolicy Bypass -File "install_update.ps1"\r\n`);
-  } else {
-    launcherPath = `${downloadsPath}/install_update.command`;
-    window.cep.fs.writeFile(launcherPath, buildMacInstallScript());
-    await evalScriptAsync(`makeExecutable(${getExtendScriptString(launcherPath)})`);
-  }
-
-  onProgress && onProgress(locale.updateReady || 'Update ready to install...');
-
-  const launchResult = await evalScriptAsync(`launchInstaller(${getExtendScriptString(launcherPath)})`);
-  if (String(launchResult).indexOf('OK') !== 0) {
-    // Could not start the installer: at least show the folder so the user can
-    // run it manually
-    await evalScriptAsync(`openFolder(${getExtendScriptString(downloadsPath)})`);
-  }
-  onComplete && onComplete(true); // true = a Photoshop close is still needed
-};
-
 const downloadAndInstallUpdate = async (downloadUrl, onProgress, onComplete, onError, options = {}) => {
   try {
-    onProgress && onProgress(locale.updateDownloading || 'Downloading update...');
+    onProgress && onProgress(locale.updateDownloading);
     const zipBytes = await fetchUpdateZip(downloadUrl);
-
-    // Preferred path: overwrite the extension folder directly. CEF keeps the
-    // running panel in memory, so files on disk are not locked; the new
-    // version simply takes over at the next Photoshop restart.
-    try {
-      onProgress && onProgress(locale.updateInstalling || 'Installing update...');
-      await installUpdateInPlace(zipBytes, path);
-      onComplete && onComplete(false);
-      return;
-    } catch (inPlaceError) {
-      console.error('In-place update failed, falling back to script installer', inPlaceError);
-      if (options.inPlaceOnly) {
-        onError && onError(inPlaceError.message || 'Update failed');
-        return;
-      }
-    }
-
-    await runScriptFallback(zipBytes, onProgress, onComplete);
-  } catch (e) {
-    console.error('Update failed:', e);
-    onError && onError(e.message || 'Update failed');
+    onProgress && onProgress(locale.updateInstalling);
+    await installUpdateInPlace(zipBytes, path, null, options.expectedVersion);
+    onComplete && onComplete(false);
+  } catch (error) {
+    console.error('Update failed:', error);
+    onError && onError(error.message || locale.updateFailed);
   }
 };
 
@@ -390,23 +180,16 @@ let storageReadError = null;
 let pendingStorageData = null;
 let pendingStorageTimer = null;
 let pendingStorageIdleDelay = 0;
+let pendingStorageSince = 0;
+const MAX_STORAGE_DELAY = 5000;
 
 const loadStorageCache = () => {
   if (storageCache !== null) {
     return { error: storageReadError, data: storageCache };
   }
-  const result = window.cep.fs.readFile(storagePath);
-  if (result.err) {
-    storageReadError = result.err;
-    storageCache = {};
-  } else {
-    storageReadError = null;
-    try {
-      storageCache = JSON.parse(result.data || "{}") || {};
-    } catch (e) {
-      storageCache = {};
-    }
-  }
+  const result = readJsonStorage(storagePath);
+  storageReadError = result.error || null;
+  storageCache = result.data;
   return { error: storageReadError, data: storageCache };
 };
 
@@ -423,8 +206,9 @@ const commitStorageData = (data, rewrite) => {
   const nextData = storage.error || rewrite ? data : Object.assign({}, storage.data, data);
   storageCache = nextData;
   storageReadError = null;
-  const result = window.cep.fs.writeFile(storagePath, JSON.stringify(nextData));
-  return !result.err;
+  const success = writeJsonStorage(storagePath, nextData);
+  if (!success) reportStorageIssue(storagePath, "write");
+  return success;
 };
 
 const flushStorageWrite = (force = false) => {
@@ -433,12 +217,12 @@ const flushStorageWrite = (force = false) => {
     pendingStorageTimer = null;
   }
   if (!pendingStorageData) return true;
-  if (!force && pendingStorageIdleDelay > 0) {
+  if (!force && pendingStorageIdleDelay > 0 && Date.now() - pendingStorageSince < MAX_STORAGE_DELAY) {
     const idleFor = Date.now() - lastPanelActivityAt;
     if (idleFor < pendingStorageIdleDelay) {
       pendingStorageTimer = setTimeout(
         flushStorageWrite,
-        pendingStorageIdleDelay - idleFor
+        Math.min(pendingStorageIdleDelay - idleFor, MAX_STORAGE_DELAY - (Date.now() - pendingStorageSince))
       );
       return true;
     }
@@ -446,9 +230,12 @@ const flushStorageWrite = (force = false) => {
   const data = pendingStorageData;
   pendingStorageData = null;
   pendingStorageIdleDelay = 0;
+  pendingStorageSince = 0;
   const success = commitStorageData(data, false);
   if (!success) {
     pendingStorageData = Object.assign({}, data, pendingStorageData || {});
+    pendingStorageSince = Date.now();
+    if (!force) pendingStorageTimer = setTimeout(flushStorageWrite, MAX_STORAGE_DELAY);
   }
   return success;
 };
@@ -460,6 +247,7 @@ const writeToStorage = (data, rewrite, options = {}) => {
   }
   const debounce = options.debounce || 0;
   if (debounce > 0) {
+    if (!pendingStorageSince) pendingStorageSince = Date.now();
     pendingStorageData = Object.assign({}, pendingStorageData || {}, data);
     pendingStorageIdleDelay = Math.max(
       pendingStorageIdleDelay,
@@ -468,20 +256,32 @@ const writeToStorage = (data, rewrite, options = {}) => {
     storageCache = Object.assign({}, loadStorageCache().data, pendingStorageData);
     storageReadError = null;
     if (pendingStorageTimer) clearTimeout(pendingStorageTimer);
-    pendingStorageTimer = setTimeout(flushStorageWrite, debounce);
+    pendingStorageTimer = setTimeout(flushStorageWrite, Math.min(debounce, Math.max(0, MAX_STORAGE_DELAY - (Date.now() - pendingStorageSince))));
     return true;
   }
-  flushStorageWrite();
-  return commitStorageData(data, false);
+  flushStorageWrite(true);
+  const success = commitStorageData(data, false);
+  if (!success) {
+    pendingStorageData = Object.assign({}, pendingStorageData || {}, data);
+    if (!pendingStorageSince) pendingStorageSince = Date.now();
+  }
+  return success;
 };
 
 if (window.addEventListener) {
   window.addEventListener("beforeunload", () => flushStorageWrite(true));
 }
 
+const backupStorage = () => {
+  if (!flushStorageWrite(true)) return false;
+  const storage = loadStorageCache();
+  return !storage.error && writeJsonStorage(storagePath + ".before-import", storage.data);
+};
+
 const deleteStorageFile = () => {
   flushStorageWrite(true);
   const result = window.cep.fs.deleteFile(storagePath);
+  window.cep.fs.deleteFile(storagePath + ".bak");
   deleteProfileAssets(getActiveProfileId());
   storageCache = {};
   storageReadError = null;
@@ -532,7 +332,8 @@ const parseLocaleFile = (str) => {
 };
 
 const initLocale = () => {
-  locale = csInterface.initResourceBundle();
+  const automatic = csInterface.initResourceBundle();
+  locale = {};
   const loadLocaleFile = (file) => {
     const result = window.cep.fs.readFile(file);
     if (!result.err) {
@@ -542,6 +343,7 @@ const initLocale = () => {
   };
   // Always merge default strings to ensure fallbacks for new keys
   loadLocaleFile(`${path}/locale/messages.properties`);
+  locale = mergeLocaleBundle(locale, automatic);
   const lang = readStorage("language");
   if (lang && lang !== "auto") {
     const file = lang === "en_US" ? `${path}/locale/messages.properties` : `${path}/locale/${lang}/messages.properties`;
@@ -847,7 +649,7 @@ const convertHtmlToMarkdown = (html) => {
   return markdown;
 };
 
-const setActiveLayerText = (text, style, direction, callback = () => {}) => {
+const setActiveLayerText = (text, style, direction, callback = () => {}, options = {}) => {
   // Support legacy calls where direction is omitted and callback is 3rd parameter
   if (typeof direction === "function") {
     callback = direction;
@@ -872,6 +674,7 @@ const setActiveLayerText = (text, style, direction, callback = () => {}) => {
         style,
         direction,
         richTextRuns: parsed.richTextRuns,
+        preserveActiveTextSize: options.preserveActiveTextSize === true,
       });
   csInterface.evalScript("setActiveLayerText(" + data + ")", trackHostAction((error) => {
     if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
@@ -879,7 +682,7 @@ const setActiveLayerText = (text, style, direction, callback = () => {}) => {
   }));
 };
 
-const setSelectedTextLayers = (items, direction, callback = () => {}, restoreLayerIds = []) => {
+const setSelectedTextLayers = (items, direction, callback = () => {}, restoreLayerIds = [], options = {}) => {
   if (!Array.isArray(items) || items.length < 2) {
     nativeAlert(locale.errorSelectMultipleTextLayers, locale.errorTitle, true);
     callback(false);
@@ -894,6 +697,7 @@ const setSelectedTextLayers = (items, direction, callback = () => {}, restoreLay
       style: item.style || { textProps: getDefaultStyle(), stroke: getDefaultStroke() },
       direction,
       richTextRuns: parsed.richTextRuns,
+      preserveActiveTextSize: options.preserveActiveTextSize === true,
     };
   });
   const data = JSON.stringify({
@@ -1031,10 +835,19 @@ const getAllLayersRenderedTexts = (scanBubbles, callback = () => {}) => {
   }));
 };
 
+// A training scan can take longer than a normal layer action on a large PSD.
+const scanTextShapeRTraining = (path, callback = () => {}) => {
+  csInterface.evalScript(`scanTextShapeRTraining(${JSON.stringify(path || "")})`, trackHostAction((result) => {
+    const data = safeJsonParse(result, { error: "scanFailed" });
+    callback(data && (data.error || Array.isArray(data.entries)) ? data : { error: "scanFailed" });
+  }, 10 * 60 * 1000));
+};
+
 const getSelectionChanged = (callback = () => {}) => {
   csInterface.evalScript("getSelectionChanged()", (result) => {
     const data = safeJsonParse(result);
-    if (Date.now() < selectionResultsSuppressedUntil || data.noChange || data.error) {
+    if (data.documentChanged) { callback(data); }
+    else if (Date.now() < selectionResultsSuppressedUntil || data.noChange || data.error) {
       callback(null);
     } else if (data.multipleSelections) {
       // The host saw one selection grow around the previous one (Shift-add):
@@ -1048,7 +861,7 @@ const getSelectionChanged = (callback = () => {}) => {
   });
 };
 
-const createTextLayerInSelection = (text, style, pointText, padding, direction, callback = () => {}) => {
+const createTextLayerInSelection = (text, style, pointText, padding, direction, callback = () => {}, options = {}) => {
   // Support legacy calls where padding/direction are omitted and callback may be 4th or 5th parameter
   if (typeof padding === "function") {
     callback = padding;
@@ -1074,15 +887,17 @@ const createTextLayerInSelection = (text, style, pointText, padding, direction, 
     padding: padding || 0,
     direction,
     richTextRuns: parsed.richTextRuns,
+    preserveActiveTextSize: options.preserveActiveTextSize === true,
   });
   csInterface.evalScript("createTextLayerInSelection(" + data + ", " + resolvedPointText + ")", trackHostAction((error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
+    else if (error === "sizeSource") nativeAlert(locale.errorKeepTextSizeNoLayer || locale.errorNoTextLayer, locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
     callback(!error);
   }));
 };
 
-const createTextLayersInStoredSelections = (texts, styles, selections, pointText, padding, direction, callback = () => {}) => {
+const createTextLayersInStoredSelections = (texts, styles, selections, pointText, padding, direction, callback = () => {}, options = {}) => {
   // Support legacy calls where padding/direction are omitted and callback may be 5th or 6th parameter
   if (typeof padding === "function") {
     callback = padding;
@@ -1114,11 +929,16 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
     selections,
     padding: padding || 0,
     direction,
+    preserveActiveTextSize: options.preserveActiveTextSize === true,
   });
   csInterface.evalScript("createTextLayersInStoredSelections(" + data + ", " + !!pointText + ")", trackHostAction((error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    else if (error === "sizeSource") nativeAlert(locale.errorKeepTextSizeNoLayer || locale.errorNoTextLayer, locale.errorTitle, true);
     else if (error === "invalidSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    else if (error === "wrongDocument") nativeAlert(locale.errorSelectionDocument, locale.errorTitle, true);
+    else if (error === "noText") nativeAlert(locale.errorNoText, locale.errorTitle, true);
+    else if (error === "rollbackFailed") nativeAlert(locale.errorBatchRollback, locale.errorTitle, true);
     else if (error && error.indexOf("scriptError:") === 0) nativeAlert(error.replace("scriptError: ", ""), locale.errorTitle, true);
     else if (error) nativeAlert("Error: " + error, locale.errorTitle, true);
     callback(!error);
@@ -1505,14 +1325,14 @@ const getDefaultStroke = () => {
   };
 };
 
-const openFile = (path, autoClose = false) => {
-  const encodedPath = JSON.stringify(path);
+const queueFileOpen = createLatestTaskQueue((request, done) => {
   csInterface.evalScript(
-    "openFile(" + encodedPath + ", " + (autoClose ? "true" : "false") + ")"
+    "openFile(" + getExtendScriptString(request.path) + ", " + !!request.autoClose + ")",
+    trackHostAction((raw) => done(safeJsonParse(raw, { ok: false })))
   );
-};
+});
+const openFile = (path, autoClose = false, callback = () => {}) => queueFileOpen({ path, autoClose }, callback);
 
-// FontScanR: scan one .psd file for text-layer font data
 const scanPsdFonts = (path, callback) => {
   csInterface.evalScript(
     "scanPsdFonts(" + getExtendScriptString(path) + ")",
@@ -1522,25 +1342,4 @@ const scanPsdFonts = (path, callback) => {
   );
 };
 
-export {
-  csInterface, locale, openUrl, buildRichTextPayload, trackHostAction,
-  readStorage, writeToStorage, flushStorageWrite, deleteStorageFile,
-  nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts,
-  getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot,
-  setActiveLayerText, setSelectedTextLayers, setLayerTextFast,
-  getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener,
-  hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent,
-  isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction,
-  isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring,
-  getSelectionChanged, deselectDocument, undoLastTextChange,
-  getActiveLayerRenderedText, getAllLayersRenderedTexts,
-  createTextLayerInSelection, createTextLayersInStoredSelections,
-  exportDocumentSnapshot, openBubbleTrainingDocument,
-  closeBubbleTrainingDocument, alignTextLayerToSelection,
-  changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed,
-  onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine,
-  scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle,
-  getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig,
-  clearUpdateTestConfig, checkUpdate, prefetchUpdateZip,
-  downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns
-};
+export { buildRichTextPayload, trackHostAction, exportDocumentSnapshot, openBubbleTrainingDocument, closeBubbleTrainingDocument, backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };

@@ -9,6 +9,9 @@ const contextSource = fs.readFileSync(path.join(rootDir, "app_src", "context.jsx
 const hotkeySource = fs.readFileSync(path.join(rootDir, "app_src", "hotkeys.jsx"), "utf8");
 const previewSource = fs.readFileSync(path.join(rootDir, "app_src", "components", "previewBlock", "previewBlock.jsx"), "utf8");
 const shortcutEditorSource = fs.readFileSync(path.join(rootDir, "app_src", "components", "modal", "shortCut.jsx"), "utf8");
+const settingsSource = fs.readFileSync(path.join(rootDir, "app_src", "components", "modal", "settings.jsx"), "utf8");
+const utilsSource = fs.readFileSync(path.join(rootDir, "app_src", "utils.js"), "utf8");
+const hostSource = fs.readFileSync(path.join(rootDir, "app_src", "host.js"), "utf8");
 
 const commandBlocks = [...commandSource.matchAll(/\{\s*\n\s+id:\s+"([^"]+)"[\s\S]*?\n\s{2}\},/g)];
 const commandIds = commandBlocks.map((match) => match[1]);
@@ -44,6 +47,22 @@ assert(
     /defaultKeys:\s*\["CTRL",\s*"H"\]/.test(cleaningLayersBlock),
   "toggleCleaningLayers must use its translated label and default Ctrl+H shortcut"
 );
+const insertTextBlock = commandBlockById.get("insertText");
+assert(insertTextBlock, "Missing shortcut command: insertText");
+assert(
+  /defaultKeys:\s*\["WIN",\s*"SHIFT",\s*"V"\]/.test(insertTextBlock),
+  "insertText must use the safer default Cmd/Ctrl+Shift+V shortcut"
+);
+const keepTextSizeBlock = commandBlockById.get("keepTextSize");
+assert(keepTextSizeBlock, "Missing shortcut modifier: keepTextSize");
+assert(
+  /defaultKeys:\s*\["ALT"\]/.test(keepTextSizeBlock) && /modifierOnly:\s*true/.test(keepTextSizeBlock),
+  "keepTextSize must be an Alt modifier by default and must not run as a standalone command"
+);
+assert(
+  /appliesTo:\s*\["add",\s*"apply",\s*"applyMultiple"\]/.test(keepTextSizeBlock),
+  "keepTextSize must declare the commands it modifies so settings can warn about subset overlaps"
+);
 assert(contextSource.includes("getDefaultShortcuts()"), "Context must read defaults from the shortcut registry");
 assert(!contextSource.includes('add: ["WIN", "CTRL"]'), "Shortcut defaults must not be duplicated in context");
 assert(hotkeySource.includes("shortcutCommands.forEach"), "Hotkey matching must use the shortcut registry");
@@ -56,6 +75,45 @@ assert(!previewSource.includes("multiPasteExistingButton"), "Fill layers must no
 assert(
   /const requestId = \+\+hostQueryRef\.current;\s*if \(!hasMainKey\(localKeys\)\) return;/.test(shortcutEditorSource),
   "Modifier-only shortcut capture must not be overwritten by Photoshop's stale keyName"
+);
+assert(
+  shortcutEditorSource.includes("if (props.modifierOnly && !localKeys.length) return;"),
+  "A plain key press must not silently clear a modifier-only shortcut"
+);
+assert(
+  shortcutEditorSource.includes("shortcutPressModifiers"),
+  "Recording a modifier-only shortcut must show the modifier-specific hint"
+);
+assert(
+  settingsSource.includes("shortcutModifierOverlaps") && settingsSource.includes("shortcutModifierOverlap"),
+  "Settings must warn when the keep-size modifier is a subset of a paste shortcut"
+);
+assert(
+  utilsSource.includes("locale.errorKeepTextSizeNoLayer || locale.errorNoTextLayer"),
+  "The keep-size failure must use its dedicated error message"
+);
+assert(
+  hotkeySource.includes("preserveActiveTextSize: checkShortcut(state, shortcut.keepTextSize)"),
+  "Paste commands must receive the configured keep-size modifier state"
+);
+assert(
+  hotkeySource.includes("syncKeepSizeHeld(context, realState)") &&
+    hotkeySource.includes('window.addEventListener("blur", handleWindowBlur)'),
+  "The live keep-size badge must be fed by the host poll and cleared on window blur"
+);
+assert(
+  contextSource.includes("keepSizeHeld: false") && contextSource.includes('case "setKeepSizeHeld"'),
+  "keepSizeHeld must be transient context state, never restored from storage"
+);
+assert(
+  (previewSource.match(/keepSizeHeld/g) || []).length >= 3,
+  "Both paste controls must render the keep-size indicator"
+);
+assert(
+  utilsSource.includes("preserveActiveTextSize: options.preserveActiveTextSize === true") &&
+    hostSource.includes("_overrideStyleTextSize(dataStyle") &&
+    hostSource.includes("state.data.textSizeOverride = _getTextLayerSize()"),
+  "The keep-size option must reach Photoshop for both apply and create flows"
 );
 
 const utilityCalls = [];
@@ -115,6 +173,25 @@ new Function("require", "module", "exports", transformedCommands)(
 );
 const runtimeCommands = commandModule.exports.shortcutCommands;
 const getCommand = (id) => runtimeCommands.find((command) => command.id === id);
+assert.deepStrictEqual(commandModule.exports.getDefaultShortcuts().insertText, ["WIN", "SHIFT", "V"]);
+assert.deepStrictEqual(commandModule.exports.getDefaultShortcuts().keepTextSize, ["ALT"]);
+assert.strictEqual(
+  commandModule.exports.isShortcutActiveForEvent({ altKey: true }, ["ALT"]),
+  true,
+  "Alt-click must activate the default keep-size modifier"
+);
+assert.strictEqual(
+  commandModule.exports.isShortcutActiveForEvent({ shiftKey: true }, ["ALT"]),
+  false,
+  "An unrelated modifier must not activate keep-size"
+);
+const migratedShortcuts = commandModule.exports.migrateShortcutDefaults(
+  { insertText: ["WIN", "V"], nextPage: ["ALT", "P"] },
+  commandModule.exports.getDefaultShortcuts()
+);
+assert.strictEqual(migratedShortcuts.migrated, true, "The old insertText default must be migrated");
+assert.deepStrictEqual(migratedShortcuts.shortcuts.insertText, ["WIN", "SHIFT", "V"]);
+assert.deepStrictEqual(migratedShortcuts.shortcuts.nextPage, ["ALT", "P"], "Custom shortcuts must be preserved");
 
 const dispatches = [];
 const baseContext = {
@@ -164,6 +241,10 @@ assert.deepStrictEqual(dispatches.shift(), {
   ],
   nextLineIndex: 2,
 });
+getCommand("apply").handler(pasteContext, { preserveActiveTextSize: true });
+const preservedApplyCall = utilityCalls.shift();
+assert.strictEqual(preservedApplyCall[0], "setText");
+assert.deepStrictEqual(preservedApplyCall[5], { preserveActiveTextSize: true });
 selectionSnapshot = { selection: { width: 100, height: 80 }, layers: [{ id: 10 }, { id: 20 }] };
 getCommand("add").handler(pasteContext);
 assert.deepStrictEqual(utilityCalls.shift(), ["getTypeRSelectionSnapshot"]);
@@ -230,6 +311,11 @@ localeFiles.forEach((file) => {
     /^shortcut_toggleCleaningLayers=/m.test(source),
     `Missing shortcut_toggleCleaningLayers in ${path.relative(rootDir, file)}`
   );
+  assert(/^shortcut_keepTextSize=/m.test(source), `Missing shortcut_keepTextSize in ${path.relative(rootDir, file)}`);
+  assert(/^shortcut_keepTextSizeDescr=/m.test(source), `Missing shortcut_keepTextSizeDescr in ${path.relative(rootDir, file)}`);
+  assert(/^errorKeepTextSizeNoLayer=/m.test(source), `Missing errorKeepTextSizeNoLayer in ${path.relative(rootDir, file)}`);
+  assert(/^shortcutModifierOverlap=.*\{actions\}/m.test(source), `Missing shortcutModifierOverlap placeholder in ${path.relative(rootDir, file)}`);
+  assert(/^shortcutPressModifiers=/m.test(source), `Missing shortcutPressModifiers in ${path.relative(rootDir, file)}`);
   assert(/^shortcutConflict=.*\{actions\}/m.test(source), `Missing shortcutConflict placeholder in ${path.relative(rootDir, file)}`);
   ["createLayerDescr", "alignLayerDescr", "insertStyledText"].forEach((key) => {
     const line = source.match(new RegExp(`^${key}=(.*)$`, "m"));

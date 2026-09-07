@@ -47,6 +47,7 @@ const marker = {
 };
 entries["app/update-test-marker.json"] = strToU8(JSON.stringify(marker, null, 2));
 
+entries["app/package.sha256"] = strToU8(Object.keys(entries).filter(name => name !== "app/package.sha256").sort().map(name => require('crypto').createHash('sha256').update(entries[name]).digest('hex') + '  ' + name).join('\n') + '\n');
 fs.mkdirSync(testDir, { recursive: true });
 const zipPath = path.join(testDir, "TypeR-3.0.0.zip");
 fs.writeFileSync(zipPath, Buffer.from(zipSync(entries, { level: 6 })));

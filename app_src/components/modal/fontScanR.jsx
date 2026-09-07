@@ -1,3 +1,4 @@
+import { useModalClose } from "../../modalClose";
 import './fontScanR.scss';
 
 import React from 'react';
@@ -46,6 +47,7 @@ const FontScanRModal = React.memo(function FontScanRModal() {
         cancelledRef.current = true;
         context.dispatch({type: 'setModal'});
     };
+  useModalClose(close);
 
     const pickFiles = () => {
         if (fileInputRef.current) {

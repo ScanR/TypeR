@@ -67,7 +67,7 @@ const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, h
   const switchToProfile = React.useCallback((profileId) => {
     if (!profileId || profileId === registry.activeProfileId) return;
     confirmDiscardIfNeeded(() => {
-      flushStorageWrite(true);
+      if (!flushStorageWrite(true)) { showProfileError("storage"); return; }
       const result = activateProfile(profileId);
       if (!result.ok) {
         showProfileError(result.error);
@@ -84,7 +84,7 @@ const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, h
       return;
     }
     confirmDiscardIfNeeded(() => {
-      flushStorageWrite(true);
+      if (!flushStorageWrite(true)) { showProfileError("storage"); return; }
       const created = createProfile(name, {
         notFirstTime: true,
         language: currentLanguage || "auto",
@@ -119,7 +119,7 @@ const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, h
       .replace("{name}", selectedProfile.name);
     nativeConfirm(message, locale.confirmTitle, (confirmed) => {
       if (!confirmed) return;
-      if (selectedProfile.id === registry.activeProfileId) flushStorageWrite(true);
+      if (selectedProfile.id === registry.activeProfileId && !flushStorageWrite(true)) { showProfileError("storage"); return; }
       const result = deleteProfile(selectedProfile.id);
       if (!result.ok) {
         showProfileError(result.error);

@@ -1,3 +1,4 @@
+import { useModalClose } from "../../modalClose";
 import './editFolder.scss';
 
 import React from 'react';
@@ -55,6 +56,7 @@ const EditFolderModal = React.memo(function EditFolderModal() {
         }
         closeModal();
     };
+  useModalClose(close);
 
     const confirmClose = () => {
         setDiscardConfirmOpen(false);

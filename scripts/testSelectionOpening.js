@@ -38,7 +38,7 @@ assert.ok(
   "Align must use adaptive selection opening"
 );
 assert.ok(
-  /var payloadBounds = merged;[\s\S]*?_withSuspendedHistory\("TypeR Selection Capture"[\s\S]*?_getAdaptiveOpenedSelectionBounds\(merged\[0\]\)/.test(hostSource),
+  /var payloadBounds = merged;[\s\S]*?_withTemporaryHistory\("TypeR Selection Capture"[\s\S]*?_getAdaptiveOpenedSelectionBounds\(merged\[0\]\)/.test(hostSource),
   "Multi-bubble capture must store cleaned selection bounds"
 );
 assert.ok(!hostSource.includes("_DEFAULT_ADJUST_SEQUENCE"), "Fixed 6x5 sequence must be removed");
