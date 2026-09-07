@@ -1983,7 +1983,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                   key={tab.id}
                   className={`settings-tab ${activeTab === tab.id ? 'settings-tab--active' : ''}${tab.disabled ? ' settings-tab--disabled' : ''}`}
                   aria-disabled={tab.disabled || undefined}
-                  title={tab.disabled ? tab.disabledTitle : undefined}
+                  title={tab.disabled ? tab.disabledTitle : tab.label}
                   onClick={() => {
                     if (!tab.disabled) setActiveTab(tab.id);
                   }}

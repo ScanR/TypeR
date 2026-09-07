@@ -268,7 +268,7 @@
     }
 }
 
-// Settings tabs: pills that wrap to a new row instead of truncating labels
+// Keep eight settings categories on two rows, including in narrow CEP panels.
 .settings-tabs {
     display: flex;
     flex-wrap: wrap;
@@ -280,12 +280,14 @@
 }
 
 .settings-tab {
-    flex: 1 0 auto;
+    flex: 0 0 calc(25% - 3px);
+    min-width: 0;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 5px;
-    padding: 6px 10px;
+    padding: 6px 4px;
     border: none;
     border-radius: 4px;
     background: transparent;
@@ -302,6 +304,9 @@
     }
 
     span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
         white-space: nowrap;
     }
 
@@ -337,7 +342,7 @@
     }
 
     @media (max-width: 450px) {
-        padding: 5px 8px;
+        padding: 5px 3px;
         gap: 4px;
         font-size: 11px;
     }
