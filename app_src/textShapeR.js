@@ -1118,7 +1118,6 @@ const scoreCandidate = (lines, hyphenCount, profile) => {
     targets = weights.map((weight) => (totalLength * weight) / weightTotal);
   }
   const maxLength = Math.max.apply(null, lengths);
-  const minLength = Math.min.apply(null, lengths);
 
   const maxLineWidth = profile.maxLineWidth || 28;
   const lineTargetWeight = profile.lineTargetWeight == null ? 16 : profile.lineTargetWeight;

@@ -1,5 +1,4 @@
 import React from "react";
-import PropTypes from "prop-types";
 import { useContext } from "../../context";
 
 const allowed = ".psd,.png,.jpg,.jpeg";

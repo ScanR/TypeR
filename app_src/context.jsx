@@ -11,7 +11,7 @@ import { normalizeBackgroundImage } from "./backgroundImage";
 import { applyThemeState } from "./lib/themeManager";
 import { getDefaultShortcuts, migrateShortcutDefaults } from "./shortcutCommands";
 import { getStoredSelectionLineIndex } from "./multiBubbleHistory";
-import { getAutomaticTagStyles } from "./folderUtils";
+import { collectDescendantIds, getAutomaticTagStyles } from "./folderUtils";
 import { perfMeasure } from "./perfDebug";
 import { TAB_FIELDS, createTab, migrateTabStorage } from "./tabStorage";
 import {
@@ -223,24 +223,6 @@ const normalizeFolders = (folders) => {
   return normalized;
 };
 
-const collectDescendantFolderIds = (folders, folderId) => {
-  const ids = [];
-  if (!folderId) return ids;
-  const queue = [folderId];
-  const visited = new Set([folderId]);
-  while (queue.length) {
-    const current = queue.shift();
-    const children = (folders || []).filter((folder) => (folder.parentId || null) === current);
-    for (const child of children) {
-      if (visited.has(child.id)) continue;
-      visited.add(child.id);
-      ids.push(child.id);
-      queue.push(child.id);
-    }
-  }
-  return ids;
-};
-
 const buildPrefixIndex = (prefixes) => {
   const index = new Map();
   (prefixes || []).forEach((data) => {
@@ -291,10 +273,6 @@ const initialState = {
   inlineTextShapeR: storage.data?.inlineTextShapeR !== false,
   textShapeRPerformanceTipShown: storage.data?.textShapeRPerformanceTipShown === true,
   textShapeRPerformanceTipVisible: false,
-  textShapeRUsageCount: 0,
-  textShapeRLearnUsed: false,
-  textShapeRLearnTipShown: false,
-  textShapeRLearnTipVisible: false,
   textShapeRBubbleAware: storage.data?.textShapeRBubbleAware === true,
   dehyphenateTextShapeR: storage.data?.dehyphenateTextShapeR === true,
   textShapeRTuning: storage.data?.textShapeRTuning || null,
@@ -310,10 +288,6 @@ const initialState = {
   internalPadding: 10,
   interpretMarkdown: storage.data?.interpretMarkdown !== false,
   styleSizeStep: 1,
-  styleSizeTipCount: 0,
-  styleSizeTipLastChangeAt: 0,
-  styleSizeTipShown: false,
-  styleSizeTipVisible: false,
   resetLineCounterOnPage: storage.data?.resetLineCounterOnPage !== false,
   multiTabEnabled: storage.data?.multiTabEnabled !== false,
   ...storage.data,
@@ -746,7 +720,7 @@ const baseReducer = (state, action) => {
 
     case "deleteFolder": {
       if (!action.id) break;
-      const idsToRemove = [action.id].concat(collectDescendantFolderIds(state.folders, action.id));
+      const idsToRemove = [action.id].concat(collectDescendantIds(state.folders, action.id));
       const folders = state.folders.filter((folder) => !idsToRemove.includes(folder.id)).map((folder) => ({ ...folder }));
       let styles = state.styles.concat([]);
       if (action.permanent) {

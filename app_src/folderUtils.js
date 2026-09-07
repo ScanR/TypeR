@@ -54,19 +54,6 @@ const collectDescendantIds = (folders, folderId) => {
   return ids;
 };
 
-const collectAncestorIds = (folders, folderId) => {
-  const foldersById = new Map((folders || []).map((folder) => [folder.id, folder]));
-  const ids = [];
-  const visited = new Set();
-  let current = foldersById.get(folderId);
-  while (current?.parentId && !visited.has(current.parentId)) {
-    visited.add(current.parentId);
-    ids.push(current.parentId);
-    current = foldersById.get(current.parentId);
-  }
-  return ids;
-};
-
 const getAutomaticTagStyles = (styles, currentStyleId, isolateCurrentFolder = true) => {
   const availableStyles = styles || [];
   if (!isolateCurrentFolder) return availableStyles;
@@ -81,6 +68,5 @@ export {
   buildFolderTree,
   flattenFolderTree,
   collectDescendantIds,
-  collectAncestorIds,
   getAutomaticTagStyles,
 };

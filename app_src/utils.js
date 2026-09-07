@@ -93,14 +93,6 @@ const prefetchUpdateZip = (downloadUrl) => {
   if (downloadUrl) fetchUpdateZip(downloadUrl).catch(() => {});
 };
 
-const getOSType = () => {
-  const os = csInterface.getOSInformation();
-  if (os && os.toLowerCase().indexOf('mac') !== -1) {
-    return 'mac';
-  }
-  return 'win';
-};
-
 const getExtendScriptString = (value) => JSON.stringify(String(value || ""));
 
 // evalScript can return non-JSON strings like "EvalScript error." — a bare
