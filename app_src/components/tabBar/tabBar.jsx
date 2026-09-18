@@ -17,6 +17,9 @@ const TabBar = React.memo(function TabBar() {
   const [editingId, setEditingId] = React.useState(null);
   const [editingName, setEditingName] = React.useState("");
   const inputRef = React.useRef(null);
+  // The input can blur while it unmounts after Enter/Escape; this ref makes
+  // sure a cancelled rename is not saved and a committed one is sent once.
+  const renameClosedRef = React.useRef(false);
 
   React.useEffect(() => {
     if (editingId && inputRef.current) {
@@ -26,11 +29,14 @@ const TabBar = React.memo(function TabBar() {
   }, [editingId]);
 
   const startRename = (tab) => {
+    renameClosedRef.current = false;
     setEditingId(tab.id);
     setEditingName(tab.name);
   };
 
   const commitRename = () => {
+    if (renameClosedRef.current) return;
+    renameClosedRef.current = true;
     if (editingId) {
       context.dispatch({ type: "renameTab", id: editingId, name: editingName });
     }
@@ -39,7 +45,10 @@ const TabBar = React.memo(function TabBar() {
 
   const handleRenameKeyDown = (e) => {
     if (e.key === "Enter") commitRename();
-    else if (e.key === "Escape") setEditingId(null);
+    else if (e.key === "Escape") {
+      renameClosedRef.current = true;
+      setEditingId(null);
+    }
   };
 
   const selectTab = (tab) => {

@@ -251,7 +251,13 @@ body.light-theme .text-block {
   caret-color: $sheet-accent;
   border: none;
   resize: none;
-  width: 100%;
+  // Same content box as .text-area-overlay (left 50px / right 20px) and as the
+  // highlight row behind it. A plain 100% here is 70px wider than both: the
+  // CEP panel's Chromium pulls that overflow back by shrinking the flex item,
+  // the panel's webview does not, so the glyphs the textarea draws when it has
+  // focus wrap somewhere else than the layer that normally draws them, and the
+  // caret, the selection and the tint bands all miss the text.
+  width: calc(100% - 70px);
   // Never let a stale/zero JS-set height make the textarea unclickable:
   // keep it at least as tall as the visible block, like .text-lines
   min-height: 100%;
@@ -341,4 +347,40 @@ body.light-theme .text-block {
     padding: 0 18px;
     color: #9d9d9d;
   }
+}
+
+// The rows behind the textarea and the textarea itself must share one
+// geometry, and the panel's webview does not settle these metrics the way
+// Chromium does: an inline <svg> takes its own baseline and a stretched flex
+// item its own width, so a row ends up a little taller than the 17px the
+// textarea lays out (the virtual window below even assumes 17px) and every
+// row under it drifts. Both are pinned here instead of left to the engine.
+.text-block .text-line {
+  display: grid;
+  grid-template-columns: 32px 18px minmax(0, 1fr) 20px;
+  min-width: 0;
+}
+.text-block .text-line-num {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 0 1px;
+}
+.text-block .text-line-num,
+.text-block .text-line-select,
+.text-block .text-line-insert {
+  height: 17px;
+  line-height: 17px;
+  overflow: hidden;
+}
+.text-block .text-line-select svg,
+.text-block .text-line-insert svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 1px auto 0;
+  position: static;
+  top: auto;
+}
+.text-block .text-line-text {
+  min-width: 0;
 }

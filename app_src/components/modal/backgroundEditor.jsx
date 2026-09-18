@@ -16,7 +16,14 @@ const BackgroundEditor = React.memo(function BackgroundEditor(props) {
   const [box, setBox] = React.useState({ width: 0, height: PREVIEW_HEIGHT });
   const [dragging, setDragging] = React.useState(false);
 
+  const stopDragRef = React.useRef(null);
+
   stateRef.current = image;
+
+  // Closing the editor mid-drag must not leave window listeners behind
+  React.useEffect(() => () => {
+    if (stopDragRef.current) stopDragRef.current();
+  }, []);
 
   React.useEffect(() => {
     const measure = () => {
@@ -61,10 +68,13 @@ const BackgroundEditor = React.memo(function BackgroundEditor(props) {
       patchCrop(crop);
     };
     const stop = () => {
+      stopDragRef.current = null;
       setDragging(false);
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", stop);
     };
+    if (stopDragRef.current) stopDragRef.current();
+    stopDragRef.current = stop;
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", stop);
   };

@@ -5,7 +5,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const load = require('./helpers/loadAppModule')();
-const { validateReleasePackage, REQUIRED_PACKAGE_FILES } = load('app_src/releasePackage.js');
+const { validateReleasePackage, REQUIRED_PACKAGE_FILES, RELEASE_INSTALLER_FILES, UXP_PACKAGE_FILE, validateUxpManifest } = load('app_src/releasePackage.js');
 const { installPackageFiles } = load('app_src/updateInstaller.js');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const decode = bytes => Buffer.from(bytes).toString('utf8');
@@ -22,6 +22,16 @@ try {
   assert.throws(() => validateReleasePackage({ ...files, 'app/index.js': Buffer.from('corrupt') }, hash, decode), /checksum mismatch/);
   assert.throws(() => validateReleasePackage({ ...files, 'app/../storage': Buffer.from('bad') }, hash, decode), /Unsafe/);
   assert.throws(() => validateReleasePackage({ ...files, 'app/extra.js': Buffer.from('extra') }, hash, decode), /Unlisted/);
+  // Both editions ship in the release: CEP files plus the UXP .ccx.
+  assert(RELEASE_INSTALLER_FILES.includes(UXP_PACKAGE_FILE) && RELEASE_INSTALLER_FILES.includes('install_mac.sh') && RELEASE_INSTALLER_FILES.includes('install.ps1'));
+  assert(/'TypeR-Silicon\.ccx'|UXP_PACKAGE_FILE/.test(fs.readFileSync(path.resolve(__dirname, 'buildRelease.js'), 'utf8')));
+  const uxpManifest = { id: 'fr.scanr.typer.silicon', version: '3.0.3', host: { app: 'PS', minVersion: '26.0.0' } };
+  assert.strictEqual(validateUxpManifest(JSON.stringify(uxpManifest), '3.0.3').host.minVersion, '26.0.0');
+  assert.throws(() => validateUxpManifest(JSON.stringify(uxpManifest), '3.0.4'), /version mismatch/);
+  assert.throws(() => validateUxpManifest(JSON.stringify({ ...uxpManifest, id: 'other' })), /identity/);
+  assert.throws(() => validateUxpManifest('{'), /Invalid UXP manifest/);
+  // The CEP-only validator ignores the .ccx at the release root.
+  assert.deepStrictEqual(validateReleasePackage({ ...files, [UXP_PACKAGE_FILE]: Buffer.from('ccx') }, hash, decode), files);
   const source = path.join(root, 'source'), target = path.join(root, 'target');
   fs.mkdirSync(target);
   fs.writeFileSync(path.join(target, 'storage'), 'user settings');
@@ -57,5 +67,30 @@ try {
   fs.unlinkSync(path.join(source, 'app/package.sha256'));
   assert.notStrictEqual(runInstaller().status, 0);
   assert.strictEqual(fs.readFileSync(path.join(target, 'storage'), 'utf8'), 'user settings');
-  console.log('Release safety tests passed: integrity, version, rollback, lazy chunks and native installer');
+  if (process.platform === 'darwin') {
+    // UXP edition: installs into a temporary HOME and merges PS.json.
+    const { zipSync } = require('fflate');
+    const home = path.join(root, 'home'), uxpSource = path.join(root, 'uxp-source');
+    const uxpRoot = path.join(home, 'Library/Application Support/Adobe/UXP');
+    const registry = path.join(uxpRoot, 'PluginsInfo/v1/PS.json');
+    fs.mkdirSync(uxpSource); fs.mkdirSync(path.dirname(registry), { recursive: true });
+    fs.mkdirSync(path.join(uxpRoot, 'Plugins/External/fr.scanr.typer.silicon_0.9.0'), { recursive: true });
+    const other = { pluginId: 'com.example.other', name: 'Other', status: 'enabled', type: 'uxp', versionString: '1.0.0', path: '$localPlugins/External/com.example.other_1.0.0' };
+    fs.writeFileSync(registry, JSON.stringify({ plugins: [other, { pluginId: 'fr.scanr.typer.silicon', versionString: '0.9.0' }] }));
+    fs.writeFileSync(path.join(uxpSource, UXP_PACKAGE_FILE), zipSync({ 'manifest.json': Buffer.from(JSON.stringify(uxpManifest)), 'index.html': Buffer.from('<html></html>') }));
+    const runUxp = (args, extra = {}) => spawnSync('bash', [path.resolve(__dirname, '../install_mac.sh'), ...args], { encoding: 'utf8', input: '', env: { ...process.env, HOME: home, TYPER_INSTALL_SOURCE: uxpSource, ...extra } });
+    const uxp = runUxp(['--uxp']); assert.strictEqual(uxp.status, 0, uxp.stderr + uxp.stdout);
+    const merged = JSON.parse(fs.readFileSync(registry, 'utf8')).plugins;
+    assert.deepStrictEqual(merged[0], other, 'other UXP plugins are preserved');
+    assert.strictEqual(merged.length, 2);
+    assert.strictEqual(merged[1].path, '$localPlugins/External/fr.scanr.typer.silicon_3.0.3');
+    assert.strictEqual(merged[1].hostMinVersion, '26.0.0');
+    assert.deepStrictEqual(fs.readdirSync(path.join(uxpRoot, 'Plugins/External')), ['fr.scanr.typer.silicon_3.0.3']);
+    fs.writeFileSync(registry, '{"plugins":{}}');
+    assert.notStrictEqual(runUxp([], { TYPER_INSTALL_EDITION: 'uxp' }).status, 0);
+    assert.strictEqual(fs.readFileSync(registry, 'utf8'), '{"plugins":{}}', 'unexpected PS.json is never overwritten');
+    assert.deepStrictEqual(fs.readdirSync(path.join(uxpRoot, 'Plugins/External')), ['fr.scanr.typer.silicon_3.0.3'], 'failed UXP install leaves the previous plugin');
+    assert.strictEqual(runUxp(['--uxp', '--cep']).status, 2);
+  }
+  console.log('Release safety tests passed: integrity, version, rollback, lazy chunks, UXP package and native installer');
 } finally { fs.rmSync(root, { recursive: true, force: true }); }

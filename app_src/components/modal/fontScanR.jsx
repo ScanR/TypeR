@@ -27,6 +27,9 @@ const FontScanRModal = React.memo(function FontScanRModal() {
     const [newFolderName, setNewFolderName] = React.useState('');
     const [existingFolderId, setExistingFolderId] = React.useState('');
     const cancelledRef = React.useRef(false);
+    // Each scan gets an id so a cancelled scan whose host callback is still
+    // pending cannot resume alongside a scan started right after it.
+    const scanIdRef = React.useRef(0);
     const fileInputRef = React.useRef();
 
     const folderTree = React.useMemo(() => buildFolderTree(context.state.folders), [context.state.folders]);
@@ -74,19 +77,21 @@ const FontScanRModal = React.memo(function FontScanRModal() {
     const startScan = files => {
         if (!files.length) return;
         cancelledRef.current = false;
+        const scanId = ++scanIdRef.current;
+        const stale = () => cancelledRef.current || scanIdRef.current !== scanId;
         setStep('scanning');
         setScanErrors([]);
         const results = [];
         const errors = [];
         const next = index => {
-            if (cancelledRef.current) return;
+            if (stale()) return;
             if (index >= files.length) {
                 finishScan(results, errors);
                 return;
             }
             setProgress({current: index + 1, total: files.length, fileName: files[index].name});
             scanPsdFonts(files[index].path, data => {
-                if (cancelledRef.current) return;
+                if (stale()) return;
                 if (data && Array.isArray(data.layers)) results.push(data);
                 else errors.push({file: files[index].name, error: (data && data.error) || 'unknown'});
                 next(index + 1);

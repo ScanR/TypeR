@@ -1,15 +1,17 @@
 import "./footer.scss";
 
 import React from "react";
-import { locale } from "../../utils";
+import { locale, nativeAlert } from "../../utils";
 import { useContext } from "../../context";
 import HiddenFileInput from "../hiddenFileInput/hiddenFileInput";
+import { nextAutoCenterMode } from "../../shortcutCommands";
 
 const AppFooter = React.memo(function AppFooter() {
   const context = useContext((state) => ({
     images: state.images,
     multiBubbleMode: state.multiBubbleMode,
     inlineTextShapeR: state.inlineTextShapeR,
+    autoCenterMode: state.autoCenterMode,
     uiLayout: state.uiLayout,
   }));
   const openSettings = () => {
@@ -26,12 +28,22 @@ const AppFooter = React.memo(function AppFooter() {
   };
   const fileInputRef = React.useRef();
 
-  const openRepository = () => {
+  const openRepository = async () => {
     if (context.state.images.length) {
       context.dispatch({ type: "setImages", images: [] });
       return;
     }
-    fileInputRef.current?.click();
+    // UXP has no <input type="file"> path, so ask the host for persistent
+    // tokens it can reopen later with photoshop.app.open().
+    if (window.typerUXP) {
+      try {
+        const images = await window.typerUXP.request('pickImages');
+        images.sort((a, b) => a.baseName.localeCompare(b.baseName, undefined, {numeric: true, sensitivity: 'base'}));
+        if (images.length) context.dispatch({type: 'setImages', images});
+      } catch (error) { nativeAlert(error.message, locale.errorTitle, true); }
+    } else {
+      fileInputRef.current?.click();
+    }
   };
 
   const toggleMultiBubble = () => {
@@ -41,6 +53,17 @@ const AppFooter = React.memo(function AppFooter() {
   const toggleInlineTextShapeR = () => {
     context.dispatch({ type: "setInlineTextShapeR", value: !context.state.inlineTextShapeR });
   };
+
+  // Off -> centre -> multi centre -> off, one click per step.
+  const cycleAutoCenter = () => {
+    context.dispatch({ type: "setAutoCenterMode", value: nextAutoCenterMode(context.state.autoCenterMode) });
+  };
+  const autoCenterMode = context.state.autoCenterMode || "off";
+  const autoCenterStatus = autoCenterMode === "multi"
+    ? (locale.autoCenterModeMulti || "MULTI")
+    : autoCenterMode === "single"
+      ? (locale.multiBubbleModeOn || "ON")
+      : (locale.multiBubbleModeOff || "OFF");
 
   const uiVisible = context.state.uiLayout?.visible || {};
 
@@ -84,6 +107,15 @@ const AppFooter = React.memo(function AppFooter() {
         <span className="footer-mode-status">
           {context.state.multiBubbleMode ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF")}
         </span>
+      </span>
+      <span
+        className="link footer-mode-indicator footer-mode-adjacent"
+        onClick={cycleAutoCenter}
+        title={locale.autoCenterModeHint || "Centres the text in its bubble after each paste. Click: off, centre, multi centre (double bubbles)"}
+      >
+        <span className={`footer-mode-dot ${autoCenterMode !== "off" ? "is-on" : ""} ${autoCenterMode === "multi" ? "is-multi" : ""}`} />
+        <span className="footer-mode-label">{locale.autoCenterModeLabel || "Auto-centre"}</span>
+        <span className="footer-mode-status">{autoCenterStatus}</span>
       </span>
       </React.Fragment>
       )}

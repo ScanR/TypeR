@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>TypeR</title>
+    <link id="topcoat" rel="stylesheet">
+    <style id="hostStyle"></style>
+    <script>
+      // This is app_src/index.html plus one thing. Photoshop's UXP log carries
+      // the host document's console only: whatever the panel document logs, or
+      // throws, leaves no trace there. A panel that died at load time therefore
+      // looked exactly like a panel still loading, and the "Chargement…"
+      // placeholder stayed up with nothing anywhere to say why. Everything
+      // below is forwarded to the host, which does log.
+      function typerReport(text) {
+        // window.uxpHost is the bridge the panel normally talks through; the
+        // parent window is a fallback, so that a missing bridge is reportable
+        // rather than a dead end.
+        try {
+          const bridge = window.uxpHost || window.parent;
+          if (!bridge || typeof bridge.postMessage !== 'function') return;
+          bridge.postMessage({channel: 'typer-uxp', id: -1, method: 'panelLog', args: [text]});
+        } catch (error) {}
+      }
+      typerReport('panel document started, bridge ' + (window.uxpHost ? 'present' : 'absent'));
+      window.addEventListener('error', event => typerReport('panel error: ' + (event.message || event)));
+      window.addEventListener('unhandledrejection', event => {
+        const reason = event.reason;
+        typerReport('panel rejection: ' + ((reason && reason.message) || reason));
+      });
+    </script>
+  </head>
+  <body class="hostElt">
+    <div id="app"></div>
+  </body>
+</html>

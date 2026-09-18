@@ -130,6 +130,7 @@ const HelpModal = React.memo(function HelpModal() {
         apply: locale.helpQuickApplyDescr,
         keepTextSize: locale.shortcut_keepTextSizeDescr,
         center: locale.helpQuickAlignDescr,
+        centerDouble: locale.shortcut_centerDoubleDescr || 'Select the text layers of a double bubble: each one is centered in its own part.',
         insertText: locale.helpShortcutInsertTextDescr || 'Pastes the line text only, keeping the layer style.',
         previous: locale.helpShortcutPreviousDescr || 'Moves to the previous non-ignored line.',
         next: locale.helpShortcutNextDescr || 'Moves to the next non-ignored line.',
@@ -137,6 +138,7 @@ const HelpModal = React.memo(function HelpModal() {
         decrease: locale.helpShortcutDecreaseDescr || 'Decreases the size of the active text layer.',
         nextPage: locale.helpQuickNextPageDescr,
         toggleMultiBubble: locale.helpQuickMultiBubbleDescr,
+        cycleAutoCenter: locale.shortcut_cycleAutoCenterDescr || 'Cycles centre after paste: off, centre, multi centre.',
     };
     const shortcutRows = shortcutCommands.map((command) => ({
         id: command.id,

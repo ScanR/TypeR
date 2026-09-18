@@ -164,15 +164,26 @@ When an installed font cannot be found, TypeR reports it instead of silently omi
 
 Photoshop 16.0+ and CEP 6+ are declared by the extension manifest. TypeR 3.0 contains two builds of the same application: Photoshop 2020+ with Chromium 74+ loads the modern build; older or unknown runtimes load the compatibility build automatically. The project does not yet maintain a verified OS/version matrix, so compatibility is not guaranteed for every Photoshop and operating-system combination. Portable or heavily modified Photoshop builds may not load CEP panels correctly.
 
-TypeR is distributed as an unsigned CEP extension. Both installers place it in the user-level Adobe CEP extensions folder and configure the required CSXS debug setting.
+### Choose an edition
+
+The installers ask which edition to install:
+
+| Edition | For | Opens from |
+| --- | --- | --- |
+| **UXP** (TypeR Silicon, newer, recommended) | Photoshop 2025 (v26.0) or newer, including Apple Silicon | **Plugins → TypeR Silicon** |
+| **Legacy (CEP)** | Older Photoshop versions | **Window → Extensions → TypeR** |
+
+UXP is the newer edition but does not load in Photoshop versions older than 26.0; use Legacy there. The suggested answer follows the newest Photoshop found on the computer. For scripted installs, pass `--uxp` or `--cep` (Windows: `install_win.cmd --uxp`, or `install.ps1 -Uxp` / `-Cep`), or set `TYPER_INSTALL_EDITION=uxp|cep`. Without a choice, a non-interactive run installs Legacy (CEP), as before.
+
+The UXP edition is copied into the user's Adobe UXP plugins folder and added to Photoshop's plugin list without removing other plugins. If it does not appear, double-click `TypeR-Silicon.ccx` to install it with Creative Cloud. The Legacy edition is an unsigned CEP extension: the installers place it in the user-level Adobe CEP extensions folder and configure the required CSXS debug setting.
 
 ### Windows
 
 1. [Download the latest `TypeR.zip`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip).
 2. Extract the archive completely.
 3. Close Photoshop.
-4. Double-click `install_win.cmd` and follow the terminal prompts.
-5. Reopen Photoshop and select **Window → Extensions → TypeR**.
+4. Double-click `install_win.cmd`, choose the edition and follow the terminal prompts.
+5. Reopen Photoshop and open TypeR from the menu shown in the table above.
 
 ### macOS
 
@@ -185,13 +196,13 @@ chmod +x install_mac.sh
 ./install_mac.sh
 ```
 
-4. Reopen Photoshop and select **Window → Extensions → TypeR**.
+4. Choose the edition, then reopen Photoshop and open TypeR from the menu shown in the table above.
 
-On Apple Silicon, some Photoshop/CEP combinations may require Photoshop to be launched using Rosetta. If the panel is missing or disabled, check the [troubleshooting section](#troubleshooting).
+On Apple Silicon, prefer the UXP edition. With Legacy, some Photoshop/CEP combinations may require Photoshop to be launched using Rosetta. If the panel is missing or disabled, check the [troubleshooting section](#troubleshooting).
 
 ### Update without opening TypeR
 
-Keep the standalone updater from the downloaded archive and run it whenever you want to check for a stable update:
+The standalone updater maintains the Legacy (CEP) edition; to update the UXP edition, run the installer again with the UXP choice. Keep the standalone updater from the downloaded archive and run it whenever you want to check for a stable update:
 
 - On Windows, double-click `update_typer_win.cmd`.
 - On macOS, run `chmod +x update_typer_mac.sh` once, then `./update_typer_mac.sh`.
@@ -322,7 +333,7 @@ The project is distributed under the [MIT License](./LICENSE.md). For TypeR help
 
 ### Preparing a release
 
-Run `npm run release` to test, build both runtimes, verify the artifacts and generate `Releases/TypeR.zip` with a SHA-256 checksum. `build_release.cmd` runs the same pipeline on Windows. Publish this built ZIP, which includes documentation and the license, rather than GitHub's source archive.
+Run `npm run package:uxp` (on macOS) and then `npm run release` to test, build both runtimes, verify the artifacts and generate `Releases/TypeR.zip` with a SHA-256 checksum. The ZIP contains both editions: the CEP files and `TypeR-Silicon.ccx`. `build_release.cmd` runs the same pipeline on Windows. Publish this built ZIP, which includes documentation and the license, rather than GitHub's source archive.
 
 See [the release acceptance checklist](docs/release-3.0.0.md) for remaining real-Photoshop checks and recovery procedures. The existing video guide shows an earlier version; the in-panel walkthrough describes the current workflow.
 

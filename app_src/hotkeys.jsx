@@ -86,43 +86,122 @@ const isFormFieldActive = () => {
   return active.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
 };
 
+// A shortcut bound both in TypeR and on its Photoshop action reaches the panel
+// twice: once as key state, once as the action's play notification. Within
+// this window the second arrival of the same command is the same keypress.
+const CROSS_SOURCE_MS = 500;
+
+// Decides when a matched shortcut runs. Pure apart from the injected clock and
+// timer, so scripts/testShortcuts.js can drive it.
+// - Key state fires once per press: a held chord waits for a state that
+//   matches nothing before it can fire again.
+// - A fresh press that lands inside the previous command's repeatDelay is
+//   deferred to the end of that delay instead of being dropped: the host only
+//   pushes changes, so a dropped press was never seen again while held.
+//   At most one press waits; further presses inside the window are dropped.
+// - Photoshop action plays keep the plain throttle, since a held action
+//   shortcut replays at the keyboard's repeat rate.
+const createShortcutGate = ({ now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout } = {}) => {
+  let released = true;
+  let lastAt = -Infinity;
+  let last = { id: null, at: -Infinity, source: null };
+  let deferred = null;
+  const record = (id, source) => {
+    lastAt = now();
+    last = { id, at: lastAt, source };
+  };
+  const sameKeypress = (id, source) =>
+    last.id === id && (source === "action") !== (last.source === "action") && now() - last.at < CROSS_SOURCE_MS;
+  return {
+    release() {
+      released = true;
+    },
+    press(command, run, source = "keys") {
+      if (source === "keys") {
+        if (!released) return false;
+        released = false;
+      }
+      if (deferred || sameKeypress(command.id, source)) return false;
+      const wait = (command.repeatDelay || 0) - (now() - lastAt);
+      if (wait <= 0) {
+        record(command.id, source);
+        run();
+        return true;
+      }
+      deferred = schedule(() => {
+        deferred = null;
+        record(command.id, source);
+        run();
+      }, wait);
+      return true;
+    },
+    action(command, run) {
+      if (deferred || sameKeypress(command.id, "action")) return false;
+      if (now() - lastAt < (command.repeatDelay || 0)) return false;
+      record(command.id, "action");
+      run();
+      return true;
+    },
+    dispose() {
+      if (deferred) cancel(deferred);
+      deferred = null;
+    },
+  };
+};
+
 const HotkeysListner = React.memo(function HotkeysListner() {
   const context = useContext(() => ({}));
 
-  const keyUpRef = React.useRef(true);
-  const lastActionRef = React.useRef(0);
+  const gateRef = React.useRef(null);
+  if (!gateRef.current) gateRef.current = createShortcutGate();
   const hotkeyPollPendingRef = React.useRef(false);
   const lastPollAtRef = React.useRef(0);
 
-  React.useEffect(() => {
-    const checkRepeatTime = (time = 0) => {
-      const now = Date.now();
-      if (!keyUpRef.current || now - lastActionRef.current < time) return false;
-      lastActionRef.current = now;
-      keyUpRef.current = false;
-      return true;
-    };
+  // The handler context is built when the command actually runs: a deferred
+  // press must act on the current line, not the one shown when it was pressed.
+  const runHandler = (command, options, allowModal) => () => {
+    const state = context.getState();
+    if (state.modalType && !allowModal(state.modalType)) return;
+    command.handler({ state, dispatch: context.dispatch, getState: context.getState }, options);
+  };
+  const noModal = () => false;
 
-    const checkState = (state) => {
+  React.useEffect(() => () => gateRef.current.dispose(), []);
+
+  React.useEffect(() => {
+    // With canFire false (a modal is open, or the user types in the panel)
+    // the state only tracks releases: ignoring it left the gate "held", and
+    // the next press of that chord after closing the modal was lost.
+    const checkState = (state, canFire = true) => {
       if (!state) return;
-      const ctx = { state: context.getState(), dispatch: context.dispatch, getState: context.getState };
+      const shortcut = context.getState().shortcut;
       const realState = state.split("a");
       realState.shift();
       realState.pop();
-      // Pressed keys are activity: restore fast polling before matching so a
-      // hotkey burst after an idle period is never throttled
-      if (realState.length) notePanelActivity();
-      syncKeepSizeHeld(context, realState);
-      const command = matchBinding(realState, ctx.state.shortcut);
+      if (canFire) {
+        // Pressed keys are activity: restore fast polling before matching so
+        // a hotkey burst after an idle period is never throttled
+        if (realState.length) notePanelActivity();
+        syncKeepSizeHeld(context, realState);
+      }
+      const command = matchBinding(realState, shortcut);
       if (!command) {
-        keyUpRef.current = true;
+        gateRef.current.release();
         return;
       }
-      if (!checkRepeatTime(command.repeatDelay || 0)) return;
-      command.handler(ctx, getCommandOptions(realState, ctx.state.shortcut));
+      if (canFire) gateRef.current.press(command, runHandler(command, getCommandOptions(realState, shortcut), noModal));
+    };
+
+    // UXP: the host pushes every keyboard change (uxp-src/csinterface.js).
+    // Matching it as it arrives is what makes a quick press reliable; the poll
+    // below only stays as the CEP/ScriptUI fallback.
+    const hostKeysActive = () => !!(window.typerUXP && window.typerUXP.hostKeysActive);
+    window.__typerKeyState = (state, typing = false) => {
+      checkState(state, !typing && !context.getState().modalType);
     };
 
     const interval = setInterval(() => {
+      if (hostKeysActive()) return;
       // Back off while a paste/align/apply runs: polling would queue behind it
       // in the ExtendScript engine and delay the action's completion
       if (context.getState().modalType || isFormFieldActive() || hotkeyPollPendingRef.current || isHostActionPending() || document.hidden) return;
@@ -170,6 +249,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
 
     return () => {
       clearInterval(interval);
+      if (window.__typerKeyState) delete window.__typerKeyState;
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
@@ -188,13 +268,8 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       if (ctxState.modalType) return;
       const command = matchMouseBinding(state, ctxState.shortcut);
       if (!command) return;
-      const now = Date.now();
-      if (now - lastActionRef.current < (command.repeatDelay || 0)) return;
-      lastActionRef.current = now;
-      command.handler(
-        { state: ctxState, dispatch: context.dispatch, getState: context.getState },
-        getCommandOptions(state, ctxState.shortcut)
-      );
+      // Side-button presses are edge events: no release to wait for
+      gateRef.current.press(command, runHandler(command, getCommandOptions(state, ctxState.shortcut), noModal), "mouse");
     });
 
     // CEF maps these buttons to history back/forward, which blanks the panel.
@@ -212,6 +287,25 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       document.removeEventListener("mousedown", swallowMouseNav, true);
       document.removeEventListener("mouseup", swallowMouseNav, true);
       document.removeEventListener("auxclick", swallowMouseNav, true);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    // UXP cannot poll the keyboard from the panel: the host's native reader
+    // plays a Photoshop action instead, which comes back here by command name.
+    // This is the only path that works while Photoshop has the focus.
+    const runCommand = (command) => {
+      const entry = shortcutCommands.find((item) => item.id === command);
+      if (!entry) return;
+      const state = context.getState();
+      if (state.modalType === "settings") return;
+      // The same keypress can also arrive as key state, before or after this
+      // play notification: the gate runs it once either way.
+      gateRef.current.action(entry, runHandler(entry, getCommandOptions([], state.shortcut), (modal) => modal !== "settings"));
+    };
+    window.__typerRunCommand = runCommand;
+    return () => {
+      if (window.__typerRunCommand === runCommand) delete window.__typerRunCommand;
     };
   }, []);
 

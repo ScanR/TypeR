@@ -31,6 +31,11 @@ const storage = readStorage();
 // TextShapeR. Five applied suggestions are enough to introduce the learning
 // control without interrupting a first-time user.
 const TEXT_SHAPER_LEARN_TIP_THRESHOLD = 5;
+// Centring right after a paste: off, each text in its bubble, or the same
+// with double bubbles shared between their texts.
+const AUTO_CENTER_MODES = ["off", "single", "multi"];
+// Stored and imported values are untrusted, so unknown modes fall back to off
+const normalizeAutoCenterMode = (value) => (AUTO_CENTER_MODES.indexOf(value) !== -1 ? value : "off");
 const hasTextShapeRLearning = (value) => Number(value?.samples) > 0;
 
 const storeFields = [
@@ -60,6 +65,7 @@ const storeFields = [
   "middleEast",
   "lastOpenedImagePath",
   "multiBubbleMode",
+  "autoCenterMode",
   "showTips",
   "exportFolderFontTipDismissed",
   "showQuickStyleSize",
@@ -285,6 +291,7 @@ const initialState = {
   lastOpenedImagePath: null,
   storedSelections: [],
   multiBubbleMode: false,
+  autoCenterMode: "off",
   internalPadding: 10,
   interpretMarkdown: storage.data?.interpretMarkdown !== false,
   styleSizeStep: 1,
@@ -307,6 +314,7 @@ const initialState = {
   // persisted, and placed after the storage spread so it always starts false
   keepSizeHeld: false,
   uiLayout: normalizeUiLayout(storage.data?.uiLayout),
+  autoCenterMode: normalizeAutoCenterMode(storage.data?.autoCenterMode),
   // The theme registry is filled by the theme manager at import time, so the
   // stored id can already point at a custom theme here
   customThemes: normalizeCustomThemes(storage.data?.customThemes),
@@ -416,6 +424,9 @@ const baseReducer = (state, action) => {
       }
       if (action.data.uiLayout) {
         newState.uiLayout = normalizeUiLayout(action.data.uiLayout);
+      }
+      if ("autoCenterMode" in action.data) {
+        newState.autoCenterMode = normalizeAutoCenterMode(action.data.autoCenterMode);
       }
       break;
     }
@@ -982,6 +993,11 @@ const baseReducer = (state, action) => {
       break;
     }
 
+    case "setAutoCenterMode": {
+      newState.autoCenterMode = normalizeAutoCenterMode(action.value);
+      break;
+    }
+
     case "setStyleSizeStep": {
       let step = parseFloat(action.step);
       if (!Number.isFinite(step) || step <= 0) step = 1;
@@ -1100,6 +1116,10 @@ const baseReducer = (state, action) => {
     }
 
     case "setLastOpenedImagePath": {
+      // Captured bubbles belong to one page: switching page invalidates them.
+      if (action.path && action.path !== state.lastOpenedImagePath) {
+        newState.storedSelections = [];
+      }
       newState.lastOpenedImagePath = action.path || null;
       break;
     }
@@ -1127,6 +1147,12 @@ const baseReducer = (state, action) => {
 
     case "addSelection": {
       if (action.selection) {
+        // A selection carries the document it was captured on; a bubble from
+        // another page must not be batched with the current one.
+        const incomingId = action.selection.documentId;
+        if (incomingId !== undefined && state.storedSelections.some((item) => item.documentId !== undefined && item.documentId !== incomingId)) {
+          newState.storedSelections = [];
+        }
         const selectionWithStyle = {
           ...action.selection,
           styleId: state.currentStyleId,
@@ -1145,7 +1171,7 @@ const baseReducer = (state, action) => {
             };
           }
         }
-        newState.storedSelections = [...state.storedSelections, selectionWithStyle];
+        newState.storedSelections = [...newState.storedSelections, selectionWithStyle];
       }
       break;
     }

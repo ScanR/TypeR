@@ -71,6 +71,10 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
   } } } };
   try {
     let tree = render();
+    // This scenario reviews before training: switch off "train right after import"
+    const autoToggle = nodes(tree).find((node) => node.type === "label" && text(node).includes(locale.textShapeRTrainAuto));
+    nodes(autoToggle).find((node) => node.type === "input").props.onChange();
+    tree = render();
     const pick = button(tree, locale.textShapeRTrainPick);
     assert.strictEqual(pick.props.disabled, false);
     pick.props.onClick();
@@ -119,6 +123,24 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
     request.callback({ entries: [] });
     await flush();
     assert.strictEqual(requests.length, count, "Closing settings stops before the next PSD");
+
+    // UXP: the picker returns persistent tokens, and the default flow trains
+    // straight after the scan, through one batch retrain of the ranker
+    slots.length = 0; effects.length = 0; requests.length = 0; lessons.length = 0; committed.length = 0;
+    global.window = { typerUXP: { async request(method) {
+      assert.strictEqual(method, "pickPsds");
+      return [{ name: "02.psd", path: "psfile:b" }, { name: "01.psd", path: "psfile:a" }, { name: "cover.png", path: "psfile:c" }];
+    } } };
+    tree = render();
+    assert(text(tree).includes("15"), "The chapter hint names the optimal page count");
+    await button(tree, locale.textShapeRTrainPick).props.onClick();
+    assert.deepStrictEqual(requests.map((request) => request.file), ["psfile:a"], "Tokens are scanned in page order, non-PSD dropped");
+    requests[0].callback({ entries: [{ name: "A", text: "Page\none", visible: true }] });
+    await flush();
+    requests[1].callback({ entries: [{ name: "B", text: "Page\ntwo", visible: true }, { name: "C", text: "Hidden", visible: false }] });
+    for (let index = 0; index < 6; index++) await flush();
+    assert.deepStrictEqual(lessons, ["Page\none", "Page\ntwo"], "Import trains visible layers right away");
+    assert.strictEqual(committed.length, 1);
   } finally {
     global.window = previousWindow;
   }

@@ -150,6 +150,8 @@ try {
     $env:TYPER_INSTALL_SOURCE = $PackageRoot
     $env:TYPER_INSTALL_TARGET = $TargetDir
     $env:TYPER_INSTALL_SKIP_DEBUG = $env:TYPER_UPDATE_SKIP_DEBUG
+    # This updater maintains the CEP extension only.
+    $env:TYPER_INSTALL_EDITION = 'cep'
     & (Join-Path $ScriptDir 'install.ps1') -Silent
     Write-Host (Format-VersionMessage $Success $PackageVersion) -ForegroundColor Green
 } catch {

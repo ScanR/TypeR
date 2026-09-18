@@ -57,6 +57,15 @@ async function testLearning() {
   assert.strictEqual(real.learned, 2);
   assert.strictEqual(real.tuning.samples, 2);
   assert.deepStrictEqual(engine.generateTextShapeRVariants(text), before);
+  // A batch import stores evidence per layer and fits the ranker once
+  const deferred = await trainTextShapeREntries([{ text }, { text: "We have to\nkeep moving\nforward now." }], null, {
+    recordFeedback: engine.recordTextShapeRFeedback,
+    retrainRanker: engine.retrainTextShapeRRanker,
+  });
+  assert.strictEqual(deferred.learned, 2);
+  assert(deferred.tuning.pairs && deferred.tuning.pairs.length, "deferred lessons still store their pairs");
+  assert.strictEqual(typeof deferred.tuning.pairAccuracy, "number", "the single retrain runs at the end");
+  assert.deepStrictEqual(engine.retrainTextShapeRRanker(deferred.tuning).weights, deferred.tuning.weights, "retraining is idempotent");
 }
 
 function testPhotoshopScan() {

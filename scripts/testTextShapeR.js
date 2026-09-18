@@ -37,6 +37,7 @@ const {
   generateManualTextShapeRVariant,
   generateTextShapeRVariants,
   recordTextShapeRFeedback,
+  retrainTextShapeRRanker,
   sanitizeTextShapeRTuning,
   setTextShapeRTuning,
   visibleLength,
@@ -270,7 +271,8 @@ assert.strictEqual(convergedTuning.exemplars.length, 1, "same shape must not dup
 // on the whole history, and the training accuracy is persisted as telemetry
 assert.ok(Array.isArray(convergedTuning.pairs) && convergedTuning.pairs.length > 0,
   "preference pairs should be stored for replay training");
-assert.ok(convergedTuning.pairs.every((pair) => pair.c.length === 12 && pair.r.length === 12),
+assert.ok(convergedTuning.pairs.every((pair) => pair.c.length === 16 && pair.r.length === 16
+  && Number.isInteger(pair.t)),
   "stored pairs should hold full feature vectors");
 assert.ok(convergedTuning.pairAccuracy >= 0.8,
   `replay training should rank most stored pairs correctly, got ${convergedTuning.pairAccuracy}`);
@@ -402,8 +404,26 @@ const afterGarbagePairs = recordTextShapeRFeedback(chosenShape, { limit: 12, pro
 assert.ok(afterGarbagePairs && afterGarbagePairs.tuning.pairs.length > 0,
   "feedback on top of garbage pairs should still train");
 assert.ok(afterGarbagePairs.tuning.pairAccuracy >= 0 && afterGarbagePairs.tuning.pairAccuracy <= 1);
-assert.strictEqual(afterGarbagePairs.tuning.pairSchemaVersion, 1,
+assert.strictEqual(afterGarbagePairs.tuning.pairSchemaVersion, 2,
   "persisted replay vectors should carry an explicit schema version");
+// Schema 1 buffers (12 features) migrate forward: new features padded with 0
+const migratedPairs = sanitizeTextShapeRTuning({
+  samples: 2,
+  pairs: [{ c: new Array(12).fill(0.2), r: new Array(12).fill(0.8) }],
+});
+assert.strictEqual(migratedPairs.pairs.length, 1);
+assert.strictEqual(migratedPairs.pairs[0].c.length, 16);
+assert.deepStrictEqual(migratedPairs.pairs[0].c.slice(12), [0, 0, 0, 0]);
+// Schema 2 pairs keep their feedback index and generator offset (clamped)
+const datedPairs = sanitizeTextShapeRTuning({
+  samples: 5,
+  pairSchemaVersion: 2,
+  pairs: [{ c: new Array(16).fill(0.2), r: new Array(16).fill(0.8), t: 3, o: 99 }],
+});
+assert.strictEqual(datedPairs.pairs[0].t, 3);
+assert.strictEqual(datedPairs.pairs[0].o, 4, "generator offsets are clamped");
+assert.strictEqual(sanitizeTextShapeRTuning({ pairSchemaVersion: 2, pairs: [{ c: new Array(12).fill(0.2), r: new Array(12).fill(0.8) }] }).pairs, null,
+  "schema 2 vectors must have the full feature length");
 const unknownPairSchema = sanitizeTextShapeRTuning({
   samples: 2,
   pairSchemaVersion: 99,
@@ -472,5 +492,51 @@ setTextShapeRTuning(null);
 const restoredShippedDefaultTop = generateTextShapeRVariants(defaultProbeText, { limit: 12, profile: "balanced" })[0];
 assert.strictEqual(restoredShippedDefaultTop.text, shippedDefaultTop.text,
   "null tuning must restore the shipped trained default");
+
+// Structured line-break model (differentiable DP, arXiv:1802.03676)
+{
+  const ddpSanitized = sanitizeTextShapeRTuning({ samples: 1, ddp: [30, 1, 2, 3, 4, 5, 6, 7, 8, 9, 999] });
+  assert.strictEqual(ddpSanitized.ddp.length, 11);
+  assert.strictEqual(ddpSanitized.ddp[10], 400, "ddp weights are clamped");
+  assert.strictEqual(sanitizeTextShapeRTuning({ samples: 1, ddp: [1, 2, 3] }).ddp, null,
+    "a ddp vector of the wrong length is dropped");
+  assert.strictEqual(sanitizeTextShapeRTuning({ samples: 1, ddp: [30, 0, 0, 0, 0, 0, 0, 0, 0, 0, "x"] }).ddp, null,
+    "a non-numeric ddp vector is dropped");
+  const roundTrip = sanitizeTextShapeRTuning(JSON.parse(JSON.stringify(ddpSanitized)));
+  assert.deepStrictEqual(roundTrip.ddp, ddpSanitized.ddp, "ddp survives a save/load round-trip");
+
+  // Teach a deliberately unusual compact stack and check its rank improves
+  const ddpText = "Tu crois vraiment qu'on va s'en sortir comme ça sans rien dire à personne ?";
+  const ddpOptions = { limit: 12, profile: "balanced" };
+  setTextShapeRTuning(null);
+  const ddpBefore = generateTextShapeRVariants(ddpText, ddpOptions);
+  // A proposal the untrained engine ranks low (but not dead last)
+  const ddpTarget = ddpBefore[Math.min(4, ddpBefore.length - 1)];
+  const rankOf = (variants) => variants.findIndex((variant) => variant.text === ddpTarget.text);
+  const rankBefore = rankOf(ddpBefore);
+  assert.ok(rankBefore > 0, "the probe layout must start below the top");
+  let ddpTuning = null;
+  for (let pass = 0; pass < 3; pass++) {
+    ddpTuning = recordTextShapeRFeedback(ddpTarget.text, ddpOptions, ddpTuning).tuning;
+  }
+  assert.ok(Array.isArray(ddpTuning.ddp) && ddpTuning.ddp.length === 11, "feedback trains the ddp model");
+  assert.ok(ddpTuning.ddp.every(Number.isFinite), "ddp weights are finite");
+  setTextShapeRTuning(ddpTuning);
+  const rankAfter = rankOf(generateTextShapeRVariants(ddpText, ddpOptions));
+  assert.ok(rankAfter >= 0 && (rankBefore < 0 || rankAfter <= rankBefore),
+    `the taught layout must not lose rank (before ${rankBefore}, after ${rankAfter})`);
+  assert.strictEqual(rankAfter, 0, `the taught layout should become the top proposal, got rank ${rankAfter}`);
+
+  // Deterministic: same lessons, same weights
+  let replay = null;
+  for (let pass = 0; pass < 3; pass++) replay = recordTextShapeRFeedback(ddpTarget.text, ddpOptions, replay).tuning;
+  assert.deepStrictEqual(replay.ddp, ddpTuning.ddp, "ddp training is deterministic");
+
+  // A deferred (batch) record leaves ddp untouched until the batch retrain
+  const deferred = recordTextShapeRFeedback(ddpTarget.text, { ...ddpOptions, deferRanker: true }, null).tuning;
+  assert.strictEqual(deferred.ddp, null, "deferred feedback does not fit ddp per layer");
+  assert.ok(Array.isArray(retrainTextShapeRRanker(deferred).ddp), "batch retrain fits ddp once");
+  setTextShapeRTuning(null);
+}
 
 console.log("TextShapeR tests passed");

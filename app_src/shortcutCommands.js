@@ -1,5 +1,6 @@
 import {
   alignTextLayerToSelection,
+  alignTextLayersToDoubleBubble,
   changeActiveLayerTextSize,
   createTextLayerInSelection,
   createTextLayersInStoredSelections,
@@ -58,7 +59,20 @@ const applyLinesToLayers = (ctx, layers, preferredOrder = [], options = {}) => {
   }, orderedIds, options);
 };
 
-const pasteInSelection = (ctx, preferredOrder = [], options = {}) => {
+const AUTO_CENTER_CYCLE = ["off", "single", "multi"];
+const nextAutoCenterMode = (mode) => {
+  const index = AUTO_CENTER_CYCLE.indexOf(mode);
+  return AUTO_CENTER_CYCLE[(index + 1) % AUTO_CENTER_CYCLE.length];
+};
+
+const withAutoCenter = (ctx, options) => ({
+  ...options,
+  autoCenter: ctx.state.autoCenterMode || "off",
+  resizeTextBox: !!ctx.state.resizeTextBoxOnCenter,
+});
+
+const pasteInSelection = (ctx, preferredOrder = [], baseOptions = {}) => {
+  const options = withAutoCenter(ctx, baseOptions);
   const storedSelections = ctx.state.storedSelections || [];
 
   if (ctx.state.multiBubbleMode && storedSelections.length > 0) {
@@ -182,6 +196,16 @@ const shortcutCommands = [
     ),
   },
   {
+    id: "centerDouble",
+    label: "shortcut_centerDouble",
+    defaultKeys: [],
+    repeatDelay: 0,
+    handler: (ctx) => alignTextLayersToDoubleBubble(
+      ctx.state.resizeTextBoxOnCenter,
+      ctx.state.internalPadding || 0
+    ),
+  },
+  {
     id: "applyStyle",
     label: "shortcut_applyStyle",
     defaultKeys: [],
@@ -285,6 +309,16 @@ const shortcutCommands = [
     handler: (ctx) => ctx.dispatch({
       type: "setMultiBubbleMode",
       value: !ctx.state.multiBubbleMode,
+    }),
+  },
+  {
+    id: "cycleAutoCenter",
+    label: "shortcut_cycleAutoCenter",
+    defaultKeys: [],
+    repeatDelay: 300,
+    handler: (ctx) => ctx.dispatch({
+      type: "setAutoCenterMode",
+      value: nextAutoCenterMode(ctx.state.autoCenterMode),
     }),
   },
   {
@@ -413,6 +447,7 @@ const isShortcutActiveForEvent = (event, keys) => {
 };
 
 export {
+  nextAutoCenterMode,
   shortcutCommands,
   getDefaultShortcuts,
   migrateShortcutDefaults,

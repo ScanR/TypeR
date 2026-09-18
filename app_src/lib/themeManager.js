@@ -256,4 +256,4 @@ csInterface.addEventListener(window.CSInterface.THEME_COLOR_CHANGED_EVENT, onApp
 applyPageLineColor(currentPageLineColor);
 if (currentEditorTheme !== "system") applyEditorTheme(currentEditorTheme);
 
-export { applyEditorTheme, applyThemeState, applyPageLineColor };
+export { applyThemeState };
