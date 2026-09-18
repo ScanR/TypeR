@@ -41,6 +41,7 @@ const clearUpdateTestConfig = () => {
 };
 
 const checkUpdate = async (currentVersion) => {
+  if (window.typerUXP) return null;
   try {
     const testConfig = getUpdateTestConfig();
     const releasesUrl = testConfig
@@ -344,10 +345,14 @@ const initLocale = () => {
   // Always merge default strings to ensure fallbacks for new keys
   loadLocaleFile(`${path}/locale/messages.properties`);
   locale = mergeLocaleBundle(locale, automatic);
-  const lang = readStorage("language");
+  // UXP has no CEP locale bundle: fall back to the host application locale.
+  const lang = readStorage("language") || (window.typerUXP && window.typerUXP.locale);
   if (lang && lang !== "auto") {
     const file = lang === "en_US" ? `${path}/locale/messages.properties` : `${path}/locale/${lang}/messages.properties`;
     loadLocaleFile(file);
+  }
+  if (window.typerUXP) {
+    locale.helpText = '<p><b>TypeR Silicon</b> — Les raccourcis (Cmd+Ctrl, Cmd+Option, etc.) marchent sans focus du panneau, Photoshop au premier plan. Insérer : sélection → nouveau calque ; calque texte → appliquer le style. Les sélections multi-bulles sont propres à chaque page.</p>' + locale.helpText;
   }
 };
 
@@ -780,9 +785,16 @@ const addPhotoshopEventListener = (callback) => {
 
 const hasReceivedPhotoshopEvents = () => photoshopEventsReceived;
 
+const getShortcutContext = (callback = () => {}) => {
+  csInterface.evalScript("getShortcutContext()", (result) => {
+    try { callback(JSON.parse(result || "{}")); }
+    catch (_) { callback({hasSelection: false, hasTextLayer: false}); }
+  });
+};
+
 const getSelectionBoundsHash = (selection) => {
   if (!selection) return null;
-  return `${selection.xMid}_${selection.yMid}_${selection.width}_${selection.height}`;
+  return `${selection.documentId || ""}_${selection.xMid}_${selection.yMid}_${selection.width}_${selection.height}`;
 };
 
 const startSelectionMonitoring = () => {
@@ -892,6 +904,8 @@ const createTextLayerInSelection = (text, style, pointText, padding, direction, 
   csInterface.evalScript("createTextLayerInSelection(" + data + ", " + resolvedPointText + ")", trackHostAction((error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "sizeSource") nativeAlert(locale.errorKeepTextSizeNoLayer || locale.errorNoTextLayer, locale.errorTitle, true);
+    // UXP surfaces host exceptions as "scriptError: ..." strings.
+    else if (error && error.indexOf("scriptError:") === 0) nativeAlert(error.replace("scriptError: ", ""), locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
     callback(!error);
   }));
@@ -950,6 +964,7 @@ const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback 
   csInterface.evalScript("alignTextLayerToSelection(" + data + ")", trackHostAction((error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    else if (error && error.indexOf("scriptError:") === 0) nativeAlert(error.replace("scriptError: ", ""), locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
     callback(!error);
   }));
@@ -1319,4 +1334,4 @@ const scanPsdFonts = (path, callback) => {
   );
 };
 
-export { backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };
+export { backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getShortcutContext, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };

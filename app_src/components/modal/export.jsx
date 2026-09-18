@@ -126,11 +126,12 @@ const ExportModal = React.memo(function ExportModal() {
     }
   };
 
-  const exportData = (e) => {
+  const exportData = async (e) => {
     e.preventDefault();
     if (!canExport) return;
     const ext = withFontFiles ? "zip" : "json";
-    const pathSelect = window.cep.fs.showSaveDialogEx(
+    // UXP file dialogs are asynchronous, so every cep.fs dialog call is awaited.
+    const pathSelect = await window.cep.fs.showSaveDialogEx(
       false,
       false,
       [ext],
@@ -160,6 +161,8 @@ const ExportModal = React.memo(function ExportModal() {
       data.pastePointText = !!exportSource.pastePointText;
     }
     if (withFontFiles) {
+      // The .zip writer reads the system font directories, which UXP sandboxes
+      // away; the option is hidden there, and this is the belt-and-braces guard.
       const result = exportZipWithFonts({
         zipPath: pathSelect.data,
         jsonFileName: getProfileExportFileName(selectedProfile.name, "json"),
@@ -181,7 +184,7 @@ const ExportModal = React.memo(function ExportModal() {
       close();
       return;
     }
-    const written = window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
+    const written = await window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
     if (!written || written.err) { nativeAlert(locale.saveError, locale.errorTitle, true); return; }
     close();
   };

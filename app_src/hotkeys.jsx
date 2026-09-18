@@ -216,6 +216,34 @@ const HotkeysListner = React.memo(function HotkeysListner() {
   }, []);
 
   React.useEffect(() => {
+    // UXP cannot poll the keyboard from the panel: the host's native reader
+    // plays a Photoshop action instead, which comes back here by command name.
+    // This is the only path that works while Photoshop has the focus.
+    const runCommand = (command) => {
+      const entry = shortcutCommands.find((item) => item.id === command);
+      if (!entry) return;
+      const state = context.getState();
+      if (state.modalType === "settings") return;
+      const now = Date.now();
+      if (now - lastActionRef.current < (entry.repeatDelay || 0)) return;
+      lastActionRef.current = now;
+      // The same keypress can also reach the panel through the polled keyboard
+      // state. Clearing the released flag here is what checkRepeatTime reads to
+      // tell "already handled this press" from "still held": without it, a
+      // shortcut bound in Photoshop as well would run the command twice.
+      keyUpRef.current = false;
+      entry.handler(
+        { state, dispatch: context.dispatch, getState: context.getState },
+        getCommandOptions([], state.shortcut)
+      );
+    };
+    window.__typerRunCommand = runCommand;
+    return () => {
+      if (window.__typerRunCommand === runCommand) delete window.__typerRunCommand;
+    };
+  }, []);
+
+  React.useEffect(() => {
     const keyInterests = [{ keyCode: 27 }];
     csInterface.registerKeyEventsInterest(JSON.stringify(keyInterests));
   }, []);

@@ -1,7 +1,7 @@
 import "./footer.scss";
 
 import React from "react";
-import { locale } from "../../utils";
+import { locale, nativeAlert } from "../../utils";
 import { useContext } from "../../context";
 import HiddenFileInput from "../hiddenFileInput/hiddenFileInput";
 
@@ -26,12 +26,22 @@ const AppFooter = React.memo(function AppFooter() {
   };
   const fileInputRef = React.useRef();
 
-  const openRepository = () => {
+  const openRepository = async () => {
     if (context.state.images.length) {
       context.dispatch({ type: "setImages", images: [] });
       return;
     }
-    fileInputRef.current?.click();
+    // UXP has no <input type="file"> path, so ask the host for persistent
+    // tokens it can reopen later with photoshop.app.open().
+    if (window.typerUXP) {
+      try {
+        const images = await window.typerUXP.request('pickImages');
+        images.sort((a, b) => a.baseName.localeCompare(b.baseName, undefined, {numeric: true, sensitivity: 'base'}));
+        if (images.length) context.dispatch({type: 'setImages', images});
+      } catch (error) { nativeAlert(error.message, locale.errorTitle, true); }
+    } else {
+      fileInputRef.current?.click();
+    }
   };
 
   const toggleMultiBubble = () => {

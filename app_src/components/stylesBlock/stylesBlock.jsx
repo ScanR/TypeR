@@ -512,12 +512,13 @@ const FolderItem = React.memo(function FolderItem(props) {
     setStyleDropTarget(null);
   }, []);
 
-  const exportFolder = React.useCallback((e) => {
+  const exportFolder = React.useCallback(async (e) => {
     e.stopPropagation();
     // Ctrl/Cmd+Click also bundles the folder's font files into a .zip
     const withFonts = e.ctrlKey || e.metaKey;
     const ext = withFonts ? "zip" : "json";
-    const pathSelect = window.cep.fs.showSaveDialogEx(false, false, [ext], props.data.name + "." + ext);
+    // UXP file dialogs are asynchronous, so every cep.fs dialog call is awaited.
+    const pathSelect = await window.cep.fs.showSaveDialogEx(false, false, [ext], props.data.name + "." + ext);
     if (!pathSelect?.data) return false;
     const exportedFolder = {};
     exportedFolder.name = props.data.name;
@@ -552,7 +553,7 @@ const FolderItem = React.memo(function FolderItem(props) {
       }
       return;
     }
-    const written = window.cep.fs.writeFile(pathSelect.data, JSON.stringify(exportedFolder));
+    const written = await window.cep.fs.writeFile(pathSelect.data, JSON.stringify(exportedFolder));
     if (!written || written.err) { nativeAlert(locale.saveError, locale.errorTitle, true); return; }
     // Plain export done: surface the Ctrl+Click zip shortcut once in a while
     props.dispatch({ type: "showExportFolderFontTip" });
