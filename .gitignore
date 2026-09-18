@@ -25,3 +25,16 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# TypeR Silicon (UXP) build output and native artifacts
+uxp/
+uxp-src/typer-keys
+*.ccx
+validation/*-result.json
+# Assembled by validation/build-native-smoke.js; it embeds the absolute paths
+# of the machine that built it, so it is generated on the spot, not committed.
+validation/native-smoke.psjs
+docs*
+
+# Claude Code local settings
+.claude/settings.local.json

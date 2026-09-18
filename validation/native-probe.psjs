@@ -1,0 +1,13 @@
+const fs = require('uxp').storage.localFileSystem;
+const ps = require('photoshop');
+try {
+  const file = await fs.getEntryWithUrl('file:/Users/dadam/Documents/ScanR/TypeR-silicon/validation/native-probe.jsx');
+  const result = await ps.core.executeAsModal(async () => ps.action.batchPlay([
+    {_obj: 'AdobeScriptAutomation Scripts', javascript: {_kind: 'local', _path: fs.createSessionToken(file)}, _options: {dialogOptions: 'dontDisplay'}}
+  ], {}), {commandName: 'TypeR compatibility check', interactive: true});
+  const output = await fs.getEntryWithUrl('file:/Users/dadam/Documents/ScanR/TypeR-silicon/validation');
+  const report = await output.createFile('uxp-probe-result.json', {overwrite: true});
+  await report.write(JSON.stringify({version: ps.app.version, result}));
+} catch (error) {
+  await ps.app.showAlert('TypeR compatibility check: ' + error.message);
+}

@@ -1,0 +1,23 @@
+{
+  "manifestVersion": 5,
+  "id": "fr.scanr.typer.silicon",
+  "name": "TypeR Silicon",
+  "version": "3.0.0",
+  "main": "index.html",
+  "icons": [{"width": 23, "height": 23, "path": "icons/iconNormal.png", "scale": [1, 2]}],
+  "host": {"app": "PS", "minVersion": "26.0.0", "data": {"apiVersion": 2}},
+  "entrypoints": [
+    {
+    "type": "panel", "id": "typer", "label": {"default": "TypeR Silicon"},
+    "icons": [{"width": 23, "height": 23, "path": "icons/iconNormal.png", "scale": [1, 2], "theme": ["dark", "darkest", "light", "lightest"]}],
+    "minimumSize": {"width": 250, "height": 300},
+    "maximumSize": {"width": 1600, "height": 2000},
+    "preferredDockedSize": {"width": 500, "height": 700},
+    "preferredFloatingSize": {"width": 500, "height": 700}
+  }],
+  "requiredPermissions": {
+    "localFileSystem": "request",
+    "launchProcess": {"schemes": ["https"]},
+    "webview": {"allow": "yes", "domains": [], "allowLocalRendering": "yes", "enableMessageBridge": "localOnly"}
+  }
+}

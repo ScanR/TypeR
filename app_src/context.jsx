@@ -1100,6 +1100,10 @@ const baseReducer = (state, action) => {
     }
 
     case "setLastOpenedImagePath": {
+      // Captured bubbles belong to one page: switching page invalidates them.
+      if (action.path && action.path !== state.lastOpenedImagePath) {
+        newState.storedSelections = [];
+      }
       newState.lastOpenedImagePath = action.path || null;
       break;
     }
@@ -1127,6 +1131,12 @@ const baseReducer = (state, action) => {
 
     case "addSelection": {
       if (action.selection) {
+        // A selection carries the document it was captured on; a bubble from
+        // another page must not be batched with the current one.
+        const incomingId = action.selection.documentId;
+        if (incomingId !== undefined && state.storedSelections.some((item) => item.documentId !== undefined && item.documentId !== incomingId)) {
+          newState.storedSelections = [];
+        }
         const selectionWithStyle = {
           ...action.selection,
           styleId: state.currentStyleId,
@@ -1145,7 +1155,7 @@ const baseReducer = (state, action) => {
             };
           }
         }
-        newState.storedSelections = [...state.storedSelections, selectionWithStyle];
+        newState.storedSelections = [...newState.storedSelections, selectionWithStyle];
       }
       break;
     }
