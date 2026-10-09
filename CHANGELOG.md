@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Typesetting
+
+- Add an optional Double bubble mode (off by default, footer toggle): a magic wand click inside one half of a joined bubble selects only that half, with a "Correct split" window to place the dividing line by hand when detection fails.
+- Keep a size picked by hand (preset click, quick size, size shortcut) over the page-width size rule on the document being lettered.
+- Remember the text size of each captured bubble selection so later size changes do not resize bubbles captured earlier.
+- Pace TextShapeR outline and bubble scans by their measured duration so a slow Photoshop is not scanned in a loop.
+
+### Build and distribution
+
+- Parenthesize mixed `&&` / `||` chains in the minified host script so ExtendScript evaluates them as written.
+- Mark shell installers executable inside the release zip and read the panel title from the manifest in the Mac installer.
+
 ## 3.0.0
 
 ### UXP plugin

@@ -1,0 +1,15 @@
+.bubble-assist {
+  p { margin: 8px 0; line-height: 1.4; }
+  .bubble-assist-preview { display: block; width: 100%; height: 220px; max-height: 38vh; background: #272a30; border: 1px solid #888; cursor: crosshair; }
+  .bubble-assist-outline { fill: #eee; fill-rule: evenodd; stroke: #999; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+  .bubble-assist-part { stroke: #555; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+  .bubble-assist-part-1 { fill: #ffcca0; }
+  .bubble-assist-part-2 { fill: #b0dcff; }
+  .bubble-assist-marker { stroke: #222; stroke-width: 1px; vector-effect: non-scaling-stroke; }
+  .bubble-assist-marker-1 { fill: #eea466; }
+  .bubble-assist-marker-2 { fill: #68b8ef; }
+  text { fill: #111; font-weight: bold; pointer-events: none; }
+  .bubble-assist-adjust { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; input { flex: 1; min-width: 120px; } }
+  .bubble-assist-error { min-height: 1.4em; color: #ffbb9a; }
+}
+.bubble-assist-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }

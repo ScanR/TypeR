@@ -3774,3 +3774,565 @@ function launchInstaller(filePath) {
     return 'ERROR: ' + e.message;
   }
 }
+
+/* Double bubble mode: select the lobe under the wand click, preserving the selection.
+   Off until the panel enables it; every override below falls through to the original. */
+_hostState.doubleBubble = {enabled:false,seed:null,cache:null};
+
+function setTypeRDoubleBubbleMode(value) {
+    var state=_hostState.doubleBubble,enabled=value!==false;
+    if(state.enabled!==enabled){
+        state.enabled=enabled;state.seed=null;state.cache=null;state.probeCache=null;state.assistSource=null;
+        state.failedProbe=null;state.autoCache=null;state.autoProbeCache=null;state.scanSeed=null;state.monitorLobeKey=null;
+    }
+    return '';
+}
+
+function _typeRFlattenPathPoints(points) {
+    var polygon=[],i,j,a,b,anchor,next,outgoing,incoming,dx,dy,steps,t,u;
+    for(i=0;i<points.length;i++) {
+        a=points[i];b=points[(i+1)%points.length];anchor=a.anchor;next=b.anchor;
+        dx=next[0]-anchor[0];dy=next[1]-anchor[1];
+        // Select the handle pointing along this segment. The Photoshop DOM's
+        // direction labels can be reversed relative to the subpath traversal.
+        outgoing=(a.forward[0]-anchor[0])*dx+(a.forward[1]-anchor[1])*dy >=
+            (a.backward[0]-anchor[0])*dx+(a.backward[1]-anchor[1])*dy ? a.forward:a.backward;
+        incoming=(b.forward[0]-next[0])*(-dx)+(b.forward[1]-next[1])*(-dy) >=
+            (b.backward[0]-next[0])*(-dx)+(b.backward[1]-next[1])*(-dy) ? b.forward:b.backward;
+        steps=outgoing[0]===anchor[0] && outgoing[1]===anchor[1] && incoming[0]===next[0] && incoming[1]===next[1]?1:8;
+        for(j=0;j<steps;j++){t=j/steps;u=1-t;polygon.push([
+            u*u*u*anchor[0]+3*u*u*t*outgoing[0]+3*u*t*t*incoming[0]+t*t*t*next[0],
+            u*u*u*anchor[1]+3*u*u*t*outgoing[1]+3*u*t*t*incoming[1]+t*t*t*next[1]
+        ]);}
+    }return polygon;
+}
+
+var _typeROldReadPathPolygons=_readPathPolygons;
+_readPathPolygons=function(path) {
+    try {
+        var ids={},names=['pathContents','pathComponents','subpathListKey','points','anchor','forward','backward','horizontal','vertical'];
+        for(var ni=0;ni<names.length;ni++)ids[names[ni]]=stringIDToTypeID(names[ni]);
+        var reference=new ActionReference();reference.putProperty(charID.Property,ids.pathContents);reference.putName(charID.Path,path.name);
+        var components=executeActionGet(reference).getObjectValue(ids.pathContents).getList(ids.pathComponents),polygons=[];
+        function pointCoordinates(desc,key,fallback) {
+            if(!desc.hasKey(key))return fallback;
+            var p=desc.getObjectValue(key);
+            function value(k){return p.getType(k)===DescValueType.UNITDOUBLE?p.getUnitDoubleValue(k):p.getDouble(k);}
+            return [value(ids.horizontal),value(ids.vertical)];
+        }
+        for(var ci=0;ci<components.count;ci++){
+            var subpaths=components.getObjectValue(ci).getList(ids.subpathListKey);
+            for(var si=0;si<subpaths.count;si++){
+                var list=subpaths.getObjectValue(si).getList(ids.points),points=[];
+                if(list.count<3)continue;
+                for(var pi=0;pi<list.count;pi++){
+                    var p=list.getObjectValue(pi),anchor=pointCoordinates(p,ids.anchor,null);
+                    points.push({anchor:anchor,forward:pointCoordinates(p,ids.forward,anchor),backward:pointCoordinates(p,ids.backward,anchor)});
+                }
+                polygons.push(_typeRFlattenPathPoints(points));
+            }
+        }
+        return polygons;
+    }catch(error) {
+        _hostState.doubleBubble.pathReadFallbackError=String(error.message||error);
+        // Older hosts can fall back to the DOM, using the same corrected curve traversal.
+        var polys=[],subs=path.subPathItems;
+        for(var s=0;s<subs.length;s++){
+            var ps=subs[s].pathPoints,pts=[];
+            for(var p=0;p<ps.length;p++)pts.push({anchor:ps[p].anchor,forward:ps[p].rightDirection,backward:ps[p].leftDirection});
+            if(pts.length>=3)polys.push(_typeRFlattenPathPoints(pts));
+        }return polys;
+    }
+};
+
+function setTypeRSelectionSeed(data) {
+    var state=_hostState.doubleBubble;
+    if(!data || data.x===null || data.y===null || !isFinite(data.x) || !isFinite(data.y)) {state.seed=null;return '';}
+    if(!documents.length)return '';
+    var id=app.activeDocument.id;
+    if(data.documentID!==undefined && Number(data.documentID)!==id){state.seed=null;return '';}
+    var seed={x:Number(data.x),y:Number(data.y),documentID:id};
+    if(!state.seed || state.seed.x!==seed.x || state.seed.y!==seed.y || state.seed.documentID!==id)state.cache=null;
+    state.seed=seed;return '';
+}
+
+function _typeRRegionKey(bounds,seed) {
+    var history;
+    try {
+        var reference=new ActionReference();reference.putEnumerated(stringIDToTypeID('historyState'),charID.Ordinal,charID.Target);
+        history=executeActionGet(reference).getInteger(stringIDToTypeID('ID'));
+    }catch(error){history=_getActiveHistoryIndex()+':'+app.activeDocument.activeHistoryState.name;}
+    return String(app.activeDocument.id)+':'+history+':'+_selectionBoundsKey(bounds)+':'+(seed?seed.x+','+seed.y:'');
+}
+
+function _typeRPolygonsLookLeaked(polygons,bounds) {
+    if(!polygons || polygons.length<2)return false;
+    var largest=0,outer=-1,i,j,p,area;
+    for(i=0;i<polygons.length;i++){
+        p=polygons[i];area=0;
+        for(j=0;j<p.length;j++){var q=p[(j+1)%p.length];area+=p[j][0]*q[1]-q[0]*p[j][1];}
+        area=Math.abs(area)/2;if(area>largest){largest=area;outer=i;}
+    }
+    // A rectangular manga frame enclosing a large ink outline is exterior
+    // whitespace. Small letter/cursor islands in a round bubble are allowed.
+    if(largest<bounds.width*bounds.height*.88)return false;
+    for(i=0;i<polygons.length;i++)if(i!==outer){
+        var b=TypeRDoubleBubble.bounds([polygons[i]]);
+        if(b.width>bounds.width*.3 && b.height>bounds.height*.3 && b.width*b.height>bounds.width*bounds.height*.12 &&
+           TypeRDoubleBubble.contains([polygons[outer]],polygons[i][0][0],polygons[i][0][1]))return true;
+    }return false;
+}
+
+function getTypeRDoubleBubbleProbe(data) {
+    if(!documents.length)return jamJSON.stringify({error:'doc'});
+    setTypeRSelectionSeed(data);
+    var state=_hostState.doubleBubble,seed=state.seed,b=_getCurrentSelectionBounds();
+    if(!seed || !b)return jamJSON.stringify({error:'noSeedOrSelection',documentID:app.activeDocument.id});
+    var key=_typeRRegionKey(b,seed);
+    // A failed scan must not repeat a document duplicate/filter on every idle poll.
+    // History, document and click coordinates are part of this key; a forced retry bypasses it.
+    if(!data.forceRepair && state.failedProbe && state.failedProbe.key===key)
+        return jamJSON.stringify(state.failedProbe);
+    if(!data.forceRepair && state.probeCache && state.probeCache.key===key){
+        if(data.cachedKey===key && state.cache && state.cache.key===key)return jamJSON.stringify({key:key,same:true});
+        return jamJSON.stringify(state.probeCache);
+    }
+    if(state.cache && state.cache.key===key && state.cache.value.selected && state.appliedKey===key){
+        var kept=state.cache.value;
+        if(data.cachedKey===key)return jamJSON.stringify({key:key,same:true});
+        return jamJSON.stringify({key:key,documentID:app.activeDocument.id,seed:seed,regions:kept.regions,selected:kept.selected,repaired:kept.repaired,syntheticPoints:[]});
+    }
+    state.syntheticPoints=[];
+    var doc=app.activeDocument,dw=doc.width.as('px'),dh=doc.height.as('px');
+    var edges=(b.left<=1?1:0)+(b.top<=1?1:0)+(b.right>=dw-1?1:0)+(b.bottom>=dh-1?1:0);
+    var scan=_withTemporaryHistory('TypeR Double Bubble Probe',function(){
+        var polygons=null,repaired=false;
+        if(data.forceRepair || (edges>=2 && b.width*b.height>dw*dh*.5)){
+            polygons=_typeRRepairOpenBubble(seed);repaired=!!polygons;
+            if(!polygons)return {error:'noSelection',regions:[],selected:null,repaired:false};
+        }
+        if(!polygons)polygons=_typeRReadSelectionPolygons(false);
+        if(!repaired && _typeRPolygonsLookLeaked(polygons,b)){
+            polygons=_typeRRepairOpenBubble(seed);repaired=!!polygons;
+            if(!polygons)return {error:'noSelection',regions:[],selected:null,repaired:false};
+        }
+        return {polygons:polygons,repaired:repaired,timing:state.lastReadTiming,pathReadFallbackError:state.pathReadFallbackError||null};
+    });
+    if(scan && scan.error==='noSelection')state.cache={key:key,value:scan};
+    if(!scan || scan.error || !scan.polygons){
+        var failure={key:key,error:scan && scan.error || 'noContour',syntheticPoints:state.syntheticPoints};
+        if(failure.error!=='historyBusy')state.failedProbe={key:key,error:failure.error,syntheticPoints:[]};
+        return jamJSON.stringify(failure);
+    }
+    state.failedProbe=null;
+    scan.key=key;scan.documentID=doc.id;scan.seed=seed;scan.geometrySeed=scan.repaired && state.repairSeed?state.repairSeed:seed;scan.syntheticPoints=state.syntheticPoints;state.probeCache=scan;
+    state.assistSource={key:key,documentID:doc.id,polygons:scan.polygons,repaired:scan.repaired,points:[],offset:0,angle:0};
+    return jamJSON.stringify(scan);
+}
+
+function setTypeRDetectedLobe(data) {
+    if(!data || !documents.length || data.documentID!==app.activeDocument.id)return '';
+    if(data.auto){
+        if(data.key===_typeRActiveBubbleKey())_hostState.doubleBubble.autoCache={key:data.key,selected:data.selected};
+        return '';
+    }
+    var b=_getCurrentSelectionBounds(),state=_hostState.doubleBubble;
+    if(!b || data.key!==_typeRRegionKey(b,state.seed))return '';
+    state.cache={key:data.key,value:{regions:data.regions||[],selected:data.selected||null,repaired:!!data.repaired}};
+    return '';
+}
+
+function selectTypeRDoubleBubbleLobe(options) {
+    var state=_hostState.doubleBubble;
+    if(!state.enabled || !documents.length)return jamJSON.stringify({changed:false});
+    var b=_getCurrentSelectionBounds();if(!b || !state.seed)return jamJSON.stringify({changed:false});
+    var key=_typeRRegionKey(b,state.seed);
+    if(options && options.expectedKey && options.expectedKey!==key)return jamJSON.stringify({changed:false,error:'selectionChanged'});
+    if(state.appliedKey===key)return jamJSON.stringify({changed:false,alreadyApplied:true});
+    // Automatic selection must use the prepared scan, never mutate history while retrying an invalid one.
+    if(!state.cache || state.cache.key!==key)return jamJSON.stringify({changed:false,error:'noPreparedLobe'});
+    var scan=state.cache.value;
+    if(scan.error || !scan.selected || !(scan.selected.split || scan.repaired))return jamJSON.stringify({changed:false,error:scan.error||null});
+    var selected=scan.selected,doc=app.activeDocument,units=app.preferences.rulerUnits;
+    var outcome=_withSuspendedHistory('TypeR Double Bubble Selection',function(){
+        var path=null;
+        try{
+            app.preferences.rulerUnits=Units.PIXELS;
+            var subpaths=[],i,j;
+            function addPolygon(polygon,operation){
+                if(polygon.length<3)return;
+                var sub=new SubPathInfo(),points=[];
+                sub.closed=true;sub.operation=operation;
+                for(var k=0;k<polygon.length;k++){
+                    var point=new PathPointInfo();point.kind=PointKind.CORNERPOINT;
+                    var factor=72/doc.resolution,anchor=[polygon[k][0]*factor,polygon[k][1]*factor];
+                    point.anchor=anchor;point.leftDirection=anchor;point.rightDirection=anchor;points.push(point);
+                }
+                sub.entireSubPath=points;subpaths.push(sub);
+            }
+            for(i=0;i<selected.polygons.length;i++)addPolygon(selected.polygons[i],ShapeOperation.SHAPEADD);
+            var raw=state.probeCache && state.probeCache.key===key && state.probeCache.polygons;
+            if(!raw && state.assistSource && state.assistSource.key===key)raw=state.assistSource.polygons;
+            if(raw){
+                var outer=TypeRDoubleBubble.outerContours(raw);
+                for(i=0;i<raw.length;i++){
+                    var isOuter=false;for(j=0;j<outer.length;j++)if(raw[i]===outer[j])isOuter=true;
+                    if(!isOuter)addPolygon(raw[i],ShapeOperation.SHAPESUBTRACT);
+                }
+            }
+            path=doc.pathItems.add('TypeR temporary half selection',subpaths);
+            path.makeSelection(0,true,SelectionType.REPLACE);
+            return {changed:true,bounds:selected.bounds,documentID:doc.id};
+        }catch(error){return {changed:false,error:String(error.message||error)};}
+        finally{if(path)try{path.remove();}catch(error){}app.preferences.rulerUnits=units;}
+    });
+    if(outcome && outcome.changed){
+        var current=_getCurrentSelectionBounds();
+        state.appliedKey=_typeRRegionKey(current,state.seed);state.cache={key:state.appliedKey,value:scan};state.probeCache=null;
+        if(state.assistSource && state.assistSource.key===key)state.assistSource.key=state.appliedKey;
+    }
+    return jamJSON.stringify(outcome||{changed:false,error:'selection'});
+}
+
+function getTypeRAssistedBubbleProbe(data) {
+    if(!documents.length)return jamJSON.stringify({error:'doc'});
+    var state=_hostState.doubleBubble,b=_getCurrentSelectionBounds();
+    if(!state.enabled || !b)return jamJSON.stringify({error:'noSelection'});
+    var key=_typeRRegionKey(b,state.seed),saved=state.assistSource;
+    if(saved && saved.documentID===app.activeDocument.id && saved.key===key)
+        return jamJSON.stringify({key:key,documentID:saved.documentID,polygons:saved.polygons,points:saved.points,offset:saved.offset,angle:saved.angle});
+    var seed=data && data.seed || state.seed;
+    if(!seed)return jamJSON.stringify({error:'noSeedOrSelection'});
+    var probe=jamJSON.parse(getTypeRDoubleBubbleProbe(seed));
+    if(probe.error || !probe.polygons)return jamJSON.stringify({error:probe.error || 'noContour'});
+    return jamJSON.stringify({key:probe.key,documentID:probe.documentID,polygons:probe.polygons,points:[],offset:0,angle:0,syntheticPoints:probe.syntheticPoints||[]});
+}
+
+function setTypeRAssistedBubbleLobe(data) {
+    if(!data || !documents.length)return jamJSON.stringify({changed:false,error:'doc'});
+    var state=_hostState.doubleBubble,b=_getCurrentSelectionBounds(),saved=state.assistSource;
+    if(!state.enabled || data.documentID!==app.activeDocument.id || !b || !saved ||
+       saved.documentID!==app.activeDocument.id || data.key!==saved.key ||
+       data.key!==_typeRRegionKey(b,state.seed))return jamJSON.stringify({changed:false,error:'selectionChanged'});
+    if(data.index!==0 && data.index!==1 || data.whole && data.index!==0)return jamJSON.stringify({changed:false,error:'invalidHalf'});
+    var split;
+    if(data.whole){
+        var body=TypeRDoubleBubble.bodyPolygons(TypeRDoubleBubble.outerContours(saved.polygons)),box=TypeRDoubleBubble.bounds(body);
+        split={regions:[{polygons:body,bounds:box,center:{x:box.xMid,y:box.yMid},split:true}]};
+    }else split=TypeRDoubleBubble.assistedSplit(saved.polygons,data.first,data.second,data.offset,data.angle);
+    if(!split)return jamJSON.stringify({changed:false,error:'invalidSplit'});
+    var previous={seed:state.seed,cache:state.cache,probeCache:state.probeCache,appliedKey:state.appliedKey},
+        selected=split.regions[data.index],point=data.whole?(state.seed || selected.center):(data.index===0?data.first:data.second);
+    state.seed={x:point.x,y:point.y,documentID:app.activeDocument.id};
+    var key=_typeRRegionKey(b,state.seed);
+    state.appliedKey=null;
+    state.cache={key:key,value:{regions:split.regions,selected:selected,repaired:!!saved.repaired}};
+    state.probeCache={key:key,polygons:saved.polygons};saved.key=key;
+    var result=jamJSON.parse(selectTypeRDoubleBubbleLobe({expectedKey:key}));
+    if(result.changed){
+        saved.points=data.whole?[]:[data.first,data.second];saved.offset=data.whole?0:Number(data.offset || 0);saved.angle=data.whole?0:Number(data.angle || 0);
+        result.seed=state.seed;result.key=state.appliedKey;
+    }else{
+        state.seed=previous.seed;state.cache=previous.cache;state.probeCache=previous.probeCache;state.appliedKey=previous.appliedKey;saved.key=data.key;
+    }
+    return jamJSON.stringify(result);
+}
+
+function _typeRReadSelectionPolygons(preserveSelection) {
+    var doc=app.activeDocument;
+    // A user Work Path must never be replaced by a detection scan.
+    if(_findWorkPath(doc))return null;
+    var channel=null,path=null,result=null,units=app.preferences.rulerUnits,active=preserveSelection!==false?doc.activeChannels:null;
+    var changeUnits=units!==Units.PIXELS;
+    var started=new Date().getTime(),marks={};
+    try {
+        if(changeUnits)app.preferences.rulerUnits=Units.PIXELS;
+        if(preserveSelection!==false){channel=doc.channels.add();channel.name='TypeR double bubble '+new Date().getTime();doc.selection.store(channel);}
+        marks.prepare=new Date().getTime()-started;
+        _makeWorkPathFromSelection(1);
+        marks.make=new Date().getTime()-started;
+        path=_findWorkPath(doc);
+        if(path)result=_readPathPolygons(path);
+        marks.read=new Date().getTime()-started;
+    } finally {
+        // In a temporary-history scan the caller rolls back the path together
+        // with the history entry. In a disposable repair document, closing it
+        // cleans up the path. Avoid redundant host mutations in both cases.
+        if(path && preserveSelection!==false)try {path.remove();}catch(error){}
+        if(channel){try {doc.selection.load(channel);}catch(error){}try {channel.remove();}catch(error){}}
+        if(active)try {doc.activeChannels=active;}catch(error){}
+        if(changeUnits)app.preferences.rulerUnits=units;
+        marks.total=new Date().getTime()-started;_hostState.doubleBubble.lastReadTiming=marks;
+    }
+    return result;
+}
+
+function _typeRRepairOpenBubble(seed) {
+    var original=app.activeDocument,temp=null,units=app.preferences.rulerUnits;
+    _hostState.doubleBubble.repairSeed=null;
+    var dw=original.width.as('px'),dh=original.height.as('px');
+    var pixelScale=Math.max(1,Math.min(3,Math.min(dw,dh)/1200));
+    var half=Math.max(160,Math.min(768*pixelScale,Math.min(dw,dh)*.6));
+    var left=Math.max(0,Math.floor(seed.x-half)),top=Math.max(0,Math.floor(seed.y-half));
+    var right=Math.min(dw,Math.ceil(seed.x+half)),bottom=Math.min(dh,Math.ceil(seed.y+half));
+    try {
+        app.preferences.rulerUnits=Units.PIXELS;
+        temp=original.duplicate('TypeR temporary bubble scan',true);
+        temp.crop([UnitValue(left,'px'),UnitValue(top,'px'),UnitValue(right,'px'),UnitValue(bottom,'px')]);
+        // Remove only copied Work Paths in our disposable document.
+        var copied=_findWorkPath(temp);if(copied)copied.remove();
+        var sx=seed.x-left,sy=seed.y-top;
+        var sampler=temp.colorSamplers.add([UnitValue(sx,'px'),UnitValue(sy,'px')]);
+        var rgb=sampler.color.rgb,light=(rgb.red+rgb.green+rgb.blue)/3;sampler.remove();
+        var base=temp.activeHistoryState,radii=[3,8,16,26];
+        for(var radiusIndex=0;radiusIndex<radii.length;radiusIndex++)radii[radiusIndex]=Math.round(radii[radiusIndex]*pixelScale);
+        for(var ri=0;ri<radii.length;ri++) {
+            temp.activeHistoryState=base;
+            if(light>=128)temp.activeLayer.applyMinimum(radii[ri]);else temp.activeLayer.applyMaximum(radii[ri]);
+            // Minimum/Maximum can cover a click near a thin outline or a letter.
+            // Start the repaired wand on the nearest surviving interior pixel.
+            var rx=sx,ry=sy,candidates=[[sx,sy]],step=Math.max(2,radii[ri]),directions=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]],found=false;
+            for(var distance=1;distance<=2;distance++)for(var di=0;di<directions.length;di++)
+                candidates.push([sx+directions[di][0]*step*distance,sy+directions[di][1]*step*distance]);
+            for(var candidate=0;candidate<candidates.length;candidate++){
+                rx=candidates[candidate][0];ry=candidates[candidate][1];
+                if(rx<1 || ry<1 || rx>=right-left-1 || ry>=bottom-top-1)continue;
+                var sample=temp.colorSamplers.add([UnitValue(rx,'px'),UnitValue(ry,'px')]);
+                var color=sample.color.rgb,brightness=(color.red+color.green+color.blue)/3;sample.remove();
+                if((brightness>=128)===(light>=128)){found=true;break;}
+            }
+            if(!found)continue;
+            var descriptor=new ActionDescriptor(),reference=new ActionReference(),point=new ActionDescriptor();
+            reference.putProperty(charID.Channel,charID.FrameSelect);descriptor.putReference(charID.Null,reference);
+            point.putUnitDouble(charID.Horizontal,charID.PixelUnit,rx);point.putUnitDouble(charID.Vertical,charID.PixelUnit,ry);
+            descriptor.putObject(charID.To,stringIDToTypeID('paint'),point);
+            descriptor.putInteger(stringIDToTypeID('tolerance'),32);
+            descriptor.putBoolean(stringIDToTypeID('contiguous'),true);
+            descriptor.putBoolean(stringIDToTypeID('merged'),true);
+            descriptor.putBoolean(stringIDToTypeID('antiAlias'),true);
+            if(_hostState.doubleBubble.syntheticPoints)_hostState.doubleBubble.syntheticPoints.push({x:rx,y:ry,documentID:temp.id});
+            executeAction(charID.Set,descriptor,DialogModes.NO);
+            var b=_getCurrentSelectionBounds();
+            if(!b || b.width*b.height<200 || b.left<=1 || b.top<=1 || b.right>=right-left-1 || b.bottom>=bottom-top-1)continue;
+            // Re-grow the interior removed by the closing filter, staying inside the ROI.
+            _modifySelectionBounds(radii[ri]);
+            var recoveredBounds=_getCurrentSelectionBounds();
+            var polygons=_typeRReadSelectionPolygons(false);
+            if(!polygons || !polygons.length)continue;
+            if(_typeRPolygonsLookLeaked(polygons,recoveredBounds))continue;
+            for(var i=0;i<polygons.length;i++)for(var j=0;j<polygons[i].length;j++){
+                polygons[i][j][0]+=left;polygons[i][j][1]+=top;
+            }
+            _hostState.doubleBubble.repairRadius=radii[ri];
+            _hostState.doubleBubble.repairSeed={x:rx+left,y:ry+top,documentID:original.id};
+            return polygons;
+        }
+    } catch(error) {
+        _hostState.doubleBubble.lastRepairError=String(error.message||error);
+    } finally {
+        if(temp)try {temp.close(SaveOptions.DONOTSAVECHANGES);}catch(error){}
+        app.activeDocument=original;app.preferences.rulerUnits=units;
+    }
+    return null;
+}
+
+function _typeRSelectionRegions(bounds,overrideSeed) {
+    var state=_hostState.doubleBubble,doc=app.activeDocument;
+    if(!state.enabled)return {regions:[],selected:null,repaired:false};
+    var seed=overrideSeed || state.seed;
+    if(seed && seed.documentID!==undefined && seed.documentID!==doc.id)seed=null;
+    var key=_typeRRegionKey(bounds,seed);
+    if(state.cache && state.cache.key===key)return state.cache.value;
+    if(!seed)return {regions:[],selected:null,repaired:false};
+    var polygons=null,repaired=false;
+    var dw=doc.width.as('px'),dh=doc.height.as('px');
+    // A wand leak includes the canvas exterior, often at least two document edges.
+    var edges=(bounds.left<=1?1:0)+(bounds.top<=1?1:0)+(bounds.right>=dw-1?1:0)+(bounds.bottom>=dh-1?1:0);
+    if(seed && edges>=2 && bounds.width*bounds.height>dw*dh*.5){
+        polygons=_typeRRepairOpenBubble(seed);repaired=!!polygons;
+        if(!polygons){var failed={regions:[],selected:null,repaired:false,error:'noSelection'};state.cache={key:key,value:failed};return failed;}
+    }
+    if(!polygons)polygons=_typeRReadSelectionPolygons();
+    if(!repaired && _typeRPolygonsLookLeaked(polygons,bounds)){
+        polygons=_typeRRepairOpenBubble(seed);repaired=!!polygons;
+        if(!polygons){var failedPartial={regions:[],selected:null,repaired:false,error:'noSelection'};state.cache={key:key,value:failedPartial};return failedPartial;}
+    }
+    var regions=polygons && polygons.length?TypeRDoubleBubble.detect(polygons):[];
+    // Never infer a clicked half when no wand point is available.
+    var geometrySeed=repaired && state.repairSeed?state.repairSeed:seed;
+    var selected=TypeRDoubleBubble.choose(regions,geometrySeed);
+    if(selected && geometrySeed && !TypeRDoubleBubble.contains(polygons,geometrySeed.x,geometrySeed.y))selected=null;
+    var result={regions:regions,selected:selected,repaired:repaired};
+    state.cache={key:key,value:result};return result;
+}
+
+var _typeRAdaptiveBoundsOriginal=_getAdaptiveOpenedSelectionBounds;
+_getAdaptiveOpenedSelectionBounds=function(bounds) {
+    if(!_hostState.doubleBubble.enabled)return _typeRAdaptiveBoundsOriginal(bounds);
+    try {
+        var scan=_typeRSelectionRegions(bounds);
+        if(scan.error)return {error:scan.error};
+        if(scan.selected && (scan.selected.split || scan.repaired))return scan.selected.bounds;
+    } catch(error) {_hostState.doubleBubble.lastError=String(error.message||error);}
+    return _typeRAdaptiveBoundsOriginal(bounds);
+};
+
+var _typeRSelectionShapeOriginal=getCurrentSelectionShape;
+getCurrentSelectionShape=function(options) {
+    if(!_hostState.doubleBubble.enabled)return _typeRSelectionShapeOriginal(options);
+    if(documents.length){
+        var b=_getCurrentSelectionBounds();
+        if(b){
+            var state=_hostState.doubleBubble,key=_typeRRegionKey(b,state.seed);
+            var scan=state.cache && state.cache.key===key?state.cache.value:
+                _withTemporaryHistory('TypeR Double Bubble Shape',function(){return _typeRSelectionRegions(b);});
+            if(scan && scan.error==='noSelection')return jamJSON.stringify({error:'noSelection'});
+            if(scan && scan.selected && (scan.selected.split || scan.repaired)){
+                var r=scan.selected;
+                return jamJSON.stringify({scan:'doubleBubble',bounds:r.bounds,rows:_buildPathShapeRows(r.polygons,_normalizeShapeSampleCount(options && options.samples,21)),fallback:false});
+            }
+        }
+    }
+    return _typeRSelectionShapeOriginal(options);
+};
+
+var _typeRPathShapeOriginal=_sampleSelectionShapeViaPath;
+_sampleSelectionShapeViaPath=function(bounds,samples,preserveSelection) {
+    if(!_hostState.doubleBubble.enabled)return _typeRPathShapeOriginal(bounds,samples,preserveSelection);
+    try {
+        var seed=_hostState.doubleBubble.scanSeed;
+        if(seed){var scan=_typeRSelectionRegions(bounds,seed);if(scan.selected && (scan.selected.split || scan.repaired)){
+            var r=scan.selected;return {scan:'doubleBubble',bounds:r.bounds,rows:_buildPathShapeRows(r.polygons,samples),fallback:false};
+        }}
+    }catch(error){}
+    return _typeRPathShapeOriginal(bounds,samples,preserveSelection);
+};
+
+var _typeRScanBubbleOriginal=_scanActiveLayerBubble;
+_scanActiveLayerBubble=function(tolerance,samples) {
+    if(!_hostState.doubleBubble.enabled)return _typeRScanBubbleOriginal(tolerance,samples);
+    var prior=_hostState.doubleBubble.scanSeed;
+    try {
+        var cached=_hostState.doubleBubble.autoCache;
+        if(cached && cached.key===_typeRActiveBubbleKey() && cached.error)return {error:cached.error};
+        if(cached && cached.key===_typeRActiveBubbleKey() && cached.selected){
+            var r=cached.selected;
+            return {scan:'doubleBubble',bounds:r.bounds,rows:_buildPathShapeRows(r.polygons,samples),fallback:false};
+        }
+        var b=_getCurrentTextLayerBounds();
+        _hostState.doubleBubble.scanSeed={x:Math.max(b.left-5,0),y:Math.max(b.yMid,0),documentID:app.activeDocument.id};
+        _createMagicWandSelection(tolerance);
+        var raw=_getCurrentSelectionBounds();
+        if(raw){
+            var scan=_typeRSelectionRegions(raw,_hostState.doubleBubble.scanSeed);
+            if(scan.selected && (scan.selected.split || scan.repaired)){
+                var region=scan.selected;
+                _deselect();return {scan:'doubleBubble',bounds:region.bounds,rows:_buildPathShapeRows(region.polygons,samples),fallback:false};
+            }
+        }
+        return _typeRScanBubbleOriginal(tolerance,samples);
+    }finally {_hostState.doubleBubble.scanSeed=prior;}
+};
+
+function _typeRActiveBubbleKey() {
+    return 'active:'+_typeRRegionKey({xMid:0,yMid:0,width:0,height:0},null)+':'+_getActiveLayerId();
+}
+
+function getTypeRActiveBubbleProbe(data) {
+    if(!documents.length || !_layerIsTextLayer())return jamJSON.stringify({error:'layer'});
+    if(_getCurrentSelectionBounds())return jamJSON.stringify({error:'hasSelection'});
+    var state=_hostState.doubleBubble,key=_typeRActiveBubbleKey();
+    if(!(data && data.forceRepair) && state.autoProbeCache && state.autoProbeCache.key===key){
+        if(state.autoProbeCache.error)return jamJSON.stringify(state.autoProbeCache);
+        if(data && data.cachedKey===key && state.autoCache && state.autoCache.key===key)return jamJSON.stringify({same:true,key:key});
+        return jamJSON.stringify(state.autoProbeCache);
+    }
+    var textBounds=_getCurrentTextLayerBounds(),doc=app.activeDocument;
+    var seed={x:Math.max(textBounds.left-5,0),y:Math.max(textBounds.yMid,0),documentID:doc.id};
+    state.syntheticPoints=[seed];
+    var scan=_withTemporaryHistory('TypeR Active Lobe Probe',function(){
+        _createMagicWandSelection(20);
+        var b=_getCurrentSelectionBounds();if(!b)return {error:'noBubble'};
+        var dw=doc.width.as('px'),dh=doc.height.as('px'),edges=(b.left<=1?1:0)+(b.top<=1?1:0)+(b.right>=dw-1?1:0)+(b.bottom>=dh-1?1:0);
+        var polygons=null,repaired=false;
+        if((data && data.forceRepair) || (edges>=2 && b.width*b.height>dw*dh*.5)){polygons=_typeRRepairOpenBubble(seed);repaired=!!polygons;if(!polygons)return {error:'noBubble'};}
+        if(!polygons)polygons=_typeRReadSelectionPolygons(false);
+        if(!repaired && _typeRPolygonsLookLeaked(polygons,b)){polygons=_typeRRepairOpenBubble(seed);repaired=!!polygons;}
+        if(!polygons)return {error:'noBubble'};
+        return {polygons:polygons,repaired:repaired};
+    });
+    if(!scan || scan.error){
+        if(!scan || scan.error!=='historyBusy'){
+            state.autoCache={key:key,error:'noBubble'};
+            state.autoProbeCache={key:key,error:scan && scan.error || 'noBubble',syntheticPoints:[]};
+        }
+        return jamJSON.stringify({error:scan && scan.error || 'noBubble',syntheticPoints:state.syntheticPoints});
+    }
+    scan.key=key;scan.documentID=doc.id;scan.seed=seed;scan.geometrySeed=scan.repaired && state.repairSeed?state.repairSeed:seed;scan.auto=true;scan.syntheticPoints=state.syntheticPoints;
+    state.autoProbeCache=scan;return jamJSON.stringify(scan);
+}
+
+// Cached TextShapeR reads must not create/delete a no-op history state:
+// the resulting history events would immediately trigger another UI refresh.
+var _typeRActiveShapeOriginal=getActiveLayerBubbleShape;
+getActiveLayerBubbleShape=function(data) {
+    var state=_hostState.doubleBubble;
+    if(state.enabled && documents.length && _layerIsTextLayer() && !_getCurrentSelectionBounds() && _getTargetLayerCount()<=1){
+        var cached=state.autoCache;
+        if(cached && cached.key===_typeRActiveBubbleKey()){
+            if(cached.error)return jamJSON.stringify({error:cached.error});
+            if(cached.selected){
+                var r=cached.selected;
+                return jamJSON.stringify({scan:'doubleBubble',bounds:r.bounds,rows:_buildPathShapeRows(r.polygons,_normalizeShapeSampleCount(data && data.samples,21)),fallback:false});
+            }
+        }
+    }
+    return _typeRActiveShapeOriginal(data);
+};
+
+// Centre existing text in its own lobe even when no recent wand event exists.
+var _typeRAlignOriginal=_alignCurrentTextLayerToSelection;
+_alignCurrentTextLayerToSelection=function() {
+    if(!_hostState.doubleBubble.enabled)return _typeRAlignOriginal();
+    var state=_hostState.doubleBubble,prior=state.seed;
+    try {
+        if(!state.seed && _layerIsTextLayer()){
+            var b=_getCurrentTextLayerBounds();
+            state.seed={x:b.xMid,y:b.yMid,documentID:app.activeDocument.id};
+        }
+        return _typeRAlignOriginal();
+    }finally {state.seed=prior;}
+};
+
+// Photoshop path/selection round-trips vary by tiny floating point amounts.
+// Compare at a hundredth of a document pixel to avoid capturing one lobe twice.
+function _typeRLobeBoundsKey(bounds) {
+    return Math.round(bounds.left*100)+'_'+Math.round(bounds.top*100)+'_'+
+        Math.round(bounds.right*100)+'_'+Math.round(bounds.bottom*100);
+}
+// Compare canonical lobe bounds, not the changing joined/automatic marquee.
+var _typeRSelectionChangedOriginal=_getSelectionChanged;
+_getSelectionChanged=function() {
+    if(!_hostState.doubleBubble.enabled)return _typeRSelectionChangedOriginal();
+    var state=_hostState.doubleBubble,b=_getCurrentSelectionBounds(),monitor=_hostState.selectionMonitor;
+    if(b && state.seed){
+        var regionKey=_typeRRegionKey(b,state.seed);
+        // CEP prepares geometry before consuming a capture. A changed selection
+        // during that preparation must wait for the next poll/new wand seed;
+        // rescanning here uses the old seed and blocks Photoshop unnecessarily.
+        if(!state.cache || state.cache.key!==regionKey)return jamJSON.stringify({noChange:true,shiftKey:false});
+        var scan=state.cache.value;
+        if(!scan || scan.error || !scan.selected)return jamJSON.stringify({noChange:true,shiftKey:false});
+        if(scan && scan.selected && (scan.selected.split || scan.repaired)){
+            var bounds=scan.selected.bounds,key=String(app.activeDocument.id)+':'+_typeRLobeBoundsKey(bounds);
+            if(state.monitorLobeKey===key)return jamJSON.stringify({noChange:true,shiftKey:false});
+            var keyboard=ScriptUI.environment && ScriptUI.environment.keyboardState;
+            if(keyboard && keyboard.shiftKey)return jamJSON.stringify({multipleSelections:true,shiftKey:true});
+            state.monitorLobeKey=key;monitor.lastBounds=b;monitor.lastBoundsKey=_selectionBoundsKey(b);monitor.multiWarnBounds=null;
+            var result={multiSelection:[bounds],shiftKey:false};for(var k in bounds)if(bounds.hasOwnProperty(k))result[k]=bounds[k];
+            return jamJSON.stringify(result);
+        }
+    }
+    state.monitorLobeKey=null;
+    return _typeRSelectionChangedOriginal();
+};

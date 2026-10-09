@@ -8,6 +8,7 @@ import './lib/themeManager';
 // typerPerf.enable() in the debug console). Imported after CSInterface so it
 // can wrap evalScript and time every host round-trip.
 import './perfDebug';
+import './doubleBubbleBridge';
 
 import React from 'react';
 import ReactDOM from 'react-dom';

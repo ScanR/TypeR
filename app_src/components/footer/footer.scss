@@ -4,6 +4,8 @@
   min-height: 20px;
   font-size: 12px;
   display: flex;
+  flex-wrap: wrap;
+  row-gap: 5px;
   align-items: center;
   .link {
     opacity: 0.7;
@@ -50,6 +52,26 @@
   .footer-mode-status {
     font-size: 10px;
     opacity: 0.8;
+  }
+  .footer-modes {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 5px;
+    margin-left: auto;
+    padding-left: 8px;
+    .link.footer-mode-indicator { margin-left: 0; white-space: nowrap; }
+  }
+  .footer-double-bubble {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-family: inherit;
+    padding: 0;
+    text-decoration: underline;
+    &:disabled { opacity: .4; cursor: default; }
+    &:focus-visible { outline: 1px solid #34c759; outline-offset: 3px; }
   }
 }
 

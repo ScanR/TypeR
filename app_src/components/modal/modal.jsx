@@ -3,6 +3,7 @@ import {useContext} from '../../context';
 import {locale} from '../../utils';
 
 const modalLoaders = {
+    doubleBubbleAssist: () => import(/* webpackChunkName: "modal-double-bubble-assist" */ './doubleBubbleAssist'),
     help: () => import(/* webpackChunkName: "modal-help" */ './help'),
     walkthrough: () => import(/* webpackChunkName: "modal-walkthrough" */ './walkthrough'),
     settings: () => import(/* webpackChunkName: "modal-settings" */ './settings'),
@@ -12,6 +13,7 @@ const modalLoaders = {
     fontScanR: () => import(/* webpackChunkName: "modal-font-scan" */ './fontScanR'),
     update: () => import(/* webpackChunkName: "modal-update" */ './update'),
 };
+const DoubleBubbleAssistModal = React.lazy(modalLoaders.doubleBubbleAssist);
 const HelpModal = React.lazy(modalLoaders.help);
 const WalkthroughModal = React.lazy(modalLoaders.walkthrough);
 const SettingsModal = React.lazy(modalLoaders.settings);
@@ -76,7 +78,8 @@ const Modal = React.memo(function Modal() {
 
     let modalContent = null;
     let modalType = context.state.modalType;
-    if (modalType === 'help') modalContent = <HelpModal />;
+    if (modalType === 'doubleBubbleAssist') modalContent = <DoubleBubbleAssistModal />;
+    else if (modalType === 'help') modalContent = <HelpModal />;
     else if (modalType === 'walkthrough') modalContent = <WalkthroughModal />;
     else if (modalType === 'settings') modalContent = <SettingsModal />;
     else if (modalType === 'editStyle') modalContent = <EditStyleModal />;

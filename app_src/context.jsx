@@ -61,6 +61,7 @@ const storeFields = [
   "middleEast",
   "lastOpenedImagePath",
   "multiBubbleMode",
+  "doubleBubbleMode",
   "showTips",
   "exportFolderFontTipDismissed",
   "showQuickStyleSize",
@@ -286,6 +287,7 @@ const initialState = {
   lastOpenedImagePath: null,
   storedSelections: [],
   multiBubbleMode: false,
+  doubleBubbleMode: storage.data?.doubleBubbleMode === true,
   internalPadding: 10,
   interpretMarkdown: storage.data?.interpretMarkdown !== false,
   styleSizeStep: 1,
@@ -980,6 +982,11 @@ const baseReducer = (state, action) => {
       if (!action.value) {
         newState.storedSelections = [];
       }
+      break;
+    }
+
+    case "setDoubleBubbleMode": {
+      newState.doubleBubbleMode = action.value === true;
       break;
     }
 
@@ -1728,6 +1735,9 @@ const ContextProvider = React.memo(function ContextProvider(props) {
     listenersRef.current.forEach((listener) => listener());
   }, [state]);
   React.useEffect(() => dispatch({}), []);
+  React.useLayoutEffect(() => {
+    window.TypeRDoubleBubbleBridge?.setEnabled(state.doubleBubbleMode);
+  }, [state.doubleBubbleMode]);
   React.useEffect(() => {
     if (!state.inlineTextShapeR) return undefined;
     let active = true;

@@ -9,6 +9,7 @@ const AppFooter = React.memo(function AppFooter() {
   const context = useContext((state) => ({
     images: state.images,
     multiBubbleMode: state.multiBubbleMode,
+    doubleBubbleMode: state.doubleBubbleMode,
     inlineTextShapeR: state.inlineTextShapeR,
     uiLayout: state.uiLayout,
   }));
@@ -41,6 +42,9 @@ const AppFooter = React.memo(function AppFooter() {
   const toggleInlineTextShapeR = () => {
     context.dispatch({ type: "setInlineTextShapeR", value: !context.state.inlineTextShapeR });
   };
+  const toggleDoubleBubble = () => {
+    context.dispatch({ type: "setDoubleBubbleMode", value: !context.state.doubleBubbleMode });
+  };
 
   const uiVisible = context.state.uiLayout?.visible || {};
 
@@ -62,7 +66,7 @@ const AppFooter = React.memo(function AppFooter() {
       </span>
       )}
       {uiVisible.footerModeToggles !== false && (
-      <React.Fragment>
+      <span className="footer-modes">
       <span
         className="link footer-mode-indicator footer-mode-spacer"
         onClick={toggleInlineTextShapeR}
@@ -74,6 +78,28 @@ const AppFooter = React.memo(function AppFooter() {
           {context.state.inlineTextShapeR ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF")}
         </span>
       </span>
+      <button
+        type="button"
+        className="link footer-mode-indicator footer-double-bubble"
+        onClick={toggleDoubleBubble}
+        aria-pressed={context.state.doubleBubbleMode}
+        title={locale.doubleBubbleModeHint || "Click inside one half with the magic wand, then Insert. Detects joined bubbles, including thin manga outlines."}
+      >
+        <span className={`footer-mode-dot ${context.state.doubleBubbleMode ? "is-on" : ""}`} />
+        <span className="footer-mode-label">{locale.doubleBubbleModeLabel || "Double bubble"}</span>
+        <span className="footer-mode-status">
+          {context.state.doubleBubbleMode ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF")}
+        </span>
+      </button>
+      <button
+        type="button"
+        className="link footer-double-bubble"
+        disabled={!context.state.doubleBubbleMode}
+        onClick={() => context.dispatch({ type: "setModal", modal: "doubleBubbleAssist" })}
+        title={locale.bubbleAssistHint || "Correct a joined bubble by marking its two halves"}
+      >
+        {locale.bubbleAssistButton || "Correct split"}
+      </button>
       <span
         className="link footer-mode-indicator footer-mode-adjacent"
         onClick={toggleMultiBubble}
@@ -85,7 +111,7 @@ const AppFooter = React.memo(function AppFooter() {
           {context.state.multiBubbleMode ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF")}
         </span>
       </span>
-      </React.Fragment>
+      </span>
       )}
       <HiddenFileInput ref={fileInputRef} />
     </React.Fragment>
