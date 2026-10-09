@@ -36,7 +36,6 @@
   },
   "devDependencies": {
     "cssnano": "^7.1.9",
-    "cz-conventional-changelog": "^3.3.0",
     "postcss-preset-env": "^11.5.1",
     "sass": "^1.89.0",
     "sass-loader": "^16.0.8",
@@ -57,11 +56,6 @@
     "webpack-cli": "^6.0.1",
     "webpack-merge-and-include-globally": "^2.3.4",
     "acorn": "^8.15.0"
-  },
-  "config": {
-    "commitizen": {
-      "path": "./node_modules/cz-conventional-changelog"
-    }
   },
   "engines": {
     "node": ">=22.12"
