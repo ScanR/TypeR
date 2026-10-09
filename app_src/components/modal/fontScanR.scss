@@ -3,7 +3,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    SVG {
+    svg {
         flex: 0 0 auto;
         opacity: .75;
     }
@@ -123,7 +123,7 @@
     font-size: 11px;
     color: #e6a23c;
     margin-bottom: 8px;
-    SVG {
+    svg {
         flex: 0 0 auto;
         margin-top: 1px;
     }
@@ -274,7 +274,7 @@
         opacity: .4;
         cursor: default;
     }
-    SVG {
+    svg {
         flex: 0 0 auto;
         opacity: .7;
     }

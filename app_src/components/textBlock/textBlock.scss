@@ -149,7 +149,7 @@ body.light-theme .text-block {
 .text-line-select {
   flex: 0 0 auto;
   width: 18px;
-  & > SVG {
+  & > svg {
     margin-bottom: -5px;
     position: relative;
     cursor: pointer;
@@ -161,11 +161,11 @@ body.light-theme .text-block {
       opacity: 1;
     }
   }
-  .text-line:hover & > SVG,
-  .text-line.m-current & > SVG {
+  .text-line:hover & > svg,
+  .text-line.m-current & > svg {
     opacity: 1;
   }
-  .text-line.m-current & > SVG {
+  .text-line.m-current & > svg {
     cursor: auto;
   }
 }
@@ -212,7 +212,7 @@ body.light-theme .text-block {
   text-align: center;
   flex: 0 0 auto;
   width: 20px;
-  & > SVG {
+  & > svg {
     margin-bottom: -5px;
     position: relative;
     cursor: pointer;
@@ -227,8 +227,8 @@ body.light-theme .text-block {
       color: #073357;
     }
   }
-  .text-line:hover & > SVG,
-  .text-line.m-current & > SVG {
+  .text-line:hover & > svg,
+  .text-line.m-current & > svg {
     opacity: 1;
   }
 }

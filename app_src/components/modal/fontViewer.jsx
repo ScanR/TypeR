@@ -607,7 +607,7 @@ const FontViewer = () => {
     const single = fonts.length === 1;
     const suggestedName = single ? safeFileName(fonts[0].file_name, `${fonts[0].name}.otf`) : "TypeR-fonts.zip";
     const ext = single && suggestedName.includes(".") ? suggestedName.split(".").pop() : "zip";
-    const pathSelect = window.cep.fs.showSaveDialogEx(false, false, [ext], suggestedName);
+    const pathSelect = await window.cep.fs.showSaveDialogEx(false, false, [ext], suggestedName);
     if (!pathSelect || !pathSelect.data) return;
 
     downloadBusyRef.current = true;
@@ -621,7 +621,7 @@ const FontViewer = () => {
         files.forEach((file) => { archive[file.name] = file.bytes; });
         output = zipSync(archive, { level: 6 });
       }
-      const writeResult = window.cep.fs.writeFile(pathSelect.data, uint8ToBase64(output), window.cep.encoding.Base64);
+      const writeResult = await window.cep.fs.writeFile(pathSelect.data, uint8ToBase64(output), window.cep.encoding.Base64);
       if (writeResult && writeResult.err) throw new Error("writeFailed");
       if (mounted.current) {
         setDownloadState({

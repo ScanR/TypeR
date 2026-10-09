@@ -6,10 +6,10 @@ export default function StorageNotice() {
   const [issues, setIssues] = React.useState(getStorageIssues);
   React.useEffect(() => subscribeStorageIssues(setIssues), []);
   if (!issues.length) return null;
-  const exportRecovery = () => {
-    const result = window.cep.fs.showSaveDialogEx(false, false, ['json'], 'TypeR-recovery.json');
+  const exportRecovery = async () => {
+    const result = await window.cep.fs.showSaveDialogEx(false, false, ['json'], 'TypeR-recovery.json');
     if (!result?.data) return;
-    const written = window.cep.fs.writeFile(result.data, JSON.stringify(readStorage().data || {}));
+    const written = await window.cep.fs.writeFile(result.data, JSON.stringify(readStorage().data || {}));
     if (!written || written.err) nativeAlert(locale.saveError, locale.errorTitle, true);
   };
   return (

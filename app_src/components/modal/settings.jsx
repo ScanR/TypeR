@@ -488,8 +488,9 @@ const SettingsModal = React.memo(function SettingsModal() {
     context.dispatch({ type: "setPageLineColor", color: color || null });
   };
 
-  const importBackgroundImage = () => {
-    const pathSelect = window.cep.fs.showOpenDialogEx(false, false, null, null, ["png", "jpg", "jpeg", "webp", "bmp"]);
+  // File dialogs and reads return promises in the UXP plugin
+  const importBackgroundImage = async () => {
+    const pathSelect = await window.cep.fs.showOpenDialogEx(false, false, null, null, ["png", "jpg", "jpeg", "webp", "bmp"]);
     const path = pathSelect?.data?.length ? pathSelect.data[0] : null;
     if (!path) return;
     setBackgroundBusy(true);
@@ -839,20 +840,20 @@ const SettingsModal = React.memo(function SettingsModal() {
     closeModal();
   };
 
-  const importSettings = () => {
-    const pathSelect = window.cep.fs.showOpenDialogEx(true, false, null, null, ["json"]);
+  const importSettings = async () => {
+    const pathSelect = await window.cep.fs.showOpenDialogEx(true, false, null, null, ["json"]);
     if (!pathSelect?.data?.length) return false;
     let foldersImported = 0;
     let backedUp = false;
-    pathSelect.data.forEach((path) => {
-      const result = window.cep.fs.readFile(path);
+    for (const path of pathSelect.data) {
+      const result = await window.cep.fs.readFile(path);
       if (result.err) {
         nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
       } else {
         try {
           const data = validateImportData(JSON.parse(result.data));
           if (!backedUp) {
-            if (!backupStorage()) { nativeAlert(locale.storageWarning, locale.errorTitle, true); return; }
+            if (!backupStorage()) { nativeAlert(locale.storageWarning, locale.errorTitle, true); continue; }
             backedUp = true;
           }
           if (data.pastePointText === undefined && data.textItemKind !== undefined) {
@@ -933,7 +934,7 @@ const SettingsModal = React.memo(function SettingsModal() {
           nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
         }
       }
-    });
+    }
     if (foldersImported > 0) {
       nativeAlert(
         foldersImported > 1
@@ -952,29 +953,29 @@ const SettingsModal = React.memo(function SettingsModal() {
   // TextShapeR learning travels in its own file, on purpose separate from the
   // style export flow: sharing a learned line-break style must not drag the
   // sender's folders, styles, or preferences along with it
-  const exportShapeTuning = () => {
+  const exportShapeTuning = async () => {
     const tuningState = context.state.textShapeRTuning;
     if (!tuningState || !tuningState.samples) {
       nativeAlert(locale.textShapeRTuningExportEmpty || "Nothing learned yet — use the star button on TextShapeR suggestions first.", locale.errorTitle, true);
       return;
     }
-    const pathSelect = window.cep.fs.showSaveDialogEx(false, false, ["json"], "typer-textshaper-style.json");
+    const pathSelect = await window.cep.fs.showSaveDialogEx(false, false, ["json"], "typer-textshaper-style.json");
     if (!pathSelect?.data) return;
     const data = {
       typerTextShapeRTuning: tuningState,
       version: config.appVersion,
       exported: new Date(),
     };
-    const result = window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
+    const result = await window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
     if (result.err) {
       nativeAlert(locale.textShapeRTuningImportError || "This file does not contain TextShapeR learning data.", locale.errorTitle, true);
     }
   };
 
-  const importShapeTuning = () => {
-    const pathSelect = window.cep.fs.showOpenDialogEx(false, false, null, null, ["json"]);
+  const importShapeTuning = async () => {
+    const pathSelect = await window.cep.fs.showOpenDialogEx(false, false, null, null, ["json"]);
     if (!pathSelect?.data?.length) return;
-    const result = window.cep.fs.readFile(pathSelect.data[0]);
+    const result = await window.cep.fs.readFile(pathSelect.data[0]);
     if (result.err) {
       nativeAlert(locale.textShapeRTuningImportError || "This file does not contain TextShapeR learning data.", locale.errorTitle, true);
       return;

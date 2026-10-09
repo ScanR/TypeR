@@ -287,7 +287,13 @@ const collectFontRefs = (styles) => {
   return Array.from(map.values());
 };
 
+// Returns a promise in the UXP plugin, whose host reads the font folders:
+// callers await the result
 const exportZipWithFonts = ({ zipPath, jsonFileName, jsonString, fontRefs }) => {
+  if (typeof window !== "undefined" && window.typerUXP) {
+    return window.typerUXP.request("exportZipWithFonts", { zipPath, jsonFileName, jsonString, fontRefs })
+      .catch((e) => ({ ok: false, error: e && e.message ? e.message : String(e) }));
+  }
   const node = getNode();
   if (!node) return { ok: false, error: "Node runtime unavailable" };
   try {
@@ -323,4 +329,4 @@ const exportZipWithFonts = ({ zipPath, jsonFileName, jsonString, fontRefs }) => 
   }
 };
 
-export { collectFontRefs, exportZipWithFonts };
+export { collectFontRefs, exportZipWithFonts, matchFontRef, normalize };

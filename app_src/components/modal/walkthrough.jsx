@@ -182,8 +182,8 @@ const WalkthroughModal = React.memo(function WalkthroughModal() {
     });
   };
 
-  const exportJson = () => {
-    const pathSelect = window.cep.fs.showSaveDialogEx(false, false, ["json"], `${config.exportFileName}.json`);
+  const exportJson = async () => {
+    const pathSelect = await window.cep.fs.showSaveDialogEx(false, false, ["json"], `${config.exportFileName}.json`);
     if (!pathSelect?.data) return;
     const data = {
       folders: context.state.folders,
@@ -198,7 +198,7 @@ const WalkthroughModal = React.memo(function WalkthroughModal() {
       autoScrollStyle: context.state.autoScrollStyle,
       currentFolderTagPriority: context.state.currentFolderTagPriority,
     };
-    const result = window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
+    const result = await window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
     if (!result || !result.err) setExportDone(true);
   };
 

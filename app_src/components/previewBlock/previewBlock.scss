@@ -776,7 +776,7 @@
   height: 16px;
   display: inline-flex;
   gap: 5px;
-  & > SVG {
+  & > svg {
     cursor: pointer;
     opacity: 0.7;
     &:hover {

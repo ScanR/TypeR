@@ -5,9 +5,11 @@ CLAUDE.md
 .claude/worktrees/
 
 # Dependencies and generated extension files
-node_modules/
+node_modules
 app/
 storage/
+# UXP plugin build output (npm run build:uxp)
+uxp/
 
 # Release artifacts
 Releases/

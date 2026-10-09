@@ -15,7 +15,11 @@
     "test:update:server": "node scripts/updateTestServer.js",
     "test:build": "node scripts/testBuildArtifacts.js",
     "verify": "npm test && npm run build && npm run test:build",
-    "release": "npm run verify && node scripts/buildRelease.js"
+    "release": "npm run verify && npm run package:uxp && node scripts/buildRelease.js --with-uxp",
+    "build:uxp": "webpack --config webpack.uxp.config.js --mode=production && node scripts/buildUxp.js",
+    "build:uxp:dev": "webpack --config webpack.uxp.config.js --mode=development --env dev && node scripts/buildUxp.js --dev --package",
+    "package:uxp": "npm run build:uxp && node scripts/buildUxp.js --package",
+    "test:uxp": "node scripts/testUxpHost.js && node scripts/testUxpPanelShim.js"
   },
   "dependencies": {
     "@babel/runtime": "^7.15.4",
@@ -32,7 +36,6 @@
   },
   "devDependencies": {
     "cssnano": "^7.1.9",
-    "cz-conventional-changelog": "^3.3.0",
     "postcss-preset-env": "^11.5.1",
     "sass": "^1.89.0",
     "sass-loader": "^16.0.8",
@@ -53,11 +56,6 @@
     "webpack-cli": "^6.0.1",
     "webpack-merge-and-include-globally": "^2.3.4",
     "acorn": "^8.15.0"
-  },
-  "config": {
-    "commitizen": {
-      "path": "./node_modules/cz-conventional-changelog"
-    }
   },
   "engines": {
     "node": ">=22.12"

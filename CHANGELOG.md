@@ -2,6 +2,15 @@
 
 ## 3.0.0
 
+### UXP plugin
+
+- Add a UXP plugin for Photoshop 2025 and later (`TypeR-UXP.ccx`), which runs natively on Apple Silicon without Rosetta. It is the same application as the CEP extension, with the same features, layout and saved styles.
+- Import the styles, profiles and settings of an installed CEP TypeR on first start, and keep the plugin's data outside Photoshop's version-specific folders.
+- Keep the global shortcuts through a small keyboard reader, which also reports mouse buttons 4 and 5 on macOS.
+- Read bubble and selection shapes from the selection mask, leave no history state for reads, and fix size changes on layers with floating-point colors, size changes on rich text and FontScanR on documents with a background layer.
+- Install updates from the panel through Creative Cloud's plugin installer.
+- The installers start by asking whether to install the UXP version or the Legacy (CEP) version, and the release archive contains the UXP plugin, so it installs offline.
+
 ### Workspace and typesetting
 
 - Keep every script tab and the active tab when multi-tab mode is hidden.

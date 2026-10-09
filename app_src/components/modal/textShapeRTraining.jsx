@@ -76,9 +76,18 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
     if (busyRef.current) return;
     try {
       if (window.cep && window.cep.fs && window.cep.fs.showOpenDialogEx) {
+        const picked = (result) => {
+          if (result.err) { setMessage(locale.textShapeRTrainFileError); return; }
+          scanFiles(normalizeTrainingFiles(result.data || []));
+        };
+        // The UXP plugin's dialog answers asynchronously, CEP's at once
         const result = window.cep.fs.showOpenDialogEx(true, false, locale.textShapeRTrainPick, "", ["psd"]);
-        if (result.err) { setMessage(locale.textShapeRTrainFileError); return; }
-        scanFiles(normalizeTrainingFiles(result.data || []));
+        if (result && typeof result.then === "function") {
+          busyRef.current = true;
+          result.then((value) => { busyRef.current = false; picked(value); }, () => { busyRef.current = false; setMessage(locale.textShapeRTrainFileError); });
+          return;
+        }
+        picked(result);
       } else {
         fileInput.current.click();
       }
