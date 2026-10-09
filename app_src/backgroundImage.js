@@ -88,7 +88,7 @@ const importImageFile = async (filePath) => {
   const extension = String(filePath).split(".").pop().toLowerCase();
   const mime = MIME_BY_EXTENSION[extension];
   if (!mime) throw new Error("unsupportedFormat");
-  const result = window.cep.fs.readFile(filePath, window.cep.encoding.Base64);
+  const result = await window.cep.fs.readFile(filePath, window.cep.encoding.Base64);
   if (!result || result.err || !result.data) throw new Error("readFailed");
 
   const source = await loadImageElement(`data:${mime};base64,${result.data}`);

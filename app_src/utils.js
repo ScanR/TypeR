@@ -5,7 +5,7 @@ import { readJsonStorage, writeJsonStorage, reportStorageIssue } from "./storage
 import "./lib/CSInterface";
 import { resolveStylePointText } from "./textLayerPayload";
 import { findNewerReleases, pickUpdateDownloadUrl } from "./updateLogic";
-import { installUpdateInPlace } from "./updateInstaller";
+import { installUpdateInPlace, uint8ToBase64 } from "./updateInstaller";
 import { UPDATE_TEST_CONFIG_FILE, parseUpdateTestConfig } from "./updateTestMode";
 import {
   PS_EVENT_SELECT,
@@ -23,6 +23,10 @@ import {
 const csInterface = new window.CSInterface();
 const path = csInterface.getSystemPath(window.SystemPath.EXTENSION);
 const storagePath = getActiveProfileStoragePath();
+// Set by the UXP plugin's panel (uxp-src/web): updates come as a .ccx
+// package and a few CEP Node features go through the plugin host instead
+const uxpHost = window.typerUXP || null;
+const UPDATE_PACKAGE_EXTENSION = uxpHost ? ".ccx" : ".zip";
 
 let locale = {};
 
@@ -52,11 +56,11 @@ const checkUpdate = async (currentVersion) => {
       { headers: { Accept: "application/vnd.github.v3.html+json" } }
     );
     if (!Array.isArray(releases)) throw new Error("invalidResponse");
-    const newerReleases = findNewerReleases(releases, comparisonVersion);
+    const newerReleases = findNewerReleases(releases, comparisonVersion, UPDATE_PACKAGE_EXTENSION);
     if (newerReleases.length > 0) {
       return {
         version: newerReleases[0].tag_name,
-        downloadUrl: pickUpdateDownloadUrl(newerReleases[0]),
+        downloadUrl: pickUpdateDownloadUrl(newerReleases[0], UPDATE_PACKAGE_EXTENSION),
         testMode: !!testConfig,
         releases: newerReleases.map(release => ({
           version: release.tag_name,
@@ -167,7 +171,14 @@ const downloadAndInstallUpdate = async (downloadUrl, onProgress, onComplete, onE
     onProgress && onProgress(locale.updateDownloading);
     const zipBytes = await fetchUpdateZip(downloadUrl);
     onProgress && onProgress(locale.updateInstalling);
-    await installUpdateInPlace(zipBytes, path, null, options.expectedVersion);
+    if (uxpHost) {
+      // The plugin host checks the package, then hands it to Creative
+      // Cloud's plugin installer, which replaces and reloads the plugin
+      await uxpHost.flushStorage();
+      await uxpHost.request("installUpdatePackage", uint8ToBase64(zipBytes), options.expectedVersion);
+    } else {
+      await installUpdateInPlace(zipBytes, path, null, options.expectedVersion);
+    }
     onComplete && onComplete(false);
   } catch (error) {
     console.error('Update failed:', error);
@@ -1072,6 +1083,13 @@ const handleWatcherLine = (rawLine) => {
 
 const startForegroundWatcher = () => {
   if (foregroundWatcher.started || foregroundWatcher.stopped) return;
+  // UXP: the plugin's keyboard reader reports the side buttons in the same
+  // line format, and only while Photoshop is in front
+  if (uxpHost && uxpHost.onWatcherLine) {
+    foregroundWatcher.started = true;
+    uxpHost.onWatcherLine(handleWatcherLine);
+    return;
+  }
   if (!navigator.platform || navigator.platform.indexOf("Win") !== 0) return;
   const nodeRequire = (window.cep_node && window.cep_node.require) || (typeof window.require === "function" ? window.require : null);
   if (!nodeRequire) return;

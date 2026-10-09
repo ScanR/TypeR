@@ -15,7 +15,11 @@
     "test:update:server": "node scripts/updateTestServer.js",
     "test:build": "node scripts/testBuildArtifacts.js",
     "verify": "npm test && npm run build && npm run test:build",
-    "release": "npm run verify && node scripts/buildRelease.js"
+    "release": "npm run verify && node scripts/buildRelease.js",
+    "build:uxp": "webpack --config webpack.uxp.config.js --mode=production && node scripts/buildUxp.js",
+    "build:uxp:dev": "webpack --config webpack.uxp.config.js --mode=development --env dev && node scripts/buildUxp.js --dev --package",
+    "package:uxp": "npm run build:uxp && node scripts/buildUxp.js --package",
+    "test:uxp": "node scripts/testUxp.js"
   },
   "dependencies": {
     "@babel/runtime": "^7.15.4",

@@ -62,13 +62,22 @@ const getLocalKeys = (e) => {
   return keys;
 };
 
-// Same "aWINaCTRLaZa" format as the hotkey poller
+// Same "aWINaCTRLaZa" format as the hotkey poller. The UXP keyboard reader
+// may follow a key with its aliases ("aLEFTaARROWLEFTa"): only the first
+// name of the key is recorded.
 const parseHostKeys = (state) => {
   if (!state || typeof state !== "string" || state.indexOf("a") !== 0) return [];
   const keys = state.split("a");
   keys.shift();
   keys.pop();
-  return keys.filter((key) => key);
+  let mainKeySeen = false;
+  return keys.filter((key) => {
+    if (!key) return false;
+    if (MODIFIERS.includes(key)) return true;
+    if (mainKeySeen) return false;
+    mainKeySeen = true;
+    return true;
+  });
 };
 
 const Shortcut = (props) => {

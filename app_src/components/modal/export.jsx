@@ -126,11 +126,11 @@ const ExportModal = React.memo(function ExportModal() {
     }
   };
 
-  const exportData = (e) => {
+  const exportData = async (e) => {
     e.preventDefault();
     if (!canExport) return;
     const ext = withFontFiles ? "zip" : "json";
-    const pathSelect = window.cep.fs.showSaveDialogEx(
+    const pathSelect = await window.cep.fs.showSaveDialogEx(
       false,
       false,
       [ext],
@@ -160,7 +160,7 @@ const ExportModal = React.memo(function ExportModal() {
       data.pastePointText = !!exportSource.pastePointText;
     }
     if (withFontFiles) {
-      const result = exportZipWithFonts({
+      const result = await exportZipWithFonts({
         zipPath: pathSelect.data,
         jsonFileName: getProfileExportFileName(selectedProfile.name, "json"),
         jsonString: JSON.stringify(data),
@@ -181,7 +181,7 @@ const ExportModal = React.memo(function ExportModal() {
       close();
       return;
     }
-    const written = window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
+    const written = await window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
     if (!written || written.err) { nativeAlert(locale.saveError, locale.errorTitle, true); return; }
     close();
   };

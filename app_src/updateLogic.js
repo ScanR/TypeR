@@ -36,22 +36,23 @@ const compareVersions = (left, right) => {
 // Only a built release asset is installable. The GitHub "source code" zipball
 // has no compiled app/ folder (webpack output), so installing it would leave a
 // broken extension — no fallback on purpose.
-const pickUpdateDownloadUrl = (release) => {
+// The UXP plugin installs its .ccx asset instead of the CEP .zip.
+const pickUpdateDownloadUrl = (release, extension = ".zip") => {
   const assets = release && Array.isArray(release.assets) ? release.assets : [];
   const zipAsset = assets.find(
     (asset) =>
       asset &&
       typeof asset.name === "string" &&
-      asset.name.toLowerCase().endsWith(".zip") &&
+      asset.name.toLowerCase().endsWith(extension) &&
       asset.name.toLowerCase().indexOf("typer") !== -1
   );
   return zipAsset && zipAsset.browser_download_url ? zipAsset.browser_download_url : null;
 };
 
-const findNewerReleases = (releases, currentVersion) => {
+const findNewerReleases = (releases, currentVersion, extension = ".zip") => {
   const list = Array.isArray(releases) ? releases : [];
   const newer = list.filter(
-    (release) => release && !release.draft && !release.prerelease && versionParts(release.tag_name) && !versionParts(release.tag_name).pre.length && pickUpdateDownloadUrl(release) && compareVersions(release.tag_name, currentVersion) > 0
+    (release) => release && !release.draft && !release.prerelease && versionParts(release.tag_name) && !versionParts(release.tag_name).pre.length && pickUpdateDownloadUrl(release, extension) && compareVersions(release.tag_name, currentVersion) > 0
   );
   newer.sort((a, b) => compareVersions(b.tag_name, a.tag_name));
   return newer;

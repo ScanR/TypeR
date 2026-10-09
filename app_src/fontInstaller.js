@@ -10,6 +10,12 @@ import { makeBuffer, makeDirectories, homeDirectory } from "./nodeCompat";
 
 const FONT_REGISTRY_PATH = "HKCU:\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts";
 
+const bytesToBase64 = (bytes) => {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return window.btoa(binary);
+};
+
 const getNodeRequire = () =>
   (typeof window !== "undefined" && window.cep_node && window.cep_node.require) ||
   (typeof window !== "undefined" && typeof window.require === "function" ? window.require : null);
@@ -21,8 +27,11 @@ const getPlatform = () => {
   return "";
 };
 
+const getUxpHost = () => (typeof window !== "undefined" && window.typerUXP) || null;
+
 const isFontInstallSupported = () => {
   if (!getPlatform()) return false;
+  if (getUxpHost()) return true;
   const nodeRequire = getNodeRequire();
   if (!nodeRequire) return false;
   try {
@@ -101,6 +110,18 @@ const getInstallDir = (nodeRequire, platform) => {
 // unique file name (the viewer builds it with makeUniqueFileNames).
 const installFontFiles = async (files, onProgress) => {
   const platform = getPlatform();
+  const uxpHost = getUxpHost();
+  if (uxpHost) {
+    // Same folders and registration, written by the UXP plugin host
+    const payload = (files || []).map((file) => ({
+      saveName: file.saveName,
+      registryName: registryValueName(file.displayName, file.saveName),
+      base64: bytesToBase64(file.bytes),
+    }));
+    const count = await uxpHost.request("installFonts", payload);
+    if (onProgress) onProgress(payload.length, payload.length);
+    return count;
+  }
   const nodeRequire = getNodeRequire();
   if (!platform || !nodeRequire) throw new Error("installUnsupported");
   const fs = nodeRequire("fs");

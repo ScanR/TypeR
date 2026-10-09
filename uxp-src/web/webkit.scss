@@ -1,0 +1,33 @@
+// The panel runs in WebKit here (Chromium in CEP). Rules for the few places
+// where both engines lay the same CSS out differently; scoped to the UXP
+// build, the CEP rendering is untouched.
+
+// Script sheet: each row must be exactly as tall as the textarea's lines
+// (17px), or the highlight rows drift under the text the textarea draws.
+// WebKit sets the inline icons of the gutter cells on their own baseline,
+// which makes every row half a pixel taller than in Chromium.
+.typer-uxp .text-block {
+  .text-line-num,
+  .text-line-select,
+  .text-line-insert {
+    height: 17px;
+    line-height: 17px;
+    overflow: visible;
+  }
+  .text-line-select > svg,
+  .text-line-insert > svg {
+    vertical-align: top;
+    margin-top: 2px;
+    margin-bottom: 0;
+    top: 0;
+  }
+}
+
+// Form controls take their font from the browser's own stylesheet wherever
+// the panel does not set one: Arial 13.33px in Chromium, the system font in
+// WebKit (wider, which pushed the style size badges around). Zero
+// specificity, so any rule of the panel still wins.
+:where(.typer-uxp) :where(button, input, select, textarea, optgroup, option) {
+  font-family: Arial;
+  font-size: 13.333333px;
+}
