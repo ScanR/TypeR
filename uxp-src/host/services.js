@@ -301,6 +301,7 @@ async function installFonts(fontFiles, registrationScript) {
   if (isWindows() && installed.length && registrationScript) {
     // Per-user registration (HKCU Fonts key + WM_FONTCHANGE), through the same
     // PowerShell script the CEP panel ran
+    await files.resolveFolders();
     const scriptPath = files.joinPath(files.getStorageRoot(), "font-registration.ps1");
     await files.writeText(scriptPath, "\ufeff" + registrationScript(installed));
     await systemCall("powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"" + scriptPath + "\"");

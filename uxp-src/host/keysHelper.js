@@ -93,6 +93,7 @@ async function start(onMouseLine) {
   mouseListener = onMouseLine || null;
   if (started) return true;
   started = true;
+  await files.resolveFolders();
   const folder = files.joinPath(files.getStorageRoot(), "keys");
   await files.ensureFolder(folder);
   const statePath = files.joinPath(folder, "state");

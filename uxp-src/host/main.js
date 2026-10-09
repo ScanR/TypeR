@@ -20,8 +20,9 @@ const PANEL_URL = "plugin:/web/index.html";
 let view = null;
 let statusElement = null;
 
-const storageRoot = files.getStorageRoot();
-const mirror = files.createMirrorWriter(storageRoot);
+// Known once files.resolveFolders() has run (init)
+let storageRoot = null;
+const mirror = files.createMirrorWriter(() => storageRoot);
 let mirrorFiles = null;
 let panelVisible = true;
 let webviewReady = false;
@@ -229,6 +230,8 @@ async function evalScript(script) {
 
 async function init() {
   if (!mirrorFiles) {
+    await files.resolveFolders();
+    storageRoot = files.getStorageRoot();
     await files.ensureFolder(storageRoot);
     const imported = await files.importCepStorage(storageRoot).catch((error) => {
       console.error("TypeR: CEP storage import failed", error);

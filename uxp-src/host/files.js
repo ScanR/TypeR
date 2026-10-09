@@ -47,17 +47,47 @@ function toUrl(path) {
   return "file:" + path;
 }
 
+// Windows' roaming AppData (%APPDATA%) may be redirected away from the user
+// profile (folder redirection, roaming profiles), and install.ps1 puts the
+// CEP extension in it. UXP gives no access to the environment, but Photoshop
+// keeps the plugin data folder in that same folder:
+// <AppData>\Adobe\UXP\PluginsStorage\PHSP\<version>\External\<id>\PluginData
+const roamingAppDataOf = (dataFolderPath) => {
+  const match = /^(.+?)[\\/]Adobe[\\/]UXP[\\/]/i.exec(String(dataFolderPath || ""));
+  return match ? match[1] : null;
+};
+let roamingAppData = null;
+let resolvingFolders = null;
+
+// getStorageRoot() and getCepStorageRoots() need it: awaited before them
+function resolveFolders() {
+  if (!resolvingFolders) {
+    resolvingFolders = (async () => {
+      if (!isWindows()) return;
+      try {
+        roamingAppData = roamingAppDataOf((await lfs.getDataFolder()).nativePath);
+      } catch (error) {}
+    })();
+  }
+  return resolvingFolders;
+}
+
+const profileRoamingAppData = () => joinPath(os.homedir(), "AppData", "Roaming");
+
 function getStorageRoot() {
-  const home = os.homedir();
-  if (isWindows()) return joinPath(home, "AppData", "Roaming", "TypeR", "UXP");
-  return joinPath(home, "Library", "Application Support", "TypeR", "UXP");
+  if (isWindows()) return joinPath(roamingAppData || profileRoamingAppData(), "TypeR", "UXP");
+  return joinPath(os.homedir(), "Library", "Application Support", "TypeR", "UXP");
 }
 
 // Where install scripts put the CEP extension: its storage is imported once
 async function getCepStorageRoots() {
   const home = os.homedir();
   if (isWindows()) {
-    return [joinPath(home, "AppData", "Roaming", "Adobe", "CEP", "extensions", "typertools")];
+    await resolveFolders();
+    const roots = [roamingAppData, profileRoamingAppData()]
+      .filter(Boolean)
+      .map((appData) => joinPath(appData, "Adobe", "CEP", "extensions", "typertools"));
+    return roots.filter((root, index) => roots.findIndex((other) => other.toLowerCase() === root.toLowerCase()) === index);
   }
   return [
     joinPath(home, "Library", "Application Support", "Adobe", "CEP", "extensions", "typertools"),
@@ -219,9 +249,11 @@ async function loadLocales() {
   return locales;
 }
 
-// Persists the mirror: writes are queued per file and only the latest
-// content of a file is written when several are waiting
+// Persists the mirror into root (a folder, or a function returning it):
+// writes are queued per file and only the latest content of a file is
+// written when several are waiting
 function createMirrorWriter(root) {
+  const rootOf = typeof root === "function" ? root : () => root;
   const pending = new Map();
   let running = Promise.resolve();
   let lastError = null;
@@ -231,8 +263,8 @@ function createMirrorWriter(root) {
     if (!job) return;
     pending.delete(name);
     try {
-      if (job.remove) await remove(joinPath(root, name));
-      else await writeTextAtomic(joinPath(root, name), job.text);
+      if (job.remove) await remove(joinPath(rootOf(), name));
+      else await writeTextAtomic(joinPath(rootOf(), name), job.text);
       lastError = null;
       job.resolve(true);
     } catch (error) {
@@ -277,6 +309,9 @@ module.exports = {
   basename,
   toUrl,
   getStorageRoot,
+  resolveFolders,
+  roamingAppDataOf,
+  getCepStorageRoots,
   entryForPath,
   exists,
   ensureFolder,

@@ -172,4 +172,39 @@ for (let i = 0; i < 720; i++) {
 });
 assert.strictEqual(port._buildMaskShapeRows({ data: new Uint8Array(100), width: 10, height: 10, left: 0, top: 0 }, boundsOf(0, 0, 10, 10), 5), null);
 
-console.log("UXP host conversion, evalScript parsing, host.js parity and mask sampling tests passed");
+/* --------------------- Windows roaming AppData --------------------- */
+
+// %APPDATA% may be redirected away from the profile: the CEP extension
+// (install.ps1) and the UXP storage follow it, read from the plugin data folder
+const loadFiles = (dataFolder) => {
+  const filename = path.join(root, "uxp-src/host/files.js");
+  const stubs = {
+    uxp: { storage: { formats: {}, localFileSystem: { getDataFolder: async () => (dataFolder instanceof Error ? Promise.reject(dataFolder) : { nativePath: dataFolder }) } } },
+    os: { platform: () => "win32", homedir: () => "C:\\Users\\ana" },
+    fs: {},
+  };
+  const mod = { exports: {} };
+  new Function("require", "module", "exports", fs.readFileSync(filename, "utf8"))((name) => stubs[name], mod, mod.exports);
+  return mod.exports;
+};
+const pluginData = (appData) => appData + "\\Adobe\\UXP\\PluginsStorage\\PHSP\\27\\External\\com.scanr.typer\\PluginData";
+(async () => {
+  const redirected = loadFiles(pluginData("\\\\server\\profiles$\\ana\\AppData\\Roaming"));
+  assert.deepStrictEqual(await redirected.getCepStorageRoots(), [
+    "\\\\server\\profiles$\\ana\\AppData\\Roaming\\Adobe\\CEP\\extensions\\typertools",
+    "C:\\Users\\ana\\AppData\\Roaming\\Adobe\\CEP\\extensions\\typertools",
+  ]);
+  assert.strictEqual(redirected.getStorageRoot(), "\\\\server\\profiles$\\ana\\AppData\\Roaming\\TypeR\\UXP");
+  const usual = loadFiles(pluginData("C:\\Users\\ana\\AppData\\Roaming"));
+  assert.deepStrictEqual(await usual.getCepStorageRoots(), ["C:\\Users\\ana\\AppData\\Roaming\\Adobe\\CEP\\extensions\\typertools"]);
+  const unknown = loadFiles(new Error("no data folder"));
+  await unknown.resolveFolders();
+  assert.strictEqual(unknown.getStorageRoot(), "C:\\Users\\ana\\AppData\\Roaming\\TypeR\\UXP");
+  assert.strictEqual(usual.roamingAppDataOf("D:\\Adobe\\Profiles\\Adobe\\UXP\\PluginsStorage"), "D:\\Adobe\\Profiles");
+  assert.strictEqual(usual.roamingAppDataOf("/Users/ana/Library/Application Support/Adobe/UXP/PluginsStorage"), "/Users/ana/Library/Application Support");
+  assert.strictEqual(usual.roamingAppDataOf("C:\\elsewhere"), null);
+  console.log("UXP host conversion, evalScript parsing, host.js parity, mask sampling and Windows storage path tests passed");
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
