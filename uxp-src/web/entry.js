@@ -3,7 +3,7 @@
 // host's init payload first, and only then is the application loaded.
 import { request, notify, on } from "./bridge";
 import { installCepEnvironment } from "./cepShim";
-import { installErrorReporting, installFileInputs, installLocalStorage } from "./domShims";
+import { installErrorReporting, installFetchFallback, installFileInputs, installLocalStorage } from "./domShims";
 import "./webkit.scss";
 
 document.documentElement.classList.add("typer-uxp");
@@ -48,6 +48,7 @@ async function start() {
     (name, text) => window.cep.fs.writeFile(root + "/" + name, text)
   );
   installFileInputs();
+  installFetchFallback();
   await import(/* webpackMode: "eager" */ "../../app_src/index.jsx");
 }
 

@@ -11,6 +11,7 @@ const keyboard = require("./keyboard");
 const keysHelper = require("./keysHelper");
 const services = require("./services");
 const { runJsx } = require("./jsx");
+const { parseCall } = require("./evalScript");
 
 const EXTENSION_ID = "typer";
 const PANEL_URL = "plugin:/web/index.html";
@@ -123,8 +124,6 @@ function nativeConfirm(data) {
     const dialog = document.createElement("dialog");
     const form = document.createElement("form");
     form.method = "dialog";
-    const heading = document.createElement("sp-heading");
-    heading.textContent = data.title || "TypeR";
     const body = document.createElement("sp-body");
     body.textContent = String(data.text || "");
     const footer = document.createElement("footer");
@@ -139,7 +138,10 @@ function nativeConfirm(data) {
     accept.addEventListener("click", () => dialog.close("yes"));
     footer.appendChild(cancel);
     footer.appendChild(accept);
-    form.appendChild(heading);
+    // Enter confirms and Escape declines, like the system dialog it replaces
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") dialog.close("yes");
+    });
     form.appendChild(body);
     form.appendChild(footer);
     dialog.appendChild(form);
@@ -172,23 +174,6 @@ const methods = Object.assign({}, photoshop.methods, {
   makeExecutable: () => "OK",
   launchInstaller: (path) => uxp.shell.openPath(path).then(() => "OK", (error) => "ERROR: " + error.message),
 });
-
-// evalScript strings are "name(json, json, ...)" built by the panel
-function parseCall(script) {
-  const match = /^\s*([A-Za-z_$][\w$]*)\s*\(([\s\S]*)\)\s*;?\s*$/.exec(String(script || ""));
-  if (!match) return null;
-  const body = match[2].trim();
-  if (!body) return { name: match[1], args: [] };
-  try {
-    return { name: match[1], args: JSON.parse("[" + body + "]") };
-  } catch (error) {
-    try {
-      return { name: match[1], args: JSON.parse("[" + body.replace(/\bundefined\b/g, "null") + "]") };
-    } catch (secondError) {
-      return null;
-    }
-  }
-}
 
 // ExtendScript ran one script at a time: so do the host calls, otherwise two
 // calls could interleave their Photoshop commands
@@ -391,4 +376,4 @@ uxp.entrypoints.setup({
   },
 });
 
-module.exports = { parseCall, evalScript };
+module.exports = { evalScript };

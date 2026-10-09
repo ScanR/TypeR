@@ -308,6 +308,26 @@ async function installFonts(fontFiles, registrationScript) {
   return installed.length;
 }
 
+/* ======================== network ========================= */
+
+// Requests the WebView refuses (CORS), made from the host; see
+// uxp-src/web/domShims.js installFetchFallback
+async function fetchUrl(url, options = {}) {
+  if (!/^https?:\/\//i.test(String(url))) throw new Error("Unsupported URL");
+  const response = await fetch(String(url), {
+    method: options.method || "GET",
+    headers: options.headers || {},
+    body: options.body,
+  });
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.length > 100 * 1024 * 1024) throw new Error("Response too large");
+  const headers = [];
+  try {
+    response.headers.forEach((value, key) => headers.push([key, value]));
+  } catch (error) {}
+  return { status: response.status, statusText: response.statusText, headers, base64: bytesToBase64(bytes) };
+}
+
 /* ========================= updates ========================== */
 
 function upiaPath() {
@@ -335,16 +355,39 @@ async function installUpdatePackage(base64, expectedVersion) {
   const temporary = await lfs.getTemporaryFolder();
   const packagePath = files.joinPath(temporary.nativePath, "TypeR-" + manifest.version + ".ccx");
   await files.writeBinary(packagePath, bytes);
-  // The Creative Cloud plugin installer replaces the plugin in place and
-  // Photoshop reloads it; without it, the package opens in Creative Cloud
+  // Creative Cloud's plugin installer adds the new version, which Photoshop
+  // loads at its next start; without it, the package opens in Creative Cloud
   const installer = upiaPath();
-  if (await files.exists(installer)) {
-    const quote = isWindows() ? (value) => '"' + value + '"' : (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
-    const result = await systemCall(quote(installer) + " --install " + quote(packagePath));
-    if (String(result).trim() === "0") return { ok: true, method: "upia" };
+  if (await files.exists(installer) && (await runInstaller(installer, packagePath)) === 0) {
+    return { ok: true, method: "upia" };
   }
   await uxp.shell.openPath(packagePath);
   return { ok: true, method: "open" };
+}
+
+// The installer takes several seconds: it runs in the background (app.system
+// would hold Photoshop's main thread until it returns) and reports its exit
+// code in a file, polled here
+async function runInstaller(installer, packagePath) {
+  const marker = packagePath + ".status";
+  await files.remove(marker);
+  if (isWindows()) {
+    const script = packagePath + ".cmd";
+    await files.writeText(script, "@echo off\r\n\"" + installer + "\" --install \"" + packagePath + "\"\r\necho %ERRORLEVEL%> \"" + marker + "\"\r\n");
+    await systemCall("start \"\" /B cmd /c \"" + script + "\"");
+  } else {
+    const quote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
+    await systemCall("( " + quote(installer) + " --install " + quote(packagePath) + " >/dev/null 2>&1; echo $? > " + quote(marker) + " ) >/dev/null 2>&1 &");
+  }
+  const started = Date.now();
+  while (Date.now() - started < 120000) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    try {
+      const status = (await files.readText(marker)).trim();
+      if (status !== "") return parseInt(status, 10);
+    } catch (error) {}
+  }
+  return -1;
 }
 
 module.exports = {
@@ -359,6 +402,7 @@ module.exports = {
     deleteUserFile,
     stat,
     exportZipWithFonts,
+    fetchUrl,
     installFonts: (fontFiles) => installFonts(fontFiles, buildWindowsRegistrationScript),
     installUpdatePackage,
     pluginVersion: () => readManifestVersion(),

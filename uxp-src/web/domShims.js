@@ -92,3 +92,34 @@ export function installErrorReporting(report) {
     report("panel rejection: " + ((reason && (reason.stack || reason.message)) || reason));
   });
 }
+
+// fetch: the WebView applies CORS, which GitHub's release downloads (a
+// redirect to a storage host without CORS headers) do not pass. CEP's
+// Chromium had no such restriction. A request the WebView refuses is made
+// again by the plugin host, outside the browser sandbox.
+export function installFetchFallback() {
+  const nativeFetch = window.fetch.bind(window);
+  const base64ToBytes = (text) => {
+    const binary = atob(text || "");
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  };
+  window.fetch = async (input, init = {}) => {
+    try {
+      return await nativeFetch(input, init);
+    } catch (error) {
+      const url = typeof input === "string" ? input : input && input.url;
+      if (!/^https?:/i.test(String(url || "")) || (init.signal && init.signal.aborted)) throw error;
+      const headers = {};
+      if (init.headers) new Headers(init.headers).forEach((value, key) => { headers[key] = value; });
+      const body = typeof init.body === "string" ? init.body : undefined;
+      const response = await request("fetchUrl", String(url), { method: init.method || "GET", headers, body });
+      return new Response(response.status === 204 ? null : base64ToBytes(response.base64), {
+        status: response.status,
+        statusText: response.statusText || "",
+        headers: response.headers || [],
+      });
+    }
+  };
+}

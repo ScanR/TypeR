@@ -30,9 +30,14 @@ class PhotoshopError extends Error {
   }
 }
 
+// Optional timing hook for profiling (tests and development builds)
+let trace = null;
+
 // executeAction / executeActionGet: throws when Photoshop refuses the command
 function play(descriptor) {
+  const started = trace ? Date.now() : 0;
   const result = batchPlay([Object.assign({ _options: SILENT }, descriptor)], { synchronousExecution: true })[0];
+  if (trace) trace(descriptor, Date.now() - started);
   if (result && result._obj === "error") throw new PhotoshopError(descriptor, result);
   return result || {};
 }
@@ -563,9 +568,20 @@ function _deleteTempSelectionChannel() {
   } catch (removeError) {}
 }
 
-// doc.selection.store(channel): the selection is parked in a named channel
+function _tempSelectionChannelExists() {
+  try {
+    get([{ _property: "channelName" }, { _ref: "channel", _name: _TEMP_SELECTION_CHANNEL }]);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+// doc.selection.store(channel): the selection is parked in a named channel.
+// A leftover channel is only looked up first: deleting a channel that does
+// not exist costs Photoshop more than 20 ms, a lookup 2 ms.
 function _createTempSelectionChannel() {
-  _deleteTempSelectionChannel();
+  if (_tempSelectionChannelExists()) _deleteTempSelectionChannel();
   try {
     play({ _obj: "duplicate", _target: [SELECTION], name: _TEMP_SELECTION_CHANNEL });
     return true;
@@ -840,10 +856,30 @@ function _setMarkYOffset(val) {
   _setTextStyleOverride(808466488, "markYDistFromBaseline", val);
 }
 
+// True when every style range of the target layer already has this value (in
+// pixels): setting it again would only cost another full text relayout
+function _layerTextStyleAlready(key, value) {
+  try {
+    const textKey = _getLayerTextKey();
+    const ranges = textKey && textKey.textStyleRange;
+    if (!Array.isArray(ranges) || !ranges.length) return false;
+    return ranges.every((range) => {
+      const current = range.textStyle && range.textStyle[key];
+      return current && current._unit === "pixelsUnit" && Math.abs(current._value - value) < 1e-6;
+    });
+  } catch (error) {
+    return false;
+  }
+}
+
 function _applyMiddleEast(textStyle) {
   if (!textStyle) return;
-  if (textStyle.diacXOffset != null) _setDiacXOffset(textStyle.diacXOffset);
-  if (textStyle.markYDistFromBaseline != null) _setMarkYOffset(textStyle.markYDistFromBaseline);
+  if (textStyle.diacXOffset != null && !_layerTextStyleAlready("diacXOffset", textStyle.diacXOffset)) {
+    _setDiacXOffset(textStyle.diacXOffset);
+  }
+  if (textStyle.markYDistFromBaseline != null && !_layerTextStyleAlready("markYDistFromBaseline", textStyle.markYDistFromBaseline)) {
+    _setMarkYOffset(textStyle.markYDistFromBaseline);
+  }
 }
 
 function _applyTextDirection(direction, textLength) {
@@ -2687,9 +2723,11 @@ function _collectDocumentFontData() {
     return results;
   }
   const hasBackground = _documentHasBackgroundLayer();
-  // Layer indexes are 0-based when a background layer exists, 1-based otherwise
+  // numberOfLayers leaves the background out: index 0 is the background when
+  // there is one, the other layers are 1..numberOfLayers either way (the CEP
+  // host stopped one short and missed the topmost layer of such documents)
   const firstIndex = hasBackground ? 0 : 1;
-  const lastIndex = hasBackground ? layerCount - 1 : layerCount;
+  const lastIndex = layerCount;
 
   for (let i = firstIndex; i <= lastIndex; i++) {
     try {
@@ -2815,5 +2853,14 @@ module.exports = {
   },
   invalidateFontList,
   // internals, for tests
-  _internals: { play, get, modal, suspendHistory, jamText, _hostState, _getLayerStroke, _getLayerText, _getCurrentTextLayerBounds, _getCurrentSelectionBounds, _getActiveHistoryIndex },
+  setTrace: (fn) => { trace = fn || null; },
+  _internals: {
+    play, get, modal, suspendHistory, jamText, _hostState, _getLayerStroke, _getLayerText,
+    _getCurrentTextLayerBounds, _getCurrentSelectionBounds, _getActiveHistoryIndex,
+    // pure helpers, compared with host.js by scripts/testUxpHost.js
+    _getHostDefaultStyle, _getHostDefaultStroke, _ensureStyle, _overrideStyleTextSize, _resolveStylePointText,
+    _getAdaptiveSelectionOpenRadius, _calculateSelectionDimensions, _clampAdjustAmount,
+    _getAdjustedSelectionBoundsFallback, _buildBoundsShapeRows, _normalizeShapeSampleCount, _buildMaskShapeRows,
+    _selectionBoundsKey, _normalizeTextKey,
+  },
 };

@@ -150,17 +150,29 @@ When an installed font cannot be found, TypeR reports it instead of silently omi
 | FontScanR | `.psd` |
 | Style folders and selected settings | `.json` |
 | Style kit with font files | `.zip` containing JSON and locally found `.ttf`, `.otf`, `.ttc`, or `.otc` files |
-| Distributed installer | `.zip` |
+| Distributed installer | `.zip` (CEP extension), `.ccx` (UXP plugin) |
 
 ## Install
+
+TypeR exists in two forms built from the same application: a **UXP plugin** for Photoshop 2025 and later, which runs natively on Apple Silicon, and the **CEP extension** for every Photoshop since CC 2015. Both can be installed side by side.
+
+### Photoshop 2025 and later: UXP plugin
+
+1. [Download the latest `TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx).
+2. Double-click it: Creative Cloud installs the plugin. Without Creative Cloud's file association, run `./install_uxp_mac.sh` (macOS) or `install_uxp_win.cmd` (Windows) from the release archive instead.
+3. In Photoshop, select **Plugins → TypeR → TypeR**.
+
+On its first start the plugin copies the styles, profiles and settings of an installed CEP TypeR (the CEP files are left untouched). Its own data lives in `~/Library/Application Support/TypeR/UXP` on macOS and `%APPDATA%\TypeR\UXP` on Windows, outside Photoshop's version-specific plugin folders, so a Photoshop upgrade keeps it. Updates are offered and installed from the panel like the CEP version's; restart Photoshop afterwards.
+
+Global shortcuts (such as Cmd+Ctrl for Paste) need to read the keyboard while the canvas has the focus. UXP cannot, so the plugin starts a small keyboard reader that reports the pressed keys while Photoshop is in front, and stops with Photoshop.
 
 ### Requirements
 
 | | Declared compatibility |
 | --- | --- |
-| Adobe Photoshop | CC 2015 / version 16.0 or newer |
+| Adobe Photoshop | CC 2015 / version 16.0 or newer (CEP extension); 2025 / version 26.0 or newer (UXP plugin, tested with Photoshop 2026) |
 | Operating system | Windows or macOS |
-| Photoshop build | Standard desktop installation with CEP extension support |
+| Photoshop build | Standard desktop installation with CEP extension support, or with Creative Cloud for the UXP plugin |
 
 Photoshop 16.0+ and CEP 6+ are declared by the extension manifest. TypeR 3.0 contains two builds of the same application: Photoshop 2020+ with Chromium 74+ loads the modern build; older or unknown runtimes load the compatibility build automatically. The project does not yet maintain a verified OS/version matrix, so compatibility is not guaranteed for every Photoshop and operating-system combination. Portable or heavily modified Photoshop builds may not load CEP panels correctly.
 
@@ -187,7 +199,7 @@ chmod +x install_mac.sh
 
 4. Reopen Photoshop and select **Window → Extensions → TypeR**.
 
-On Apple Silicon, some Photoshop/CEP combinations may require Photoshop to be launched using Rosetta. If the panel is missing or disabled, check the [troubleshooting section](#troubleshooting).
+On Apple Silicon, some Photoshop/CEP combinations may require Photoshop to be launched using Rosetta: Photoshop 2026 users should prefer the [UXP plugin](#photoshop-2025-and-later-uxp-plugin). If the panel is missing or disabled, check the [troubleshooting section](#troubleshooting).
 
 ### Update without opening TypeR
 
@@ -307,6 +319,11 @@ Useful development commands:
 | `npm run build_dev` | Create a development build |
 | `npm run build_watch` | Rebuild while source files change |
 | `npm run test:build` | Validate generated build artifacts |
+| `npm run build:uxp` | Build the UXP plugin into `uxp/` |
+| `npm run package:uxp` | Build the UXP plugin and package `Releases/TypeR-UXP.ccx` |
+| `npm run test:uxp` | Run the UXP plugin's own test suites (also part of `npm test`) |
+
+How the UXP plugin is put together, and what to keep in step when `host.js` changes, is described in [docs/uxp.md](docs/uxp.md).
 
 ## Contributing
 
@@ -322,7 +339,7 @@ The project is distributed under the [MIT License](./LICENSE.md). For TypeR help
 
 ### Preparing a release
 
-Run `npm run release` to test, build both runtimes, verify the artifacts and generate `Releases/TypeR.zip` with a SHA-256 checksum. `build_release.cmd` runs the same pipeline on Windows. Publish this built ZIP, which includes documentation and the license, rather than GitHub's source archive.
+Run `npm run release` to test, build both runtimes, verify the artifacts and generate `Releases/TypeR.zip` and `Releases/TypeR-UXP.ccx` with their SHA-256 checksums. Publish both assets: the UXP plugin looks for `TypeR-UXP.ccx` when it checks for updates. `build_release.cmd` runs the same pipeline on Windows. Publish this built ZIP, which includes documentation and the license, rather than GitHub's source archive.
 
 See [the release acceptance checklist](docs/release-3.0.0.md) for remaining real-Photoshop checks and recovery procedures. The existing video guide shows an earlier version; the in-panel walkthrough describes the current workflow.
 
