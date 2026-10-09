@@ -16,6 +16,7 @@ import { perfMeasure } from "./perfDebug";
 import { TAB_FIELDS, createTab, migrateTabStorage } from "./tabStorage";
 import {
   cycleStyleSizePreset,
+  getStyleTextSize,
   normalizeStyleSizePresets,
   normalizeStyleSizePresetWidthConfig,
   setStyleSizePreset,
@@ -1132,6 +1133,9 @@ const baseReducer = (state, action) => {
           styleId: state.currentStyleId,
           capturedAt: Date.now(),
         };
+        // Remember the size too: changing it later must not resize this bubble
+        const capturedSize = getStyleTextSize(state.styles.find((style) => style.id === state.currentStyleId));
+        if (capturedSize !== null) selectionWithStyle.textSize = capturedSize;
         if (typeof action.lineIndex === "number") {
           selectionWithStyle.lineIndex = action.lineIndex;
           const line = state.lines[action.lineIndex];
@@ -1164,6 +1168,9 @@ const baseReducer = (state, action) => {
           styleId,
           capturedAt,
         };
+        // Remember the size too: changing it later must not resize this bubble
+        const capturedSize = getStyleTextSize(state.styles.find((style) => style.id === styleId));
+        if (capturedSize !== null) selectionWithStyle.textSize = capturedSize;
         if (typeof entry.lineIndex === "number") {
           selectionWithStyle.lineIndex = entry.lineIndex;
           const entryLine = state.lines[entry.lineIndex];

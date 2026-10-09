@@ -130,6 +130,8 @@ var _hostState = {
   documentSession: String(new Date().getTime()) + ":" + String(Math.random()),
   lastOpenedDocId: null,
   suspendedRun: null,
+  // style id -> id of the document where its size was picked by hand
+  manualSizeStyles: {},
   pathScanFails: 0,
   pathScanBackoffAt: 0,
 };
@@ -356,10 +358,31 @@ function _overrideStyleTextSize(style, size) {
   return style;
 }
 
+// A size picked by hand in the panel (preset click, quick size, cycle shortcut)
+// beats "choose size from page width" on the document being lettered: the panel
+// already wrote the picked size into the style, so the auto rule only has to
+// step aside. It resumes on any other document.
+function holdStyleSizeOnActiveDocument(styleId) {
+  try {
+    if (!documents.length || !styleId) return "";
+    _hostState.manualSizeStyles[String(styleId)] = app.activeDocument.id;
+  } catch (holdError) {}
+  return "";
+}
+
+function _styleSizeHeldOnActiveDocument(style) {
+  try {
+    return !!style.id && _hostState.manualSizeStyles[String(style.id)] === app.activeDocument.id;
+  } catch (holdError) {
+    return false;
+  }
+}
+
 function _resolveStyleSizeForDocument(style) {
   if (!style || style.autoSizeByPageWidth !== true || !documents.length) return style;
   var presets = style.sizePresets;
   if (!presets || presets.length < 2) return style;
+  if (_styleSizeHeldOnActiveDocument(style)) return style;
 
   var pageWidth;
   try {

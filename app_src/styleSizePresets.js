@@ -116,6 +116,29 @@ const updateActiveStyleSizePreset = (style, requestedSize) => {
   return writeStyleTextSize(style, size, nextPresets);
 };
 
+// A stored bubble selection remembers the size its style had when it was
+// captured, so picking another size afterwards only affects the bubbles
+// captured later. The captured size is explicit: the page-width rule must not
+// override it.
+const applyCapturedTextSize = (style, capturedSize) => {
+  const size = parseStyleSize(capturedSize);
+  if (!style || size === null || getStyleTextSize(style) === size) return style;
+  const textStyleRange = style.textProps?.layerText?.textStyleRange;
+  if (!textStyleRange?.[0]?.textStyle) return style;
+
+  const textProps = { ...style.textProps };
+  const layerText = { ...textProps.layerText };
+  const nextRanges = textStyleRange.concat([]);
+  const firstRange = { ...nextRanges[0] };
+  const textStyle = { ...firstRange.textStyle, size };
+  if (textStyle.impliedFontSize != null) textStyle.impliedFontSize = size;
+  firstRange.textStyle = textStyle;
+  nextRanges[0] = firstRange;
+  layerText.textStyleRange = nextRanges;
+  textProps.layerText = layerText;
+  return { ...style, textProps, autoSizeByPageWidth: false };
+};
+
 const cycleStyleSizePreset = (style) => {
   const presets = normalizeStyleSizePresets(style);
   if (presets.length < 2) return style;
@@ -135,5 +158,6 @@ export {
   resolveStyleSizePresetForPageWidth,
   setStyleSizePreset,
   updateActiveStyleSizePreset,
+  applyCapturedTextSize,
   cycleStyleSizePreset,
 };

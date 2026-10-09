@@ -6,6 +6,7 @@ import {
   deselectDocument,
   getSelectedTextLayers,
   getTypeRSelectionSnapshot,
+  holdStyleSizeOnActiveDocument,
   locale,
   nativeAlert,
   setActiveLayerText,
@@ -239,7 +240,10 @@ const shortcutCommands = [
     label: "shortcut_nextTextSizePreset",
     defaultKeys: [],
     repeatDelay: 300,
-    handler: (ctx) => ctx.dispatch({ type: "nextStyleSizePreset" }),
+    handler: (ctx) => {
+      holdStyleSizeOnActiveDocument(ctx.state.currentStyle);
+      ctx.dispatch({ type: "nextStyleSizePreset" });
+    },
   },
   {
     id: "increase",

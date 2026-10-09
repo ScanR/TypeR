@@ -1,4 +1,5 @@
 import deepClone from "./deepClone";
+import { applyCapturedTextSize } from "./styleSizePresets";
 
 const getScaledStyle = (style, textScale) => {
   if (!style || !textScale) return style;
@@ -89,7 +90,7 @@ const buildStoredSelectionPayload = ({
   const resolveStyleForLine = (targetLine, selection) => {
     if (selection?.styleId) {
       const storedStyle = styles.find((style) => style.id === selection.styleId);
-      if (storedStyle) return storedStyle;
+      if (storedStyle) return applyCapturedTextSize(storedStyle, selection.textSize);
     }
     if (targetLine?.usedStyle) return targetLine.usedStyle;
     if (targetLine?.style) return targetLine.style;

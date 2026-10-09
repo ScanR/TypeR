@@ -76,4 +76,48 @@ const hostSource = fs.readFileSync(path.join(rootDir, "app_src", "host.js"), "ut
 assert(hostSource.includes("function _resolveStyleSizeForDocument(style)"));
 assert(hostSource.includes('activeDocument.width.as("px")'));
 
+// A size picked by hand must win over the page-width rule on the page being
+// lettered, and the rule must resume on any other document
+const holdStart = hostSource.indexOf("// A size picked by hand in the panel");
+const holdEnd = hostSource.indexOf("function _changeToPointText()");
+assert(holdStart >= 0 && holdEnd > holdStart, "Missing manual size hold implementation");
+const activeDocument = { id: 1, width: { as: () => 1200 } };
+const host = new Function(
+  "documents", "activeDocument", "app", "_hostState",
+  `${hostSource.slice(holdStart, holdEnd)}\nreturn { hold: holdStyleSizeOnActiveDocument, resolve: _resolveStyleSizeForDocument };`
+)({ length: 1 }, activeDocument, { activeDocument }, { manualSizeStyles: {} });
+
+const makeAutoStyle = (id, size) => ({
+  id,
+  autoSizeByPageWidth: true,
+  sizePresets: [20, 22],
+  sizePresetDefaultIndex: 0,
+  sizePresetMinWidths: [null, 1000],
+  textProps: { layerText: { textStyleRange: [{ textStyle: { size, impliedFontSize: size } }] } },
+});
+const sizeOf = (style) => style.textProps.layerText.textStyleRange[0].textStyle.size;
+
+assert.strictEqual(sizeOf(host.resolve(makeAutoStyle("normal", 20))), 22, "Automatic sizing must still follow the page width");
+host.hold("normal");
+assert.strictEqual(sizeOf(host.resolve(makeAutoStyle("normal", 20))), 20, "A hand-picked size must beat the page-width rule on this page");
+assert.strictEqual(sizeOf(host.resolve(makeAutoStyle("normal", 22))), 22);
+assert.strictEqual(sizeOf(host.resolve(makeAutoStyle("title", 20))), 22, "Holding one style must not affect the others");
+activeDocument.id = 2;
+assert.strictEqual(sizeOf(host.resolve(makeAutoStyle("normal", 20))), 22, "Automatic sizing must resume on another document");
+host.hold("normal");
+assert.strictEqual(sizeOf(host.resolve(makeAutoStyle("normal", 20))), 20, "A new pick on another page holds there too");
+const unnamed = makeAutoStyle(undefined, 20);
+host.hold(undefined);
+assert.strictEqual(sizeOf(host.resolve(unnamed)), 22, "A style without an id cannot be held");
+
+const stylesSource = fs.readFileSync(path.join(rootDir, "app_src", "components", "stylesBlock", "stylesBlock.jsx"), "utf8");
+assert(
+  /holdStyleSizeOnActiveDocument\(props\.style\);\s*dispatch\(\{ type: "setStyleSizePreset"/.test(stylesSource),
+  "Clicking a size preset must hold the size against the page-width rule"
+);
+assert(
+  /holdStyleSizeOnActiveDocument\(props\.style\);\s*dispatch\(\{ type: "updateActiveStyleSizePreset"/.test(stylesSource),
+  "Quick size edits must hold the size against the page-width rule"
+);
+
 console.log("style size preset tests passed");

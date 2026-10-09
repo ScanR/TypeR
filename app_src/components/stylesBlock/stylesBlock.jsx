@@ -9,7 +9,7 @@ import { MdEdit, MdLock } from "react-icons/md";
 import { CiExport } from "react-icons/ci";
 
 import config from "../../config";
-import { locale, nativeAlert, nativeConfirm, getActiveLayerText, setActiveLayerText, rgbToHex, getStyleObject, getUserFonts, refreshUserFonts } from "../../utils";
+import { locale, nativeAlert, nativeConfirm, getActiveLayerText, setActiveLayerText, holdStyleSizeOnActiveDocument, rgbToHex, getStyleObject, getUserFonts, refreshUserFonts } from "../../utils";
 import { useContext } from "../../context";
 import { buildFolderTree } from "../../folderUtils";
 import { collectFontRefs, exportZipWithFonts } from "../../fontFileExport";
@@ -761,6 +761,7 @@ const StyleItem = React.memo(function StyleItem(props) {
     e.preventDefault();
     e.stopPropagation();
     if (!props.active) dispatch({ type: "setCurrentStyleId", id: props.style.id });
+    holdStyleSizeOnActiveDocument(props.style);
     dispatch({ type: "setStyleSizePreset", id: props.style.id, size });
   };
 
@@ -779,6 +780,7 @@ const StyleItem = React.memo(function StyleItem(props) {
   const applyQuickSize = (value) => {
     const size = parseFloat(value);
     if (!Number.isFinite(size) || size <= 0) return;
+    holdStyleSizeOnActiveDocument(props.style);
     dispatch({ type: "updateActiveStyleSizePreset", id: props.style.id, size });
   };
   const changeQuickSize = (e) => {

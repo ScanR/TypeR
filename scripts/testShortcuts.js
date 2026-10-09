@@ -117,6 +117,7 @@ assert(
 );
 
 const utilityCalls = [];
+const holdSizeCalls = [];
 let selectionSnapshot = { selection: null, layers: [{ id: 10 }, { id: 20 }] };
 const transformedCommands = babel.transformSync(commandSource, {
   presets: [["@babel/preset-env", { modules: "commonjs" }]],
@@ -130,6 +131,7 @@ const mockRequire = (request) => {
       createTextLayerInSelection: (...args) => utilityCalls.push(["create", ...args]),
       createTextLayersInStoredSelections: (...args) => utilityCalls.push(["createMany", ...args]),
       deselectDocument: (...args) => utilityCalls.push(["deselect", ...args]),
+      holdStyleSizeOnActiveDocument: (style) => holdSizeCalls.push(style),
       getSelectedTextLayers: (callback) => {
         utilityCalls.push(["getSelectedTextLayers"]);
         callback([{ id: 10 }, { id: 20 }]);
@@ -291,6 +293,11 @@ assert.deepStrictEqual(dispatches, [
   { type: "nextStyle" },
   { type: "nextStyleSizePreset" },
 ]);
+assert.deepStrictEqual(
+  holdSizeCalls,
+  [baseContext.state.currentStyle],
+  "Cycling the size preset by shortcut must hold the picked size against the page-width rule"
+);
 
 const localeFiles = [
   path.join(rootDir, "locale", "messages.properties"),
