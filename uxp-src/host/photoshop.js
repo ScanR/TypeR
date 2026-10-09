@@ -10,6 +10,7 @@ const ps = require("photoshop");
 const uxp = require("uxp");
 const jamText = require("./jamText");
 const { resolveTypeRFontVariant } = require("../../app_src/fontVariantResolver.jsxinc");
+const TypeRDoubleBubble = require("../../app_src/doubleBubbleGeometry.jsxinc");
 const keyboard = require("./keyboard");
 
 const { batchPlay } = ps.action;
@@ -159,6 +160,8 @@ const _hostState = {
   hiddenCleaningLayerIdsByDocument: {},
   documentSession: String(new Date().getTime()) + ":" + String(Math.random()),
   lastOpenedDocId: null,
+  // style id -> id of the document where its size was picked by hand
+  manualSizeStyles: {},
 };
 
 function _clone(obj) {
@@ -282,10 +285,31 @@ function _getDocumentPixelSize() {
   return { width: toPixels(doc.width), height: toPixels(height.height) };
 }
 
+// A size picked by hand in the panel (preset click, quick size, cycle shortcut)
+// beats "choose size from page width" on the document being lettered: the panel
+// already wrote the picked size into the style, so the auto rule only has to
+// step aside. It resumes on any other document.
+function holdStyleSizeOnActiveDocument(styleId) {
+  try {
+    if (!hasDocument() || !styleId) return "";
+    _hostState.manualSizeStyles[String(styleId)] = activeDocument().id;
+  } catch (holdError) {}
+  return "";
+}
+
+function _styleSizeHeldOnActiveDocument(style) {
+  try {
+    return !!style.id && _hostState.manualSizeStyles[String(style.id)] === activeDocument().id;
+  } catch (holdError) {
+    return false;
+  }
+}
+
 function _resolveStyleSizeForDocument(style) {
   if (!style || style.autoSizeByPageWidth !== true || !hasDocument()) return style;
   const presets = style.sizePresets;
   if (!presets || presets.length < 2) return style;
+  if (_styleSizeHeldOnActiveDocument(style)) return style;
 
   let pageWidth;
   try {
@@ -2137,6 +2161,79 @@ function _buildMaskShapeRows(mask, bounds, sampleCount) {
   return rows;
 }
 
+// Outline polygons (Double bubble lobes) are sampled like the CEP host's work
+// paths: same scanline rule, same three probes per band
+function _polygonScanlineSpan(polygons, y) {
+  let minX = null;
+  let maxX = null;
+  for (let p = 0; p < polygons.length; p++) {
+    const poly = polygons[p];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      // Half-open rule so scanlines crossing a vertex count it exactly once
+      if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) {
+        const x = a[0] + ((y - a[1]) / (b[1] - a[1])) * (b[0] - a[0]);
+        if (minX === null || x < minX) minX = x;
+        if (maxX === null || x > maxX) maxX = x;
+      }
+    }
+  }
+  return minX === null ? null : { left: minX, right: maxX };
+}
+
+function _buildPathShapeRows(polygons, sampleCount) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let p = 0; p < polygons.length; p++) {
+    for (let i = 0; i < polygons[p].length; i++) {
+      const point = polygons[p][i];
+      if (point[0] < minX) minX = point[0];
+      if (point[0] > maxX) maxX = point[0];
+      if (point[1] < minY) minY = point[1];
+      if (point[1] > maxY) maxY = point[1];
+    }
+  }
+  const width = maxX - minX;
+  const height = maxY - minY;
+  if (!(width > 0) || !(height > 0)) return null;
+  const sliceHeight = height / sampleCount;
+  const rows = [];
+  let covered = 0;
+  for (let r = 0; r < sampleCount; r++) {
+    const yRatio = sampleCount <= 1 ? 0.5 : r / (sampleCount - 1);
+    const yMid = minY + height * yRatio;
+    let left = null;
+    let right = null;
+    const offsets = [-sliceHeight / 2, 0, sliceHeight / 2];
+    for (let k = 0; k < offsets.length; k++) {
+      let y = yMid + offsets[k];
+      if (y <= minY) y = minY + height * 0.002;
+      if (y >= maxY) y = maxY - height * 0.002;
+      const span = _polygonScanlineSpan(polygons, y);
+      if (span) {
+        if (left === null || span.left < left) left = span.left;
+        if (right === null || span.right > right) right = span.right;
+      }
+    }
+    if (left !== null && right > left) {
+      covered++;
+      rows.push({
+        y: yRatio,
+        left: Math.max(0, Math.min(1, (left - minX) / width)),
+        right: Math.max(0, Math.min(1, (right - minX) / width)),
+        width: Math.max(0, Math.min(1, (right - left) / width)),
+      });
+    } else {
+      rows.push({ y: yRatio, left: 0.5, right: 0.5, width: 0 });
+    }
+  }
+  if (!covered) return null;
+  return rows;
+}
+
 async function _sampleSelectionShape(bounds, sampleCount) {
   try {
     const mask = await _readSelectionMask(bounds);
@@ -2816,6 +2913,797 @@ async function scanPsdFonts(path) {
   }
 }
 
+/* ========================================================= */
+/* ===================== Double bubble ===================== */
+/* ========================================================= */
+
+// Double bubble mode: select the lobe under the wand click, preserving the
+// selection. Off until the panel enables it; every override below falls
+// through to the original. Port of the section at the end of host.js: the
+// outlines come from the same work path, read through batchPlay, and the
+// lobe is selected with polygon lassos instead of a temporary path.
+_hostState.doubleBubble = { enabled: false, seed: null, cache: null };
+
+function setTypeRDoubleBubbleMode(value) {
+  const state = _hostState.doubleBubble;
+  const enabled = value !== false;
+  if (state.enabled !== enabled) {
+    state.enabled = enabled;
+    state.seed = null;
+    state.cache = null;
+    state.probeCache = null;
+    state.assistSource = null;
+    state.failedProbe = null;
+    state.autoCache = null;
+    state.autoProbeCache = null;
+    state.scanSeed = null;
+    state.monitorLobeKey = null;
+  }
+  return "";
+}
+
+function _typeRFlattenPathPoints(points) {
+  const polygon = [];
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    const anchor = a.anchor;
+    const next = b.anchor;
+    const dx = next[0] - anchor[0];
+    const dy = next[1] - anchor[1];
+    // Select the handle pointing along this segment: the direction labels can
+    // be reversed relative to the subpath traversal
+    const outgoing = (a.forward[0] - anchor[0]) * dx + (a.forward[1] - anchor[1]) * dy >=
+      (a.backward[0] - anchor[0]) * dx + (a.backward[1] - anchor[1]) * dy ? a.forward : a.backward;
+    const incoming = (b.forward[0] - next[0]) * -dx + (b.forward[1] - next[1]) * -dy >=
+      (b.backward[0] - next[0]) * -dx + (b.backward[1] - next[1]) * -dy ? b.forward : b.backward;
+    const steps = outgoing[0] === anchor[0] && outgoing[1] === anchor[1] && incoming[0] === next[0] && incoming[1] === next[1] ? 1 : 8;
+    for (let j = 0; j < steps; j++) {
+      const t = j / steps;
+      const u = 1 - t;
+      polygon.push([
+        u * u * u * anchor[0] + 3 * u * u * t * outgoing[0] + 3 * u * t * t * incoming[0] + t * t * t * next[0],
+        u * u * u * anchor[1] + 3 * u * u * t * outgoing[1] + 3 * u * t * t * incoming[1] + t * t * t * next[1],
+      ]);
+    }
+  }
+  return polygon;
+}
+
+// Path coordinates come back as distance units (points at 72 dpi) or pixels
+function _typeRPathCoordinate(value, resolution) {
+  if (typeof value === "number") return value;
+  if (value && value._unit === "distanceUnit") return (value._value * resolution) / 72;
+  return unitValue(value);
+}
+
+function _typeRPathPoint(point, key, fallback, resolution) {
+  const value = point[key];
+  if (!value) return fallback;
+  return [_typeRPathCoordinate(value.horizontal, resolution), _typeRPathCoordinate(value.vertical, resolution)];
+}
+
+// pathContents (actionJSON) -> flattened outline polygons in pixels
+function _typeRPathPolygonsFromContents(contents, resolution) {
+  const polygons = [];
+  const components = (contents && contents.pathComponents) || [];
+  for (let ci = 0; ci < components.length; ci++) {
+    const subpaths = components[ci].subpathListKey || [];
+    for (let si = 0; si < subpaths.length; si++) {
+      const list = subpaths[si].points || [];
+      if (list.length < 3) continue;
+      const points = [];
+      for (let pi = 0; pi < list.length; pi++) {
+        const anchor = _typeRPathPoint(list[pi], "anchor", null, resolution);
+        points.push({
+          anchor,
+          forward: _typeRPathPoint(list[pi], "forward", anchor, resolution),
+          backward: _typeRPathPoint(list[pi], "backward", anchor, resolution),
+        });
+      }
+      polygons.push(_typeRFlattenPathPoints(points));
+    }
+  }
+  return polygons;
+}
+
+const WORK_PATH = { _ref: "path", _property: "workPath" };
+
+function _findWorkPath() {
+  try {
+    get([{ _property: "kind" }, WORK_PATH]);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function _makeWorkPathFromSelection(tolerance) {
+  // Canonical source reference is the selection of class selectionClass; some
+  // hosts accept it on channel instead, so try both before giving up
+  const sources = ["selectionClass", "channel"];
+  let lastError = null;
+  for (let i = 0; i < sources.length; i++) {
+    try {
+      play({ _obj: "make", _target: [{ _ref: "path" }], from: { _ref: sources[i], _property: "selection" }, tolerance: px(tolerance) });
+      return;
+    } catch (makeError) {
+      lastError = makeError;
+    }
+  }
+  throw lastError;
+}
+
+function _deleteWorkPath() {
+  play({ _obj: "delete", _target: [WORK_PATH] });
+}
+
+function _readPathPolygons() {
+  const contents = get([{ _property: "pathContents" }, WORK_PATH]).pathContents;
+  return _typeRPathPolygonsFromContents(contents, _getDocumentResolution());
+}
+
+function setTypeRSelectionSeed(data) {
+  const state = _hostState.doubleBubble;
+  if (!data || data.x === null || data.y === null || !isFinite(data.x) || !isFinite(data.y)) {
+    state.seed = null;
+    return "";
+  }
+  if (!hasDocument()) return "";
+  const id = activeDocument().id;
+  if (data.documentID !== undefined && Number(data.documentID) !== id) {
+    state.seed = null;
+    return "";
+  }
+  const seed = { x: Number(data.x), y: Number(data.y), documentID: id };
+  if (!state.seed || state.seed.x !== seed.x || state.seed.y !== seed.y || state.seed.documentID !== id) state.cache = null;
+  state.seed = seed;
+  return "";
+}
+
+function _typeRHistoryStateId() {
+  return integerValue(get([{ _ref: "historyState", _enum: "ordinal", _value: "targetEnum" }]).ID);
+}
+
+function _typeRRegionKey(bounds, seed) {
+  let history;
+  try {
+    history = _typeRHistoryStateId();
+  } catch (error) {
+    history = _getActiveHistoryIndex();
+  }
+  return String(activeDocument().id) + ":" + history + ":" + _selectionBoundsKey(bounds) + ":" + (seed ? seed.x + "," + seed.y : "");
+}
+
+function _typeRPolygonsLookLeaked(polygons, bounds) {
+  if (!polygons || polygons.length < 2) return false;
+  let largest = 0;
+  let outer = -1;
+  for (let i = 0; i < polygons.length; i++) {
+    const p = polygons[i];
+    let area = 0;
+    for (let j = 0; j < p.length; j++) {
+      const q = p[(j + 1) % p.length];
+      area += p[j][0] * q[1] - q[0] * p[j][1];
+    }
+    area = Math.abs(area) / 2;
+    if (area > largest) {
+      largest = area;
+      outer = i;
+    }
+  }
+  // A rectangular manga frame enclosing a large ink outline is exterior
+  // whitespace. Small letter/cursor islands in a round bubble are allowed.
+  if (largest < bounds.width * bounds.height * 0.88) return false;
+  for (let i = 0; i < polygons.length; i++) {
+    if (i === outer) continue;
+    const b = TypeRDoubleBubble.bounds([polygons[i]]);
+    if (b.width > bounds.width * 0.3 && b.height > bounds.height * 0.3 && b.width * b.height > bounds.width * bounds.height * 0.12 &&
+        TypeRDoubleBubble.contains([polygons[outer]], polygons[i][0][0], polygons[i][0][1])) return true;
+  }
+  return false;
+}
+
+// A wand leak includes the canvas exterior, often at least two document edges
+function _typeRLooksLikeCanvasLeak(bounds) {
+  const size = _getDocumentPixelSize();
+  const dw = size.width;
+  const dh = size.height;
+  const edges = (bounds.left <= 1 ? 1 : 0) + (bounds.top <= 1 ? 1 : 0) + (bounds.right >= dw - 1 ? 1 : 0) + (bounds.bottom >= dh - 1 ? 1 : 0);
+  return edges >= 2 && bounds.width * bounds.height > dw * dh * 0.5;
+}
+
+async function getTypeRDoubleBubbleProbe(data) {
+  if (!hasDocument()) return JSON.stringify({ error: "doc" });
+  setTypeRSelectionSeed(data);
+  const state = _hostState.doubleBubble;
+  const seed = state.seed;
+  const b = _getCurrentSelectionBounds();
+  if (!seed || !b) return JSON.stringify({ error: "noSeedOrSelection", documentID: activeDocument().id });
+  const forceRepair = !!(data && data.forceRepair);
+  const cachedKey = data && data.cachedKey;
+  const key = _typeRRegionKey(b, seed);
+  // A failed scan must not repeat a document duplicate/filter on every idle poll.
+  // History, document and click coordinates are part of this key; a forced retry bypasses it.
+  if (!forceRepair && state.failedProbe && state.failedProbe.key === key) return JSON.stringify(state.failedProbe);
+  if (!forceRepair && state.probeCache && state.probeCache.key === key) {
+    if (cachedKey === key && state.cache && state.cache.key === key) return JSON.stringify({ key, same: true });
+    return JSON.stringify(state.probeCache);
+  }
+  if (state.cache && state.cache.key === key && state.cache.value.selected && state.appliedKey === key) {
+    const kept = state.cache.value;
+    if (cachedKey === key) return JSON.stringify({ key, same: true });
+    return JSON.stringify({ key, documentID: activeDocument().id, seed, regions: kept.regions, selected: kept.selected, repaired: kept.repaired, syntheticPoints: [] });
+  }
+  state.syntheticPoints = [];
+  const documentID = activeDocument().id;
+  const leaked = _typeRLooksLikeCanvasLeak(b);
+  const scan = await _withTemporaryHistory("TypeR Double Bubble Probe", () => {
+    let polygons = null;
+    let repaired = false;
+    if (forceRepair || leaked) {
+      polygons = _typeRRepairOpenBubble(seed);
+      repaired = !!polygons;
+      if (!polygons) return { error: "noSelection", regions: [], selected: null, repaired: false };
+    }
+    if (!polygons) polygons = _typeRReadSelectionPolygons(false);
+    if (!repaired && _typeRPolygonsLookLeaked(polygons, b)) {
+      polygons = _typeRRepairOpenBubble(seed);
+      repaired = !!polygons;
+      if (!polygons) return { error: "noSelection", regions: [], selected: null, repaired: false };
+    }
+    return { polygons, repaired, timing: state.lastReadTiming, pathReadFallbackError: state.pathReadFallbackError || null };
+  });
+  if (scan && scan.error === "noSelection") state.cache = { key, value: scan };
+  if (!scan || scan.error || !scan.polygons) {
+    const failure = { key, error: (scan && scan.error) || "noContour", syntheticPoints: state.syntheticPoints };
+    if (failure.error !== "historyBusy") state.failedProbe = { key, error: failure.error, syntheticPoints: [] };
+    return JSON.stringify(failure);
+  }
+  state.failedProbe = null;
+  scan.key = key;
+  scan.documentID = documentID;
+  scan.seed = seed;
+  scan.geometrySeed = scan.repaired && state.repairSeed ? state.repairSeed : seed;
+  scan.syntheticPoints = state.syntheticPoints;
+  state.probeCache = scan;
+  state.assistSource = { key, documentID, polygons: scan.polygons, repaired: scan.repaired, points: [], offset: 0, angle: 0 };
+  return JSON.stringify(scan);
+}
+
+function setTypeRDetectedLobe(data) {
+  if (!data || !hasDocument() || data.documentID !== activeDocument().id) return "";
+  if (data.auto) {
+    if (data.key === _typeRActiveBubbleKey()) _hostState.doubleBubble.autoCache = { key: data.key, selected: data.selected };
+    return "";
+  }
+  const b = _getCurrentSelectionBounds();
+  const state = _hostState.doubleBubble;
+  if (!b || data.key !== _typeRRegionKey(b, state.seed)) return "";
+  state.cache = { key: data.key, value: { regions: data.regions || [], selected: data.selected || null, repaired: !!data.repaired } };
+  return "";
+}
+
+function _typeRPolygonSelection(command, polygon) {
+  return {
+    _obj: command,
+    _target: [SELECTION],
+    to: { _obj: "polygon", points: polygon.map((point) => ({ _obj: "paint", horizontal: px(point[0]), vertical: px(point[1]) })) },
+    antiAlias: true,
+  };
+}
+
+async function selectTypeRDoubleBubbleLobe(options) {
+  const state = _hostState.doubleBubble;
+  if (!state.enabled || !hasDocument()) return JSON.stringify({ changed: false });
+  const b = _getCurrentSelectionBounds();
+  if (!b || !state.seed) return JSON.stringify({ changed: false });
+  const key = _typeRRegionKey(b, state.seed);
+  if (options && options.expectedKey && options.expectedKey !== key) return JSON.stringify({ changed: false, error: "selectionChanged" });
+  if (state.appliedKey === key) return JSON.stringify({ changed: false, alreadyApplied: true });
+  // Automatic selection must use the prepared scan, never mutate history while retrying an invalid one
+  if (!state.cache || state.cache.key !== key) return JSON.stringify({ changed: false, error: "noPreparedLobe" });
+  const scan = state.cache.value;
+  if (scan.error || !scan.selected || !(scan.selected.split || scan.repaired)) return JSON.stringify({ changed: false, error: scan.error || null });
+  const selected = scan.selected;
+  const documentID = activeDocument().id;
+  let outcome = null;
+  try {
+    outcome = await modal("TypeR", (context) => suspendHistory(context, "TypeR Double Bubble Selection", () => {
+      try {
+        const descriptors = [];
+        for (let i = 0; i < selected.polygons.length; i++) {
+          if (selected.polygons[i].length >= 3) descriptors.push(_typeRPolygonSelection(descriptors.length ? "addTo" : "set", selected.polygons[i]));
+        }
+        if (!descriptors.length) return { changed: false, error: "selection" };
+        let raw = state.probeCache && state.probeCache.key === key && state.probeCache.polygons;
+        if (!raw && state.assistSource && state.assistSource.key === key) raw = state.assistSource.polygons;
+        if (raw) {
+          // Holes of the outline (letters, dust) stay out of the lobe
+          const outer = TypeRDoubleBubble.outerContours(raw);
+          for (let i = 0; i < raw.length; i++) {
+            if (outer.indexOf(raw[i]) < 0 && raw[i].length >= 3) descriptors.push(_typeRPolygonSelection("subtractFrom", raw[i]));
+          }
+        }
+        playMany(descriptors);
+        return { changed: true, bounds: selected.bounds, documentID };
+      } catch (error) {
+        return { changed: false, error: String((error && error.message) || error) };
+      }
+    }, { shouldCommit: (result) => !!(result && result.changed) }));
+  } catch (modalError) {
+    outcome = null;
+  }
+  if (outcome && outcome.changed) {
+    const current = _getCurrentSelectionBounds();
+    state.appliedKey = _typeRRegionKey(current, state.seed);
+    state.cache = { key: state.appliedKey, value: scan };
+    state.probeCache = null;
+    if (state.assistSource && state.assistSource.key === key) state.assistSource.key = state.appliedKey;
+  }
+  return JSON.stringify(outcome || { changed: false, error: "selection" });
+}
+
+async function getTypeRAssistedBubbleProbe(data) {
+  if (!hasDocument()) return JSON.stringify({ error: "doc" });
+  const state = _hostState.doubleBubble;
+  const b = _getCurrentSelectionBounds();
+  if (!state.enabled || !b) return JSON.stringify({ error: "noSelection" });
+  const key = _typeRRegionKey(b, state.seed);
+  const saved = state.assistSource;
+  if (saved && saved.documentID === activeDocument().id && saved.key === key) {
+    return JSON.stringify({ key, documentID: saved.documentID, polygons: saved.polygons, points: saved.points, offset: saved.offset, angle: saved.angle });
+  }
+  const seed = (data && data.seed) || state.seed;
+  if (!seed) return JSON.stringify({ error: "noSeedOrSelection" });
+  const probe = JSON.parse(await getTypeRDoubleBubbleProbe(seed));
+  if (probe.error || !probe.polygons) return JSON.stringify({ error: probe.error || "noContour" });
+  return JSON.stringify({ key: probe.key, documentID: probe.documentID, polygons: probe.polygons, points: [], offset: 0, angle: 0, syntheticPoints: probe.syntheticPoints || [] });
+}
+
+async function setTypeRAssistedBubbleLobe(data) {
+  if (!data || !hasDocument()) return JSON.stringify({ changed: false, error: "doc" });
+  const state = _hostState.doubleBubble;
+  const b = _getCurrentSelectionBounds();
+  const saved = state.assistSource;
+  const documentID = activeDocument().id;
+  if (!state.enabled || data.documentID !== documentID || !b || !saved ||
+      saved.documentID !== documentID || data.key !== saved.key ||
+      data.key !== _typeRRegionKey(b, state.seed)) return JSON.stringify({ changed: false, error: "selectionChanged" });
+  if ((data.index !== 0 && data.index !== 1) || (data.whole && data.index !== 0)) return JSON.stringify({ changed: false, error: "invalidHalf" });
+  let split;
+  if (data.whole) {
+    const body = TypeRDoubleBubble.bodyPolygons(TypeRDoubleBubble.outerContours(saved.polygons));
+    const box = TypeRDoubleBubble.bounds(body);
+    split = { regions: [{ polygons: body, bounds: box, center: { x: box.xMid, y: box.yMid }, split: true }] };
+  } else {
+    split = TypeRDoubleBubble.assistedSplit(saved.polygons, data.first, data.second, data.offset, data.angle);
+  }
+  if (!split) return JSON.stringify({ changed: false, error: "invalidSplit" });
+  const previous = { seed: state.seed, cache: state.cache, probeCache: state.probeCache, appliedKey: state.appliedKey };
+  const selected = split.regions[data.index];
+  const point = data.whole ? (state.seed || selected.center) : (data.index === 0 ? data.first : data.second);
+  state.seed = { x: point.x, y: point.y, documentID };
+  const key = _typeRRegionKey(b, state.seed);
+  state.appliedKey = null;
+  state.cache = { key, value: { regions: split.regions, selected, repaired: !!saved.repaired } };
+  state.probeCache = { key, polygons: saved.polygons };
+  saved.key = key;
+  const result = JSON.parse(await selectTypeRDoubleBubbleLobe({ expectedKey: key }));
+  if (result.changed) {
+    saved.points = data.whole ? [] : [data.first, data.second];
+    saved.offset = data.whole ? 0 : Number(data.offset || 0);
+    saved.angle = data.whole ? 0 : Number(data.angle || 0);
+    result.seed = state.seed;
+    result.key = state.appliedKey;
+  } else {
+    state.seed = previous.seed;
+    state.cache = previous.cache;
+    state.probeCache = previous.probeCache;
+    state.appliedKey = previous.appliedKey;
+    saved.key = data.key;
+  }
+  return JSON.stringify(result);
+}
+
+function _typeRReadSelectionPolygons(preserveSelection) {
+  // A user Work Path must never be replaced by a detection scan
+  if (_findWorkPath()) return null;
+  const preserve = preserveSelection !== false;
+  const started = Date.now();
+  const marks = {};
+  let stored = false;
+  let made = false;
+  let result = null;
+  try {
+    if (preserve) {
+      stored = _createTempSelectionChannel();
+      if (!stored) return null;
+    }
+    marks.prepare = Date.now() - started;
+    _makeWorkPathFromSelection(1);
+    made = true;
+    marks.make = Date.now() - started;
+    if (_findWorkPath()) result = _readPathPolygons();
+    marks.read = Date.now() - started;
+  } finally {
+    // In a temporary-history scan the caller rolls back the path together
+    // with the history entry. In a disposable repair document, closing it
+    // cleans up the path. Avoid redundant host mutations in both cases.
+    if (made && preserve) {
+      try {
+        _deleteWorkPath();
+      } catch (error) {}
+    }
+    if (stored) {
+      try {
+        _loadTempSelectionChannel();
+      } catch (error) {}
+      _deleteTempSelectionChannel();
+    }
+    marks.total = Date.now() - started;
+    _hostState.doubleBubble.lastReadTiming = marks;
+  }
+  return result;
+}
+
+// Average 0-255 brightness of the composite at one pixel
+function _typeRSampleBrightness(doc, x, y) {
+  const sampler = doc.colorSamplers.add({ x, y });
+  try {
+    const rgb = sampler.color.rgb;
+    return (rgb.red + rgb.green + rgb.blue) / 3;
+  } finally {
+    try {
+      sampler.remove();
+    } catch (removeError) {}
+  }
+}
+
+function _typeRRepairOpenBubble(seed) {
+  const state = _hostState.doubleBubble;
+  state.repairSeed = null;
+  const originalId = activeDocument().id;
+  const size = _getDocumentPixelSize();
+  const dw = size.width;
+  const dh = size.height;
+  const pixelScale = Math.max(1, Math.min(3, Math.min(dw, dh) / 1200));
+  const half = Math.max(160, Math.min(768 * pixelScale, Math.min(dw, dh) * 0.6));
+  const left = Math.max(0, Math.floor(seed.x - half));
+  const top = Math.max(0, Math.floor(seed.y - half));
+  const right = Math.min(dw, Math.ceil(seed.x + half));
+  const bottom = Math.min(dh, Math.ceil(seed.y + half));
+  let tempId = null;
+  try {
+    play({ _obj: "duplicate", _target: [TARGET_DOCUMENT], name: "TypeR temporary bubble scan", merged: true });
+    const temp = activeDocument();
+    if (temp.id === originalId) return null;
+    tempId = temp.id;
+    play({
+      _obj: "crop",
+      to: { _obj: "rectangle", top: px(top), left: px(left), bottom: px(bottom), right: px(right) },
+      angle: { _unit: "angleUnit", _value: 0 },
+      delete: true,
+    });
+    // Remove only copied Work Paths in our disposable document
+    if (_findWorkPath()) _deleteWorkPath();
+    const sx = seed.x - left;
+    const sy = seed.y - top;
+    const light = _typeRSampleBrightness(temp, sx, sy);
+    const base = _typeRHistoryStateId();
+    const radii = [3, 8, 16, 26].map((radius) => Math.round(radius * pixelScale));
+    const directions = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]];
+    for (let ri = 0; ri < radii.length; ri++) {
+      if (ri > 0) play({ _obj: "select", _target: [{ _ref: "historyState", _id: base }] });
+      play({ _obj: light >= 128 ? "minimum" : "maximum", radius: px(radii[ri]) });
+      // Minimum/Maximum can cover a click near a thin outline or a letter.
+      // Start the repaired wand on the nearest surviving interior pixel.
+      const step = Math.max(2, radii[ri]);
+      const candidates = [[sx, sy]];
+      for (let distance = 1; distance <= 2; distance++) {
+        for (let di = 0; di < directions.length; di++) candidates.push([sx + directions[di][0] * step * distance, sy + directions[di][1] * step * distance]);
+      }
+      let rx = sx;
+      let ry = sy;
+      let found = false;
+      for (let candidate = 0; candidate < candidates.length; candidate++) {
+        rx = candidates[candidate][0];
+        ry = candidates[candidate][1];
+        if (rx < 1 || ry < 1 || rx >= right - left - 1 || ry >= bottom - top - 1) continue;
+        if ((_typeRSampleBrightness(temp, rx, ry) >= 128) === (light >= 128)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) continue;
+      if (state.syntheticPoints) state.syntheticPoints.push({ x: rx, y: ry, documentID: tempId });
+      play({
+        _obj: "set",
+        _target: [SELECTION],
+        to: { _obj: "paint", horizontal: px(rx), vertical: px(ry) },
+        tolerance: 32,
+        contiguous: true,
+        merged: true,
+        antiAlias: true,
+      });
+      const b = _getCurrentSelectionBounds();
+      if (!b || b.width * b.height < 200 || b.left <= 1 || b.top <= 1 || b.right >= right - left - 1 || b.bottom >= bottom - top - 1) continue;
+      // Re-grow the interior removed by the closing filter, staying inside the ROI
+      _modifySelectionBounds(radii[ri]);
+      const recoveredBounds = _getCurrentSelectionBounds();
+      const polygons = _typeRReadSelectionPolygons(false);
+      if (!polygons || !polygons.length) continue;
+      if (_typeRPolygonsLookLeaked(polygons, recoveredBounds)) continue;
+      for (let i = 0; i < polygons.length; i++) {
+        for (let j = 0; j < polygons[i].length; j++) {
+          polygons[i][j][0] += left;
+          polygons[i][j][1] += top;
+        }
+      }
+      state.repairRadius = radii[ri];
+      state.repairSeed = { x: rx + left, y: ry + top, documentID: originalId };
+      return polygons;
+    }
+  } catch (error) {
+    state.lastRepairError = String((error && error.message) || error);
+  } finally {
+    if (tempId !== null) {
+      try {
+        play({ _obj: "close", _target: [{ _ref: "document", _id: tempId }], saving: { _enum: "yesNo", _value: "no" } });
+      } catch (closeError) {}
+    }
+    try {
+      play({ _obj: "select", _target: [{ _ref: "document", _id: originalId }] });
+    } catch (selectError) {}
+  }
+  return null;
+}
+
+function _typeRSelectionRegions(bounds, overrideSeed) {
+  const state = _hostState.doubleBubble;
+  const documentID = activeDocument().id;
+  if (!state.enabled) return { regions: [], selected: null, repaired: false };
+  let seed = overrideSeed || state.seed;
+  if (seed && seed.documentID !== undefined && seed.documentID !== documentID) seed = null;
+  const key = _typeRRegionKey(bounds, seed);
+  if (state.cache && state.cache.key === key) return state.cache.value;
+  if (!seed) return { regions: [], selected: null, repaired: false };
+  let polygons = null;
+  let repaired = false;
+  if (_typeRLooksLikeCanvasLeak(bounds)) {
+    polygons = _typeRRepairOpenBubble(seed);
+    repaired = !!polygons;
+    if (!polygons) {
+      const failed = { regions: [], selected: null, repaired: false, error: "noSelection" };
+      state.cache = { key, value: failed };
+      return failed;
+    }
+  }
+  if (!polygons) polygons = _typeRReadSelectionPolygons();
+  if (!repaired && _typeRPolygonsLookLeaked(polygons, bounds)) {
+    polygons = _typeRRepairOpenBubble(seed);
+    repaired = !!polygons;
+    if (!polygons) {
+      const failedPartial = { regions: [], selected: null, repaired: false, error: "noSelection" };
+      state.cache = { key, value: failedPartial };
+      return failedPartial;
+    }
+  }
+  const regions = polygons && polygons.length ? TypeRDoubleBubble.detect(polygons) : [];
+  // Never infer a clicked half when no wand point is available
+  const geometrySeed = repaired && state.repairSeed ? state.repairSeed : seed;
+  let selected = TypeRDoubleBubble.choose(regions, geometrySeed);
+  if (selected && geometrySeed && !TypeRDoubleBubble.contains(polygons, geometrySeed.x, geometrySeed.y)) selected = null;
+  const result = { regions, selected, repaired };
+  state.cache = { key, value: result };
+  return result;
+}
+
+const _typeRSelectedLobeRows = (region, sampleCount) =>
+  ({ scan: "doubleBubble", bounds: region.bounds, rows: _buildPathShapeRows(region.polygons, sampleCount), fallback: false });
+
+const _typeRAdaptiveBoundsOriginal = _getAdaptiveOpenedSelectionBounds;
+_getAdaptiveOpenedSelectionBounds = function (bounds) {
+  if (!_hostState.doubleBubble.enabled) return _typeRAdaptiveBoundsOriginal(bounds);
+  try {
+    const scan = _typeRSelectionRegions(bounds);
+    if (scan.error) return { error: scan.error };
+    if (scan.selected && (scan.selected.split || scan.repaired)) return scan.selected.bounds;
+  } catch (error) {
+    _hostState.doubleBubble.lastError = String((error && error.message) || error);
+  }
+  return _typeRAdaptiveBoundsOriginal(bounds);
+};
+
+const _typeRSelectionShapeOriginal = getCurrentSelectionShape;
+getCurrentSelectionShape = async function (data) {
+  if (!_hostState.doubleBubble.enabled) return _typeRSelectionShapeOriginal(data);
+  if (hasDocument()) {
+    const b = _getCurrentSelectionBounds();
+    if (b) {
+      const state = _hostState.doubleBubble;
+      const key = _typeRRegionKey(b, state.seed);
+      const scan = state.cache && state.cache.key === key
+        ? state.cache.value
+        : await _withTemporaryHistory("TypeR Double Bubble Shape", () => _typeRSelectionRegions(b));
+      if (scan && scan.error === "noSelection") return JSON.stringify({ error: "noSelection" });
+      if (scan && scan.selected && (scan.selected.split || scan.repaired)) {
+        return JSON.stringify(_typeRSelectedLobeRows(scan.selected, _normalizeShapeSampleCount(data && data.samples, 21)));
+      }
+    }
+  }
+  return _typeRSelectionShapeOriginal(data);
+};
+
+// host.js overrides _sampleSelectionShapeViaPath; the mask sampler takes its place here
+const _typeRSampleShapeOriginal = _sampleSelectionShape;
+_sampleSelectionShape = async function (bounds, sampleCount) {
+  if (!_hostState.doubleBubble.enabled) return _typeRSampleShapeOriginal(bounds, sampleCount);
+  try {
+    const seed = _hostState.doubleBubble.scanSeed;
+    if (seed) {
+      const scan = _typeRSelectionRegions(bounds, seed);
+      if (scan.selected && (scan.selected.split || scan.repaired)) return _typeRSelectedLobeRows(scan.selected, sampleCount);
+    }
+  } catch (error) {}
+  return _typeRSampleShapeOriginal(bounds, sampleCount);
+};
+
+const _typeRScanBubbleOriginal = _scanActiveLayerBubble;
+_scanActiveLayerBubble = async function (tolerance, sampleCount) {
+  if (!_hostState.doubleBubble.enabled) return _typeRScanBubbleOriginal(tolerance, sampleCount);
+  const state = _hostState.doubleBubble;
+  const prior = state.scanSeed;
+  try {
+    const cached = state.autoCache;
+    if (cached && cached.key === _typeRActiveBubbleKey() && cached.error) return { error: cached.error };
+    if (cached && cached.key === _typeRActiveBubbleKey() && cached.selected) return _typeRSelectedLobeRows(cached.selected, sampleCount);
+    const b = _getCurrentTextLayerBounds();
+    state.scanSeed = { x: Math.max(b.left - 5, 0), y: Math.max(b.yMid, 0), documentID: activeDocument().id };
+    _createMagicWandSelection(tolerance);
+    const raw = _getCurrentSelectionBounds();
+    if (raw) {
+      const scan = _typeRSelectionRegions(raw, state.scanSeed);
+      if (scan.selected && (scan.selected.split || scan.repaired)) {
+        _deselect();
+        return _typeRSelectedLobeRows(scan.selected, sampleCount);
+      }
+    }
+    return await _typeRScanBubbleOriginal(tolerance, sampleCount);
+  } finally {
+    state.scanSeed = prior;
+  }
+};
+
+function _typeRActiveBubbleKey() {
+  return "active:" + _typeRRegionKey({ xMid: 0, yMid: 0, width: 0, height: 0 }, null) + ":" + _getActiveLayerId();
+}
+
+async function getTypeRActiveBubbleProbe(data) {
+  if (!hasDocument() || !_layerIsTextLayer()) return JSON.stringify({ error: "layer" });
+  if (_getCurrentSelectionBounds()) return JSON.stringify({ error: "hasSelection" });
+  const forceRepair = !!(data && data.forceRepair);
+  const state = _hostState.doubleBubble;
+  const key = _typeRActiveBubbleKey();
+  if (!forceRepair && state.autoProbeCache && state.autoProbeCache.key === key) {
+    if (state.autoProbeCache.error) return JSON.stringify(state.autoProbeCache);
+    if (data && data.cachedKey === key && state.autoCache && state.autoCache.key === key) return JSON.stringify({ same: true, key });
+    return JSON.stringify(state.autoProbeCache);
+  }
+  const textBounds = _getCurrentTextLayerBounds();
+  const documentID = activeDocument().id;
+  const seed = { x: Math.max(textBounds.left - 5, 0), y: Math.max(textBounds.yMid, 0), documentID };
+  state.syntheticPoints = [seed];
+  const scan = await _withTemporaryHistory("TypeR Active Lobe Probe", () => {
+    _createMagicWandSelection(20);
+    const b = _getCurrentSelectionBounds();
+    if (!b) return { error: "noBubble" };
+    let polygons = null;
+    let repaired = false;
+    if (forceRepair || _typeRLooksLikeCanvasLeak(b)) {
+      polygons = _typeRRepairOpenBubble(seed);
+      repaired = !!polygons;
+      if (!polygons) return { error: "noBubble" };
+    }
+    if (!polygons) polygons = _typeRReadSelectionPolygons(false);
+    if (!repaired && _typeRPolygonsLookLeaked(polygons, b)) {
+      polygons = _typeRRepairOpenBubble(seed);
+      repaired = !!polygons;
+    }
+    if (!polygons) return { error: "noBubble" };
+    return { polygons, repaired };
+  });
+  if (!scan || scan.error) {
+    if (!scan || scan.error !== "historyBusy") {
+      state.autoCache = { key, error: "noBubble" };
+      state.autoProbeCache = { key, error: (scan && scan.error) || "noBubble", syntheticPoints: [] };
+    }
+    return JSON.stringify({ error: (scan && scan.error) || "noBubble", syntheticPoints: state.syntheticPoints });
+  }
+  scan.key = key;
+  scan.documentID = documentID;
+  scan.seed = seed;
+  scan.geometrySeed = scan.repaired && state.repairSeed ? state.repairSeed : seed;
+  scan.auto = true;
+  scan.syntheticPoints = state.syntheticPoints;
+  state.autoProbeCache = scan;
+  return JSON.stringify(scan);
+}
+
+// Cached TextShapeR reads must not create/delete a no-op history state:
+// the resulting history events would immediately trigger another UI refresh
+const _typeRActiveShapeOriginal = getActiveLayerBubbleShape;
+getActiveLayerBubbleShape = async function (data) {
+  const state = _hostState.doubleBubble;
+  if (state.enabled && hasDocument() && _layerIsTextLayer() && !_getCurrentSelectionBounds() && _getTargetLayerCount() <= 1) {
+    const cached = state.autoCache;
+    if (cached && cached.key === _typeRActiveBubbleKey()) {
+      if (cached.error) return JSON.stringify({ error: cached.error });
+      if (cached.selected) return JSON.stringify(_typeRSelectedLobeRows(cached.selected, _normalizeShapeSampleCount(data && data.samples, 21)));
+    }
+  }
+  return _typeRActiveShapeOriginal(data);
+};
+
+// Centre existing text in its own lobe even when no recent wand event exists
+const _typeRAlignOriginal = _alignCurrentTextLayerToSelection;
+_alignCurrentTextLayerToSelection = function (alignState) {
+  if (!_hostState.doubleBubble.enabled) return _typeRAlignOriginal(alignState);
+  const state = _hostState.doubleBubble;
+  const prior = state.seed;
+  try {
+    if (!state.seed && _layerIsTextLayer()) {
+      const b = _getCurrentTextLayerBounds();
+      state.seed = { x: b.xMid, y: b.yMid, documentID: activeDocument().id };
+    }
+    return _typeRAlignOriginal(alignState);
+  } finally {
+    state.seed = prior;
+  }
+};
+
+// Path/selection round-trips vary by tiny floating point amounts. Compare at
+// a hundredth of a document pixel to avoid capturing one lobe twice.
+function _typeRLobeBoundsKey(bounds) {
+  return Math.round(bounds.left * 100) + "_" + Math.round(bounds.top * 100) + "_" +
+    Math.round(bounds.right * 100) + "_" + Math.round(bounds.bottom * 100);
+}
+
+// Compare canonical lobe bounds, not the changing joined/automatic marquee
+const _typeRSelectionChangedOriginal = _getSelectionChanged;
+_getSelectionChanged = async function () {
+  if (!_hostState.doubleBubble.enabled) return _typeRSelectionChangedOriginal();
+  const state = _hostState.doubleBubble;
+  const b = hasDocument() ? _getCurrentSelectionBounds() : undefined;
+  const monitor = _hostState.selectionMonitor;
+  if (b && state.seed) {
+    const regionKey = _typeRRegionKey(b, state.seed);
+    // The panel prepares geometry before consuming a capture. A changed
+    // selection during that preparation must wait for the next poll/new wand
+    // seed; rescanning here uses the old seed and blocks Photoshop.
+    if (!state.cache || state.cache.key !== regionKey) return JSON.stringify({ noChange: true, shiftKey: false });
+    const scan = state.cache.value;
+    if (!scan || scan.error || !scan.selected) return JSON.stringify({ noChange: true, shiftKey: false });
+    if (scan.selected.split || scan.repaired) {
+      const bounds = scan.selected.bounds;
+      const key = String(activeDocument().id) + ":" + _typeRLobeBoundsKey(bounds);
+      if (state.monitorLobeKey === key) return JSON.stringify({ noChange: true, shiftKey: false });
+      if (keyboard.isShiftDown()) return JSON.stringify({ multipleSelections: true, shiftKey: true });
+      state.monitorLobeKey = key;
+      monitor.lastBounds = b;
+      monitor.lastBoundsKey = _selectionBoundsKey(b);
+      monitor.multiWarnBounds = null;
+      const result = { multiSelection: [bounds], shiftKey: false };
+      for (const k in bounds) {
+        if (Object.prototype.hasOwnProperty.call(bounds, k)) result[k] = bounds[k];
+      }
+      return JSON.stringify(result);
+    }
+  }
+  state.monitorLobeKey = null;
+  return _typeRSelectionChangedOriginal();
+};
+
 module.exports = {
   // evalScript surface, same names as host.js
   methods: {
@@ -2850,6 +3738,15 @@ module.exports = {
     createTextLayersInStoredSelections,
     openFile,
     scanPsdFonts,
+    holdStyleSizeOnActiveDocument,
+    setTypeRDoubleBubbleMode,
+    setTypeRSelectionSeed,
+    getTypeRDoubleBubbleProbe,
+    setTypeRDetectedLobe,
+    selectTypeRDoubleBubbleLobe,
+    getTypeRAssistedBubbleProbe,
+    setTypeRAssistedBubbleLobe,
+    getTypeRActiveBubbleProbe,
   },
   invalidateFontList,
   // internals, for tests
@@ -2861,6 +3758,7 @@ module.exports = {
     _getHostDefaultStyle, _getHostDefaultStroke, _ensureStyle, _overrideStyleTextSize, _resolveStylePointText,
     _getAdaptiveSelectionOpenRadius, _calculateSelectionDimensions, _clampAdjustAmount,
     _getAdjustedSelectionBoundsFallback, _buildBoundsShapeRows, _normalizeShapeSampleCount, _buildMaskShapeRows,
-    _selectionBoundsKey, _normalizeTextKey,
+    _selectionBoundsKey, _normalizeTextKey, _buildPathShapeRows, _polygonScanlineSpan,
+    _typeRFlattenPathPoints, _typeRPolygonsLookLeaked, _typeRLobeBoundsKey, _typeRPathPolygonsFromContents,
   },
 };

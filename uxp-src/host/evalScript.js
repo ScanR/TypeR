@@ -1,5 +1,6 @@
 // The panel calls the host with ExtendScript strings, "name(json, json, ...)":
 // csInterface.evalScript("setActiveLayerText(" + JSON.stringify(data) + ")").
+// The Double bubble bridge prefixes some calls with others, "a(...);b(...)".
 // They are parsed, never evaluated.
 
 // A missing optional argument reaches ExtendScript as a bare `undefined`,
@@ -50,4 +51,37 @@ function parseCall(script) {
   }
 }
 
-module.exports = { parseCall };
+// "a(...);b(...)": the calls in order, or null when one is not a call
+function parseCalls(script) {
+  const text = String(script || "");
+  const statements = [];
+  let start = 0;
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
+    if (inString) {
+      if (char === "\\") i++;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "(" || char === "[" || char === "{") depth++;
+    else if (char === ")" || char === "]" || char === "}") depth--;
+    else if (char === ";" && depth === 0) {
+      statements.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  statements.push(text.slice(start));
+  const calls = [];
+  for (let i = 0; i < statements.length; i++) {
+    if (!statements[i].trim()) continue;
+    const call = parseCall(statements[i]);
+    if (!call) return null;
+    calls.push(call);
+  }
+  return calls.length ? calls : null;
+}
+
+module.exports = { parseCall, parseCalls };

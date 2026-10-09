@@ -8,7 +8,7 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const jamText = require(path.join(root, "uxp-src/host/jamText.js"));
-const { parseCall } = require(path.join(root, "uxp-src/host/evalScript.js"));
+const { parseCall, parseCalls } = require(path.join(root, "uxp-src/host/evalScript.js"));
 
 /* ------------------------- layer text ------------------------- */
 
@@ -78,17 +78,38 @@ assert.deepStrictEqual(
 );
 assert.strictEqual(parseCall("alert(1); app.quit()"), null, "Anything but a single call is refused");
 assert.strictEqual(parseCall("getUserFonts"), null);
+// The Double bubble bridge prefixes calls: "a(...);b(...)" runs in order
+assert.deepStrictEqual(
+  parseCalls('setTypeRDoubleBubbleMode(true);setTypeRSelectionSeed({"x":1,"y":2});createTextLayerInSelection({"text":"a;b(\\"c\\")"}, false)'),
+  [
+    { name: "setTypeRDoubleBubbleMode", args: [true] },
+    { name: "setTypeRSelectionSeed", args: [{ x: 1, y: 2 }] },
+    { name: "createTextLayerInSelection", args: [{ text: 'a;b("c")' }, false] },
+  ]
+);
+assert.deepStrictEqual(parseCalls("getActiveLayerText();"), [{ name: "getActiveLayerText", args: [] }]);
+assert.strictEqual(parseCalls("alert(1); app.quit()"), null, "Every statement must be a call");
+assert.strictEqual(parseCalls(""), null);
 
 /* -------------------- port vs host.js helpers -------------------- */
 
 const hostSource = fs.readFileSync(path.join(root, "app_src/host.js"), "utf8");
+const geometrySource = fs.readFileSync(path.join(root, "app_src/doubleBubbleGeometry.jsxinc"), "utf8");
 const HOST_HELPERS = [
   "_clone", "_normalizeTextKey", "_getHostDefaultStyle", "_getHostDefaultStroke", "_ensureStyle", "_overrideStyleTextSize",
   "_resolveStylePointText", "_getAdaptiveSelectionOpenRadius", "_calculateSelectionDimensions", "_clampAdjustAmount",
   "_getAdjustedSelectionBoundsFallback", "_buildBoundsShapeRows", "_normalizeShapeSampleCount", "_selectionBoundsKey",
-  "_buildPathShapeRows", "_polygonScanlineSpan",
+  "_buildPathShapeRows", "_polygonScanlineSpan", "_typeRFlattenPathPoints", "_typeRPolygonsLookLeaked", "_typeRLobeBoundsKey",
 ];
-const host = new Function(hostSource + "\nreturn {" + HOST_HELPERS.join(", ") + "};")();
+const host = new Function(geometrySource + "\n" + hostSource + "\nreturn {" + HOST_HELPERS.join(", ") + "};")();
+
+// Every function the panel can call in host.js exists in the port
+const portSource = fs.readFileSync(path.join(root, "uxp-src/host/photoshop.js"), "utf8");
+const portMethods = portSource.slice(portSource.indexOf("methods: {"), portSource.indexOf("invalidateFontList,", portSource.indexOf("methods: {")));
+const mainSource = fs.readFileSync(path.join(root, "uxp-src/host/main.js"), "utf8");
+const hostMethods = [...hostSource.matchAll(/^function ([A-Za-z]\w*)\s*\(/gm)].map((match) => match[1]);
+const missing = hostMethods.filter((name) => !new RegExp("\\b" + name + "\\b").test(portMethods) && !new RegExp("\\b" + name + "\\s*[:(,]").test(mainSource));
+assert.deepStrictEqual(missing, [], "host.js functions missing from the UXP host: " + missing.join(", "));
 
 const loadPort = () => {
   const filename = path.join(root, "uxp-src/host/photoshop.js");
@@ -118,6 +139,7 @@ assert.deepStrictEqual(port._getHostDefaultStroke(), host._getHostDefaultStroke(
 const sized = () => ({ textProps: { layerText: { textStyleRange: [{ textStyle: { size: 10, impliedFontSize: 10 } }, { textStyle: { size: 12 } }] } } });
 assert.deepStrictEqual(port._overrideStyleTextSize(sized(), 30), host._overrideStyleTextSize(sized(), 30));
 
+const polygonOf = (left, top, right, bottom) => [[left, top], [right, top], [right, bottom], [left, bottom]];
 const boundsOf = (left, top, right, bottom) => ({ left, top, right, bottom, width: right - left, height: bottom - top, xMid: (left + right) / 2, yMid: (top + bottom) / 2 });
 const shapes = [boundsOf(0, 0, 300, 500), boundsOf(10, 20, 110, 180), boundsOf(5, 5, 25, 85), boundsOf(0, 0, 6, 80), boundsOf(0, 0, 2, 2)];
 shapes.forEach((bounds) => {
@@ -132,6 +154,49 @@ shapes.forEach((bounds) => {
 });
 [undefined, 0, "3", 17, "21", 40, "x"].forEach((value) => {
   assert.strictEqual(port._normalizeShapeSampleCount(value, 17), host._normalizeShapeSampleCount(value, 17));
+});
+
+/* ------------------------ Double bubble ------------------------ */
+
+// Lobe outlines: same flattening, leak test and sampling as host.js
+const curved = [
+  { anchor: [100, 50], forward: [160, 50], backward: [40, 50] },
+  { anchor: [180, 150], forward: [180, 210], backward: [180, 90] },
+  { anchor: [100, 250], forward: [40, 250], backward: [160, 250] },
+  { anchor: [20, 150], forward: [20, 90], backward: [20, 210] },
+];
+const flattened = port._typeRFlattenPathPoints(curved);
+assert.deepStrictEqual(flattened, host._typeRFlattenPathPoints(curved));
+[5, 17, 21].forEach((count) => {
+  assert.deepStrictEqual(port._buildPathShapeRows([flattened], count), host._buildPathShapeRows([flattened], count));
+  assert.deepStrictEqual(port._buildPathShapeRows([polygonOf(0, 0, 300, 120)], count), host._buildPathShapeRows([polygonOf(0, 0, 300, 120)], count));
+});
+assert.deepStrictEqual(port._polygonScanlineSpan([flattened], 150), host._polygonScanlineSpan([flattened], 150));
+const frame = polygonOf(0, 0, 1000, 800);
+const island = polygonOf(200, 200, 700, 600);
+const letter = polygonOf(400, 380, 420, 400);
+[[frame, island], [frame, letter], [island], [frame, island, letter]].forEach((polygons) => {
+  assert.strictEqual(port._typeRPolygonsLookLeaked(polygons, boundsOf(0, 0, 1000, 800)), host._typeRPolygonsLookLeaked(polygons, boundsOf(0, 0, 1000, 800)));
+});
+assert.strictEqual(port._typeRPolygonsLookLeaked([frame, island], boundsOf(0, 0, 1000, 800)), true);
+assert.strictEqual(port._typeRLobeBoundsKey(boundsOf(1.004, 2, 3.5, 4)), host._typeRLobeBoundsKey(boundsOf(1.004, 2, 3.5, 4)));
+
+// The work path read through batchPlay: points (distance units) become pixels
+const pathPoint = (x, y) => ({ _obj: "paint", horizontal: { _unit: "distanceUnit", _value: x }, vertical: { _unit: "distanceUnit", _value: y } });
+const contents = {
+  _obj: "pathClass",
+  pathComponents: [{
+    _obj: "pathComponent",
+    subpathListKey: [
+      { _obj: "subpathsList", closedSubpath: true, points: curved.map((point) => ({ _obj: "pathPoint", anchor: pathPoint(point.anchor[0] * 0.24, point.anchor[1] * 0.24), forward: pathPoint(point.forward[0] * 0.24, point.forward[1] * 0.24), backward: pathPoint(point.backward[0] * 0.24, point.backward[1] * 0.24) })) },
+      { _obj: "subpathsList", points: [{ anchor: pathPoint(0, 0) }, { anchor: pathPoint(1, 1) }] },
+    ],
+  }],
+};
+const read = port._typeRPathPolygonsFromContents(contents, 300);
+assert.strictEqual(read.length, 1, "Open two-point subpaths are skipped");
+read[0].forEach((point, index) => {
+  assert.ok(Math.abs(point[0] - flattened[index][0]) < 1e-9 && Math.abs(point[1] - flattened[index][1]) < 1e-9, "path point " + index);
 });
 
 /* ------------------- selection mask sampling ------------------- */

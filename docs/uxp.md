@@ -34,7 +34,9 @@ runtime around it differs:
 
 `csInterface.evalScript("setActiveLayerText({...})", callback)` in the panel becomes a message to the
 host. `uxp-src/host/evalScript.js` parses the call (it is never evaluated), `main.js` runs the method of
-`photoshop.js` with the same name, and the string result goes back to the callback. Host calls are
+`photoshop.js` with the same name, and the string result goes back to the callback. A sequence of calls,
+`a(...);b(...)` (the Double bubble bridge prefixes some calls this way), runs in order and answers the
+last result, as ExtendScript did. Host calls are
 queued and run one at a time, as ExtendScript did. An exception answers `"EvalScript error."`, like CEP.
 
 `photoshop.js` keeps the structure and helper names of `host.js`. ActionManager calls are synchronous
@@ -44,7 +46,13 @@ queued and run one at a time, as ExtendScript did. An exception answers `"EvalSc
 suspension that is rolled back, so they leave no history state.
 
 **When `host.js` changes, port the change to `photoshop.js`.** `scripts/testUxpHost.js` compares the
-pure helpers of both files (default style, selection maths, sample counts…) and fails when they drift.
+pure helpers of both files (default style, selection maths, sample counts…), checks that every function
+of `host.js` exists in the UXP host, and fails when they drift.
+
+The Double bubble section at the end of `host.js` is ported the same way, overrides included. Lobe
+outlines come from the same work path, read as `pathContents` through batchPlay; the chosen lobe is
+selected with polygon lassos instead of a temporary path, and the open-bubble repair reads its pixels
+with color samplers on the same disposable cropped duplicate.
 
 ## Deliberate differences with the CEP host
 

@@ -11,7 +11,7 @@ const keyboard = require("./keyboard");
 const keysHelper = require("./keysHelper");
 const services = require("./services");
 const { runJsx } = require("./jsx");
-const { parseCall } = require("./evalScript");
+const { parseCalls } = require("./evalScript");
 
 const EXTENSION_ID = "typer";
 const PANEL_URL = "plugin:/web/index.html";
@@ -206,15 +206,12 @@ const DOCUMENT_CHANGING_CALLS = {
   selectLayerById: "select",
 };
 
-async function evalScript(script) {
-  const call = parseCall(script);
-  const method = call && Object.prototype.hasOwnProperty.call(methods, call.name) ? methods[call.name] : null;
-  if (!method) {
-    console.error("TypeR: unknown host call", String(script).slice(0, 120));
-    return "EvalScript error.";
-  }
+// Double bubble lobe selections are commands too, when they changed the selection
+const LOBE_SELECTION_CALLS = { selectTypeRDoubleBubbleLobe: true, setTypeRAssistedBubbleLobe: true };
+
+async function runCall(call) {
   try {
-    const result = await method(...call.args);
+    const result = await methods[call.name](...call.args);
     return result === undefined || result === null ? "" : String(result);
   } catch (error) {
     console.error("TypeR:", call.name, (error && error.stack) || error);
@@ -224,6 +221,23 @@ async function evalScript(script) {
       onPhotoshopEvent(DOCUMENT_CHANGING_CALLS[call.name], { _isCommand: true });
     }
   }
+}
+
+// "a(...);b(...)" runs every call in order and answers the last result, as
+// ExtendScript answered the value of the last statement
+async function evalScript(script) {
+  const calls = parseCalls(script);
+  const known = calls && calls.every((call) => Object.prototype.hasOwnProperty.call(methods, call.name) && typeof methods[call.name] === "function");
+  if (!known) {
+    console.error("TypeR: unknown host call", String(script).slice(0, 120));
+    return "EvalScript error.";
+  }
+  let result = "";
+  for (let i = 0; i < calls.length; i++) {
+    result = await runCall(calls[i]);
+    if (LOBE_SELECTION_CALLS[calls[i].name] && /"changed":true/.test(result)) onPhotoshopEvent("set", { _isCommand: true });
+  }
+  return result;
 }
 
 /* ========================= requests ========================== */

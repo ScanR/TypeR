@@ -413,3 +413,4 @@ var TypeRDoubleBubble = (function () {
     return {detect:detect,assistedSplit:assistedSplit,choose:choose,bounds:bounds,contains:contains,raster:raster,peaks:peaks,outerContours:outerContours,bodyPolygons:bodyPolygons};
 }());
 if(typeof window!=='undefined')window.TypeRDoubleBubble=TypeRDoubleBubble;
+if(typeof module!=='undefined' && module.exports)module.exports=TypeRDoubleBubble;
