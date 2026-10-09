@@ -39,9 +39,15 @@ async function requestInit() {
   throw new Error("the plugin host does not answer");
 }
 
+// Startup milestones, in ms since the page started (perf diagnostics)
+const startup = (window.__typerStartup = {});
+const mark = (name) => { startup[name] = Math.round(performance.now()); };
+
 async function start() {
   installErrorReporting(report);
+  mark("script");
   const init = await requestInit();
+  mark("init");
   installCepEnvironment(init);
   const root = new window.CSInterface().getSystemPath(window.SystemPath.EXTENSION);
   installLocalStorage(
@@ -55,6 +61,8 @@ async function start() {
   installFetchFallback();
   if (IS_WEBKIT) installInputCentering();
   await import(/* webpackMode: "eager" */ "../../app_src/index.jsx");
+  mark("app");
+  requestAnimationFrame(() => requestAnimationFrame(() => mark("painted")));
 }
 
 start().catch((error) => {

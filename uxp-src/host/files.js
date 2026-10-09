@@ -174,19 +174,22 @@ async function loadMirror(root) {
   } catch (error) {
     return files;
   }
-  for (const name of names) {
-    if (!isMirroredName(name)) continue;
+  await Promise.all(names.filter(isMirroredName).map(async (name) => {
     try {
       files[name] = await readText(joinPath(root, name));
     } catch (error) {}
-  }
+  }));
   return files;
 }
 
 // First start of the UXP plugin on a machine that ran the CEP version: its
 // files are copied (never moved) so both versions keep working side by side
 async function importCepStorage(root) {
-  if (Object.keys(await loadMirror(root)).some((name) => name === "storage" || name === "storage_profiles")) return false;
+  let existing = [];
+  try {
+    existing = (await listFolder(root)).map((child) => child.name);
+  } catch (error) {}
+  if (existing.includes("storage") || existing.includes("storage_profiles")) return false;
   for (const cepRoot of await getCepStorageRoots()) {
     const files = await loadMirror(cepRoot);
     if (!files.storage && !files.storage_profiles) continue;
@@ -203,7 +206,7 @@ async function loadLocales() {
   const plugin = await lfs.getPluginFolder();
   const locales = {};
   const localeFolder = await plugin.getEntry("locale");
-  for (const entry of await localeFolder.getEntries()) {
+  await Promise.all((await localeFolder.getEntries()).map(async (entry) => {
     if (entry.isFile && entry.name === "messages.properties") {
       locales["locale/messages.properties"] = await entry.read({ format: formats.utf8 });
     } else if (entry.isFolder) {
@@ -212,7 +215,7 @@ async function loadLocales() {
         locales["locale/" + entry.name + "/messages.properties"] = await messages.read({ format: formats.utf8 });
       } catch (error) {}
     }
-  }
+  }));
   return locales;
 }
 

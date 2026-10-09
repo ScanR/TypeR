@@ -50,9 +50,11 @@ function post(message) {
 
 /* ===================== evalScript surface ===================== */
 
+// Photoshop's four interface brightness levels, as CEP reported them
 const UNIT_THEMES = {
   darkest: { red: 50, green: 50, blue: 50 },
   dark: { red: 83, green: 83, blue: 83 },
+  medium: { red: 184, green: 184, blue: 184 },
   light: { red: 184, green: 184, blue: 184 },
   lightest: { red: 240, green: 240, blue: 240 },
 };
@@ -187,12 +189,21 @@ function enqueue(task) {
 // Photoshop notified a CEP panel of the commands its own scripts played too
 // (the panel relies on it: "the debounced Photoshop event refresh will
 // confirm"); UXP does not report a plugin's own commands to it. After a call
-// that changes the document, the panel gets the "set" event CEP sent.
-const DOCUMENT_CHANGING_CALLS = new Set([
-  "setActiveLayerText", "setSelectedTextLayers", "setTextShapeRLayerText", "createTextLayerInSelection",
-  "createTextLayersInStoredSelections", "alignTextLayerToSelection", "changeActiveLayerTextSize",
-  "toggleCleaningLayers", "undoLastTyperChange", "openFile",
-]);
+// that changes the document, the panel gets the event CEP sent.
+const DOCUMENT_CHANGING_CALLS = {
+  setActiveLayerText: "set",
+  setSelectedTextLayers: "set",
+  setTextShapeRLayerText: "set",
+  createTextLayerInSelection: "set",
+  createTextLayersInStoredSelections: "set",
+  alignTextLayerToSelection: "set",
+  changeActiveLayerTextSize: "set",
+  toggleCleaningLayers: "set",
+  undoLastTyperChange: "set",
+  openFile: "set",
+  deselectDocumentSelection: "set",
+  selectLayerById: "select",
+};
 
 async function evalScript(script) {
   const call = parseCall(script);
@@ -208,7 +219,9 @@ async function evalScript(script) {
     console.error("TypeR:", call.name, (error && error.stack) || error);
     return "EvalScript error.";
   } finally {
-    if (DOCUMENT_CHANGING_CALLS.has(call.name)) onPhotoshopEvent("set", { _isCommand: true });
+    if (Object.prototype.hasOwnProperty.call(DOCUMENT_CHANGING_CALLS, call.name)) {
+      onPhotoshopEvent(DOCUMENT_CHANGING_CALLS[call.name], { _isCommand: true });
+    }
   }
 }
 
@@ -222,7 +235,8 @@ async function init() {
       return false;
     });
     if (imported) log("storage imported from", imported);
-    mirrorFiles = { files: await files.loadMirror(storageRoot), locales: await files.loadLocales() };
+    const [storedFiles, locales] = await Promise.all([files.loadMirror(storageRoot), files.loadLocales()]);
+    mirrorFiles = { files: storedFiles, locales };
   }
   return {
     extensionId: EXTENSION_ID,
