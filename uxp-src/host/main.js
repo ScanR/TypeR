@@ -283,6 +283,15 @@ async function handleRequest(message) {
   }
 }
 
+let viewOnPanel = true;
+let loadingPanel = false;
+let panelAddress = PANEL_URL;
+
+function showPanelPage() {
+  loadingPanel = true;
+  view.src = PANEL_URL;
+}
+
 function attachView() {
   if (view) return view;
   view = document.getElementById("typer-view");
@@ -294,6 +303,8 @@ function attachView() {
     document.body.appendChild(view);
   }
   view.addEventListener("message", (event) => {
+    // The bridge is open to remote pages too (see the loadstart listener)
+    if (!viewOnPanel) return;
     let message = event.message !== undefined ? event.message : event.data;
     // The WebView delivers the panel's string JSON-encoded once more
     for (let depth = 0; typeof message === "string" && depth < 2; depth++) {
@@ -316,8 +327,25 @@ function attachView() {
       showStatus(message.text);
     }
   });
+  // The message bridge is "localAndRemote": "localOnly" stops the host's
+  // messages from reaching the panel in Photoshop 26.6. A page that is not
+  // the panel never gets to talk to the host: the WebView goes back to the
+  // panel, and a web link opens in the browser. The panel's address is the
+  // one reported by the load that follows setting src, as the platforms may
+  // not report it the same way.
+  view.addEventListener("loadstart", (event) => {
+    const url = String(event.url || "").split("#")[0];
+    if (loadingPanel) {
+      loadingPanel = false;
+      panelAddress = url;
+    }
+    viewOnPanel = url === panelAddress || url.indexOf("plugin:/") === 0;
+    if (viewOnPanel) return;
+    showPanelPage();
+    if (/^https?:\/\//i.test(url)) uxp.shell.openExternal(url).catch(() => {});
+  });
   view.addEventListener("loaderror", (event) => showStatus("TypeR: " + (event.message || "load error")));
-  view.src = PANEL_URL;
+  showPanelPage();
   return view;
 }
 

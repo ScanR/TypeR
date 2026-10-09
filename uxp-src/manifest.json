@@ -37,7 +37,7 @@
       "allow": "yes",
       "domains": "all",
       "allowLocalRendering": "yes",
-      "enableMessageBridge": "localOnly"
+      "enableMessageBridge": "localAndRemote"
     }
   }
 }
