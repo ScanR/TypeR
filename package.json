@@ -15,7 +15,7 @@
     "test:update:server": "node scripts/updateTestServer.js",
     "test:build": "node scripts/testBuildArtifacts.js",
     "verify": "npm test && npm run build && npm run test:build",
-    "release": "npm run verify && node scripts/buildRelease.js && npm run package:uxp",
+    "release": "npm run verify && npm run package:uxp && node scripts/buildRelease.js --with-uxp",
     "build:uxp": "webpack --config webpack.uxp.config.js --mode=production && node scripts/buildUxp.js",
     "build:uxp:dev": "webpack --config webpack.uxp.config.js --mode=development --env dev && node scripts/buildUxp.js --dev --package",
     "package:uxp": "npm run build:uxp && node scripts/buildUxp.js --package",

@@ -154,12 +154,21 @@ When an installed font cannot be found, TypeR reports it instead of silently omi
 
 ## Install
 
-TypeR exists in two forms built from the same application: a **UXP plugin** for Photoshop 2025 and later, which runs natively on Apple Silicon, and the **CEP extension** for every Photoshop since CC 2015. Both can be installed side by side.
+TypeR exists in two versions built from the same application:
+
+| Version | Photoshop | |
+| --- | --- | --- |
+| **UXP** (recommended) | 2025 (version 26.0) or later | Faster, built on Adobe's newer plugin framework, runs natively on Apple Silicon |
+| **Legacy** (CEP) | CC 2015 (version 16.0) or later | Works with more Photoshop versions; older and slower, but more thoroughly tested |
+
+The installers of the release archive (`install_win.cmd`, `install_mac.sh`) start by asking which version to install. `-Uxp` / `-Legacy` on Windows and `--uxp` / `--legacy` on macOS skip the question. Both versions can be installed side by side, but do not open both panels at the same time: each shortcut would run twice.
+
+UXP needs Photoshop 2025 (UXP 8.0): it is the first version whose plugin panels can display the plugin's own web pages, which TypeR's interface relies on.
 
 ### Photoshop 2025 and later: UXP plugin
 
 1. [Download the latest `TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx).
-2. Double-click it: Creative Cloud installs the plugin. Without Creative Cloud's file association, run `./install_uxp_mac.sh` (macOS) or `install_uxp_win.cmd` (Windows) from the release archive instead.
+2. Double-click it: Creative Cloud installs the plugin. Without Creative Cloud's file association, run the installer of the [release archive](https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip) (`install_win.cmd` or `./install_mac.sh`, see below) and choose **1) UXP**, or run `install_uxp_win.cmd` / `./install_uxp_mac.sh`, which install it without asking. The archive contains the plugin, so no download is needed.
 3. In Photoshop, select **Plugins → TypeR → TypeR**.
 
 On its first start the plugin copies the styles, profiles and settings of an installed CEP TypeR (the CEP files are left untouched). Its own data lives in `~/Library/Application Support/TypeR/UXP` on macOS and `%APPDATA%\TypeR\UXP` on Windows, outside Photoshop's version-specific plugin folders, so a Photoshop upgrade keeps it. Updates are offered and installed from the panel like the CEP version's; restart Photoshop afterwards.
@@ -176,14 +185,14 @@ Global shortcuts (such as Cmd+Ctrl for Paste) need to read the keyboard while th
 
 Photoshop 16.0+ and CEP 6+ are declared by the extension manifest. TypeR 3.0 contains two builds of the same application: Photoshop 2020+ with Chromium 74+ loads the modern build; older or unknown runtimes load the compatibility build automatically. The project does not yet maintain a verified OS/version matrix, so compatibility is not guaranteed for every Photoshop and operating-system combination. Portable or heavily modified Photoshop builds may not load CEP panels correctly.
 
-TypeR is distributed as an unsigned CEP extension. Both installers place it in the user-level Adobe CEP extensions folder and configure the required CSXS debug setting.
+The Legacy version is distributed as an unsigned CEP extension. Both installers place it in the user-level Adobe CEP extensions folder and configure the required CSXS debug setting.
 
 ### Windows
 
 1. [Download the latest `TypeR.zip`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip).
 2. Extract the archive completely.
 3. Close Photoshop.
-4. Double-click `install_win.cmd` and follow the terminal prompts.
+4. Double-click `install_win.cmd`, choose **2) Legacy** (or **1) UXP**, see above) and follow the terminal prompts.
 5. Reopen Photoshop and select **Window → Extensions → TypeR**.
 
 ### macOS
@@ -196,6 +205,8 @@ TypeR is distributed as an unsigned CEP extension. Both installers place it in t
 chmod +x install_mac.sh
 ./install_mac.sh
 ```
+
+and choose **2) Legacy** (or **1) UXP**, see above).
 
 4. Reopen Photoshop and select **Window → Extensions → TypeR**.
 

@@ -64,6 +64,11 @@ Each one fixes something the CEP host gets wrong in Photoshop 2026:
 
 ## Panel environment
 
+The WebView's message bridge is `localAndRemote`: with `localOnly`, Photoshop 26.6 no longer delivers the
+host's messages to the panel. The bridge gives no origin to check, so the host ignores the messages of any
+page that is not the panel: when the WebView starts loading another page, the host loads the panel again
+and opens a web address in the browser.
+
 Synchronous CEP file calls on TypeR's own files (`storage*`, `.typer-update-test.json`, `locale/…`)
 are answered from a mirror the host sends at start; writes update the mirror at once and are persisted
 by the host (atomic rename, newest content only when writes pile up). Any other path, and the file
@@ -88,7 +93,7 @@ mouse buttons 4 and 5, which the CEP version only supported on Windows.
 
 ```sh
 npm run build:uxp       # uxp/: the plugin folder
-npm run package:uxp     # Releases/TypeR-UXP.ccx
+npm run package:uxp     # Releases/TypeR-UXP.ccx, added to TypeR.zip by scripts/buildRelease.js
 npm run test:uxp        # the UXP suites (also run by npm test)
 ```
 
