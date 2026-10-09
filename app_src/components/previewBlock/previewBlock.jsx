@@ -10,6 +10,7 @@ import { csInterface, locale, nativeConfirm, setActiveLayerText, setLayerTextFas
 import { useContext } from "../../context";
 import { getScaledStyle } from "../../textLayerPayload";
 import { getBubbleCacheKey, haveSameLayerSize } from "../../textShapeRTracking";
+import { createScanPacer } from "../../textShapeRScanPacing";
 import { isShortcutActiveForEvent, pasteInSelection, withShortcutHint } from "../../shortcutCommands";
 import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPreview";
 import { notePerfRender } from "../../perfDebug";
@@ -151,7 +152,10 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     uiVisible.previewCreateButton !== false ||
     uiVisible.previewAlignButton !== false ||
     uiVisible.previewSizeControls !== false;
-  const batchTrackingEnabled = context.state.inlineTextShapeR && uiVisible.previewWidget !== false;
+  // A hidden widget renders nothing and never loads the engine: tracking the
+  // layer and scanning bubbles for it would only cost Photoshop time
+  const textShapeRTrackingEnabled = context.state.inlineTextShapeR && uiVisible.previewWidget !== false;
+  const batchTrackingEnabled = textShapeRTrackingEnabled;
   const [textShapeREngine, setTextShapeREngine] = React.useState(null);
   React.useEffect(() => {
     if (!context.state.inlineTextShapeR || uiVisible.previewWidget === false || textShapeREngine) return undefined;
@@ -208,7 +212,9 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   const inlineShapeKey = React.useRef("");
   const inlineLayerBoundsRef = React.useRef(null);
   const bubbleShapeCache = React.useRef(new Map());
-  const inlineShapeSettle = React.useRef({ hash: "", timer: null });
+  const inlineShapeSettle = React.useRef({ hash: "", timer: null, readyAt: 0 });
+  const inlineBubbleSettle = React.useRef({ key: "", timer: null, readyAt: 0 });
+  const [scanPacer] = React.useState(createScanPacer);
   const [inlineSelectionShape, setInlineSelectionShape] = React.useState(null);
   const batchOrderRef = React.useRef([]);
   const batchPending = React.useRef(false);
@@ -390,6 +396,17 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       inlineShapeSettle.current.timer = null;
     }
     inlineShapeSettle.current.hash = "";
+    inlineShapeSettle.current.readyAt = 0;
+  }, []);
+
+  const clearInlineBubbleSettle = React.useCallback(() => {
+    const settle = inlineBubbleSettle.current;
+    if (settle.timer) {
+      clearTimeout(settle.timer);
+      settle.timer = null;
+    }
+    settle.key = "";
+    settle.readyAt = 0;
   }, []);
 
   const refreshInlineSelectionShape = React.useCallback((force = false) => {
@@ -412,10 +429,12 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           inlineShapePending.current = false;
           inlineShapeKey.current = "";
           clearInlineShapeSettle();
+          clearInlineBubbleSettle();
           setInlineSelectionShape((current) => (current ? null : current));
           return;
         }
         // A manual selection always wins over the automatic bubble detection
+        clearInlineBubbleSettle();
         const boundsHash = `selection:${getSelectionBoundsHash(selection)}`;
         if (boundsHash === inlineShapeKey.current) {
           inlineShapePending.current = false;
@@ -424,20 +443,30 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         // The outline sampling runs 21 selection ops on Photoshop's main
         // thread: firing it on every bounds change would freeze the canvas
         // mid-drag. Wait until two consecutive reads agree (the user let go
-        // of the mouse) before paying for it.
-        if (!force && boundsHash !== inlineShapeSettle.current.hash) {
-          inlineShapeSettle.current.hash = boundsHash;
-          if (inlineShapeSettle.current.timer) clearTimeout(inlineShapeSettle.current.timer);
-          inlineShapeSettle.current.timer = setTimeout(() => {
-            inlineShapeSettle.current.timer = null;
-            refreshInlineSelectionShape();
-          }, 350);
-          inlineShapePending.current = false;
-          return;
+        // of the mouse) before paying for it, and leave the scan pacer's gap
+        // after the previous scan so a slow Photoshop is not scanned in a loop.
+        if (!force) {
+          const settle = inlineShapeSettle.current;
+          const now = Date.now();
+          if (boundsHash !== settle.hash) {
+            settle.hash = boundsHash;
+            settle.readyAt = now + scanPacer.getDelay();
+          }
+          if (now < settle.readyAt) {
+            if (settle.timer) clearTimeout(settle.timer);
+            settle.timer = setTimeout(() => {
+              settle.timer = null;
+              refreshInlineSelectionShape();
+            }, settle.readyAt - now);
+            inlineShapePending.current = false;
+            return;
+          }
         }
         clearInlineShapeSettle();
+        const scanStartedAt = Date.now();
         csInterface.evalScript(`getCurrentSelectionShape(${JSON.stringify({ samples: 21 })})`, (result) => {
           inlineShapePending.current = false;
+          scanPacer.recordScan(Date.now() - scanStartedAt);
           try {
             const data = JSON.parse(result || "{}");
             if (!data || data.error || !data.bounds) return;
@@ -462,6 +491,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       if (!bubbleAware || !inlineSourceKey.current || multiSelecting) {
         inlineShapePending.current = false;
         inlineShapeKey.current = "";
+        clearInlineBubbleSettle();
         setInlineSelectionShape((current) => (current ? null : current));
         return;
       }
@@ -489,8 +519,32 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         setInlineSelectionShape(memoized);
         return;
       }
+      // A layer the user is only passing through (clicking down the stack) is
+      // not worth a wand scan: wait until it stays active, and leave the scan
+      // pacer's gap after the previous scan. Explicit refreshes skip the wait.
+      if (!force) {
+        const settle = inlineBubbleSettle.current;
+        const now = Date.now();
+        if (settle.key !== bubbleKey) {
+          settle.key = bubbleKey;
+          settle.readyAt = now + scanPacer.getDelay();
+        }
+        if (now < settle.readyAt) {
+          if (settle.timer) clearTimeout(settle.timer);
+          settle.timer = setTimeout(() => {
+            settle.timer = null;
+            refreshInlineSelectionShape();
+          }, settle.readyAt - now);
+          inlineShapePending.current = false;
+          return;
+        }
+      }
+      const scanStartedAt = Date.now();
       csInterface.evalScript(`getActiveLayerBubbleShape(${JSON.stringify({ samples: 21, tolerance: 20 })})`, (result) => {
         inlineShapePending.current = false;
+        scanPacer.recordScan(Date.now() - scanStartedAt);
+        // Whatever the outcome, a retry for this layer waits its turn again
+        clearInlineBubbleSettle();
         try {
           const data = JSON.parse(result || "{}");
           // A transient "a selection is active" answer says nothing about the
@@ -512,7 +566,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         } catch (error) {}
       });
     });
-  }, [bubbleAware, clearInlineShapeSettle]);
+  }, [bubbleAware, clearInlineShapeSettle, clearInlineBubbleSettle, scanPacer]);
 
   // A Photoshop 'move' action changes history but not the text or style. Read
   // only the active layer's ID/bounds/history signature, then acknowledge that
@@ -672,7 +726,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   }, [batchTrackingEnabled, refreshBatchSelection]);
 
   React.useEffect(() => {
-    if (!context.state.inlineTextShapeR) return undefined;
+    if (!textShapeRTrackingEnabled) return undefined;
     refreshInlineLayerSource();
     refreshInlineSelectionShape();
 
@@ -737,13 +791,14 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         inlineMoveDebounce.current = null;
       }
       clearInlineShapeSettle();
+      clearInlineBubbleSettle();
       inlineSourcePending.current = false;
       inlineGeometryPending.current = false;
       inlineGeometryQueued.current = false;
       inlineContentEventVersion.current += 1;
       inlineShapePending.current = false;
     };
-  }, [context.state.inlineTextShapeR, refreshInlineLayerSource, refreshInlineLayerGeometry, refreshInlineSelectionShape, clearInlineShapeSettle]);
+  }, [textShapeRTrackingEnabled, refreshInlineLayerSource, refreshInlineLayerGeometry, refreshInlineSelectionShape, clearInlineShapeSettle, clearInlineBubbleSettle]);
 
   React.useEffect(() => {
     setInlineVariantPage(0);
@@ -751,9 +806,9 @@ const PreviewBlock = React.memo(function PreviewBlock() {
 
   // Re-detect the bubble when the active layer changes or the mode toggles
   React.useEffect(() => {
-    if (!context.state.inlineTextShapeR) return;
+    if (!textShapeRTrackingEnabled) return;
     refreshInlineSelectionShape();
-  }, [context.state.inlineTextShapeR, inlineLayerSource.key, bubbleAware, refreshInlineSelectionShape]);
+  }, [textShapeRTrackingEnabled, inlineLayerSource.key, bubbleAware, refreshInlineSelectionShape]);
 
   const toggleBubbleAware = React.useCallback(() => {
     context.dispatch({ type: "setTextShapeRBubbleAware", value: !bubbleAware });
