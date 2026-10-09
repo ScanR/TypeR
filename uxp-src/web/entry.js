@@ -3,10 +3,14 @@
 // host's init payload first, and only then is the application loaded.
 import { request, notify, on } from "./bridge";
 import { installCepEnvironment } from "./cepShim";
-import { installErrorReporting, installFetchFallback, installFileInputs, installLocalStorage } from "./domShims";
+import { installErrorReporting, installFetchFallback, installFileInputs, installInputCentering, installLocalStorage } from "./domShims";
 import "./webkit.scss";
 
+// The WebView is WebKit on macOS and Chromium (WebView2) on Windows: the
+// layout fixes of webkit.scss only apply to the first
+const IS_WEBKIT = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent);
 document.documentElement.classList.add("typer-uxp");
+if (IS_WEBKIT) document.documentElement.classList.add("typer-webkit");
 
 const report = (text) => notify("panelError", { text: String(text) });
 
@@ -49,6 +53,7 @@ async function start() {
   );
   installFileInputs();
   installFetchFallback();
+  if (IS_WEBKIT) installInputCentering();
   await import(/* webpackMode: "eager" */ "../../app_src/index.jsx");
 }
 

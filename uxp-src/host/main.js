@@ -184,6 +184,16 @@ function enqueue(task) {
   return run;
 }
 
+// Photoshop notified a CEP panel of the commands its own scripts played too
+// (the panel relies on it: "the debounced Photoshop event refresh will
+// confirm"); UXP does not report a plugin's own commands to it. After a call
+// that changes the document, the panel gets the "set" event CEP sent.
+const DOCUMENT_CHANGING_CALLS = new Set([
+  "setActiveLayerText", "setSelectedTextLayers", "setTextShapeRLayerText", "createTextLayerInSelection",
+  "createTextLayersInStoredSelections", "alignTextLayerToSelection", "changeActiveLayerTextSize",
+  "toggleCleaningLayers", "undoLastTyperChange", "openFile",
+]);
+
 async function evalScript(script) {
   const call = parseCall(script);
   const method = call && Object.prototype.hasOwnProperty.call(methods, call.name) ? methods[call.name] : null;
@@ -197,6 +207,8 @@ async function evalScript(script) {
   } catch (error) {
     console.error("TypeR:", call.name, (error && error.stack) || error);
     return "EvalScript error.";
+  } finally {
+    if (DOCUMENT_CHANGING_CALLS.has(call.name)) onPhotoshopEvent("set", { _isCommand: true });
   }
 }
 
@@ -340,7 +352,7 @@ async function startOnce() {
 const devResultListeners = [];
 if (typeof TYPER_DEV !== "undefined" && TYPER_DEV) {
   require("./devChannel").start(post, (listener) => devResultListeners.push(listener));
-  globalThis.__typer = { photoshop, files, keyboard, services, methods, requests, post, mirror, getMirror: () => mirrorFiles };
+  globalThis.__typer = { photoshop, files, keyboard, services, methods, requests, post, mirror, getMirror: () => mirrorFiles, getHostEnvironment, onThemeChanged };
 }
 
 

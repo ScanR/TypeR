@@ -112,3 +112,20 @@ installCepEnvironment({
   console.error(error);
   process.exitCode = 1;
 });
+
+// WebKit (the UXP panel) matches SVG element names case-sensitively: a
+// `SVG` selector works in CEP's Chromium only
+{
+  const fs = require("fs");
+  const path = require("path");
+  const walk = (dir) => fs.readdirSync(dir).flatMap((name) => {
+    const full = path.join(dir, name);
+    return fs.statSync(full).isDirectory() ? walk(full) : /\.s?css$/.test(name) ? [full] : [];
+  });
+  walk(path.join(__dirname, "../app_src")).forEach((file) => {
+    if (file.includes(path.sep + "lib" + path.sep)) return;
+    fs.readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+      assert.ok(!/(^|[\s>+~,(&])SVG(?![\w-])/.test(line), `${path.relative(path.join(__dirname, ".."), file)}:${index + 1} uses an uppercase SVG selector`);
+    });
+  });
+}

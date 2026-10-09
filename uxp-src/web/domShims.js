@@ -123,3 +123,42 @@ export function installFetchFallback() {
     }
   };
 }
+
+// Single-line fields with a fixed height smaller than their line-height:
+// Chromium centres the value vertically, WebKit lays the line out from the
+// top and the value sits low (topcoat's 27px line-height in 22px fields).
+// The line-height is brought down to the field's content height, which
+// centres it the same way.
+export function installInputCentering() {
+  const SKIPPED = /^(checkbox|radio|range|color|file|hidden|button|submit|reset|image)$/;
+  const fix = (input) => {
+    if (SKIPPED.test(input.type) || input.style.lineHeight) return;
+    const style = getComputedStyle(input);
+    const lineHeight = parseFloat(style.lineHeight);
+    const contentHeight = input.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    if (lineHeight > 0 && contentHeight > 0 && lineHeight > contentHeight + 0.5) input.style.lineHeight = contentHeight + "px";
+  };
+  const scan = (node) => {
+    if (node.nodeType !== 1) return;
+    if (node.tagName === "INPUT") fix(node);
+    else if (node.getElementsByTagName("input").length) Array.from(node.getElementsByTagName("input")).forEach(fix);
+  };
+  let pending = [];
+  let scheduled = false;
+  // Checked after layout, once per frame
+  const flush = () => {
+    scheduled = false;
+    const nodes = pending;
+    pending = [];
+    nodes.forEach((node) => {
+      if (node.isConnected) scan(node);
+    });
+  };
+  new MutationObserver((records) => {
+    records.forEach((record) => record.addedNodes.forEach((node) => pending.push(node)));
+    if (pending.length && !scheduled) {
+      scheduled = true;
+      requestAnimationFrame(flush);
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true });
+}

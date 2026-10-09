@@ -1,33 +1,43 @@
-// The panel runs in WebKit here (Chromium in CEP). Rules for the few places
-// where both engines lay the same CSS out differently; scoped to the UXP
-// build, the CEP rendering is untouched.
-
-// Script sheet: each row must be exactly as tall as the textarea's lines
-// (17px), or the highlight rows drift under the text the textarea draws.
-// WebKit sets the inline icons of the gutter cells on their own baseline,
-// which makes every row half a pixel taller than in Chromium.
-.typer-uxp .text-block {
-  .text-line-num,
-  .text-line-select,
-  .text-line-insert {
-    height: 17px;
-    line-height: 17px;
-    overflow: visible;
-  }
-  .text-line-select > svg,
-  .text-line-insert > svg {
-    vertical-align: top;
-    margin-top: 2px;
-    margin-bottom: 0;
-    top: 0;
-  }
-}
+// On macOS the UXP WebView is WebKit (CEP and Windows' WebView2 are
+// Chromium). Rules for the few places where both engines lay the same CSS
+// out differently, scoped to WebKit (html.typer-webkit, see entry.js).
+//
+// Note for the shared styles: WebKit matches the element names of SVG
+// content case-sensitively, so a selector must say `svg`, never `SVG`.
 
 // Form controls take their font from the browser's own stylesheet wherever
 // the panel does not set one: Arial 13.33px in Chromium, the system font in
 // WebKit (wider, which pushed the style size badges around). Zero
 // specificity, so any rule of the panel still wins.
-:where(.typer-uxp) :where(button, input, select, textarea, optgroup, option) {
+:where(.typer-webkit) :where(button, input, select, textarea, optgroup, option) {
   font-family: Arial;
   font-size: 13.333333px;
+}
+
+// <select>: Chromium keeps the panel's padding, border and background and
+// adds a small chevron; WebKit draws a native macOS pop-up button instead,
+// which ignores them (no padding, larger radius, double arrow). Drawn the
+// Chromium way here.
+.typer-webkit select:not([multiple]):not([size]) {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23c9caca' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  background-size: 10px 6px;
+  padding-right: 26px;
+}
+.typer-webkit body.light-theme select:not([multiple]):not([size]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23444' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+// Number fields: Chromium shows the stepper only while the field is hovered
+// or focused; WebKit always draws it over the value.
+.typer-webkit input[type="number"]::-webkit-inner-spin-button,
+.typer-webkit input[type="number"]::-webkit-outer-spin-button {
+  opacity: 0;
+}
+.typer-webkit input[type="number"]:hover::-webkit-inner-spin-button,
+.typer-webkit input[type="number"]:focus::-webkit-inner-spin-button {
+  opacity: 1;
 }
