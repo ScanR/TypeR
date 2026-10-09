@@ -12,13 +12,15 @@ SRCDIR=$(cd "${TYPER_INSTALL_SOURCE:-$(dirname "$0")}" && pwd)
 MANIFEST="$SRCDIR/CSXS/manifest.xml"
 EXT_VERSION=$( (grep -oE '<Extension Id="typer" Version="[^"]+"' "$MANIFEST" 2>/dev/null || true) \
   | sed -E 's/.*Version="([^"]+)".*/\1/')
+EXT_TITLE=$(grep -oE '<Menu>[^<]+' "$MANIFEST" | sed 's/<Menu>//' || true)
+EXT_TITLE=${EXT_TITLE:-TypeR}
 # (optionnel : debug)
 # echo "Version détectée : $EXT_VERSION"
 
 # —————————————————————————————————————————————————————————————
 # Détection de la langue système
 # —————————————————————————————————————————————————————————————
-LANGUAGE=$((defaults read -g AppleLocale 2>/dev/null || printf 'en') | cut -d"_" -f1)
+LANGUAGE="$( (defaults read -g AppleLocale 2>/dev/null || printf 'en') | cut -d'_' -f1 )"
 
 # —————————————————————————————————————————————————————————————
 # Messages en anglais
@@ -27,7 +29,7 @@ MSG_INSTALL_EN="Photoshop extension TypeR v$EXT_VERSION will be installed."
 MSG_CLOSE_PHOTOSHOP_EN="Close Photoshop (if it is open)."
 MSG_PRESS_KEY_EN="Press any key to continue"
 MSG_INSTALL_COMPLETE_EN="Installation completed."
-MSG_OPEN_PHOTOSHOP_EN="Open Photoshop and in the menu click the following: [Window] > [Extensions] > [TypeR]"
+MSG_OPEN_PHOTOSHOP_EN="Open Photoshop and in the menu click the following: [Window] > [Extensions] > [$EXT_TITLE]"
 MSG_PRESS_ENTER_EN="Press Enter to continue"
 MSG_CREDITS_EN="TypeR developed by Sakushi & SeanR."
 MSG_TYPERTOOLS_EN="typertools, developed by Swirt: https://swirt.github.io/typertools/"
@@ -52,7 +54,7 @@ MSG_INSTALL_FR="L'extension Photoshop TypeR v$EXT_VERSION sera installée."
 MSG_CLOSE_PHOTOSHOP_FR="Fermez Photoshop (s'il est ouvert)."
 MSG_PRESS_KEY_FR="Appuyez sur une touche pour continuer"
 MSG_INSTALL_COMPLETE_FR="Installation terminée."
-MSG_OPEN_PHOTOSHOP_FR="Ouvrez Photoshop et dans le menu cliquez sur : [Fenêtre] > [Extensions] > [TypeR]"
+MSG_OPEN_PHOTOSHOP_FR="Ouvrez Photoshop et dans le menu cliquez sur : [Fenêtre] > [Extensions] > [$EXT_TITLE]"
 MSG_PRESS_ENTER_FR="Appuyez sur Entrée pour continuer"
 MSG_CREDITS_FR="TypeR développé par Sakushi & SeanR."
 MSG_TYPERTOOLS_FR="typertools, développé par Swirt : https://swirt.github.io/typertools/"
@@ -77,7 +79,7 @@ MSG_INSTALL_ES="La extensión de Photoshop TypeR v$EXT_VERSION será instalada."
 MSG_CLOSE_PHOTOSHOP_ES="Cierra Photoshop (si está abierto)."
 MSG_PRESS_KEY_ES="Presiona cualquier tecla para continuar"
 MSG_INSTALL_COMPLETE_ES="Instalación completada."
-MSG_OPEN_PHOTOSHOP_ES="Abre Photoshop y en el menú haz clic en: [Ventana] > [Extensiones] > [TypeR]"
+MSG_OPEN_PHOTOSHOP_ES="Abre Photoshop y en el menú haz clic en: [Ventana] > [Extensiones] > [$EXT_TITLE]"
 MSG_PRESS_ENTER_ES="Presiona Enter para continuar"
 MSG_CREDITS_ES="TypeR desarrollado por Sakushi & SeanR."
 MSG_TYPERTOOLS_ES="typertools, desarrollado por Swirt: https://swirt.github.io/typertools/"
@@ -102,7 +104,7 @@ MSG_INSTALL_PT="A extensão Photoshop TypeR v$EXT_VERSION será instalada."
 MSG_CLOSE_PHOTOSHOP_PT="Feche o Photoshop (se estiver aberto)."
 MSG_PRESS_KEY_PT="Pressione qualquer tecla para continuar"
 MSG_INSTALL_COMPLETE_PT="Instalação concluída."
-MSG_OPEN_PHOTOSHOP_PT="Abra o Photoshop e no menu clique em: [Janela] > [Extensões] > [TypeR]"
+MSG_OPEN_PHOTOSHOP_PT="Abra o Photoshop e no menu clique em: [Janela] > [Extensões] > [$EXT_TITLE]"
 MSG_PRESS_ENTER_PT="Pressione Enter para continuar"
 MSG_CREDITS_PT="TypeR desenvolvido por Sakushi & SeanR."
 MSG_TYPERTOOLS_PT="typertools, desenvolvido por Swirt: https://swirt.github.io/typertools/"

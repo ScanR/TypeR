@@ -5,6 +5,7 @@ const postcssPresetEnv = require('postcss-preset-env');
 const autoprefixer = require('autoprefixer');
 const postcssCssnano = require('cssnano');
 const UglifyJS = require('uglify-js');
+const groupExtendScriptLogic = require('./scripts/extendScriptLogicalGrouping');
 
 
 const hostFiles = [
@@ -170,7 +171,7 @@ const prodConfig = {
             transform: {
                 'host.jsx': code => {
                     const res = UglifyJS.minify(code, {compress: false, output: {beautify: true, indent_level: 0, quote_keys: true}});
-                    return res.code.replace(/([{};:,])\s*\n+\s*/gi, '$1').replace(/\s*\n+\s*([})\];:,])/gi, '$1');
+                    return groupExtendScriptLogic(res.code).replace(/([{};:,])\s*\n+\s*/gi, '$1').replace(/\s*\n+\s*([})\];:,])/gi, '$1');
                 }
             }
         })
