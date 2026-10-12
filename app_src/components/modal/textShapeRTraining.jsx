@@ -88,22 +88,28 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
     scanFiles(normalizeTrainingFiles(paths));
   };
 
+  const picking = React.useRef(false);
   const pickFiles = async () => {
-    if (busyRef.current) return;
+    if (busyRef.current || picking.current) return;
+    picking.current = true;
     try {
       if (window.typerUXP) {
         // UXP has no file paths: the picker hands back persistent tokens the
         // host can reopen, which is what the scan needs
         scanFiles(normalizeTrainingFiles(await window.typerUXP.request("pickPsds")));
       } else if (window.cep && window.cep.fs && window.cep.fs.showOpenDialogEx) {
-        const result = window.cep.fs.showOpenDialogEx(true, false, locale.textShapeRTrainPick, "", ["psd"]);
-        if (result.err) { setMessage(locale.textShapeRTrainFileError); return; }
+        // CEP answers synchronously; a Promise-returning picker is awaited
+        let result = window.cep.fs.showOpenDialogEx(true, false, locale.textShapeRTrainPick, "", ["psd"]);
+        if (result && typeof result.then === "function") result = await result;
+        if (!result || result.err) { setMessage(locale.textShapeRTrainFileError); return; }
         scanFiles(normalizeTrainingFiles(result.data || []));
       } else {
         fileInput.current.click();
       }
     } catch (error) {
       setMessage(locale.textShapeRTrainFileError);
+    } finally {
+      picking.current = false;
     }
   };
 

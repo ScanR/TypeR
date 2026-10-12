@@ -6,11 +6,17 @@ export default function StorageNotice() {
   const [issues, setIssues] = React.useState(getStorageIssues);
   React.useEffect(() => subscribeStorageIssues(setIssues), []);
   if (!issues.length) return null;
-  const exportRecovery = () => {
-    const result = window.cep.fs.showSaveDialogEx(false, false, ['json'], 'TypeR-recovery.json');
-    if (!result?.data) return;
-    const written = window.cep.fs.writeFile(result.data, JSON.stringify(readStorage().data || {}));
-    if (!written || written.err) nativeAlert(locale.saveError, locale.errorTitle, true);
+  // The dialog and the write are asynchronous in UXP; awaiting a CEP value
+  // is harmless.
+  const exportRecovery = async () => {
+    try {
+      const result = await window.cep.fs.showSaveDialogEx(false, false, ['json'], 'TypeR-recovery.json');
+      if (!result?.data) return;
+      const written = await window.cep.fs.writeFile(result.data, JSON.stringify(readStorage().data || {}));
+      if (written && written.err) nativeAlert(locale.saveError, locale.errorTitle, true);
+    } catch (error) {
+      nativeAlert(locale.saveError, locale.errorTitle, true);
+    }
   };
   return (
     <div role="alert" className="hostBgd hostBrdContrast" style={{ position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 20000, padding: 8, fontSize: 11, maxHeight: '40vh', overflow: 'auto', border: '1px solid #c77' }}>

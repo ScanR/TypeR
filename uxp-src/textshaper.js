@@ -340,7 +340,11 @@ const methods = {
       return JSON.stringify({error: 'scanFailed', file: path, message: error.message || String(error)});
     } finally {
       if (temporary && doc) { try { await close(doc); } catch (error) { console.error('TypeR close', error.message || error); } }
-      if (temporary && previous) { try { await activate(previous); } catch (error) { console.error('TypeR restore', error.message || error); } }
+      // An already open PSD was brought forward to be read: the user's
+      // document comes back to the front either way
+      if (previous && doc && previous.id !== doc.id && Array.from(ps.app.documents).includes(previous)) {
+        try { await activate(previous); } catch (error) { console.error('TypeR restore', error.message || error); }
+      }
     }
   },
 };

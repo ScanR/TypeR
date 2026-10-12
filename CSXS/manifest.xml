@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<ExtensionManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="6.0" ExtensionBundleId="com.scanr.typer" ExtensionBundleVersion="3.0.6" ExtensionBundleName="TypeR">
+<ExtensionManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" Version="6.0" ExtensionBundleId="com.scanr.typer" ExtensionBundleVersion="3.0.7" ExtensionBundleName="TypeR">
     <ExtensionList>
-        <Extension Id="typer" Version="3.0.6" />
+        <Extension Id="typer" Version="3.0.7" />
     </ExtensionList>
     <ExecutionEnvironment>
         <HostList>

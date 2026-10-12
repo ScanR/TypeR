@@ -73,11 +73,14 @@ window.cep = {
   util: {openURLInDefaultBrowser: url => request('openUrl', url).catch(showError)},
   fs: {
     NO_ERROR: 0, ERR_NOT_FOUND: 3,
-    readFile(path) { return path in virtualFiles ? {data: virtualFiles[path], err: 0} : path.startsWith('file:') ? request('readFile', path) : {err: 3}; },
-    writeFile(path, data) {
+    // The panel's own files answer synchronously, as under CEP. A file the
+    // user picked ('file:<id>') lives with the host, so its read and write
+    // return a Promise: every caller of those paths awaits them.
+    readFile(path, encoding) { return path in virtualFiles ? {data: virtualFiles[path], err: 0} : path.startsWith('file:') ? request('readFile', path, encoding) : {err: 3}; },
+    writeFile(path, data, encoding) {
       if (isVirtualPath(path)) return store(path, String(data));
       // 'file:' ids are the files the user picked; UXP allows no other path.
-      return path.startsWith('file:') ? request('writeFile', path, data) : {err: 3};
+      return path.startsWith('file:') ? request('writeFile', path, data, encoding) : {err: 3};
     },
     deleteFile(path) {
       if (!isVirtualPath(path)) return {err: 3};
@@ -85,9 +88,11 @@ window.cep = {
       request('deleteVirtual', path).catch(showError);
       return {err: 0};
     },
-    showSaveDialogEx(_a, _b, _types, name) {return request('pickSave', name);},
-    showOpenDialogEx() {return request('pickOpen');},
+    // Both pickers are asynchronous in UXP and return a Promise.
+    showSaveDialogEx(_title, _initial, types, name) {return request('pickSave', name, types);},
+    showOpenDialogEx(multiple, _folders, _title, _initial, types) {return request('pickOpen', types, !!multiple);},
   },
+  encoding: {UTF8: 'UTF-8', Base64: 'Base64'},
 };
 const environment = {appLocale: initial.locale, appSkinInfo: {panelBackgroundColor: {color: {red: 50, green: 50, blue: 50}}, baseFontFamily: 'Arial', baseFontSize: 12}};
 window.__adobe_cep__ = {getHostEnvironment: () => JSON.stringify(environment)};

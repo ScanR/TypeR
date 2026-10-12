@@ -83,7 +83,7 @@ try {
   report.error = error.message || String(error);
   report.stack = error.stack;
 } finally {
-  const folder = await localFS.getEntryWithUrl('file:/Users/dadam/Documents/ScanR/TypeR-silicon/validation');
+  const folder = await localFS.getEntryWithUrl(VALIDATION_FOLDER_URL);
   const file = await folder.createFile('native-smoke-result.json', {overwrite: true});
   await file.write(JSON.stringify(report, null, 2));
   if (testDocument) await photoshop.core.executeAsModal(async () => {

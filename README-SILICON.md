@@ -4,6 +4,13 @@ Portage local de TypeR 3.0.0 vers UXP, destiné à Photoshop récent sur Apple S
 Sources de départ : `ScanR/TypeR`, branche `develop`, commit `fc73244`.
 Cette adaptation n'est pas une version officielle de ScanR.
 
+## Nouveautés 3.0.7 (stabilité, retours de revue de la PR #212)
+
+- **Export avec polices** : l'option « exporter aussi les fichiers de police (.zip) » et le Ctrl/Cmd+clic sur un dossier ne sont plus proposés dans l'édition UXP, où ils ne pouvaient pas fonctionner. L'export JSON normal reste disponible. Rien ne change dans l'édition CEP.
+- **Fenêtres Enregistrer / Ouvrir** : l'export de secours, l'export du tutoriel, le téléchargement de polices du Font Viewer et l'image de fond attendent maintenant correctement la fenêtre et l'écriture du fichier. Les types de fichiers demandés sont respectés (polices, images), et non plus seulement le JSON.
+- **Scan de polices d'un PSD déjà ouvert** : le document sur lequel tu travaillais repasse au premier plan après le scan.
+- **Scripts de validation portables** : plus aucun chemin propre à une machine ; le script de sonde abandonné est supprimé.
+
 ## Nouveautés 3.0.6 (TextShapeR : modèle de découpage structuré)
 
 - **Apprend sur tous les découpages possibles** : quand tu valides une forme, TextShapeR ne la compare plus seulement aux 5 propositions affichées, mais à toutes les façons possibles de couper ce texte (méthode « programmation dynamique différentiable », Mensch & Blondel, arXiv:1802.03676). Une seule correction en apprend donc beaucoup plus.
@@ -186,12 +193,13 @@ mesuré, une seule fois.
 à partir des modules de production `uxp-src/photoshop.js` et `uxp-src/text-style.js` :
 
 ```sh
-node validation/build-native-smoke.js
+node validation/build-native-smoke.js            # résultats dans validation/
+node validation/build-native-smoke.js ~/Desktop  # ou dans un autre dossier
 ```
 
 Ce script s'exécute dans Photoshop (script UXP, par l'UXP Developer Tool). Il crée un
-document neuf, écrit `validation/native-smoke-result.json` avec le détail de chaque
-contrôle, puis enregistre `validation/native-smoke.psd`. Il vérifie notamment :
+document neuf, écrit `native-smoke-result.json` avec le détail de chaque contrôle,
+puis enregistre `native-smoke.psd`, dans le dossier choisi à la génération. Il vérifie notamment :
 
 - texte de paragraphe et texte ponctuel créés dans une sélection, contour appliqué ;
 - style capturé puis réappliqué, taille de police modifiée ;

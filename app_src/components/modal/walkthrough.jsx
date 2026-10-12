@@ -13,7 +13,7 @@ import {
 
 import config from "../../config";
 import { useContext } from "../../context";
-import { alignTextLayerToSelection, createTextLayerInSelection, getDefaultStroke, getDefaultStyle, locale } from "../../utils";
+import { alignTextLayerToSelection, createTextLayerInSelection, getDefaultStroke, getDefaultStyle, locale, nativeAlert } from "../../utils";
 
 const SAMPLE_SCRIPT = "Page 1\nREG: This bubble is ready.\nSFX: BOOM!\n## translator note";
 const hasSampleScript = (value) => /Page\s*1/i.test(value) && /REG:/i.test(value) && /SFX:/i.test(value);
@@ -182,8 +182,8 @@ const WalkthroughModal = React.memo(function WalkthroughModal() {
     });
   };
 
-  const exportJson = () => {
-    const pathSelect = window.cep.fs.showSaveDialogEx(false, false, ["json"], `${config.exportFileName}.json`);
+  const exportJson = async () => {
+    const pathSelect = await window.cep.fs.showSaveDialogEx(false, false, ["json"], `${config.exportFileName}.json`);
     if (!pathSelect?.data) return;
     const data = {
       folders: context.state.folders,
@@ -198,8 +198,12 @@ const WalkthroughModal = React.memo(function WalkthroughModal() {
       autoScrollStyle: context.state.autoScrollStyle,
       currentFolderTagPriority: context.state.currentFolderTagPriority,
     };
-    const result = window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
-    if (!result || !result.err) setExportDone(true);
+    try {
+      const result = await window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
+      if (!result || !result.err) setExportDone(true);
+    } catch (error) {
+      nativeAlert(locale.saveError, locale.errorTitle, true);
+    }
   };
 
   const renderPractice = () => {

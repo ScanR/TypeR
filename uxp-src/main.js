@@ -21,6 +21,47 @@ function queueWrite(callback) {
   return result;
 }
 
+const BASE64 = 'Base64';
+
+function fileTypes(types) {
+  const list = Array.isArray(types) ? types.filter(type => typeof type === 'string' && /^[A-Za-z0-9]{1,8}$/.test(type)) : [];
+  return list.length ? list : ['json'];
+}
+
+// 'file:<n>/<name>': the panel reads the extension and the name from the id
+// as it did from a CEP path, the host only ever looks the id up.
+function pickedId(entry) {
+  return `file:${++fileId}/${String(entry.name || 'fichier').replace(/[\\/]/g, '_')}`;
+}
+
+// Plain base64 so the conversion never depends on the host's btoa/atob.
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+function bytesToBase64(bytes) {
+  let out = '';
+  for (let index = 0; index < bytes.length; index += 3) {
+    const n = (bytes[index] << 16) | ((bytes[index + 1] || 0) << 8) | (bytes[index + 2] || 0);
+    out += B64[n >> 18 & 63] + B64[n >> 12 & 63]
+      + (index + 1 < bytes.length ? B64[n >> 6 & 63] : '=')
+      + (index + 2 < bytes.length ? B64[n & 63] : '=');
+  }
+  return out;
+}
+
+function base64ToBytes(text) {
+  const clean = text.replace(/[^A-Za-z0-9+/]/g, '');
+  const bytes = new Uint8Array(Math.floor(clean.length * 3 / 4));
+  let length = 0;
+  for (let index = 0; index < clean.length; index += 4) {
+    const n = (B64.indexOf(clean[index]) << 18) | (B64.indexOf(clean[index + 1]) << 12)
+      | ((B64.indexOf(clean[index + 2]) & 63) << 6) | (B64.indexOf(clean[index + 3]) & 63);
+    bytes[length++] = n >> 16 & 255;
+    if (index + 2 < clean.length) bytes[length++] = n >> 8 & 255;
+    if (index + 3 < clean.length) bytes[length++] = n & 255;
+  }
+  return bytes.slice(0, length);
+}
+
 function parseStorage(text) {
   if (typeof text !== 'string') return null;
   try {
@@ -129,26 +170,34 @@ const handlers = {
   },
   async nativeAlert(data) { await ps.app.showAlert(data.text || 'TypeR'); return ''; },
   nativeConfirm: confirmDialog,
-  async pickSave(name) {
-    const file = await fs.getFileForSaving(name || 'TypeR.json', {types: ['json']});
+  // The panel passes the extensions its CEP dialog asked for; only plain
+  // extensions are kept, JSON stays the default as for every former caller.
+  async pickSave(name, types) {
+    const file = await fs.getFileForSaving(name || 'TypeR.json', {types: fileTypes(types)});
     if (!file) return {data: ''};
-    const id = `file:${++fileId}`;
+    const id = pickedId(file);
     files.set(id, file);
     return {data: id};
   },
-  async pickOpen() {
-    const selected = await fs.getFileForOpening({types: ['json'], allowMultiple: true});
+  async pickOpen(types, multiple = true) {
+    const selected = await fs.getFileForOpening({types: fileTypes(types), allowMultiple: multiple !== false});
     if (!selected) return {data: []};
     const entries = Array.isArray(selected) ? selected : [selected];
-    return {data: entries.map(entry => {const id = `file:${++fileId}`; files.set(id, entry); return id;})};
+    return {data: entries.map(entry => {const id = pickedId(entry); files.set(id, entry); return id;})};
   },
-  async readFile(id) {
+  // 'Base64' mirrors CEP's encoding flag: binary content crosses the bridge
+  // as base64 text, everything else is read and written as UTF-8 text.
+  async readFile(id, encoding) {
     if (!files.has(id)) throw new Error('Sélectionnez de nouveau le fichier.');
-    return {data: await files.get(id).read(), err: 0};
+    const file = files.get(id);
+    if (encoding !== BASE64) return {data: await file.read(), err: 0};
+    return {data: bytesToBase64(new Uint8Array(await file.read({format: storage.formats.binary}))), err: 0};
   },
-  async writeFile(id, text) {
+  async writeFile(id, text, encoding) {
     if (!files.has(id)) throw new Error('Sélectionnez de nouveau le fichier.');
-    await files.get(id).write(text);
+    const file = files.get(id);
+    if (encoding === BASE64) await file.write(base64ToBytes(String(text)).buffer, {format: storage.formats.binary});
+    else await file.write(text);
     return {err: 0};
   },
   async pickImages() {

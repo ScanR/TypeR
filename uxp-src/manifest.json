@@ -2,7 +2,7 @@
   "manifestVersion": 5,
   "id": "fr.scanr.typer.silicon",
   "name": "TypeR Silicon",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "main": "index.html",
   "icons": [{"width": 23, "height": 23, "path": "icons/iconNormal.png", "scale": [1, 2]}],
   "host": {"app": "PS", "minVersion": "26.0.0", "data": {"apiVersion": 2}},

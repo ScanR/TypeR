@@ -440,6 +440,22 @@ test('font scans return per-layer runs, paragraph style and stroke, then close t
   assert.equal(host.documents.length, 1, 'the scanned PSD is closed');
 });
 
+test('a font scan of an already open PSD gives the front back to the active document', async () => {
+  const host = load({
+    documents: [
+      {name: 'planche.psd', layers: [textLayer(2, {name: 'Titre', text: 'Salut'})]},
+      {name: 'document.psd', layers: [pixelLayer(1)]},
+    ],
+    files: {ok: {name: 'planche.psd', nativePath: '/tmp/planche.psd'}},
+  });
+  const previous = host.ps.app.activeDocument;
+  assert.equal(previous.name, 'document.psd');
+  const data = JSON.parse(await host.methods.scanPsdFonts('psfile:ok'));
+  assert.equal(data.layers.length, 1);
+  assert.equal(host.ps.app.activeDocument, previous, 'the active document is restored');
+  assert.equal(host.documents.length, 2, 'an already open PSD stays open');
+});
+
 test('a layer whose strokes are duplicated still reports its first stroke', async () => {
   // A duplicated stroke lives in a frameFXMulti list, never in frameFX
   const multi = [{enabled: true, size: {_unit: 'pixelsUnit', _value: 4}, opacity: {_unit: 'percentUnit', _value: 80}, color: {_obj: 'RGBColor', red: 0, grain: 0, blue: 0}}];

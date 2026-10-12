@@ -323,4 +323,9 @@ const exportZipWithFonts = ({ zipPath, jsonFileName, jsonString, fontRefs }) => 
   }
 };
 
-export { collectFontRefs, exportZipWithFonts };
+// The .zip writer needs the CEP Node runtime to read the system font folders.
+// UXP has no such runtime: callers hide the option there instead of offering
+// an export that can only fail.
+const canExportFontFiles = () => typeof window !== "undefined" && !window.typerUXP && !!getNode();
+
+export { canExportFontFiles, collectFontRefs, exportZipWithFonts };

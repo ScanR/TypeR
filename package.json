@@ -1,6 +1,6 @@
 {
   "name": "typertools",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "author": "Sakushi, SeanR",
   "main": "app/index.js",
   "browserslist": [

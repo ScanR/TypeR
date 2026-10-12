@@ -7,7 +7,7 @@ import config from "../../config";
 import { locale, nativeAlert } from "../../utils";
 import { useContext } from "../../context";
 import { buildFolderTree, collectDescendantIds } from "../../folderUtils";
-import { collectFontRefs, exportZipWithFonts } from "../../fontFileExport";
+import { canExportFontFiles, collectFontRefs, exportZipWithFonts } from "../../fontFileExport";
 import { getProfileRegistry, readProfileStorage } from "../../profileStorage";
 
 const EMPTY_LIST = [];
@@ -30,7 +30,9 @@ const ExportModal = React.memo(function ExportModal() {
   const [selected, setSelected] = React.useState([]);
   const [selectedFonts, setSelectedFonts] = React.useState([]);
   const [withSettings, setWithSettings] = React.useState(false);
-  const [withFontFiles, setWithFontFiles] = React.useState(false);
+  const fontFilesSupported = React.useMemo(canExportFontFiles, []);
+  const [withFontFilesChecked, setWithFontFiles] = React.useState(false);
+  const withFontFiles = fontFilesSupported && withFontFilesChecked;
   const [allSelected, setAllSelected] = React.useState(false);
   const selectedProfile = profileRegistry.profiles.find((profile) => profile.id === selectedProfileId) || profileRegistry.profiles[0];
   const exportSource = React.useMemo(
@@ -161,8 +163,7 @@ const ExportModal = React.memo(function ExportModal() {
       data.pastePointText = !!exportSource.pastePointText;
     }
     if (withFontFiles) {
-      // The .zip writer reads the system font directories, which UXP sandboxes
-      // away; the option is hidden there, and this is the belt-and-braces guard.
+      // Only reachable where canExportFontFiles() holds (hidden in UXP)
       const result = exportZipWithFonts({
         zipPath: pathSelect.data,
         jsonFileName: getProfileExportFileName(selectedProfile.name, "json"),
@@ -303,6 +304,7 @@ const ExportModal = React.memo(function ExportModal() {
               </div>
           </label>
 
+          {fontFilesSupported && (
           <label className="topcoat-checkbox export-settings-item hostBrdContrast">
               <input
                 type="checkbox"
@@ -317,6 +319,7 @@ const ExportModal = React.memo(function ExportModal() {
                 </div>
               </div>
           </label>
+          )}
 
           <div className="fields hostBrdTopContrast export-actions">
             <button type="submit" className="topcoat-button--large--cta" disabled={!canExport}>
