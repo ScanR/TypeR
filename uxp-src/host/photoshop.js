@@ -769,6 +769,799 @@ function _moveLayer(offsetX, offsetY) {
   });
 }
 
+/* ========================================================= */
+/* ===== bubble detection: auto-centre and double bubble ==== */
+/* ========================================================= */
+// Port of the same section of host.js: auto-centre after a paste (off /
+// single / multi) and "centre double bubble". scripts/testUxpHost.js compares
+// the pure helpers with host.js.
+// Every wand probe replaces the live selection: the callers park the user's
+// selection in a channel first (_saveSelectionState) and put it back after.
+// The optional double-bubble wand mode may override
+// _getAdaptiveOpenedSelectionBounds and answer {error}: _openedBubble checks
+// every answer and falls back on the probed bubble itself.
+
+const _AUTO_CENTER_MODES = { single: true, multi: true };
+const _BUBBLE_WAND_TOLERANCE = 20;
+const _MAX_BUBBLE_RATIO = 40;
+const _MIN_BUBBLE_AREA = 200;
+// A probe that lands on a glyph straddling the text centre selects that
+// glyph: a bubble covers at least half the area of its text
+const _MIN_BUBBLE_TEXT_COVER = 0.5;
+const _MIN_DISPLAYED_TEXT_SIZE = 1;
+const _SAVED_SELECTION_CHANNEL = "__TyperSavedSelection__";
+
+/* ----------------------- pure helpers ----------------------- */
+
+function _rectFrom(left, top, right, bottom) {
+  left = Number(left);
+  top = Number(top);
+  right = Number(right);
+  bottom = Number(bottom);
+  if (!isFinite(left) || !isFinite(top) || !isFinite(right) || !isFinite(bottom)) return null;
+  if (right <= left || bottom <= top) return null;
+  return {
+    top,
+    left,
+    right,
+    bottom,
+    width: right - left,
+    height: bottom - top,
+    xMid: (left + right) / 2,
+    yMid: (top + bottom) / 2,
+  };
+}
+
+function _unionRect(rects) {
+  if (!rects || !rects.length) return null;
+  let left = rects[0].left, top = rects[0].top, right = rects[0].right, bottom = rects[0].bottom;
+  for (let i = 1; i < rects.length; i++) {
+    if (rects[i].left < left) left = rects[i].left;
+    if (rects[i].top < top) top = rects[i].top;
+    if (rects[i].right > right) right = rects[i].right;
+    if (rects[i].bottom > bottom) bottom = rects[i].bottom;
+  }
+  return _rectFrom(left, top, right, bottom);
+}
+
+function _sameRect(a, b) {
+  return !!(a && b && a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom);
+}
+
+// A bubble is neither a speck nor most of the page
+function _usableBubble(rect, docSize) {
+  if (!rect) return null;
+  const area = rect.width * rect.height;
+  if (docSize && docSize.width && docSize.height && area > docSize.width * docSize.height * 0.45) return null;
+  if (area < _MIN_BUBBLE_AREA) return null;
+  return rect;
+}
+
+function _containsPoint(rect, x, y, tolerance) {
+  const t = tolerance || 0;
+  return x >= rect.left - t && x <= rect.right + t && y >= rect.top - t && y <= rect.bottom + t;
+}
+
+function _containsBox(rect, box, tolerance) {
+  const t = tolerance === undefined ? 2 : tolerance;
+  return box.left >= rect.left - t && box.right <= rect.right + t && box.top >= rect.top - t && box.bottom <= rect.bottom + t;
+}
+
+// A candidate is the bubble of a text only when it holds the text centre, is
+// not absurdly larger than the text and holds no centre that must stay out
+function _bubbleCandidateValid(rect, box, docSize, exclude, sizePixels) {
+  if (!_usableBubble(rect, docSize) || !box) return false;
+  if (!_containsPoint(rect, box.xMid, box.yMid, 1)) return false;
+  if (rect.width * rect.height < box.width * box.height * _MIN_BUBBLE_TEXT_COVER) return false;
+  const pad = 4 * (sizePixels > 0 ? sizePixels : 20);
+  const reference = (box.width + pad) * (box.height + pad);
+  if (rect.width * rect.height > reference * _MAX_BUBBLE_RATIO) return false;
+  const others = exclude || [];
+  for (let i = 0; i < others.length; i++) {
+    if (_containsPoint(rect, others[i].xMid, others[i].yMid)) return false;
+  }
+  return true;
+}
+
+// Left, right, above, below the text, then its centre
+function _probePoints(box, margin) {
+  return [
+    [box.left - margin, box.yMid],
+    [box.right + margin, box.yMid],
+    [box.xMid, box.top - margin],
+    [box.xMid, box.bottom + margin],
+    [box.xMid, box.yMid],
+  ];
+}
+
+function _probeMargin(size) {
+  let value = Number(size);
+  if (!isFinite(value) || !value) value = 20;
+  return Math.max(5, Math.min(40, Math.round(value * 0.25)));
+}
+
+// A candidate holding the whole text wins at once; otherwise the smallest
+function _pickBubble(current, candidate, box) {
+  if (current && current.whole) return current;
+  if (_containsBox(candidate, box)) {
+    candidate.whole = true;
+    return candidate;
+  }
+  return !current || candidate.width * candidate.height < current.width * current.height ? candidate : current;
+}
+
+function _copyProbe(found, x, y) {
+  const copy = _rectFrom(found.left, found.top, found.right, found.bottom);
+  copy.probeX = x;
+  copy.probeY = y;
+  return copy;
+}
+
+function _sortByKey(entries, key) {
+  // Insertion sort, stable like host.js
+  for (let i = 1; i < entries.length; i++) {
+    const current = entries[i];
+    let j = i - 1;
+    while (j >= 0 && entries[j][key] > current[key]) {
+      entries[j + 1] = entries[j];
+      j--;
+    }
+    entries[j + 1] = current;
+  }
+  return entries;
+}
+
+function _separatedOrder(boxes, lo, hi) {
+  const order = boxes.map((box, index) => ({ box, index, sum: box[lo] + box[hi] }));
+  _sortByKey(order, "sum");
+  for (let k = 1; k < order.length; k++) {
+    if (order[k].box[lo] < order[k - 1].box[hi]) return null;
+  }
+  return order;
+}
+
+function _cutLimits(rect, boxes, order, lo, hi, loValue, hiValue) {
+  const limits = boxes.map(() => [rect[lo], rect[hi]]);
+  for (let k = 1; k < order.length; k++) {
+    const cut = (loValue(order[k - 1]) + hiValue(order[k])) / 2;
+    limits[order[k - 1].index][1] = cut;
+    limits[order[k].index][0] = cut;
+  }
+  return limits;
+}
+
+// Cuts a merged bubble into one part per text (see host.js). Parts come back
+// in the order of `boxes`.
+function _splitBubble(rect, boxes) {
+  const byX = _separatedOrder(boxes, "left", "right");
+  const byY = _separatedOrder(boxes, "top", "bottom");
+  if (!byX && !byY) {
+    let minX = boxes[0].xMid, maxX = boxes[0].xMid, minY = boxes[0].yMid, maxY = boxes[0].yMid;
+    for (let i = 1; i < boxes.length; i++) {
+      minX = Math.min(minX, boxes[i].xMid);
+      maxX = Math.max(maxX, boxes[i].xMid);
+      minY = Math.min(minY, boxes[i].yMid);
+      maxY = Math.max(maxY, boxes[i].yMid);
+    }
+    const horizontal = maxX - minX >= maxY - minY;
+    const mid = horizontal ? "xMid" : "yMid";
+    const centres = _sortByKey(boxes.map((box, index) => ({ box, index, centre: box[mid] })), "centre");
+    const centreOf = (entry) => entry.centre;
+    const limits = horizontal
+      ? _cutLimits(rect, boxes, centres, "left", "right", centreOf, centreOf)
+      : _cutLimits(rect, boxes, centres, "top", "bottom", centreOf, centreOf);
+    return boxes.map((box, i) => (horizontal
+      ? _rectFrom(limits[i][0], rect.top, limits[i][1], rect.bottom)
+      : _rectFrom(rect.left, limits[i][0], rect.right, limits[i][1])) || rect);
+  }
+  const xs = byX ? _cutLimits(rect, boxes, byX, "left", "right", (entry) => entry.box.right, (entry) => entry.box.left) : null;
+  const ys = byY ? _cutLimits(rect, boxes, byY, "top", "bottom", (entry) => entry.box.bottom, (entry) => entry.box.top) : null;
+  return boxes.map((box, i) => _rectFrom(
+    xs ? xs[i][0] : rect.left,
+    ys ? ys[i][0] : rect.top,
+    xs ? xs[i][1] : rect.right,
+    ys ? ys[i][1] : rect.bottom
+  ) || rect);
+}
+
+function _autoCenterEnabled(data) {
+  return !!(data && _AUTO_CENTER_MODES[data.autoCenter] === true);
+}
+
+// "Centre double bubble" needs at least two layers, all of them text
+function _doubleBubbleEntriesValid(entries) {
+  if (!entries || entries.length < 2) return false;
+  return entries.every((entry) => !!(entry && entry.text));
+}
+
+function _transformScale(layerText) {
+  const t = layerText && layerText.transform;
+  if (!t) return 1;
+  const xx = Number(t.xx) || 0, xy = Number(t.xy) || 0, yx = Number(t.yx) || 0, yy = Number(t.yy) || 0;
+  const sx = Math.sqrt(xx * xx + xy * xy);
+  const sy = Math.sqrt(yx * yx + yy * yy);
+  const scale = sy || sx;
+  return isFinite(scale) && scale > 0 ? scale : 1;
+}
+
+function _typeValueToPixels(value, unit, resolution) {
+  if (unit === "pixelsUnit") return value;
+  if (unit === "millimetersUnit") return value * resolution / 25.4;
+  return value * resolution / 72;
+}
+
+function _typeValueToPoints(value, unit, resolution) {
+  if (unit === "pixelsUnit") return value * 72 / (resolution || 72);
+  if (unit === "millimetersUnit") return value * 72 / 25.4;
+  return value;
+}
+
+function _pointsToTypeUnit(value, unit, resolution) {
+  if (unit === "pixelsUnit") return value * (resolution || 72) / 72;
+  if (unit === "millimetersUnit") return value * 25.4 / 72;
+  return value;
+}
+
+// The size Photoshop shows is the stored size times the layer transform
+function _displayedTextSize(textParams, resolution) {
+  const result = { value: NaN, unit: "pointsUnit", pixels: NaN };
+  const layerText = textParams && textParams.layerText;
+  const range = layerText && layerText.textStyleRange && layerText.textStyleRange[0];
+  const style = range && range.textStyle;
+  if (!style) return result;
+  result.unit = textParams.typeUnit || "pointsUnit";
+  const base = Number(style.size);
+  const implied = Number(style.impliedFontSize);
+  const value = isFinite(implied) && implied > 0 ? implied : (isFinite(base) ? base * _transformScale(layerText) : NaN);
+  if (!isFinite(value) || value <= 0) return result;
+  result.value = value;
+  result.pixels = _typeValueToPixels(value, result.unit, resolution || 72);
+  return result;
+}
+
+// A box frame scaled with its text. Point text has no frame: null.
+function _scaleTextShape(shape, ratio) {
+  if (!shape || shape.textType !== "box" || !shape.bounds) return null;
+  const scaled = _clone(shape);
+  ["top", "left", "right", "bottom"].forEach((key) => {
+    const value = Number(scaled.bounds[key]);
+    if (isFinite(value)) scaled.bounds[key] = value * ratio;
+  });
+  return scaled;
+}
+
+// Size +/- arithmetic (see host.js): the step applies to the displayed size,
+// the stored size changes by the same ratio
+function _textResizePlan(textParams, delta, resolution) {
+  const layerText = textParams && textParams.layerText;
+  const ranges = layerText && layerText.textStyleRange;
+  if (!ranges || !ranges.length) return null;
+  const sized = ranges
+    .filter((range) => range && range.textStyle && Number(range.textStyle.size) > 0)
+    .map((range) => range.textStyle);
+  if (!sized.length) return null;
+  const first = sized[0];
+  const base = Number(first.size);
+  const shown = _displayedTextSize(textParams, resolution).value;
+  if (!(base > 0) || !(shown > 0) || !isFinite(delta)) return null;
+  const nextShown = Math.max(_MIN_DISPLAYED_TEXT_SIZE, shown + delta);
+  let uniform = true;
+  let scaleLeading = !first.autoLeading && first.leading !== undefined && first.leading !== null;
+  for (let k = 0; k < sized.length; k++) {
+    if (Number(sized[k].size) !== base) uniform = false;
+    if (sized[k].autoLeading || sized[k].leading === undefined || Number(sized[k].leading) !== Number(first.leading)) scaleLeading = false;
+  }
+  const shape = layerText.textShape && layerText.textShape[0];
+  return {
+    ratio: nextShown / shown,
+    nextShown,
+    base,
+    unit: textParams.typeUnit || "pointsUnit",
+    uniform,
+    scaleLeading,
+    leading: Number(first.leading),
+    frame: shape && shape.textType === "box" && shape.bounds ? _clone(shape) : null,
+  };
+}
+
+// The frame follows the size Photoshop really applied (see host.js)
+function _appliedSizeRatio(before, after, fallback) {
+  if (before && after && before.unit === after.unit && before.value > 0 && after.value > 0) {
+    return after.value / before.value;
+  }
+  return fallback;
+}
+
+const _KNOWN_TYPE_UNITS = { pointsUnit: true, pixelsUnit: true, millimetersUnit: true };
+
+// TextShapeR only changes line breaks: the size, leading and auto-leading the
+// layer has right now win over the snapshot (which may be stale or in another
+// unit)
+function _keepLiveTextSize(newTextParams, liveParams, resolution) {
+  const liveRange = liveParams && liveParams.layerText && liveParams.layerText.textStyleRange && liveParams.layerText.textStyleRange[0];
+  const live = liveRange && liveRange.textStyle;
+  const ranges = newTextParams && newTextParams.layerText && newTextParams.layerText.textStyleRange;
+  if (!live || !ranges) return newTextParams;
+  const liveUnit = liveParams.typeUnit;
+  const targetUnit = newTextParams.typeUnit;
+  let convert = false;
+  if (!targetUnit && liveUnit) {
+    newTextParams.typeUnit = liveUnit;
+  } else if (liveUnit && targetUnit && liveUnit !== targetUnit) {
+    if (!_KNOWN_TYPE_UNITS[liveUnit] || !_KNOWN_TYPE_UNITS[targetUnit]) return newTextParams;
+    convert = true;
+  }
+  const keys = ["size", "leading", "autoLeading"];
+  for (let i = 0; i < ranges.length; i++) {
+    const style = ranges[i] && ranges[i].textStyle;
+    if (!style) continue;
+    for (let k = 0; k < keys.length; k++) {
+      let value = live[keys[k]];
+      if (value === undefined) continue;
+      if (convert && keys[k] !== "autoLeading") {
+        value = _pointsToTypeUnit(_typeValueToPoints(Number(value), liveUnit, resolution), targetUnit, resolution);
+      }
+      style[keys[k]] = _clone(value);
+    }
+    if (live.autoLeading === true) delete style.leading;
+    delete style.impliedFontSize;
+    delete style.impliedLeading;
+  }
+  return newTextParams;
+}
+
+/* --------------------- Photoshop helpers --------------------- */
+
+// _getDocumentPixelSize / _getDocumentResolution that never throw, like
+// their host.js counterparts
+function _bubbleDocumentSize() {
+  try {
+    const size = _getDocumentPixelSize();
+    return { width: isFinite(size.width) ? size.width : 0, height: isFinite(size.height) ? size.height : 0 };
+  } catch (sizeError) {
+    return { width: 0, height: 0 };
+  }
+}
+
+function _bubbleDocumentResolution() {
+  try {
+    const resolution = Number(_getDocumentResolution());
+    if (resolution > 0) return resolution;
+  } catch (resolutionError) {}
+  return 72;
+}
+
+function _magicWandAt(x, y, tolerance) {
+  play({
+    _obj: "set",
+    _target: [SELECTION],
+    to: { _obj: "paint", horizontal: px(Math.max(x, 0)), vertical: px(Math.max(y, 0)) },
+    tolerance: tolerance || _BUBBLE_WAND_TOLERANCE,
+    contiguous: true,
+    merged: true,
+    antiAlias: true,
+  });
+}
+
+function _liveSelectionBounds() {
+  try {
+    const bounds = _getCurrentSelectionBounds();
+    return bounds ? _rectFrom(bounds.left, bounds.top, bounds.right, bounds.bottom) : null;
+  } catch (selectionError) {
+    return null;
+  }
+}
+
+function _intersectSelectionWithRect(rect) {
+  play({
+    _obj: "intersectWith",
+    _target: [SELECTION],
+    to: { _obj: "rectangle", top: px(rect.top), left: px(rect.left), bottom: px(rect.bottom), right: px(rect.right) },
+  });
+}
+
+function _channelExists(name) {
+  try {
+    get([{ _property: "channelName" }, { _ref: "channel", _name: name }]);
+    return true;
+  } catch (missingError) {
+    return false;
+  }
+}
+
+function _deleteChannelByName(name) {
+  if (!_channelExists(name)) return;
+  try {
+    play({ _obj: "delete", _target: [{ _ref: "channel", _name: name }] });
+  } catch (deleteError) {}
+}
+
+// Select > Save Selection: an alpha channel that does not become the target
+// channel, so the wand keeps sampling the image
+function _storeSelectionChannel(name) {
+  _deleteChannelByName(name);
+  play({ _obj: "duplicate", _target: [SELECTION], name });
+}
+
+function _loadSelectionChannel(name) {
+  play({ _obj: "set", _target: [SELECTION], to: { _ref: "channel", _name: name } });
+}
+
+function _saveSelectionState() {
+  const saved = { had: false, stored: false };
+  try {
+    saved.had = !!_getCurrentSelectionBounds();
+  } catch (readError) {
+    saved.had = false;
+  }
+  if (saved.had) {
+    try {
+      _storeSelectionChannel(_SAVED_SELECTION_CHANNEL);
+      saved.stored = true;
+    } catch (storeError) {
+      _deleteChannelByName(_SAVED_SELECTION_CHANNEL);
+    }
+  }
+  return saved;
+}
+
+// The user's selection comes back as it was (none stays none). With
+// `consumed`, the selection was used like Align uses it: it is dropped.
+function _restoreSelectionState(saved, consumed) {
+  let restored = false;
+  if (saved && saved.stored) {
+    if (!consumed) {
+      try {
+        _loadSelectionChannel(_SAVED_SELECTION_CHANNEL);
+        restored = true;
+      } catch (loadError) {}
+    }
+    _deleteChannelByName(_SAVED_SELECTION_CHANNEL);
+  }
+  if (!restored) {
+    try {
+      _deselect();
+    } catch (deselectError) {}
+  }
+}
+
+// Bounds without the layer style (a stroke would widen the box), falling back
+// on the plain bounds
+function _layerBoxFromDescriptor(descriptor) {
+  const keys = ["boundsNoEffects", "bounds"];
+  for (let i = 0; i < keys.length; i++) {
+    if (descriptor && descriptor[keys[i]]) {
+      const b = _getBoundsFromDescriptor(descriptor[keys[i]]);
+      return _rectFrom(b.left, b.top, b.right, b.bottom);
+    }
+  }
+  return null;
+}
+
+function _currentLayerBox() {
+  try {
+    const descriptor = get([{ _property: "boundsNoEffects" }, TARGET_LAYER]);
+    if (descriptor.boundsNoEffects) return _layerBoxFromDescriptor(descriptor);
+  } catch (noEffectsError) {}
+  const b = _getCurrentTextLayerBounds();
+  return b ? _rectFrom(b.left, b.top, b.right, b.bottom) : null;
+}
+
+function _currentDisplayedTextPixels() {
+  try {
+    return _displayedTextSize(_getLayerText(), _bubbleDocumentResolution()).pixels;
+  } catch (sizeError) {
+    return NaN;
+  }
+}
+
+function _safeActiveLayerId() {
+  try {
+    return _getActiveLayerId();
+  } catch (idError) {
+    return null;
+  }
+}
+
+// Five wand probes around the text (see host.js). `best` is left as the live
+// marquee; `loose` has to be wanded again before use.
+function _probeBubble(box, sizePixels, exclude, docSize) {
+  const found = { best: null, loose: null };
+  if (!box) return found;
+  const others = exclude || [];
+  const points = _probePoints(box, _probeMargin(isFinite(sizePixels) ? sizePixels : 20));
+  for (let i = 0; i < points.length; i++) {
+    try {
+      _magicWandAt(points[i][0], points[i][1], _BUBBLE_WAND_TOLERANCE);
+      const live = _liveSelectionBounds();
+      if (!live || !_bubbleCandidateValid(live, box, docSize, [], sizePixels)) continue;
+      found.loose = _pickBubble(found.loose, _copyProbe(live, points[i][0], points[i][1]), box);
+      if (others.some((other) => _containsPoint(live, other.xMid, other.yMid))) continue;
+      found.best = _pickBubble(found.best, _copyProbe(live, points[i][0], points[i][1]), box);
+      if (found.best.whole) break;
+    } catch (wandError) {}
+  }
+  if (found.best && !_sameRect(found.best, _liveSelectionBounds())) {
+    try {
+      _magicWandAt(found.best.probeX, found.best.probeY, _BUBBLE_WAND_TOLERANCE);
+    } catch (rearmError) {}
+  }
+  return found;
+}
+
+// Opens the live marquee, which must be `rect`; any answer that is not a
+// plausible part of `rect` holding the text keeps `rect` (see host.js)
+function _openedBubble(rect, box) {
+  let opened = null;
+  try {
+    opened = _getAdaptiveOpenedSelectionBounds(rect);
+  } catch (openError) {
+    opened = null;
+  }
+  if (!opened || opened.error) return rect;
+  const candidate = _rectFrom(opened.left, opened.top, opened.right, opened.bottom);
+  if (!candidate || candidate.width * candidate.height < _MIN_BUBBLE_AREA) return rect;
+  if (!_containsBox(rect, candidate, 2)) return rect;
+  if (box && !_containsPoint(candidate, box.xMid, box.yMid, 1)) return rect;
+  return candidate;
+}
+
+// The wand marquee itself must run under the text, not only its bounding
+// rectangle (see host.js). Leaves the live selection changed.
+function _wandCoversBox(probe, box) {
+  try {
+    _magicWandAt(probe.probeX, probe.probeY, _BUBBLE_WAND_TOLERANCE);
+    _intersectSelectionWithRect(box);
+    const inside = _liveSelectionBounds();
+    return !!(inside && inside.width >= box.width * 0.5 && inside.height >= box.height * 0.5);
+  } catch (coverError) {
+    return false;
+  }
+}
+
+// The wand marquee intersected with the cut gives a round lobe's real extent
+function _tightLobe(probe, lobe, box, docSize) {
+  if (!lobe || !probe) return null;
+  try {
+    _magicWandAt(probe.probeX, probe.probeY, _BUBBLE_WAND_TOLERANCE);
+    _intersectSelectionWithRect(lobe);
+    const tight = _liveSelectionBounds();
+    if (tight && _usableBubble(tight, docSize) && _containsPoint(tight, box.xMid, box.yMid, 1)) return tight;
+  } catch (lobeError) {}
+  return null;
+}
+
+function _layerLockedByDescriptor(layer) {
+  const locking = layer && layer.layerLocking;
+  return !!(locking && (locking.protectAll || locking.protectPosition));
+}
+
+// Visible text layers other than `skipIds`, with their bounds (see host.js)
+function _textNeighbours(skipIds) {
+  const found = [];
+  try {
+    let index = integerValue(get([{ _property: "numberOfLayers" }, TARGET_DOCUMENT]).numberOfLayers);
+    const parents = [];
+    for (; index >= 1; index--) {
+      try {
+        const layer = get([{ _ref: "layer", _index: index }]);
+        const section = layer.layerSection && layer.layerSection._value;
+        if (section === "layerSectionStart") {
+          parents.push({ visible: !!layer.visible, locked: _layerLockedByDescriptor(layer) });
+          continue;
+        }
+        if (section === "layerSectionEnd") {
+          parents.pop();
+          continue;
+        }
+        let shown = !!layer.visible;
+        let locked = _layerLockedByDescriptor(layer);
+        for (let i = 0; i < parents.length; i++) {
+          shown = shown && parents[i].visible;
+          locked = locked || parents[i].locked;
+        }
+        if (!shown || !layer.textKey) continue;
+        const id = integerValue(layer.layerID);
+        if (skipIds.indexOf(id) !== -1) continue;
+        const box = _layerBoxFromDescriptor(layer);
+        if (box) found.push({ id, box, neighbour: true, locked, rect: null });
+      } catch (layerError) {}
+    }
+  } catch (walkError) {}
+  return found;
+}
+
+// Centres the active text layer on `rect`, fitting a box frame to it first
+// when asked (see host.js). False when the text has no visible pixels.
+function _placeLayerInRect(rect, resize, padding) {
+  if (resize && !_textLayerIsPointText()) {
+    const width = _calculateSelectionDimensions(rect, padding).width;
+    _setTextBoxSize(width, rect.height * 3);
+    const measured = _currentLayerBox();
+    if (measured) {
+      let size = _currentDisplayedTextPixels();
+      if (!(size > 0)) size = 20;
+      _setTextBoxSize(width, measured.height + size + 2);
+    }
+  }
+  const current = _currentLayerBox();
+  if (!current) return false;
+  const offsetX = rect.xMid - current.xMid;
+  const offsetY = rect.yMid - current.yMid;
+  if (offsetX || offsetY) _moveLayer(offsetX, offsetY);
+  return true;
+}
+
+// Finds the bubble of each new text and centres it (see host.js)
+function _autoCenterLayers(created, data) {
+  const mode = data.autoCenter;
+  const resize = !!data.resizeTextBox;
+  const padding = data.padding || 0;
+  const docSize = _bubbleDocumentSize();
+  const items = [];
+  for (let i = 0; i < created.length; i++) {
+    try {
+      _selectLayerById(created[i]);
+      const box = _currentLayerBox();
+      if (box) items.push({ id: created[i], box, sizePixels: _currentDisplayedTextPixels(), rect: null, merged: null });
+    } catch (readError) {}
+  }
+  if (!items.length) return;
+  const neighbours = mode === "multi" ? _textNeighbours(created) : [];
+  items.forEach((item, i) => {
+    const exclude = mode === "multi"
+      ? items.filter((other, j) => j !== i).map((other) => other.box).concat(neighbours.map((other) => other.box))
+      : [];
+    try {
+      const probed = _probeBubble(item.box, item.sizePixels, exclude, docSize);
+      if (probed.best) item.rect = _openedBubble(probed.best, item.box);
+      else item.merged = probed.loose;
+    } catch (probeError) {}
+  });
+  const moves = [];
+  if (mode === "multi") {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.rect || !item.merged) continue;
+      const merged = item.merged;
+      const candidates = items.filter((other, j) => j !== i && !other.rect).concat(neighbours.filter((other) => !other.rect));
+      const group = [item];
+      candidates.forEach((other) => {
+        if (_containsPoint(merged, other.box.xMid, other.box.yMid, 1) && _wandCoversBox(merged, other.box)) group.push(other);
+      });
+      try {
+        _magicWandAt(merged.probeX, merged.probeY, _BUBBLE_WAND_TOLERANCE);
+      } catch (rearmError) {
+        continue;
+      }
+      const rect = _openedBubble(merged, item.box);
+      if (group.length === 1) {
+        item.rect = rect;
+        continue;
+      }
+      const lobes = _splitBubble(rect, group.map((member) => member.box));
+      group.forEach((member, j) => {
+        member.rect = _tightLobe(merged, lobes[j], member.box, docSize) || lobes[j];
+        if (member.neighbour && !member.locked) moves.push(member);
+      });
+    }
+  }
+  try {
+    _deselect();
+  } catch (deselectError) {}
+  items.concat(moves).forEach((target) => {
+    if (!target.rect) return;
+    try {
+      _selectLayerById(target.id);
+      _placeLayerInRect(target.rect, resize, padding);
+    } catch (placeError) {}
+  });
+}
+
+// Centring right after a paste, inside the paste's own history state; the
+// selection and active layer end as the paste left them (see host.js)
+function _autoCenterCreated(ids, data) {
+  if (!_autoCenterEnabled(data)) return;
+  const created = (ids || []).filter((id) => id !== null && id !== undefined);
+  if (!created.length) return;
+  const active = _safeActiveLayerId();
+  const saved = _saveSelectionState();
+  try {
+    _autoCenterLayers(created, data);
+  } catch (autoCenterError) {}
+  _restoreSelectionState(saved, false);
+  try {
+    _selectLayerById(active !== null ? active : created[created.length - 1]);
+  } catch (reselectError) {}
+}
+
+// Selected layers as {id, text}; the active layer when nothing is reported
+function _targetLayerEntries() {
+  const targetIds = _getTargetLayerIds();
+  const ids = targetIds && targetIds.length ? targetIds : [_getActiveLayerId()];
+  return ids.map((id) => {
+    let text = false;
+    try {
+      text = !!get([{ _property: "textKey" }, { _ref: "layer", _id: id }]).textKey;
+    } catch (textError) {
+      text = false;
+    }
+    return { id, text };
+  });
+}
+
+// Double (or chained) bubble: one selected text per lobe (see host.js).
+// Answers an error code for the panel, "" when done.
+function _splitDoubleBubble(entries, resize, padding) {
+  const outcome = { result: "", consumed: false };
+  const docSize = _bubbleDocumentSize();
+  const user = _usableBubble(_liveSelectionBounds(), docSize);
+  const items = [];
+  for (let i = 0; i < entries.length; i++) {
+    _selectLayerById(entries[i].id);
+    const box = _currentLayerBox();
+    if (!box) {
+      outcome.result = "doubleBubbleEmpty";
+      return outcome;
+    }
+    items.push({ id: entries[i].id, box, sizePixels: _currentDisplayedTextPixels(), rect: null });
+  }
+  const boxes = items.map((item) => item.box);
+  let merged = null;
+  const userHoldsAll = !!user && items.every((item) => _containsPoint(user, item.box.xMid, item.box.yMid, 1));
+  if (userHoldsAll) {
+    merged = { rect: _openedBubble(user, null), probe: null };
+    outcome.consumed = true;
+  } else {
+    let missing = false;
+    items.forEach((item, i) => {
+      const exclude = items.filter((other, j) => j !== i).map((other) => other.box);
+      const own = _probeBubble(item.box, item.sizePixels, exclude, docSize).best;
+      if (own) item.rect = _openedBubble(own, item.box);
+      else missing = true;
+    });
+    if (missing) {
+      let whole = _probeBubble(_unionRect(boxes), items[0].sizePixels, [], docSize).best;
+      if (whole && !items.every((item) => _containsPoint(whole, item.box.xMid, item.box.yMid, 1))) whole = null;
+      if (!whole) {
+        outcome.result = "doubleBubbleNotFound";
+        return outcome;
+      }
+      merged = { rect: _openedBubble(whole, null), probe: whole };
+    }
+  }
+  if (merged) {
+    const lobes = _splitBubble(merged.rect, boxes);
+    items.forEach((item, i) => {
+      item.rect = (merged.probe && _tightLobe(merged.probe, lobes[i], item.box, docSize)) || lobes[i];
+    });
+  }
+  try {
+    _deselect();
+  } catch (deselectError) {}
+  for (let i = 0; i < items.length; i++) {
+    _selectLayerById(items[i].id);
+    if (!_placeLayerInRect(items[i].rect, resize, padding)) {
+      outcome.result = "doubleBubbleEmpty";
+      return outcome;
+    }
+  }
+  _selectLayersById(items.map((item) => item.id));
+  return outcome;
+}
+
+function _alignTextLayersToDoubleBubble(state) {
+  const saved = _saveSelectionState();
+  let outcome = { result: "", consumed: false };
+  try {
+    outcome = _splitDoubleBubble(state.entries || [], state.resize, state.padding);
+  } catch (splitError) {
+    outcome.result = "scriptError: " + (splitError && splitError.message ? splitError.message : splitError);
+  }
+  _restoreSelectionState(saved, outcome.consumed && !outcome.result);
+  return outcome.result;
+}
+
 // Stroke of the active layer (or of the layer at layerIndex, so FontScanR
 // never changes the active layer). Never throws.
 function _getLayerStroke(layerIndex) {
@@ -1357,6 +2150,9 @@ function _setTextShapeRText(payload) {
     const dataText = payload.text;
     let oldBounds = _getCurrentTextLayerBounds();
     const isPoint = _textLayerIsPointText();
+    // Size, leading and auto-leading are read on the layer right before the
+    // write: applying a shape must never change the text size
+    const liveParams = _getLayerText();
 
     const newTextParams = { layerText: { textKey: _normalizeTextKey(dataText) } };
     const baseRange = _clone(snapshot.layerText.textStyleRange[0]);
@@ -1379,6 +2175,7 @@ function _setTextShapeRText(payload) {
     // size unit and reset the anti-aliasing mode
     newTextParams.layerText.antiAlias = snapshot.layerText.antiAlias || "antiAliasSmooth";
     newTextParams.typeUnit = snapshot.typeUnit;
+    _keepLiveTextSize(newTextParams, liveParams, _bubbleDocumentResolution());
 
     let userDirection = payload.direction;
     if (userDirection === "") userDirection = null;
@@ -1419,7 +2216,9 @@ function _setTextShapeRText(payload) {
         _changeToBoxText();
       } catch (revertError) {}
     }
-    // Any surprise falls back to the full apply path within the same state
+    // Any surprise falls back to the full apply path within the same state,
+    // which still keeps the layer's current size
+    payload.preserveActiveTextSize = true;
     return _setActiveLayerText(payload);
   }
 }
@@ -1443,6 +2242,13 @@ function _createTextLayerInSelection(state) {
   }
   bounds = _getCurrentTextLayerBounds();
   _positionLayerWithinSelection(selection, bounds);
+  if (_autoCenterEnabled(state.data)) {
+    _autoCenterCreated([_safeActiveLayerId()], {
+      autoCenter: state.data.autoCenter,
+      resizeTextBox: state.data.resizeTextBox,
+      padding: state.padding,
+    });
+  }
   return "";
 }
 
@@ -1503,88 +2309,152 @@ function _changeActiveLayerTextSize(value) {
   if (!_layerIsTextLayer()) return "layer";
   if (!value) return "";
 
-  let result = "";
+  const resolution = _bubbleDocumentResolution();
+  let resized = 0;
+  let failure = "";
   _forEachSelectedLayer(() => {
+    let oldBox = null;
     try {
-      // Fast path: set the size directly through the layer's text style
-      const currentTextStyle = get([{ _property: "textStyle" }, TARGET_TEXT_LAYER]);
-      if (currentTextStyle.textStyle) {
-        const size = currentTextStyle.textStyle.size;
-        const currentSize = unitValue(size);
-        const sizeUnit = size && size._unit ? size._unit : "pointsUnit";
-        play({
-          _obj: "set",
-          _target: [{ _ref: "property", _property: "textStyle" }, TARGET_TEXT_LAYER],
-          to: { _obj: "textStyle", size: { _unit: sizeUnit, _value: currentSize + value } },
-        });
-      }
-    } catch (e) {
-      // Older text replacement path when the fast path fails
-      const oldTextParams = _getLayerText();
-      const text = _normalizeTextKey(oldTextParams.layerText.textKey);
-      if (!text) {
-        result = "layer";
+      oldBox = _currentLayerBox();
+    } catch (boxError) {}
+    let textParams = _getLayerText();
+    // No readable displayed size: keep the historical raw delta on the stored size
+    const plan = textParams ? _textResizePlan(textParams, value, resolution) : null;
+    const sizeBefore = _readTextStyleSize();
+    let fast = false;
+    if (!plan || plan.uniform) {
+      try {
+        _resizeTextStyleFast(plan, value);
+        fast = true;
+      } catch (fastError) {}
+    }
+    if (!fast) {
+      if (!textParams) textParams = _getLayerText();
+      if (!_resizeTextRebuild(textParams, plan, value)) {
+        failure = "layer";
         return;
       }
-      const oldBounds = _getCurrentTextLayerBounds();
-      const isPoint = _textLayerIsPointText();
-      // Every style range keeps its own font and style: the CEP host kept only
-      // the first one, so a size change flattened bold/italic runs
-      const ranges = oldTextParams.layerText.textStyleRange && oldTextParams.layerText.textStyleRange.length
-        ? oldTextParams.layerText.textStyleRange
-        : [];
-      const newTextParams = {
-        typeUnit: oldTextParams.typeUnit,
-        layerText: {
-          textKey: text,
-          textGridding: oldTextParams.layerText.textGridding || "none",
-          orientation: oldTextParams.layerText.orientation || "horizontal",
-          antiAlias: oldTextParams.layerText.antiAlias || "antiAliasSmooth",
-          textStyleRange: ranges,
-        },
-      };
-      if (oldTextParams.layerText.paragraphStyleRange) {
-        const paragraphRanges = oldTextParams.layerText.paragraphStyleRange;
-        paragraphRanges.forEach((range) => {
-          const paragraphStyle = range.paragraphStyle || (range.paragraphStyle = {});
-          paragraphStyle.textEveryLineComposer = paragraphStyle.textEveryLineComposer || false;
-          paragraphStyle.burasagari = paragraphStyle.burasagari || "burasagariNone";
-        });
-        paragraphRanges[paragraphRanges.length - 1].to = text.length;
-        newTextParams.layerText.paragraphStyleRange = paragraphRanges;
-      }
-      const oldSize = ranges[0].textStyle.size;
-      const newTextSize = oldSize + value;
-      ranges.forEach((range) => {
-        const textStyle = range.textStyle;
-        textStyle.size = textStyle.size + value;
-        if (textStyle.autoLeading || textStyle.leading === undefined) {
-          textStyle.autoLeading = true;
-          delete textStyle.leading;
-        } else {
-          textStyle.leading = textStyle.leading + value;
-          textStyle.autoLeading = false;
-        }
-      });
-
-      ranges[ranges.length - 1].to = text.length;
-      if (!isPoint) {
-        const ratio = newTextSize / oldSize;
-        newTextParams.layerText.textShape = [oldTextParams.layerText.textShape[0]];
-        const shapeBounds = newTextParams.layerText.textShape[0].bounds;
-        shapeBounds.top *= ratio;
-        shapeBounds.left *= ratio;
-        shapeBounds.bottom *= ratio;
-        shapeBounds.right *= ratio;
-      }
-      _setLayerText(newTextParams);
-      _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
-      const newBounds = _getCurrentTextLayerBounds();
-      _moveLayer(oldBounds.xMid - newBounds.xMid, oldBounds.yMid - newBounds.yMid);
     }
+    if (plan && plan.frame) {
+      // The fast path leaves the frame as it was; the rebuild wrote it with
+      // the planned ratio
+      try {
+        _fitFrameToTextSize(plan, sizeBefore, fast ? null : plan.ratio, textParams.typeUnit);
+      } catch (frameError) {}
+    }
+    _recentreOnBox(oldBox);
+    resized++;
   });
 
-  return result;
+  return resized > 0 ? "" : failure;
+}
+
+// Size of the layer's text style, as the fast path reads and writes it
+function _readTextStyleSize() {
+  try {
+    const textStyle = get([{ _property: "textStyle" }, TARGET_TEXT_LAYER]).textStyle;
+    if (!textStyle || textStyle.size === undefined || textStyle.size === null) return null;
+    const size = textStyle.size;
+    return { value: Number(unitValue(size)), unit: size && size._unit ? size._unit : "pointsUnit" };
+  } catch (sizeError) {
+    return null;
+  }
+}
+
+// Fast path: one "set textStyle" on the whole layer (see host.js)
+function _resizeTextStyleFast(plan, delta) {
+  const current = _readTextStyleSize();
+  if (!current) throw new Error("no textStyle");
+  const newSize = plan ? current.value * plan.ratio : current.value + delta;
+  if (!(newSize > 0)) throw new Error("bad size");
+  const to = { _obj: "textStyle", size: { _unit: current.unit, _value: newSize } };
+  if (plan && plan.scaleLeading) {
+    const textStyle = get([{ _property: "textStyle" }, TARGET_TEXT_LAYER]).textStyle || {};
+    const leading = textStyle.leading;
+    const currentLeading = Number(unitValue(leading));
+    if (leading !== undefined && currentLeading > 0) {
+      to.leading = { _unit: leading && leading._unit ? leading._unit : current.unit, _value: currentLeading * plan.ratio };
+    }
+  }
+  play({ _obj: "set", _target: [{ _ref: "property", _property: "textStyle" }, TARGET_TEXT_LAYER], to });
+}
+
+// Fallback: rewrite the layer. Every run keeps its own style and scales by
+// the same ratio, and so does a box frame (see host.js).
+function _resizeTextRebuild(oldTextParams, plan, delta) {
+  const oldLayerText = oldTextParams && oldTextParams.layerText;
+  const text = oldLayerText ? _normalizeTextKey(oldLayerText.textKey) : "";
+  if (!text || !oldLayerText.textStyleRange || !oldLayerText.textStyleRange.length) return false;
+  const firstSize = Number(oldLayerText.textStyleRange[0].textStyle && oldLayerText.textStyleRange[0].textStyle.size);
+  const ratio = plan ? plan.ratio : (firstSize > 0 ? Math.max(0.1, firstSize + delta) / firstSize : 1);
+  const newTextParams = {
+    typeUnit: oldTextParams.typeUnit,
+    layerText: {
+      textKey: text,
+      textGridding: oldLayerText.textGridding || "none",
+      orientation: oldLayerText.orientation || "horizontal",
+      antiAlias: oldLayerText.antiAlias || "antiAliasSmooth",
+      textStyleRange: oldLayerText.textStyleRange.map((oldRange) => {
+        const range = _clone(oldRange);
+        const style = range.textStyle || {};
+        const size = Number(style.size);
+        if (size > 0) style.size = Math.max(0.1, size * ratio);
+        if (style.autoLeading || style.leading === undefined) {
+          style.autoLeading = true;
+          delete style.leading;
+        } else {
+          style.leading = Math.max(0.1, Number(style.leading) * ratio);
+          style.autoLeading = false;
+        }
+        delete style.impliedFontSize;
+        delete style.impliedLeading;
+        delete style.impliedBaselineShift;
+        range.textStyle = style;
+        if (range.to > text.length) range.to = text.length;
+        return range;
+      }),
+    },
+  };
+  const ranges = newTextParams.layerText.textStyleRange;
+  ranges[ranges.length - 1].to = text.length;
+  if (oldLayerText.paragraphStyleRange && oldLayerText.paragraphStyleRange[0]) {
+    const paragraphRange = _clone(oldLayerText.paragraphStyleRange[0]);
+    const oldParStyle = paragraphRange.paragraphStyle || {};
+    oldParStyle.textEveryLineComposer = oldParStyle.textEveryLineComposer || false;
+    oldParStyle.burasagari = oldParStyle.burasagari || "burasagariNone";
+    paragraphRange.paragraphStyle = oldParStyle;
+    paragraphRange.to = text.length;
+    newTextParams.layerText.paragraphStyleRange = [paragraphRange];
+  }
+  const frame = _scaleTextShape(plan ? plan.frame : (oldLayerText.textShape && oldLayerText.textShape[0]), ratio);
+  if (frame) newTextParams.layerText.textShape = [frame];
+  _setLayerText(newTextParams);
+  _applyMiddleEast(ranges[0].textStyle);
+  return true;
+}
+
+// A box frame keeps its proportion to the text, never padded (see host.js)
+function _fitFrameToTextSize(plan, sizeBefore, writtenRatio, typeUnit) {
+  const ratio = _appliedSizeRatio(sizeBefore, _readTextStyleSize(), plan.ratio);
+  if (writtenRatio !== null && Math.abs(ratio - writtenRatio) < 1e-9) return;
+  const frame = _scaleTextShape(plan.frame, ratio);
+  if (!frame) return;
+  const params = { layerText: { textShape: [frame] } };
+  if (typeUnit) params.typeUnit = typeUnit;
+  _setLayerText(params);
+}
+
+// Put the layer's centre back where it was before the resize
+function _recentreOnBox(oldBox) {
+  if (!oldBox) return;
+  let newBox = null;
+  try {
+    newBox = _currentLayerBox();
+  } catch (boxError) {}
+  if (!newBox) return;
+  const offsetX = oldBox.xMid - newBox.xMid;
+  const offsetY = oldBox.yMid - newBox.yMid;
+  if (offsetX || offsetY) _moveLayer(offsetX, offsetY);
 }
 
 /* ======================================================== */
@@ -2001,6 +2871,28 @@ async function createTextLayerInSelection(data, point) {
 async function alignTextLayerToSelection(data) {
   const state = { resize: !!data.resizeTextBox, padding: data.padding || 0 };
   return modal("TypeR", (context) => suspendHistory(context, "TyperTools Align", () => _alignTextLayerToSelection(state)));
+}
+
+// Answers "" or an error code the panel translates (see host.js). A failed
+// split is rolled back whole.
+async function alignTextLayersToDoubleBubble(data) {
+  const state = { resize: !!(data && data.resizeTextBox), padding: (data && data.padding) || 0, entries: null };
+  if (!hasDocument()) return "doc";
+  let entries = null;
+  try {
+    entries = _targetLayerEntries();
+  } catch (entriesError) {
+    entries = null;
+  }
+  if (!_doubleBubbleEntriesValid(entries)) return "doubleBubbleLayers";
+  state.entries = entries;
+  try {
+    return await modal("TypeR", (context) => suspendHistory(context, "TyperTools Align Double", () => _alignTextLayersToDoubleBubble(state), {
+      shouldCommit: (value) => !value,
+    }));
+  } catch (error) {
+    return "scriptError: " + (error && error.message ? error.message : error);
+  }
 }
 
 async function changeActiveLayerTextSize(val) {
@@ -2608,6 +3500,8 @@ function _createTextLayersInStoredSelections(state) {
   if (texts.length === 0 || state.selections.length === 0) return "noSelection";
 
   const maxCount = Math.min(texts.length, state.selections.length);
+  const autoCenter = _autoCenterEnabled(state.data);
+  const createdIds = [];
 
   for (let i = 0; i < maxCount; i++) {
     try {
@@ -2643,11 +3537,19 @@ function _createTextLayersInStoredSelections(state) {
       }
       bounds = _getCurrentTextLayerBounds();
       _positionLayerWithinSelection(selection, bounds);
+      if (autoCenter) createdIds.push(_safeActiveLayerId());
     } catch (e) {
       return "scriptError: " + (e && e.message ? e.message : e);
     }
   }
 
+  if (autoCenter) {
+    _autoCenterCreated(createdIds, {
+      autoCenter: state.data.autoCenter,
+      resizeTextBox: state.data.resizeTextBox,
+      padding: state.padding,
+    });
+  }
   return "";
 }
 
@@ -2830,6 +3732,7 @@ module.exports = {
     setTextShapeRLayerText,
     createTextLayerInSelection,
     alignTextLayerToSelection,
+    alignTextLayersToDoubleBubble,
     changeActiveLayerTextSize,
     toggleCleaningLayers,
     getCurrentSelection,
@@ -2862,5 +3765,11 @@ module.exports = {
     _getAdaptiveSelectionOpenRadius, _calculateSelectionDimensions, _clampAdjustAmount,
     _getAdjustedSelectionBoundsFallback, _buildBoundsShapeRows, _normalizeShapeSampleCount, _buildMaskShapeRows,
     _selectionBoundsKey, _normalizeTextKey,
+    // auto-centre, double bubble, size +/- and TextShapeR live size
+    _rectFrom, _unionRect, _usableBubble, _bubbleCandidateValid, _probePoints, _probeMargin, _pickBubble,
+    _splitBubble, _autoCenterEnabled, _doubleBubbleEntriesValid, _transformScale, _displayedTextSize,
+    _scaleTextShape, _textResizePlan, _appliedSizeRatio, _keepLiveTextSize,
+    // the auto-centre entry point, run against a simulated Photoshop
+    _autoCenterCreated,
   },
 };

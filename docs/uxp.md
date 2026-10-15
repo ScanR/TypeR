@@ -59,7 +59,6 @@ Each one fixes something the CEP host gets wrong in Photoshop 2026:
   failed or empty operation leaves no empty history state.
 - Text colors Photoshop reports as unit floats (`redFloat`…) are read and written as 0–255 RGB. The CEP
   host wrote them back empty, which made the size buttons fail on such layers ("program error").
-- A size change keeps every style range (bold and italic runs) instead of flattening them to the first.
 - FontScanR reads every layer of a document with a background layer; the CEP host missed the topmost.
 - Redundant commands are skipped: a temporary channel is only deleted when it exists, and the Middle
   East overrides are only set when the layer does not already have the values (each costs a relayout).

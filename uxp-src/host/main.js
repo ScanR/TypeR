@@ -192,6 +192,7 @@ const DOCUMENT_CHANGING_CALLS = {
   createTextLayerInSelection: "set",
   createTextLayersInStoredSelections: "set",
   alignTextLayerToSelection: "set",
+  alignTextLayersToDoubleBubble: "set",
   changeActiveLayerTextSize: "set",
   toggleCleaningLayers: "set",
   undoLastTyperChange: "set",

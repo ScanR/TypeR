@@ -189,13 +189,17 @@ const HOST_HELPERS = [
   "_resolveStylePointText", "_getAdaptiveSelectionOpenRadius", "_calculateSelectionDimensions", "_clampAdjustAmount",
   "_getAdjustedSelectionBoundsFallback", "_buildBoundsShapeRows", "_normalizeShapeSampleCount", "_selectionBoundsKey",
   "_buildPathShapeRows", "_polygonScanlineSpan",
+  // auto-centre, double bubble, size +/- and TextShapeR live size
+  "_rectFrom", "_unionRect", "_usableBubble", "_bubbleCandidateValid", "_probePoints", "_probeMargin", "_pickBubble",
+  "_splitBubble", "_autoCenterEnabled", "_doubleBubbleEntriesValid", "_transformScale", "_displayedTextSize",
+  "_scaleTextShape", "_textResizePlan", "_appliedSizeRatio", "_keepLiveTextSize",
 ];
 const host = new Function(hostSource + "\nreturn {" + HOST_HELPERS.join(", ") + "};")();
 
-const loadPort = () => {
+const loadPortModule = (photoshop) => {
   const filename = path.join(root, "uxp-src/host/photoshop.js");
   const stubs = {
-    photoshop: { action: { batchPlay: () => [{}] }, app: {}, core: {}, constants: { LayerKind: {} } },
+    photoshop: photoshop || { action: { batchPlay: () => [{}] }, app: {}, core: {}, constants: { LayerKind: {} } },
     uxp: { storage: { localFileSystem: {} } },
   };
   const mod = { exports: {} };
@@ -204,9 +208,9 @@ const loadPort = () => {
     return require(path.resolve(path.dirname(filename), name));
   };
   new Function("require", "module", "exports", fs.readFileSync(filename, "utf8"))(localRequire, mod, mod.exports);
-  return mod.exports._internals;
+  return mod.exports;
 };
-const port = loadPort();
+const port = loadPortModule()._internals;
 
 assert.deepStrictEqual(port._getHostDefaultStyle(), host._getHostDefaultStyle(), "Default style must match host.js");
 assert.deepStrictEqual(port._getHostDefaultStroke(), host._getHostDefaultStroke(), "Default stroke must match host.js");
@@ -234,6 +238,311 @@ shapes.forEach((bounds) => {
 });
 [undefined, 0, "3", 17, "21", 40, "x"].forEach((value) => {
   assert.strictEqual(port._normalizeShapeSampleCount(value, 17), host._normalizeShapeSampleCount(value, 17));
+});
+
+/* -------------- auto-centre and size +/- helpers vs host.js -------------- */
+
+// Every public host.js function answers in the UXP plugin too: photoshop.js
+// or the plugin entry (uxp-src/host/main.js) provides it
+const portMethods = loadPortModule().methods;
+const mainSource = fs.readFileSync(path.join(root, "uxp-src/host/main.js"), "utf8");
+[...hostSource.matchAll(/^function ([A-Za-z]\w*)\(/gm)].map((match) => match[1]).forEach((name) => {
+  const inMain = new RegExp("^\\s+" + name + "(,|:)", "m").test(mainSource);
+  assert.ok(typeof portMethods[name] === "function" || inMain, name + " is missing from the UXP host");
+});
+assert.strictEqual(typeof portMethods.alignTextLayersToDoubleBubble, "function");
+assert.ok(/alignTextLayersToDoubleBubble: "set"/.test(mainSource), "The panel must hear about a double bubble alignment");
+assert.deepStrictEqual(parseCall('alignTextLayersToDoubleBubble({"resizeTextBox":true,"padding":4})'),
+  { name: "alignTextLayersToDoubleBubble", args: [{ resizeTextBox: true, padding: 4 }] });
+
+const page = { width: 1000, height: 1000 };
+const rects = [boundsOf(80, 80, 220, 160), boundsOf(0, 0, 900, 900), boundsOf(300, 300, 400, 400), boundsOf(80, 80, 400, 160), boundsOf(149, 119, 152, 122), boundsOf(140, 105, 165, 135)];
+const textBox = boundsOf(100, 100, 200, 140);
+rects.forEach((candidate) => {
+  [[], [boundsOf(300, 100, 380, 140)]].forEach((exclude) => {
+    [0, 20, 90].forEach((size) => {
+      assert.strictEqual(port._bubbleCandidateValid(candidate, textBox, page, exclude, size), host._bubbleCandidateValid(candidate, textBox, page, exclude, size));
+    });
+  });
+  assert.deepStrictEqual(port._usableBubble(candidate, page), host._usableBubble(candidate, page));
+  assert.deepStrictEqual(port._pickBubble(null, Object.assign({}, candidate), textBox), host._pickBubble(null, Object.assign({}, candidate), textBox));
+  assert.deepStrictEqual(port._pickBubble(rects[0], Object.assign({}, candidate), textBox), host._pickBubble(rects[0], Object.assign({}, candidate), textBox));
+});
+[[1, 2, 3, 4], [5, 5, 4, 9], ["1", "2", "30", "40"], [0, 0, NaN, 3]].forEach((args) => {
+  assert.deepStrictEqual(port._rectFrom(...args), host._rectFrom(...args));
+});
+assert.deepStrictEqual(port._unionRect(rects), host._unionRect(rects));
+[0, 8, 20, 400, NaN, "12"].forEach((size) => assert.strictEqual(port._probeMargin(size), host._probeMargin(size)));
+assert.deepStrictEqual(port._probePoints(textBox, 7), host._probePoints(textBox, 7));
+[
+  [boundsOf(0, 0, 400, 100), [boundsOf(20, 20, 120, 80), boundsOf(260, 20, 380, 80)]],
+  [boundsOf(0, 0, 100, 400), [boundsOf(10, 250, 90, 380), boundsOf(10, 20, 90, 120)]],
+  [boundsOf(0, 0, 400, 100), [boundsOf(20, 20, 220, 80), boundsOf(180, 30, 380, 70)]],
+  [boundsOf(0, 0, 600, 600), [boundsOf(20, 20, 120, 80), boundsOf(300, 300, 380, 380), boundsOf(450, 30, 560, 90)]],
+  [boundsOf(0, 0, 300, 300), [boundsOf(100, 100, 200, 200), boundsOf(100, 100, 200, 200)]],
+].forEach(([merged, boxes]) => assert.deepStrictEqual(port._splitBubble(merged, boxes), host._splitBubble(merged, boxes)));
+[{ autoCenter: "single" }, { autoCenter: "multi" }, { autoCenter: "off" }, { autoCenter: "constructor" }, null].forEach((data) => {
+  assert.strictEqual(port._autoCenterEnabled(data), host._autoCenterEnabled(data));
+});
+[null, [], [{ text: true }], [{ text: true }, { text: false }], [{ text: true }, { text: true }]].forEach((entries) => {
+  assert.strictEqual(port._doubleBubbleEntriesValid(entries), host._doubleBubbleEntriesValid(entries));
+});
+
+const resizeFixture = (overrides = {}) => ({
+  typeUnit: overrides.typeUnit || "pointsUnit",
+  layerText: {
+    transform: overrides.transform === undefined ? { xx: 2, xy: 0, yx: 0, yy: 2, tx: 0, ty: 0 } : overrides.transform,
+    textStyleRange: overrides.ranges || [{ from: 0, to: 3, textStyle: { size: 10, leading: 12, autoLeading: false } }],
+    textShape: [overrides.shape || { textType: "box", bounds: { top: 0, left: 0, right: 100, bottom: 50 } }],
+  },
+});
+const resizeCases = [
+  resizeFixture(),
+  resizeFixture({ transform: null, typeUnit: "pixelsUnit" }),
+  resizeFixture({ shape: { textType: "point", bounds: {} } }),
+  resizeFixture({ ranges: [{ textStyle: { size: 10, impliedFontSize: 24 } }, { textStyle: { size: 12, autoLeading: true } }] }),
+  resizeFixture({ transform: { xx: 0, xy: 1.5, yx: -1.5, yy: 0 }, typeUnit: "millimetersUnit" }),
+  resizeFixture({ ranges: [] }),
+];
+resizeCases.forEach((fixture) => {
+  [72, 300].forEach((resolution) => {
+    assert.deepStrictEqual(port._displayedTextSize(fixture, resolution), host._displayedTextSize(fixture, resolution));
+    [4, -3, -100, 0.5].forEach((delta) => {
+      assert.deepStrictEqual(port._textResizePlan(fixture, delta, resolution), host._textResizePlan(fixture, delta, resolution));
+    });
+  });
+  assert.strictEqual(port._transformScale(fixture.layerText), host._transformScale(fixture.layerText));
+  assert.deepStrictEqual(port._scaleTextShape(fixture.layerText.textShape[0], 1.25), host._scaleTextShape(fixture.layerText.textShape[0], 1.25));
+});
+[[{ value: 10, unit: "a" }, { value: 12, unit: "a" }], [{ value: 10, unit: "a" }, { value: 12, unit: "b" }], [null, null], [{ value: 0, unit: "a" }, { value: 1, unit: "a" }]]
+  .forEach(([before, after]) => assert.strictEqual(port._appliedSizeRatio(before, after, 7), host._appliedSizeRatio(before, after, 7)));
+const liveCases = [
+  [{ typeUnit: "pointsUnit", layerText: { textStyleRange: [{ textStyle: { fontName: "A", size: 40, leading: 44, autoLeading: false } }] } },
+    { typeUnit: "pointsUnit", layerText: { textStyleRange: [{ textStyle: { size: 22, autoLeading: true, leading: 30 } }] } }],
+  [{ typeUnit: "pointsUnit", layerText: { textStyleRange: [{ textStyle: { size: 40, autoLeading: true } }, { textStyle: { size: 41 } }] } },
+    { typeUnit: "pixelsUnit", layerText: { textStyleRange: [{ textStyle: { size: 300, leading: 600, autoLeading: false } }] } }],
+  [{ layerText: { textStyleRange: [{ textStyle: { size: 40 } }] } }, { typeUnit: "millimetersUnit", layerText: { textStyleRange: [{ textStyle: { size: 3 } }] } }],
+  [{ typeUnit: "rulerUnit", layerText: { textStyleRange: [{ textStyle: { size: 40 } }] } }, { typeUnit: "pixelsUnit", layerText: { textStyleRange: [{ textStyle: { size: 3 } }] } }],
+  [{ typeUnit: "pointsUnit", layerText: {} }, null],
+];
+liveCases.forEach(([target, live]) => {
+  [72, 300].forEach((resolution) => {
+    const fromPort = port._keepLiveTextSize(JSON.parse(JSON.stringify(target)), live, resolution);
+    const fromHost = host._keepLiveTextSize(JSON.parse(JSON.stringify(target)), live, resolution);
+    assert.deepStrictEqual(fromPort, fromHost);
+  });
+});
+
+/* ---------- size +/- and auto-centre against a simulated Photoshop ---------- */
+
+// Just enough of Photoshop for the size change, the wand probes and the
+// selection channel: one text layer, a page with round bubbles drawn as
+// rectangles, a marquee and named channels.
+const simulatedPhotoshop = () => {
+  const sim = {
+    roundSize: (value) => Math.round(value * 100) / 100,
+    page: boundsOf(0, 0, 1000, 1000),
+    bubbles: [],
+    selection: null,
+    channels: {},
+    active: 1,
+    layers: {},
+    fastRefused: false,
+    log: [],
+  };
+  const value = (v) => (v && typeof v === "object" && "_value" in v ? v._value : v);
+  const unitBounds = (b) => ({ top: px(b.top), left: px(b.left), bottom: px(b.bottom), right: px(b.right) });
+  const px = (v) => ({ _unit: "pixelsUnit", _value: v });
+  const rectOf = (b) => boundsOf(value(b.left), value(b.top), value(b.right), value(b.bottom));
+  const textKeyOf = (layer) => ({
+    _obj: "textLayer",
+    textKey: layer.text,
+    transform: { _obj: "transform", xx: layer.scale, xy: 0, yx: 0, yy: layer.scale, tx: 0, ty: 0 },
+    textStyleRange: [{
+      _obj: "textStyleRange", from: 0, to: layer.text.length,
+      textStyle: { _obj: "textStyle", size: { _unit: "pointsUnit", _value: layer.size }, autoLeading: true },
+    }],
+    textShape: [{
+      _obj: "textShape",
+      char: { _enum: "char", _value: "box" },
+      bounds: { _obj: "rectangle", top: layer.shape.top, left: layer.shape.left, bottom: layer.shape.bottom, right: layer.shape.right },
+    }],
+  });
+  const layerBox = (layer) => boundsOf(layer.x, layer.y, layer.x + layer.size * layer.scale * 5, layer.y + layer.size * layer.scale * 2);
+  const run = (d) => {
+    const target = d._target || [];
+    const ref = target[target.length - 1] || {};
+    const property = target[0] && target[0]._property;
+    const layer = sim.layers[ref._id !== undefined ? ref._id : sim.active];
+    if (d._obj === "get") {
+      if (ref._ref === "channel" && ref._name) return sim.channels[ref._name] ? { channelName: ref._name } : { _obj: "error", result: -25922 };
+      if (property === "targetLayersIDs") return { targetLayersIDs: (sim.targets || [sim.active]).map((id) => ({ _ref: "layer", _id: id })) };
+      if (property === "selection") return sim.selection ? { selection: unitBounds(sim.selection) } : {};
+      if (property === "resolution") return { resolution: 72 };
+      if (property === "width" || property === "height") return { [property]: { _unit: "pixelsUnit", _value: 1000 } };
+      if (property === "layerID") return { layerID: layer.id };
+      if (property === "textKey") return { textKey: textKeyOf(layer) };
+      if (property === "textStyle") return { textStyle: { size: { _unit: "pointsUnit", _value: layer.size } } };
+      if (property === "boundsNoEffects" || property === "bounds") return { [property]: unitBounds(layerBox(layer)) };
+      return {};
+    }
+    if (d._obj === "set" && property === "textStyle") {
+      if (sim.fastRefused) return { _obj: "error", result: -1 };
+      layer.size = sim.roundSize(value(d.to.size));
+      sim.log.push(["fast", layer.size]);
+      return {};
+    }
+    if (d._obj === "set" && property === "selection") {
+      const to = d.to;
+      if (to._enum === "ordinal") sim.selection = null;
+      else if (to._ref === "channel") sim.selection = sim.channels[to._name] ? Object.assign({}, sim.channels[to._name]) : sim.selection;
+      else if (to._obj === "paint") {
+        const x = value(to.horizontal);
+        const y = value(to.vertical);
+        const hit = sim.bubbles.find((bubble) => x >= bubble.left && x <= bubble.right && y >= bubble.top && y <= bubble.bottom);
+        sim.selection = hit ? Object.assign({}, hit) : Object.assign({}, sim.page);
+        sim.log.push(["wand"]);
+      }
+      return {};
+    }
+    if (d._obj === "set" && target[0] && target[0]._ref === "layer") {
+      if (d.to.textStyleRange) layer.size = sim.roundSize(value(d.to.textStyleRange[0].textStyle.size));
+      if (d.to.textShape) {
+        const b = d.to.textShape[0].bounds;
+        layer.shape = { top: b.top, left: b.left, bottom: b.bottom, right: b.right };
+        sim.log.push(["frame", layer.shape.right]);
+      }
+      return {};
+    }
+    if (d._obj === "intersectWith") {
+      const r = rectOf(d.to);
+      const s = sim.selection;
+      const cut = s && boundsOf(Math.max(s.left, r.left), Math.max(s.top, r.top), Math.min(s.right, r.right), Math.min(s.bottom, r.bottom));
+      sim.selection = cut && cut.width > 0 && cut.height > 0 ? cut : null;
+      return {};
+    }
+    if (d._obj === "contract" || d._obj === "expand") {
+      const by = value(d.by) * (d._obj === "contract" ? 1 : -1);
+      const s = sim.selection;
+      sim.selection = boundsOf(s.left + by, s.top + by, s.right - by, s.bottom - by);
+      return {};
+    }
+    if (d._obj === "duplicate" && target[0] && target[0]._property === "selection") {
+      sim.channels[d.name] = Object.assign({}, sim.selection);
+      return {};
+    }
+    if (d._obj === "delete" && ref._ref === "channel") {
+      delete sim.channels[ref._name];
+      return {};
+    }
+    if (d._obj === "select") {
+      sim.active = target[0]._id;
+      return {};
+    }
+    if (d._obj === "move") {
+      layer.x += value(d.to.horizontal);
+      layer.y += value(d.to.vertical);
+      sim.log.push(["move", value(d.to.horizontal), value(d.to.vertical)]);
+      return {};
+    }
+    return {};
+  };
+  const historyStates = [];
+  const module = loadPortModule({
+    action: { batchPlay: (descriptors) => descriptors.map(run) },
+    app: { documents: { length: 1 }, get activeDocument() { return { id: 7, historyStates }; } },
+    core: {
+      executeAsModal: async (fn) => fn({
+        hostControl: {
+          suspendHistory: async ({ name }) => { sim.suspended = { name, snapshot: JSON.stringify([sim.layers, sim.selection, sim.channels]) }; return 1; },
+          resumeHistory: async (id, commit) => {
+            if (!commit) [sim.layers, sim.selection, sim.channels] = JSON.parse(sim.suspended.snapshot);
+            sim.log.push(["history", sim.suspended.name, commit]);
+          },
+        },
+      }),
+    },
+    constants: { LayerKind: {} },
+  });
+  sim.methods = module.methods;
+  sim.internals = module._internals;
+  sim.addLayer = (id, props) => {
+    sim.layers[id] = Object.assign({ id, text: "Hello", size: 10, scale: 2, x: 100, y: 100, shape: { top: 0, left: 0, right: 100, bottom: 50 } }, props);
+  };
+  return sim;
+};
+
+(async () => {
+  // Size +/-: the frame follows the size Photoshop applied, with no padding
+  const sim = simulatedPhotoshop();
+  sim.addLayer(1);
+  const start = Object.assign({}, sim.layers[1].shape);
+  assert.strictEqual(await sim.methods.changeActiveLayerTextSize(4), "");
+  assert.strictEqual(sim.layers[1].size, 12, "UXP: displayed 20 + 4 = 24, stored 10 x 1.2");
+  assert.ok(Math.abs(sim.layers[1].shape.right - 120) < 1e-9, "UXP: frame scaled with the text, unpadded");
+  assert.strictEqual(await sim.methods.changeActiveLayerTextSize(-4), "");
+  assert.deepStrictEqual(sim.layers[1].shape, start, "UXP: + then - puts the frame back");
+  for (const step of [3, 3, -1, 7, -2, -3, 5]) {
+    await sim.methods.changeActiveLayerTextSize(step);
+    const layer = sim.layers[1];
+    assert.ok(Math.abs(layer.shape.right / layer.size - start.right / 10) < 1e-9, "UXP: frame / size after " + step);
+  }
+  sim.fastRefused = true;
+  sim.log.length = 0;
+  await sim.methods.changeActiveLayerTextSize(2);
+  assert.ok(Math.abs(sim.layers[1].shape.right / sim.layers[1].size - start.right / 10) < 1e-9, "UXP: rebuilt frame keeps the proportion");
+  assert.ok(sim.log.some((entry) => entry[0] === "move"), "UXP: re-centred on the old centre");
+
+  // Auto-centre: the text moves to its bubble, the user's marquee comes back
+  // and no channel is left behind
+  const auto = simulatedPhotoshop();
+  auto.addLayer(5, { x: 120, y: 130, size: 5, scale: 1 });
+  auto.bubbles = [boundsOf(100, 100, 300, 220)];
+  auto.active = 5;
+  auto.selection = boundsOf(90, 95, 250, 230);
+  auto.internals._autoCenterCreated([5], { autoCenter: "single", resizeTextBox: false });
+  const placedBox = boundsOf(auto.layers[5].x, auto.layers[5].y, auto.layers[5].x + 25, auto.layers[5].y + 10);
+  assert.deepStrictEqual([placedBox.xMid, placedBox.yMid], [200, 160], "UXP: centred on the bubble");
+  assert.deepStrictEqual(auto.selection, boundsOf(90, 95, 250, 230), "UXP: the user's selection comes back");
+  assert.deepStrictEqual(Object.keys(auto.channels), [], "UXP: no channel left behind");
+  assert.strictEqual(auto.active, 5);
+  auto.selection = null;
+  auto.layers[5].x = 110;
+  auto.internals._autoCenterCreated([5], { autoCenter: "off" });
+  assert.strictEqual(auto.layers[5].x, 110, "UXP: off does nothing");
+  auto.internals._autoCenterCreated([5], { autoCenter: "single" });
+  assert.strictEqual(auto.selection, null, "UXP: no selection before, none after");
+  auto.bubbles = [];
+  auto.layers[5].x = 110;
+  auto.internals._autoCenterCreated([5], { autoCenter: "multi" });
+  assert.strictEqual(auto.layers[5].x, 110, "UXP: no bubble found, the text stays where it was pasted");
+
+  // Double bubble: two texts in one merged shape are each centred in their part
+  const double = simulatedPhotoshop();
+  double.addLayer(1, { x: 120, y: 140, size: 5, scale: 1 });
+  double.addLayer(2, { x: 330, y: 145, size: 5, scale: 1 });
+  double.bubbles = [boundsOf(100, 100, 500, 220)];
+  double.active = 1;
+  assert.strictEqual(await double.methods.alignTextLayersToDoubleBubble({}), "doubleBubbleLayers", "UXP: one layer is not a double bubble");
+  double.targets = [1, 2];
+  double.selection = boundsOf(0, 0, 40, 40);
+  assert.strictEqual(await double.methods.alignTextLayersToDoubleBubble({ resizeTextBox: false, padding: 0 }), "");
+  const centreOf = (layer) => [layer.x + 12.5, layer.y + 5];
+  const [left, right] = [centreOf(double.layers[1]), centreOf(double.layers[2])];
+  assert.ok(left[0] < 300 && right[0] > 300, "UXP: each text in its own half of the merged bubble");
+  assert.deepStrictEqual([left[1], right[1]], [160, 160], "UXP: centred vertically in the bubble");
+  assert.deepStrictEqual(double.selection, boundsOf(0, 0, 40, 40), "UXP: an unrelated user selection comes back");
+  assert.deepStrictEqual(Object.keys(double.channels), []);
+  // Nothing found: an error code and the whole run rolled back
+  double.bubbles = [];
+  const before = JSON.stringify(double.layers);
+  assert.strictEqual(await double.methods.alignTextLayersToDoubleBubble({}), "doubleBubbleNotFound");
+  assert.strictEqual(JSON.stringify(double.layers), before, "UXP: a failed split is rolled back");
+  assert.deepStrictEqual(double.log[double.log.length - 1], ["history", "TyperTools Align Double", false]);
+  console.log("UXP auto-centre, double bubble and size +/- tests passed (simulated Photoshop)");
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });
 
 /* ------------------- selection mask sampling ------------------- */
