@@ -37,6 +37,8 @@ const TEXT_SHAPER_LEARN_TIP_THRESHOLD = 5;
 const AUTO_CENTER_MODES = ["off", "single", "multi"];
 const normalizeAutoCenterMode = (value) => (AUTO_CENTER_MODES.indexOf(value) !== -1 ? value : "off");
 const hasTextShapeRLearning = (value) => Number(value?.samples) > 0;
+// Quiet time after the last tuning change before the line-break model refit
+const TEXT_SHAPER_LINE_MODEL_IDLE_MS = 1500;
 
 const storeFields = [
   "notFirstTime",
@@ -1109,6 +1111,15 @@ const baseReducer = (state, action) => {
       break;
     }
 
+    case "setTextShapeRLineModel": {
+      // Idle refit result: it only applies to the tuning it was fitted on. A
+      // newer lesson in the meantime gets its own refit
+      if (action.base && state.textShapeRTuning === action.base) {
+        newState.textShapeRTuning = { ...action.base, ddp: action.ddp || null, ddpKey: action.ddpKey || null };
+      }
+      break;
+    }
+
     case "setDehyphenateTextShapeR": {
       newState.dehyphenateTextShapeR = action.value === true;
       break;
@@ -1740,6 +1751,29 @@ const ContextProvider = React.memo(function ContextProvider(props) {
     listenersRef.current.forEach((listener) => listener());
   }, [state]);
   React.useEffect(() => dispatch({}), []);
+  // TextShapeR's line-break model is too slow to fit on a Learn click, so a
+  // click leaves it stale. Refit it once the panel has been idle for a moment,
+  // in short time slices; any newer tuning cancels the pending refit, so a
+  // burst of clicks costs a single fit.
+  React.useEffect(() => {
+    const base = state.textShapeRTuning;
+    if (!base || !Array.isArray(base.exemplars) || !base.exemplars.length) return undefined;
+    let active = true;
+    let cancelRefit = null;
+    const timer = setTimeout(() => {
+      import(/* webpackChunkName: "text-shaper-engine" */ "./textShapeR").then((engine) => {
+        if (!active || !engine.isTextShapeRLineModelStale(base)) return;
+        cancelRefit = engine.scheduleTextShapeRLineModelRefit(base, (model) => {
+          if (active) dispatch({ type: "setTextShapeRLineModel", base, ddp: model.ddp, ddpKey: model.ddpKey });
+        });
+      });
+    }, TEXT_SHAPER_LINE_MODEL_IDLE_MS);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      if (cancelRefit) cancelRefit();
+    };
+  }, [state.textShapeRTuning]);
   React.useEffect(() => {
     if (!state.inlineTextShapeR) return undefined;
     let active = true;
