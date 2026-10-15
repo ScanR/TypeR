@@ -81,10 +81,15 @@ the WebView refuses because of CORS (GitHub release downloads) is made again by 
 
 ## Keyboard reader
 
-The panel polls `getHotkeyPressed()`; in UXP the answer is the last state the keyboard reader wrote
-(`<data>/keys/state`, read every 25 ms), so polling costs nothing. The reader is started once per
-Photoshop session through ExtendScript's `app.system`, receives Photoshop's process id and exits with
-it. It only reports keys while Photoshop is the frontmost application. Key names follow ScriptUI's
+The CEP panel polls `getHotkeyPressed()`; in UXP the keyboard reader writes the state to
+`<data>/keys/state`, the host reads it every 25 ms and pushes each change to the panel, which matches it
+at once (`typerUXP.onKeys`), so a short press is not lost between two polls. The reader is started
+through ExtendScript's `app.system`, receives Photoshop's process id and exits with it. It writes
+`<state>|<beat>` and moves the beat at least once a second: a beat frozen for 2.5 s counts as no key
+held, and after 6 s the reader is started again. A start that fails (Photoshop in a modal state while it
+starts up) is retried after 2, 5, 10, then every 30 s, up to 10 times without a report. It only reports
+keys while Photoshop is the frontmost application; on macOS a release stays at least 100 ms so a quick
+tap or a double tap reaches the panel. Key names follow ScriptUI's
 (`LEFT`, `ENTER`, …) and are followed by the names the shortcut recorder uses (`ARROWLEFT`), so
 bindings recorded in either version match; the recorder keeps the first name. On macOS it also reports
 mouse buttons 4 and 5, which the CEP version only supported on Windows.

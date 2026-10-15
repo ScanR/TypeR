@@ -79,6 +79,68 @@ assert.deepStrictEqual(
 assert.strictEqual(parseCall("alert(1); app.quit()"), null, "Anything but a single call is refused");
 assert.strictEqual(parseCall("getUserFonts"), null);
 
+/* ------------------------ keyboard reader ------------------------ */
+
+const loadKeysHelper = () => {
+  const filename = path.join(root, "uxp-src/host/keysHelper.js");
+  const stubs = { os: {}, uxp: {}, fs: {}, "./files": {}, "./keyboard": {}, "./jsx": { systemCall: () => "" } };
+  const mod = { exports: {} };
+  new Function("require", "module", "exports", fs.readFileSync(filename, "utf8"))((name) => stubs[name], mod, mod.exports);
+  return mod.exports._internals;
+};
+{
+  const keys = loadKeysHelper();
+  assert.deepStrictEqual(keys.parseState("aWINaCTRLa|42\n"), { state: "aWINaCTRLa", beat: "42" });
+  assert.deepStrictEqual(keys.parseState("a|7"), { state: "a", beat: "7" });
+  assert.deepStrictEqual(keys.parseState("a"), { state: "a", beat: null }, "TypeR's own placeholder has no beat");
+  assert.deepStrictEqual(keys.parseState(""), { state: "a", beat: null });
+
+  // First start at once; a failed one is retried after 2, 5, 10 then 30 s
+  const dog = keys.createWatchdog(0);
+  assert.strictEqual(dog.shouldStart(0), true);
+  dog.started(0, false);
+  assert.strictEqual(dog.shouldStart(1999), false);
+  assert.strictEqual(dog.shouldStart(2000), true);
+  dog.started(2000, false);
+  assert.strictEqual(dog.shouldStart(6999), false);
+  assert.strictEqual(dog.shouldStart(7000), true);
+  dog.started(7000, false);
+  assert.strictEqual(dog.shouldStart(16999), false);
+  dog.started(17000, false);
+  assert.strictEqual(dog.shouldStart(46999), false);
+  assert.strictEqual(dog.shouldStart(47000), true);
+
+  // A start that ran: no report yet, so no state, and some time to beat
+  dog.started(47000, true);
+  assert.strictEqual(dog.fresh(47100), false, "No state before the first beat");
+  assert.strictEqual(dog.shouldStart(47000 + keys.STALL_MS), false);
+  assert.strictEqual(dog.read("1", 48000), true);
+  assert.strictEqual(dog.state.attempts, 0, "A beat resets the retry delay");
+  assert.strictEqual(dog.read("1", 48500), false, "The same beat is no news");
+  assert.strictEqual(dog.fresh(48000 + keys.STALE_MS), true);
+  assert.strictEqual(dog.fresh(48001 + keys.STALE_MS), false, "A frozen beat holds no key");
+  assert.strictEqual(dog.shouldStart(48000 + keys.STALL_MS), false);
+  assert.strictEqual(dog.shouldStart(48001 + keys.STALL_MS), true, "A reader that stopped beating is started again");
+  // Restarted: the dead reader's last state stays dropped
+  dog.started(55000, true);
+  assert.strictEqual(dog.fresh(55000), false);
+  assert.strictEqual(dog.shouldStart(55000 + keys.STALL_MS), false);
+  assert.strictEqual(dog.read("2", 55500), true);
+  assert.strictEqual(dog.fresh(55500), true);
+
+  // A reader that never reports is given up after MAX_ATTEMPTS starts
+  const hopeless = keys.createWatchdog(0);
+  let time = 0;
+  let gaveUp = false;
+  for (let attempt = 1; attempt <= keys.MAX_ATTEMPTS; attempt++) {
+    assert.strictEqual(hopeless.shouldStart(time), true);
+    gaveUp = hopeless.started(time, attempt % 2 === 0);
+    time += 10 * 60 * 1000;
+  }
+  assert.strictEqual(gaveUp, true);
+  assert.strictEqual(hopeless.shouldStart(time), false);
+}
+
 /* -------------------- port vs host.js helpers -------------------- */
 
 const hostSource = fs.readFileSync(path.join(root, "app_src/host.js"), "utf8");
@@ -203,7 +265,7 @@ const pluginData = (appData) => appData + "\\Adobe\\UXP\\PluginsStorage\\PHSP\\2
   assert.strictEqual(usual.roamingAppDataOf("D:\\Adobe\\Profiles\\Adobe\\UXP\\PluginsStorage"), "D:\\Adobe\\Profiles");
   assert.strictEqual(usual.roamingAppDataOf("/Users/ana/Library/Application Support/Adobe/UXP/PluginsStorage"), "/Users/ana/Library/Application Support");
   assert.strictEqual(usual.roamingAppDataOf("C:\\elsewhere"), null);
-  console.log("UXP host conversion, evalScript parsing, host.js parity, mask sampling and Windows storage path tests passed");
+  console.log("UXP host conversion, evalScript parsing, keyboard reader watchdog, host.js parity, mask sampling and Windows storage path tests passed");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
