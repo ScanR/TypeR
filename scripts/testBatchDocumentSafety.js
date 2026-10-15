@@ -51,4 +51,21 @@ callbacks.shift()({ ok: true });
 assert.deepStrictEqual(running, ['A', 'C']);
 callbacks.shift()({ ok: false });
 assert.strictEqual(results[results.length - 1][1].ok, false);
+// A runner that throws synchronously must not jam the queue for later opens.
+const thrownResults = [];
+let throwNext = true;
+const throwingQueue = queue((value, done) => {
+  if (throwNext) { throwNext = false; throw new Error('host unavailable'); }
+  done({ ok: true, value });
+});
+throwingQueue('X', r => thrownResults.push(r));
+throwingQueue('Y', r => thrownResults.push(r));
+assert.strictEqual(thrownResults[0].ok, false);
+assert.strictEqual(thrownResults[1].ok, true);
+assert.strictEqual(thrownResults[1].value, 'Y');
+// Calling done twice must only report once.
+const doubleResults = [];
+const doubleQueue = queue((value, done) => { done({ ok: true }); done({ ok: true }); });
+doubleQueue('Z', r => doubleResults.push(r));
+assert.strictEqual(doubleResults.length, 1);
 console.log('Batch document safety, rollback and page queue tests passed');
