@@ -65,6 +65,7 @@ const SettingsModal = React.memo(function SettingsModal() {
     checkUpdates: state.checkUpdates,
     autoUpdate: state.autoUpdate,
     multiBubbleMode: state.multiBubbleMode,
+    autoCenterMode: state.autoCenterMode,
     showTips: state.showTips,
     showQuickStyleSize: state.showQuickStyleSize,
     inlineTextShapeR: state.inlineTextShapeR,
@@ -117,6 +118,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   );
   const [multiBubbleMode, setMultiBubbleMode] = React.useState(
     !!context.state.multiBubbleMode
+  );
+  const [autoCenterMode, setAutoCenterMode] = React.useState(
+    context.state.autoCenterMode || "off"
   );
   const [showTips, setShowTips] = React.useState(
     context.state.showTips !== false
@@ -395,6 +399,11 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeDehyphenateTextShapeR = (e) => {
     setDehyphenateTextShapeR(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeAutoCenterMode = (e) => {
+    setAutoCenterMode(e.target.value);
     setEdited(true);
   };
 
@@ -762,6 +771,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       context.dispatch({
         type: "setMultiBubbleMode",
         value: multiBubbleMode,
+      });
+    }
+    if (autoCenterMode !== (context.state.autoCenterMode || "off")) {
+      context.dispatch({
+        type: "setAutoCenterMode",
+        value: autoCenterMode,
       });
     }
     if (showTips !== context.state.showTips) {
@@ -1761,6 +1776,19 @@ const SettingsModal = React.memo(function SettingsModal() {
                     </button>
                   </React.Fragment>
                 )}
+              </div>
+              <div className="field">
+                <div className="field-label">{locale.settingsAutoCenterLabel || "Center after paste"}</div>
+                <div className="field-input">
+                  <select value={autoCenterMode} onChange={changeAutoCenterMode} className="topcoat-textarea">
+                    <option value="off">{locale.settingsAutoCenterOff || "Off"}</option>
+                    <option value="single">{locale.settingsAutoCenterSingle || "Center in the bubble"}</option>
+                    <option value="multi">{locale.settingsAutoCenterMulti || "Multi center (detects double bubbles)"}</option>
+                  </select>
+                </div>
+                <div className="field-descr">
+                  {locale.settingsAutoCenterHint || "Each pasted text is re-centered in the bubble detected around it. Multi center also recognizes double bubbles and splits them between their texts: a text already in the bubble moves to its part unless its layer is locked. Also switchable from the footer."}
+                </div>
               </div>
               <div className="field">
                 <div className="field-label">{locale.settingsInternalPaddingLabel || "Internal padding (px)"}</div>

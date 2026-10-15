@@ -28,6 +28,8 @@ const expectedNewCommands = [
   "toggleTextShapeR",
   "previousTab",
   "nextTab",
+  "centerDouble",
+  "cycleAutoCenter",
 ];
 
 assert(commandIds.length > 0, "No shortcut commands found");
@@ -126,6 +128,7 @@ const mockRequire = (request) => {
   if (request === "./utils") {
     return {
       alignTextLayerToSelection: (...args) => utilityCalls.push(["align", ...args]),
+      alignTextLayersToDoubleBubble: (...args) => utilityCalls.push(["alignDouble", ...args]),
       changeActiveLayerTextSize: (...args) => utilityCalls.push(["resize", ...args]),
       createTextLayerInSelection: (...args) => utilityCalls.push(["create", ...args]),
       createTextLayersInStoredSelections: (...args) => utilityCalls.push(["createMany", ...args]),
@@ -248,7 +251,27 @@ assert.deepStrictEqual(preservedApplyCall[5], { preserveActiveTextSize: true });
 selectionSnapshot = { selection: { width: 100, height: 80 }, layers: [{ id: 10 }, { id: 20 }] };
 getCommand("add").handler(pasteContext);
 assert.deepStrictEqual(utilityCalls.shift(), ["getTypeRSelectionSnapshot"]);
-assert.strictEqual(utilityCalls.shift()[0], "create", "Paste with an active selection must create a text layer");
+const createCall = utilityCalls.shift();
+assert.strictEqual(createCall[0], "create", "Paste with an active selection must create a text layer");
+assert.deepStrictEqual(createCall[7], { autoCenter: "off", resizeTextBox: false }, "Auto-centre is off unless chosen");
+getCommand("add").handler({
+  ...pasteContext,
+  state: { ...pasteContext.state, autoCenterMode: "multi", resizeTextBoxOnCenter: true },
+}, { preserveActiveTextSize: true });
+utilityCalls.shift();
+assert.deepStrictEqual(utilityCalls.shift()[7], { preserveActiveTextSize: true, autoCenter: "multi", resizeTextBox: true },
+  "The paste carries the auto-centre mode and Center's frame fitting");
+getCommand("add").handler({ ...baseContext, state: { ...baseContext.state, autoCenterMode: "single" } });
+const batchCall = utilityCalls.shift();
+assert.strictEqual(batchCall[0], "createMany");
+assert.deepStrictEqual(batchCall[8], { autoCenter: "single", resizeTextBox: false }, "A multi-bubble batch is auto-centred too");
+getCommand("centerDouble").handler({ ...baseContext, state: { ...baseContext.state, resizeTextBoxOnCenter: true, internalPadding: 6 } });
+assert.deepStrictEqual(utilityCalls.shift(), ["alignDouble", true, 6]);
+["off", "single", "multi"].forEach((mode, index, modes) => {
+  getCommand("cycleAutoCenter").handler({ ...baseContext, state: { ...baseContext.state, autoCenterMode: mode } });
+  assert.deepStrictEqual(dispatches.shift(), { type: "setAutoCenterMode", value: modes[(index + 1) % modes.length] });
+});
+assert.strictEqual(commandModule.exports.nextAutoCenterMode(undefined), "off", "An unknown mode restarts the cycle");
 getCommand("applyMultiple").handler(baseContext);
 assert.deepStrictEqual(utilityCalls.shift(), ["getSelectedTextLayers"]);
 assert.deepStrictEqual(utilityCalls.shift(), [

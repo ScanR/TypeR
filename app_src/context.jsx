@@ -31,6 +31,11 @@ const storage = readStorage();
 // TextShapeR. Five applied suggestions are enough to introduce the learning
 // control without interrupting a first-time user.
 const TEXT_SHAPER_LEARN_TIP_THRESHOLD = 5;
+// Centring right after a paste: off, each text in its bubble, or the same
+// with double bubbles shared between their texts. Stored and imported values
+// are untrusted, so unknown modes fall back to off.
+const AUTO_CENTER_MODES = ["off", "single", "multi"];
+const normalizeAutoCenterMode = (value) => (AUTO_CENTER_MODES.indexOf(value) !== -1 ? value : "off");
 const hasTextShapeRLearning = (value) => Number(value?.samples) > 0;
 
 const storeFields = [
@@ -60,6 +65,7 @@ const storeFields = [
   "middleEast",
   "lastOpenedImagePath",
   "multiBubbleMode",
+  "autoCenterMode",
   "showTips",
   "exportFolderFontTipDismissed",
   "showQuickStyleSize",
@@ -307,6 +313,7 @@ const initialState = {
   // persisted, and placed after the storage spread so it always starts false
   keepSizeHeld: false,
   uiLayout: normalizeUiLayout(storage.data?.uiLayout),
+  autoCenterMode: normalizeAutoCenterMode(storage.data?.autoCenterMode),
   // The theme registry is filled by the theme manager at import time, so the
   // stored id can already point at a custom theme here
   customThemes: normalizeCustomThemes(storage.data?.customThemes),
@@ -416,6 +423,9 @@ const baseReducer = (state, action) => {
       }
       if (action.data.uiLayout) {
         newState.uiLayout = normalizeUiLayout(action.data.uiLayout);
+      }
+      if ("autoCenterMode" in action.data) {
+        newState.autoCenterMode = normalizeAutoCenterMode(action.data.autoCenterMode);
       }
       break;
     }
@@ -979,6 +989,11 @@ const baseReducer = (state, action) => {
       if (!action.value) {
         newState.storedSelections = [];
       }
+      break;
+    }
+
+    case "setAutoCenterMode": {
+      newState.autoCenterMode = normalizeAutoCenterMode(action.value);
       break;
     }
 

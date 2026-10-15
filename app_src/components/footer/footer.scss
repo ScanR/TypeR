@@ -43,6 +43,10 @@
       background: #34c759;
       box-shadow: 0 0 0 1px rgba(#34c759, 0.5);
     }
+    &.is-on.is-multi {
+      background: #0a84ff;
+      box-shadow: 0 0 0 1px rgba(#0a84ff, 0.5);
+    }
   }
   .footer-mode-label {
     font-weight: 600;
@@ -50,6 +54,7 @@
   .footer-mode-status {
     font-size: 10px;
     opacity: 0.8;
+    white-space: nowrap;
   }
 }
 

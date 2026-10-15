@@ -872,6 +872,13 @@ const getSelectionChanged = (callback = () => {}) => {
   });
 };
 
+// Auto-centre after the paste ("off", "single" or "multi"); the frame is only
+// refitted to the bubble when the auto-centre runs
+const autoCenterFields = (options = {}) => {
+  const autoCenter = options.autoCenter === "single" || options.autoCenter === "multi" ? options.autoCenter : "off";
+  return { autoCenter, resizeTextBox: autoCenter !== "off" && !!options.resizeTextBox };
+};
+
 const createTextLayerInSelection = (text, style, pointText, padding, direction, callback = () => {}, options = {}) => {
   // Support legacy calls where padding/direction are omitted and callback may be 4th or 5th parameter
   if (typeof padding === "function") {
@@ -899,6 +906,7 @@ const createTextLayerInSelection = (text, style, pointText, padding, direction, 
     direction,
     richTextRuns: parsed.richTextRuns,
     preserveActiveTextSize: options.preserveActiveTextSize === true,
+    ...autoCenterFields(options),
   });
   csInterface.evalScript("createTextLayerInSelection(" + data + ", " + resolvedPointText + ")", trackHostAction((error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
@@ -941,6 +949,7 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
     padding: padding || 0,
     direction,
     preserveActiveTextSize: options.preserveActiveTextSize === true,
+    ...autoCenterFields(options),
   });
   csInterface.evalScript("createTextLayersInStoredSelections(" + data + ", " + !!pointText + ")", trackHostAction((error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
@@ -961,6 +970,24 @@ const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback 
   csInterface.evalScript("alignTextLayerToSelection(" + data + ")", trackHostAction((error) => {
     if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+    else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
+    callback(!error);
+  }));
+};
+
+// Each selected text layer is centred in its own part of a shared bubble.
+// The host answers error codes, translated here.
+const DOUBLE_BUBBLE_ERRORS = {
+  doubleBubbleLayers: "errorDoubleBubbleLayers",
+  doubleBubbleEmpty: "errorDoubleBubbleEmpty",
+  doubleBubbleNotFound: "errorDoubleBubbleNotFound",
+};
+
+const alignTextLayersToDoubleBubble = (resizeTextBox = false, padding = 0, callback = () => {}) => {
+  const data = JSON.stringify({ resizeTextBox: !!resizeTextBox, padding: padding || 0 });
+  csInterface.evalScript("alignTextLayersToDoubleBubble(" + data + ")", trackHostAction((error) => {
+    if (DOUBLE_BUBBLE_ERRORS[error]) nativeAlert(locale[DOUBLE_BUBBLE_ERRORS[error]], locale.errorTitle, true);
+    else if (error && error.indexOf("scriptError:") === 0) nativeAlert(error.replace("scriptError: ", ""), locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
     callback(!error);
   }));
@@ -1337,4 +1364,4 @@ const scanPsdFonts = (path, callback) => {
   );
 };
 
-export { backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };
+export { alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };
