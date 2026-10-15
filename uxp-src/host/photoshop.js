@@ -1407,11 +1407,9 @@ function _autoCenterLayers(created, data) {
     } catch (readError) {}
   }
   if (!items.length) return;
-  const neighbours = mode === "multi" ? _textNeighbours(created) : [];
+  const neighbours = _textNeighbours(created);
   items.forEach((item, i) => {
-    const exclude = mode === "multi"
-      ? items.filter((other, j) => j !== i).map((other) => other.box).concat(neighbours.map((other) => other.box))
-      : [];
+    const exclude = items.filter((other, j) => j !== i).map((other) => other.box).concat(neighbours.map((other) => other.box));
     try {
       const probed = _probeBubble(item.box, item.sizePixels, exclude, docSize);
       if (probed.best) item.rect = _openedBubble(probed.best, item.box);
@@ -1453,7 +1451,8 @@ function _autoCenterLayers(created, data) {
     if (!target.rect) return;
     try {
       _selectLayerById(target.id);
-      _placeLayerInRect(target.rect, resize, padding);
+      if (target.neighbour) _placeLayerInRect(target.rect, false, 0);
+      else _placeLayerInRect(target.rect, resize, padding);
     } catch (placeError) {}
   });
 }

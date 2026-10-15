@@ -346,6 +346,37 @@ box._textNeighbours = () => [{ id: 9, box: rect(700, 400, 760, 430), neighbour: 
 box._autoCenterCreated([1], { autoCenter: "multi" });
 assert.deepStrictEqual(placed.map((p) => p[0]), [1], "a text outside the bubble is never moved");
 
+// Single: a bubble shared with another text is not this text's own
+reset();
+box._textNeighbours = neighbour({});
+box._autoCenterCreated([1], { autoCenter: "single" });
+assert.deepStrictEqual(placed, [], "single keeps the paste position in one lobe of a double bubble");
+
+reset();
+const excluded = [];
+box._textNeighbours = () => [];
+box._probeBubble = (b, size, exclude) => {
+  excluded.push(exclude.length);
+  return { best: null, loose: shared };
+};
+box._autoCenterCreated([1, 2], { autoCenter: "single" });
+assert.deepStrictEqual(excluded, [1, 1], "texts pasted together exclude each other in single too");
+assert.deepStrictEqual(placed, [], "so they are not stacked on the merged centre");
+box._probeBubble = () => ({ best: null, loose: shared });
+
+// Multi: a moved neighbour keeps the frame the user set
+reset();
+const resizes = [];
+const placeLayer = box._placeLayerInRect;
+box._placeLayerInRect = (r, resize) => {
+  resizes.push([selected, resize]);
+  return placeLayer(r, resize);
+};
+box._textNeighbours = neighbour({});
+box._autoCenterCreated([1], { autoCenter: "multi", resizeTextBox: true });
+assert.deepStrictEqual(resizes, [[1, true], [9, false]], "only the pasted text's frame is refitted");
+box._placeLayerInRect = placeLayer;
+
 /* ------------- neighbours: hidden and locked layers ------------- */
 
 const descriptor = (values) => ({

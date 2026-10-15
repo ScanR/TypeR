@@ -1680,9 +1680,11 @@ function _placeLayerInRect(rect, resize, padding) {
 }
 
 // Finds the bubble of each new text and centres it. "single": the bubble
-// around the text. "multi": a bubble shared with another text (pasted with it
-// or already on the page, if visible) is cut between them, and that
-// neighbour is centred in its part unless it is locked.
+// around the text, only when it holds no other text (pasted with it or
+// already on the page, if visible): a text in one lobe of a double bubble
+// keeps its paste position. "multi": a shared bubble is cut between its
+// texts, and that neighbour is moved into its part unless it is locked; its
+// frame is left as the user set it.
 function _autoCenterLayers(created, data) {
   var mode = data.autoCenter;
   var resize = !!data.resizeTextBox;
@@ -1698,13 +1700,11 @@ function _autoCenterLayers(created, data) {
     } catch (readError) {}
   }
   if (!items.length) return;
-  var neighbours = mode === "multi" ? _textNeighbours(created) : [];
+  var neighbours = _textNeighbours(created);
   for (i = 0; i < items.length; i++) {
     var exclude = [];
-    if (mode === "multi") {
-      for (j = 0; j < items.length; j++) if (j !== i) exclude.push(items[j].box);
-      for (j = 0; j < neighbours.length; j++) exclude.push(neighbours[j].box);
-    }
+    for (j = 0; j < items.length; j++) if (j !== i) exclude.push(items[j].box);
+    for (j = 0; j < neighbours.length; j++) exclude.push(neighbours[j].box);
     try {
       var probed = _probeBubble(items[i].box, items[i].sizePixels, exclude, docSize);
       if (probed.best) items[i].rect = _openedBubble(probed.best, items[i].box);
@@ -1752,7 +1752,8 @@ function _autoCenterLayers(created, data) {
     if (!targets[i].rect) continue;
     try {
       _selectLayerById(targets[i].id);
-      _placeLayerInRect(targets[i].rect, resize, padding);
+      if (targets[i].neighbour) _placeLayerInRect(targets[i].rect, false, 0);
+      else _placeLayerInRect(targets[i].rect, resize, padding);
     } catch (placeError) {}
   }
 }
