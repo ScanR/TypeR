@@ -8,7 +8,7 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const jamText = require(path.join(root, "uxp-src/host/jamText.js"));
-const { parseCall } = require(path.join(root, "uxp-src/host/evalScript.js"));
+const { parseCall, callTimeout, createCallQueue, CALL_TIMEOUT_MS, LONG_CALL_TIMEOUT_MS } = require(path.join(root, "uxp-src/host/evalScript.js"));
 
 /* ------------------------- layer text ------------------------- */
 
@@ -78,6 +78,46 @@ assert.deepStrictEqual(
 );
 assert.strictEqual(parseCall("alert(1); app.quit()"), null, "Anything but a single call is refused");
 assert.strictEqual(parseCall("getUserFonts"), null);
+
+/* ------------------------ host call queue ------------------------ */
+
+assert.strictEqual(callTimeout("getActiveLayerText()"), CALL_TIMEOUT_MS);
+assert.strictEqual(callTimeout('scanTextShapeRTraining("/a")'), LONG_CALL_TIMEOUT_MS);
+assert.strictEqual(callTimeout('nativeConfirm({"text":"?"})'), 0, "A dialog waits for the user: no limit");
+assert.strictEqual(callTimeout("not a call"), CALL_TIMEOUT_MS);
+
+const queueChecks = (async () => {
+  const timers = [];
+  const enqueue = createCallQueue({
+    schedule: (fn, ms) => {
+      const timer = { fn, ms };
+      timers.push(timer);
+      return timer;
+    },
+    cancel: (timer) => {
+      const index = timers.indexOf(timer);
+      if (index !== -1) timers.splice(index, 1);
+    },
+  });
+  const order = [];
+  let finishStuck = null;
+  const stuck = enqueue(() => new Promise((resolve) => { finishStuck = resolve; }), 60000, () => "EvalScript error.");
+  const next = enqueue(() => { order.push("next"); return "ok"; }, 60000, () => "timeout");
+  const failing = enqueue(() => { throw new Error("boom"); });
+  const afterFailure = enqueue(() => "after");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepStrictEqual(order, [], "Calls run one at a time");
+  assert.strictEqual(timers.length, 1);
+  assert.strictEqual(timers[0].ms, 60000);
+  timers[0].fn();
+  assert.strictEqual(await stuck, "EvalScript error.", "A call past its limit answers the timeout result");
+  assert.strictEqual(await next, "ok", "The queue goes on after a call that timed out");
+  assert.deepStrictEqual(timers, [], "A settled call clears its timer");
+  await assert.rejects(failing, /boom/);
+  assert.strictEqual(await afterFailure, "after", "A failed call does not stop the queue");
+  finishStuck("late");
+  assert.strictEqual(await enqueue(() => "last", 0), "last", "A late result is dropped");
+})();
 
 /* ------------------------ keyboard reader ------------------------ */
 
@@ -265,7 +305,8 @@ const pluginData = (appData) => appData + "\\Adobe\\UXP\\PluginsStorage\\PHSP\\2
   assert.strictEqual(usual.roamingAppDataOf("D:\\Adobe\\Profiles\\Adobe\\UXP\\PluginsStorage"), "D:\\Adobe\\Profiles");
   assert.strictEqual(usual.roamingAppDataOf("/Users/ana/Library/Application Support/Adobe/UXP/PluginsStorage"), "/Users/ana/Library/Application Support");
   assert.strictEqual(usual.roamingAppDataOf("C:\\elsewhere"), null);
-  console.log("UXP host conversion, evalScript parsing, keyboard reader watchdog, host.js parity, mask sampling and Windows storage path tests passed");
+  await queueChecks;
+  console.log("UXP host conversion, evalScript parsing, call queue, keyboard reader watchdog, host.js parity, mask sampling and Windows storage path tests passed");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

@@ -35,7 +35,9 @@ runtime around it differs:
 `csInterface.evalScript("setActiveLayerText({...})", callback)` in the panel becomes a message to the
 host. `uxp-src/host/evalScript.js` parses the call (it is never evaluated), `main.js` runs the method of
 `photoshop.js` with the same name, and the string result goes back to the callback. Host calls are
-queued and run one at a time, as ExtendScript did. An exception answers `"EvalScript error."`, like CEP.
+queued and run one at a time, as ExtendScript did. An exception answers `"EvalScript error."`, like CEP;
+so does a call still running after its time limit (60 s, 10 min for scans, document opening and font
+lists, none for dialogs), and the queue goes on.
 
 `photoshop.js` keeps the structure and helper names of `host.js`. ActionManager calls are synchronous
 `batchPlay` calls with `dialogOptions: "silent"` (`"dontDisplay"` still shows Photoshop's alerts).
