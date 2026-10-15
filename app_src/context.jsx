@@ -1100,6 +1100,10 @@ const baseReducer = (state, action) => {
     }
 
     case "setLastOpenedImagePath": {
+      // Captured bubbles belong to one page: switching page invalidates them.
+      if (action.path && action.path !== state.lastOpenedImagePath) {
+        newState.storedSelections = [];
+      }
       newState.lastOpenedImagePath = action.path || null;
       break;
     }
