@@ -145,10 +145,12 @@ const HotkeysListner = React.memo(function HotkeysListner() {
   const lastPollAtRef = React.useRef(0);
 
   // The handler's context is read when the command runs: a press the gate
-  // deferred acts on the current line, and not while a modal is open
+  // deferred acts on the current line, and not while a modal is open or a
+  // paste/align still runs (its callback has not advanced the line yet, so
+  // the same line would be pasted twice)
   const runCommand = (command, options) => () => {
     const state = context.getState();
-    if (state.modalType) return;
+    if (state.modalType || isHostActionPending()) return;
     command.handler({ state, dispatch: context.dispatch, getState: context.getState }, options);
   };
 
@@ -181,9 +183,10 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     // UXP: the plugin pushes every change of the keyboard state
     // (uxp-src/web/cepShim.js), at no cost to Photoshop, so none of the
     // poll's back-offs below apply; only what CEP's poll also skips does
+    // (an open modal, typing in the panel, a host action still running)
     const subscribeToKeys = window.typerUXP && window.typerUXP.onKeys;
     const unsubscribeKeys = subscribeToKeys
-      ? subscribeToKeys((state) => checkState(state, !context.getState().modalType && !isFormFieldActive() && !document.hidden))
+      ? subscribeToKeys((state) => checkState(state, !context.getState().modalType && !isHostActionPending() && !isFormFieldActive() && !document.hidden))
       : null;
 
     const interval = subscribeToKeys ? null : setInterval(() => {

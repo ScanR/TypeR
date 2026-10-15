@@ -52,7 +52,9 @@ function parseCall(script) {
 
 // Time limits of the host calls: past it, a call that never settled answers
 // and the next one runs. Dialogs wait for the user and have none; calls that
-// open documents, walk every layer or list the fonts get a longer one.
+// open documents, walk every layer (auto-centre, apply to many layers) or
+// list the fonts get a longer one: a timed-out call Photoshop still finishes
+// would be retried by the user and applied twice.
 const CALL_TIMEOUT_MS = 60 * 1000;
 const LONG_CALL_TIMEOUT_MS = 10 * 60 * 1000;
 const CALL_TIMEOUTS = {
@@ -62,7 +64,10 @@ const CALL_TIMEOUTS = {
   reloadUserFonts: LONG_CALL_TIMEOUT_MS,
   getAllRenderedTextLines: LONG_CALL_TIMEOUT_MS,
   scanTextShapeRTraining: LONG_CALL_TIMEOUT_MS,
+  createTextLayerInSelection: LONG_CALL_TIMEOUT_MS,
   createTextLayersInStoredSelections: LONG_CALL_TIMEOUT_MS,
+  setSelectedTextLayers: LONG_CALL_TIMEOUT_MS,
+  alignTextLayersToDoubleBubble: LONG_CALL_TIMEOUT_MS,
   openFile: LONG_CALL_TIMEOUT_MS,
   scanPsdFonts: LONG_CALL_TIMEOUT_MS,
 };

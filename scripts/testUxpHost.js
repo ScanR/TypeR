@@ -155,7 +155,7 @@ const loadKeysHelper = () => {
   assert.strictEqual(dog.fresh(47100), false, "No state before the first beat");
   assert.strictEqual(dog.shouldStart(47000 + keys.STALL_MS), false);
   assert.strictEqual(dog.read("1", 48000), true);
-  assert.strictEqual(dog.state.attempts, 0, "A beat resets the retry delay");
+  assert.notStrictEqual(dog.state.attempts, 0, "A first beat is not yet a healthy reader");
   assert.strictEqual(dog.read("1", 48500), false, "The same beat is no news");
   assert.strictEqual(dog.fresh(48000 + keys.STALE_MS), true);
   assert.strictEqual(dog.fresh(48001 + keys.STALE_MS), false, "A frozen beat holds no key");
@@ -167,6 +167,22 @@ const loadKeysHelper = () => {
   assert.strictEqual(dog.shouldStart(55000 + keys.STALL_MS), false);
   assert.strictEqual(dog.read("2", 55500), true);
   assert.strictEqual(dog.fresh(55500), true);
+
+  assert.strictEqual(dog.read("3", 55000 + keys.HEALTHY_MS), true);
+  assert.strictEqual(dog.state.attempts, 0, "A reader that stayed up resets the retry delay");
+
+  // A reader that beats once then dies is given up too
+  const flaky = keys.createWatchdog(0);
+  let flakyTime = 0;
+  let flakyGaveUp = false;
+  for (let attempt = 1; attempt <= keys.MAX_ATTEMPTS; attempt++) {
+    assert.strictEqual(flaky.shouldStart(flakyTime), true);
+    flakyGaveUp = flaky.started(flakyTime, true);
+    flaky.read(String(attempt), flakyTime + 500);
+    flakyTime += 10 * 60 * 1000;
+  }
+  assert.strictEqual(flakyGaveUp, true);
+  assert.strictEqual(flaky.shouldStart(flakyTime), false);
 
   // A reader that never reports is given up after MAX_ATTEMPTS starts
   const hopeless = keys.createWatchdog(0);

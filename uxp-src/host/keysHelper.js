@@ -23,8 +23,13 @@ const STALE_MS = 2500;
 const STALL_MS = 6000;
 // Delay before the next start after the 1st, 2nd, 3rd... failed one
 const RETRY_MS = [2000, 5000, 10000, 30000];
-// Starts in a row without a single beat before giving up for the session
+// Starts in a row without a reader that stayed up before giving up for the
+// session
 const MAX_ATTEMPTS = 10;
+// A reader beating for this long since its start counts as healthy, and
+// only then are the attempts reset: one that beats once and dies is not
+// restarted forever
+const HEALTHY_MS = 30000;
 
 let timer = null;
 let mouseListener = null;
@@ -55,7 +60,7 @@ function createWatchdog(now = 0) {
       state.beat = beat;
       state.beatAt = time;
       state.running = true;
-      state.attempts = 0;
+      if (state.startedAt === null || time - state.startedAt >= HEALTHY_MS) state.attempts = 0;
       state.nextStart = time;
       return true;
     },
@@ -215,4 +220,4 @@ function stop() {
   timer = null;
 }
 
-module.exports = { start, stop, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS } };
+module.exports = { start, stop, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };

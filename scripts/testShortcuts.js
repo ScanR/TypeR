@@ -456,8 +456,12 @@ assert(
   "UXP must match the pushed keyboard state, and only CEP poll it"
 );
 assert(
-  /checkState\(state, !context\.getState\(\)\.modalType && !isFormFieldActive\(\) && !document\.hidden\)/.test(hotkeySource),
-  "Pushed key state must not fire in a modal, while typing in the panel or while the panel is hidden"
+  /checkState\(state, !context\.getState\(\)\.modalType && !isHostActionPending\(\) && !isFormFieldActive\(\) && !document\.hidden\)/.test(hotkeySource),
+  "Pushed key state must not fire in a modal, during a host action, while typing in the panel or while the panel is hidden"
+);
+assert(
+  /if \(state\.modalType \|\| isHostActionPending\(\)\) return;/.test(hotkeySource),
+  "A press the gate deferred must not run while a paste still runs: the same line would be pasted twice"
 );
 
 // --- typing in the panel ---------------------------------------------------
