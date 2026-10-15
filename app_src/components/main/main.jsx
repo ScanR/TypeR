@@ -15,6 +15,16 @@ const minBottomHeight = 70;
 const minPreviewHeight = 80;
 const maxPreviewHeight = 300;
 
+// Clamp the requested (or stored) text block height to the window. The stored
+// height must be clamped too, otherwise a height saved in a taller window can
+// push the middle block to zero after a restart.
+export const resolveBottomHeight = (requested, stored, maxBottomHeight) => {
+  let value = Number(requested || stored) || minBottomHeight;
+  if (value < minBottomHeight) value = minBottomHeight;
+  if (value > maxBottomHeight) value = maxBottomHeight;
+  return value;
+};
+
 const ResizeableCont = React.memo(function ResizeableCont() {
   const context = useContext((state) => ({ uiLayout: state.uiLayout }));
   const uiLayout = context.state.uiLayout;
@@ -115,9 +125,7 @@ const ResizeableCont = React.memo(function ResizeableCont() {
       return;
     }
     const maxBottomHeight = appHeightRef.current - (appHeightRef.current > 450 ? topHeight : 0) - minMiddleHeight;
-    bottomHeightRef.current = height || readStorage("bottomHeight") || minBottomHeight;
-    if (height < minBottomHeight) bottomHeightRef.current = minBottomHeight;
-    if (height > maxBottomHeight) bottomHeightRef.current = maxBottomHeight;
+    bottomHeightRef.current = resolveBottomHeight(height, readStorage("bottomHeight"), maxBottomHeight);
     bottomBlock.current.style.height = bottomHeightRef.current + "px";
     resizeTextArea(!!height);
   };
