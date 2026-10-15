@@ -15,4 +15,11 @@ const state = reducer(initial, { type: 'importStyleLibrary', folders: [{ id: 'f'
 assert.deepStrictEqual(state.styles[0].sizePresets, [12, 16, 20]);
 const { collectDescendantIds } = load('app_src/folderUtils.js');
 assert.deepStrictEqual(collectDescendantIds(cycle, 'a'), ['b']);
+const tree = [{ id: 'r' }, { id: 'c1', parentId: 'r' }, { id: 'c2', parentId: 'r' }, { id: 'g1', parentId: 'c1' }, { id: 'x', parentId: 'other' }];
+assert.deepStrictEqual(collectDescendantIds(tree, 'r'), ['c1', 'c2', 'g1']);
+assert.deepStrictEqual(collectDescendantIds(tree, 'g1'), []);
+const chain = Array.from({ length: 20000 }, (_, i) => ({ id: 'n' + i, parentId: i ? 'n' + (i - 1) : null }));
+const started = Date.now();
+assert.strictEqual(collectDescendantIds(chain, 'n0').length, 19999);
+assert(Date.now() - started < 1000, 'descendant collection must stay linear');
 console.log('Library validation and round-trip tests passed');

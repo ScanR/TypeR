@@ -39,11 +39,17 @@ const flattenFolderTree = (nodes, parents = [], depth = 0) => {
 const collectDescendantIds = (folders, folderId) => {
   const ids = [];
   if (!folderId) return ids;
+  // Index children once so deep or wide folder trees stay linear.
+  const childrenByParent = new Map();
+  (folders || []).forEach((folder) => {
+    const parentId = folder.parentId || null;
+    if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+    childrenByParent.get(parentId).push(folder);
+  });
   const queue = [folderId];
   const visited = new Set([folderId]);
-  while (queue.length) {
-    const current = queue.shift();
-    const children = (folders || []).filter((folder) => (folder.parentId || null) === current);
+  for (let index = 0; index < queue.length; index++) {
+    const children = childrenByParent.get(queue[index]) || [];
     children.forEach((child) => {
       if (visited.has(child.id)) return;
       visited.add(child.id);
