@@ -79,50 +79,114 @@ const matchMouseBinding = (state, shortcut) => {
   return best;
 };
 
+// The user types in the panel: a field has the focus and so has the panel.
+// A textarea keeps document.activeElement after the user goes back to the
+// canvas (UXP's WebView always, CEP's window too), and the shortcuts must
+// work there; keystrokes only reach the panel while its document has focus.
 const isFormFieldActive = () => {
+  if (typeof document.hasFocus === "function" && !document.hasFocus()) return false;
   const active = document.activeElement;
   if (!active) return false;
   const tagName = active.tagName;
   return active.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
 };
 
+// Decides when a matched shortcut runs. Pure apart from the injected clock and
+// timer, so scripts/testShortcuts.js can drive it.
+// - Key state fires once per press: a held chord waits for a state that
+//   matches nothing before it can fire again.
+// - A new press that lands inside the previous command's repeatDelay runs at
+//   the end of that delay instead of being dropped. At most one press waits;
+//   further presses inside the window are dropped.
+// - Mouse side buttons are edges (press(..., true)): no release to wait for,
+//   same delay.
+const createShortcutGate = ({ now = () => Date.now(), schedule = setTimeout, cancel = clearTimeout } = {}) => {
+  let released = true;
+  let lastAt = -Infinity;
+  let deferred = null;
+  const fire = (run) => {
+    lastAt = now();
+    run();
+  };
+  return {
+    release() {
+      released = true;
+    },
+    press(command, run, edge = false) {
+      if (!edge) {
+        if (!released) return false;
+        released = false;
+      }
+      if (deferred) return false;
+      const wait = (command.repeatDelay || 0) - (now() - lastAt);
+      if (wait <= 0) {
+        fire(run);
+        return true;
+      }
+      deferred = schedule(() => {
+        deferred = null;
+        fire(run);
+      }, wait);
+      return true;
+    },
+    dispose() {
+      if (deferred) cancel(deferred);
+      deferred = null;
+    },
+  };
+};
+
 const HotkeysListner = React.memo(function HotkeysListner() {
   const context = useContext(() => ({}));
 
-  const keyUpRef = React.useRef(true);
-  const lastActionRef = React.useRef(0);
+  const gateRef = React.useRef(null);
+  if (!gateRef.current) gateRef.current = createShortcutGate();
   const hotkeyPollPendingRef = React.useRef(false);
   const lastPollAtRef = React.useRef(0);
 
-  React.useEffect(() => {
-    const checkRepeatTime = (time = 0) => {
-      const now = Date.now();
-      if (!keyUpRef.current || now - lastActionRef.current < time) return false;
-      lastActionRef.current = now;
-      keyUpRef.current = false;
-      return true;
-    };
+  // The handler's context is read when the command runs: a press the gate
+  // deferred acts on the current line, and not while a modal is open
+  const runCommand = (command, options) => () => {
+    const state = context.getState();
+    if (state.modalType) return;
+    command.handler({ state, dispatch: context.dispatch, getState: context.getState }, options);
+  };
 
-    const checkState = (state) => {
+  React.useEffect(() => () => gateRef.current.dispose(), []);
+
+  React.useEffect(() => {
+    // With canFire false (a modal is open, the user types in the panel) the
+    // state still records releases: otherwise the gate stays "held" and the
+    // next press of that chord is lost
+    const checkState = (state, canFire = true) => {
       if (!state) return;
-      const ctx = { state: context.getState(), dispatch: context.dispatch, getState: context.getState };
+      const shortcut = context.getState().shortcut;
       const realState = state.split("a");
       realState.shift();
       realState.pop();
-      // Pressed keys are activity: restore fast polling before matching so a
-      // hotkey burst after an idle period is never throttled
-      if (realState.length) notePanelActivity();
-      syncKeepSizeHeld(context, realState);
-      const command = matchBinding(realState, ctx.state.shortcut);
+      if (canFire) {
+        // Pressed keys are activity: restore fast polling before matching so
+        // a hotkey burst after an idle period is never throttled
+        if (realState.length) notePanelActivity();
+        syncKeepSizeHeld(context, realState);
+      }
+      const command = matchBinding(realState, shortcut);
       if (!command) {
-        keyUpRef.current = true;
+        gateRef.current.release();
         return;
       }
-      if (!checkRepeatTime(command.repeatDelay || 0)) return;
-      command.handler(ctx, getCommandOptions(realState, ctx.state.shortcut));
+      if (canFire) gateRef.current.press(command, runCommand(command, getCommandOptions(realState, shortcut)));
     };
 
-    const interval = setInterval(() => {
+    // UXP: the plugin pushes every change of the keyboard state
+    // (uxp-src/web/cepShim.js), at no cost to Photoshop, so none of the
+    // poll's back-offs below apply; only what CEP's poll also skips does
+    const subscribeToKeys = window.typerUXP && window.typerUXP.onKeys;
+    const unsubscribeKeys = subscribeToKeys
+      ? subscribeToKeys((state) => checkState(state, !context.getState().modalType && !isFormFieldActive() && !document.hidden))
+      : null;
+
+    const interval = subscribeToKeys ? null : setInterval(() => {
       // Back off while a paste/align/apply runs: polling would queue behind it
       // in the ExtendScript engine and delay the action's completion
       if (context.getState().modalType || isFormFieldActive() || hotkeyPollPendingRef.current || isHostActionPending() || document.hidden) return;
@@ -169,7 +233,8 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     window.addEventListener("blur", handleWindowBlur);
 
     return () => {
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
+      if (unsubscribeKeys) unsubscribeKeys();
       document.removeEventListener("keydown", handleKeyDown);
       document.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
@@ -188,13 +253,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       if (ctxState.modalType) return;
       const command = matchMouseBinding(state, ctxState.shortcut);
       if (!command) return;
-      const now = Date.now();
-      if (now - lastActionRef.current < (command.repeatDelay || 0)) return;
-      lastActionRef.current = now;
-      command.handler(
-        { state: ctxState, dispatch: context.dispatch, getState: context.getState },
-        getCommandOptions(state, ctxState.shortcut)
-      );
+      gateRef.current.press(command, runCommand(command, getCommandOptions(state, ctxState.shortcut)), true);
     });
 
     // CEF maps these buttons to history back/forward, which blanks the panel.

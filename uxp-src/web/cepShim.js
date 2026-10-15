@@ -68,6 +68,7 @@ export function installCepEnvironment(init) {
   let hidden = !!init.hidden;
   const listeners = {};
   const watcherListeners = new Set();
+  const keyListeners = new Set();
 
   const dispatch = (type, data) => {
     (listeners[type] || []).slice().forEach((entry) => {
@@ -261,8 +262,18 @@ export function installCepEnvironment(init) {
   /* ---------------------- host notifications ---------------------- */
 
   on("psEvent", (message) => dispatch("com.adobe.PhotoshopJSONCallback" + init.extensionId, message.data));
+  // Every change of the keyboard reader's state goes straight to the
+  // shortcut matcher (app_src/hotkeys.jsx): a press shorter than a poll
+  // interval, or one made while a poll backs off, is otherwise never seen
   on("keys", (message) => {
     keyboardState = typeof message.state === "string" ? message.state : "a";
+    keyListeners.forEach((listener) => {
+      try {
+        listener(keyboardState);
+      } catch (error) {
+        console.error("TypeR: keyboard listener", error);
+      }
+    });
   });
   on("theme", (message) => {
     hostEnvironment = message.hostEnvironment || hostEnvironment;
@@ -291,6 +302,10 @@ export function installCepEnvironment(init) {
     onWatcherLine(listener) {
       watcherListeners.add(listener);
       return () => watcherListeners.delete(listener);
+    },
+    onKeys(listener) {
+      keyListeners.add(listener);
+      return () => keyListeners.delete(listener);
     },
   };
 }

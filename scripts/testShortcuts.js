@@ -324,4 +324,134 @@ localeFiles.forEach((file) => {
   });
 });
 
+// --- runtime dispatch gate -------------------------------------------------
+
+const gateStart = hotkeySource.indexOf("const createShortcutGate");
+const gateEnd = hotkeySource.indexOf("const HotkeysListner");
+assert(gateStart !== -1 && gateEnd > gateStart, "Could not extract the shortcut gate");
+const { createShortcutGate } = new Function(`${hotkeySource.slice(gateStart, gateEnd)}\nreturn { createShortcutGate };`)();
+
+const makeGate = () => {
+  const clock = { t: 1000, timers: [] };
+  const gate = createShortcutGate({
+    now: () => clock.t,
+    schedule: (fn, wait) => {
+      const timer = { fn, at: clock.t + wait };
+      clock.timers.push(timer);
+      return timer;
+    },
+    cancel: (timer) => {
+      clock.timers = clock.timers.filter((item) => item !== timer);
+    },
+  });
+  clock.advance = (ms) => {
+    const end = clock.t + ms;
+    for (;;) {
+      const timer = clock.timers.filter((item) => item.at <= end).sort((x, y) => x.at - y.at)[0];
+      if (!timer) break;
+      clock.timers = clock.timers.filter((item) => item !== timer);
+      clock.t = timer.at;
+      timer.fn();
+    }
+    clock.t = end;
+  };
+  return { gate, clock };
+};
+const slowCommand = { id: "next", repeatDelay: 300 };
+const fastCommand = { id: "add", repeatDelay: 0 };
+
+{
+  // A held chord fires once, and again only after a release
+  const { gate, clock } = makeGate();
+  const runs = [];
+  gate.press(fastCommand, () => runs.push("add"));
+  clock.advance(40);
+  gate.press(fastCommand, () => runs.push("add"));
+  assert.deepStrictEqual(runs, ["add"], "A held shortcut must not repeat from key state");
+  gate.release();
+  gate.press(fastCommand, () => runs.push("add"));
+  assert.deepStrictEqual(runs, ["add", "add"], "A new press after a release must fire");
+}
+
+{
+  // A quick second tap inside repeatDelay is deferred, not lost
+  const { gate, clock } = makeGate();
+  const runs = [];
+  gate.press(slowCommand, () => runs.push(clock.t));
+  clock.advance(120);
+  gate.release();
+  clock.advance(30);
+  assert.strictEqual(gate.press(slowCommand, () => runs.push(clock.t)), true);
+  assert.deepStrictEqual(runs, [1000], "The deferred press must wait for the delay");
+  // A third tap while one waits is dropped: the delay still throttles
+  gate.release();
+  assert.strictEqual(gate.press(slowCommand, () => runs.push(clock.t)), false);
+  clock.advance(200);
+  assert.deepStrictEqual(runs, [1000, 1300], "The second tap must run once the delay ends");
+  // The delay counts from the deferred run
+  gate.release();
+  clock.advance(100);
+  gate.press(slowCommand, () => runs.push(clock.t));
+  clock.advance(300);
+  assert.deepStrictEqual(runs, [1000, 1300, 1600]);
+}
+
+{
+  // Disposing the gate cancels a waiting press
+  const { gate, clock } = makeGate();
+  const runs = [];
+  gate.press(slowCommand, () => runs.push(1));
+  gate.release();
+  gate.press(slowCommand, () => runs.push(2));
+  gate.dispose();
+  clock.advance(1000);
+  assert.deepStrictEqual(runs, [1], "A disposed gate must not run a deferred press");
+}
+
+{
+  // Mouse presses are edges: no release needed, still throttled
+  const { gate, clock } = makeGate();
+  const runs = [];
+  gate.press(fastCommand, () => runs.push(1), true);
+  gate.press(fastCommand, () => runs.push(2), true);
+  assert.deepStrictEqual(runs, [1, 2], "Each side-button press must fire");
+  clock.advance(1000);
+  gate.press(slowCommand, () => runs.push(3), true);
+  gate.press(slowCommand, () => runs.push(4), true);
+  assert.deepStrictEqual(runs, [1, 2, 3]);
+  clock.advance(300);
+  assert.deepStrictEqual(runs, [1, 2, 3, 4], "A side-button press inside repeatDelay must wait, not be lost");
+}
+
+assert(!/keyUpRef|lastActionRef/.test(hotkeySource), "Key state and mouse buttons must share the gate");
+assert(
+  /if \(!command\) \{\s*gateRef\.current\.release\(\);/.test(hotkeySource) && /if \(canFire\) gateRef\.current\.press/.test(hotkeySource),
+  "Releases must be tracked even when no shortcut may fire"
+);
+assert(
+  /window\.typerUXP && window\.typerUXP\.onKeys/.test(hotkeySource) && /subscribeToKeys \? null : setInterval/.test(hotkeySource),
+  "UXP must match the pushed keyboard state, and only CEP poll it"
+);
+assert(
+  /checkState\(state, !context\.getState\(\)\.modalType && !isFormFieldActive\(\) && !document\.hidden\)/.test(hotkeySource),
+  "Pushed key state must not fire in a modal, while typing in the panel or while the panel is hidden"
+);
+
+// --- typing in the panel ---------------------------------------------------
+
+{
+  const focusStart = hotkeySource.indexOf("const isFormFieldActive");
+  const isFormFieldActive = new Function("document", `${hotkeySource.slice(focusStart, gateStart)}\nreturn isFormFieldActive;`);
+  const textarea = { tagName: "TEXTAREA", isContentEditable: false };
+  const button = { tagName: "BUTTON", isContentEditable: false };
+  assert.strictEqual(isFormFieldActive({ activeElement: textarea, hasFocus: () => true })(), true, "Typing in the panel blocks shortcuts");
+  assert.strictEqual(isFormFieldActive({ activeElement: button, hasFocus: () => true })(), false);
+  assert.strictEqual(
+    isFormFieldActive({ activeElement: textarea, hasFocus: () => false })(),
+    false,
+    "A textarea left focused while Photoshop has the keyboard must not block shortcuts"
+  );
+  assert.strictEqual(isFormFieldActive({ activeElement: textarea })(), true, "Without hasFocus the field alone decides");
+}
+
 console.log("shortcut registry tests passed");
