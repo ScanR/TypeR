@@ -354,6 +354,8 @@ export const bodyBounds = (poly, b = box(poly)) => {
 // points of the outline that splits it in two substantial chambers. Returns
 // null (no neck), { ambiguous: true, ambiguousNeck } (click on the neck) or
 // { points, neck: [a, b], score }.
+const NECK_WIDTH_RATIO = 0.75;
+
 export const findCut = (contours, click, bounds, openRecovery) => {
   let polygon = null;
   let polygonArea = 0;
@@ -440,6 +442,19 @@ export const findCut = (contours, click, bounds, openRecovery) => {
         const areaTwo = area(halves[1]);
         const small = Math.min(areaOne, areaTwo);
         if (small < polygonArea * 0.15 || Math.abs(areaOne + areaTwo - polygonArea) > polygonArea * 0.01) continue;
+        // A real neck is much narrower than both chambers measured along
+        // it; a cloud's scalloped outline pinches only slightly (TypeR)
+        const along = (half) => {
+          let low = Infinity;
+          let high = -Infinity;
+          for (let k = 0; k < half.length; k++) {
+            const t = ((half[k][0] - a[0]) * dx + (half[k][1] - a[1]) * dy) / length;
+            if (t < low) low = t;
+            if (t > high) high = t;
+          }
+          return high - low;
+        };
+        if (length > NECK_WIDTH_RATIO * Math.min(along(halves[0]), along(halves[1]))) continue;
         const score = length / Math.sqrt(small);
         // A broad seam is admitted only between two compact chambers
         if (score > 0.95 || length > rootArea * 0.65) {

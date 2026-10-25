@@ -4911,7 +4911,8 @@ function _smartPathPoint(desc) {
 // > subpathListKey > points { anchor, forward, backward }
 function _smartReadWorkPath() {
   var reference = new ActionReference();
-  reference.putProperty(charID.Path, charID.WorkPath);
+  // 'WrPt' (not charID.WorkPath, 'WrkP') is the work path a get accepts
+  reference.putProperty(charID.Path, charIDToTypeID("WrPt"));
   var descriptor = executeActionGet(reference);
   var contentsKey = stringIDToTypeID("pathContents");
   if (!descriptor.hasKey(contentsKey)) return null;
@@ -5054,7 +5055,7 @@ function _smartCleanLayer() {
   return created;
 }
 
-function _smartPaintCleanup(plan, previousLayerId) {
+function _smartPaintCleanup(plan) {
   var doc = app.activeDocument;
   doc.activeLayer = _smartCleanLayer();
   _smartSelectPolygon(plan.cleanupPolygon);
@@ -5066,7 +5067,7 @@ function _smartPaintCleanup(plan, previousLayerId) {
   color.rgb.blue = rgb.blue;
   doc.selection.fill(color, ColorBlendMode.NORMAL, 100, false);
   doc.selection.deselect();
-  if (previousLayerId !== null && previousLayerId !== undefined) _selectLayerById(previousLayerId);
+  // The clean layer stays active: the text is made right above it
 }
 
 function _smartMakeText(params) {
@@ -5117,15 +5118,13 @@ function _smartPlaceText(session, pointText) {
 function _smartPasteCommitRun() {
   var state = _hostState.smartCommit;
   var sessions = state.data.sessions || [];
-  var previous = _safeActiveLayerId();
   try {
     for (var i = 0; i < sessions.length; i++) {
       var plan = sessions[i].plan;
-      if (plan.autoClean && plan.cleanupPolygon) _smartPaintCleanup(plan, previous);
+      if (plan.autoClean && plan.cleanupPolygon) _smartPaintCleanup(plan);
       try { app.activeDocument.selection.deselect(); } catch (deselectError) {}
       var id = _smartPlaceText(sessions[i], !!state.data.pointText);
       state.layerIds.push(id);
-      previous = id;
     }
   } catch (runError) {
     state.error = String(runError && runError.message ? runError.message : runError);
