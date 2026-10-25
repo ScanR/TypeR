@@ -11,6 +11,7 @@ const load = require('./helpers/loadAppModule')({
   '../previewBlock/previewBlock': stub,
   '../stylesBlock/stylesBlock': stub,
   '../footer/footer': stub,
+  '../../pasteOnClick': stub,
 });
 const { resolveBottomHeight } = load('app_src/components/main/main.jsx');
 

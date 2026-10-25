@@ -167,6 +167,9 @@ const mockRequire = (request) => {
       getScaledStyle: (style) => style,
     };
   }
+  if (request === "./smartPasteClient") {
+    return { smartPasteInSelection: (...args) => utilityCalls.push(["smartPaste", ...args]) };
+  }
   throw new Error(`Unexpected shortcutCommands dependency: ${request}`);
 };
 new Function("require", "module", "exports", transformedCommands)(

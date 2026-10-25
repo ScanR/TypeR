@@ -9,6 +9,7 @@ import TabBar from "../tabBar/tabBar";
 import PreviewBlock from "../previewBlock/previewBlock";
 import StylesBlock from "../stylesBlock/stylesBlock";
 import AppFooter from "../footer/footer";
+import PasteOnClick from "../../pasteOnClick";
 
 const minMiddleHeight = 100;
 const minBottomHeight = 70;
@@ -207,6 +208,7 @@ const ResizeableCont = React.memo(function ResizeableCont() {
       }}
     >
       <Modal />
+      <PasteOnClick />
       {order.map((id) => blocks[id])}
       <div className="footer-block hostBrdTopContrast">
         <AppFooter />

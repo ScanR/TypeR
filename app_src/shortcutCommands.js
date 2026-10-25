@@ -14,6 +14,7 @@ import {
   toggleCleaningLayers,
 } from "./utils";
 import { buildSelectedLayerPayload, buildStoredSelectionPayload, getScaledStyle } from "./textLayerPayload";
+import { smartPasteInSelection } from "./smartPasteClient";
 
 const applyLinesToLayers = (ctx, layers, preferredOrder = [], options = {}) => {
   const selectedIds = layers
@@ -109,6 +110,14 @@ const pasteInSelection = (ctx, preferredOrder = [], options = {}) => {
   getTypeRSelectionSnapshot(({ selection, layers }) => {
     if (!selection && layers.length >= 2) {
       applyLinesToLayers(ctx, layers, preferredOrder, options);
+      return;
+    }
+
+    // Smart paste: the text fitted to the bubble's real shape (falls back
+    // to the classic paste below when it cannot)
+    if (selection && ctx.state.smartPaste === true) {
+      const getState = typeof ctx.getState === "function" ? ctx.getState : () => ctx.state;
+      smartPasteInSelection(getState, ctx.dispatch, { ...options, trigger: { source: "manual" } });
       return;
     }
 
@@ -348,6 +357,17 @@ const shortcutCommands = [
         ctx.dispatch({ type: "clearSelections" });
         deselectDocument();
       }
+    },
+  },
+  {
+    id: "togglePasteOnClick",
+    label: "shortcut_togglePasteOnClick",
+    defaultKeys: [],
+    repeatDelay: 300,
+    handler: (ctx) => {
+      const value = !ctx.state.pasteOnClick;
+      ctx.dispatch({ type: "setPasteOnClick", value });
+      ctx.dispatch({ type: "showNotice", text: value ? locale.pasteOnClickEnabled : locale.pasteOnClickDisabled, kind: "info" });
     },
   },
   {

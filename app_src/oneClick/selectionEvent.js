@@ -26,7 +26,9 @@ export const classifySelectionEvent = (descriptor, toolId) => {
     const x = number(to.horizontal);
     const y = number(to.vertical);
     if (!isFinite(x) || !isFinite(y)) return null;
-    return { source: "wand", x, y };
+    // Points (distanceUnit) are converted by the capture, which knows the dpi
+    const unit = to.horizontal && to.horizontal._unit === "distanceUnit" ? "distanceUnit" : "pixelsUnit";
+    return unit === "pixelsUnit" ? { source: "wand", x, y } : { source: "wand", x, y, unit };
   }
   if (kind === "rectangle" || kind === "Rctn") {
     if (toolId && toolId !== "marqueeRectTool") return null;

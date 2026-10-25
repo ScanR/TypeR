@@ -147,15 +147,21 @@ if (window.addEventListener) {
 // Tracks in-flight Photoshop actions so low-priority polling (hotkeys, inline
 // TextShapeR) can back off instead of contending in the ExtendScript queue
 let hostActionsPending = 0;
+let lastHostActionAt = 0;
 const isHostActionPending = () => hostActionsPending > 0;
+// Photoshop reports the selections TypeR's own actions make to a CEP panel,
+// a little after the action: paste on click ignores them for a moment
+const msSinceHostAction = () => (hostActionsPending > 0 ? 0 : Date.now() - lastHostActionAt);
 const trackHostAction = (callback, timeout = 15000) => {
   notePanelActivity();
   hostActionsPending++;
+  lastHostActionAt = Date.now();
   let settled = false;
   const release = () => {
     if (settled) return false;
     settled = true;
     hostActionsPending--;
+    lastHostActionAt = Date.now();
     return true;
   };
   // Safety net: never let a lost CEP callback disable polling forever
@@ -1364,4 +1370,4 @@ const scanPsdFonts = (path, callback) => {
   );
 };
 
-export { alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };
+export { trackHostAction, msSinceHostAction, safeJsonParse, buildRichTextPayload, alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };

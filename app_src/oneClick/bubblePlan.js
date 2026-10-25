@@ -415,3 +415,38 @@ export const buildPlan = (input, options = {}) => {
   if (input.source === "lasso") return buildLassoPlan(input, options);
   return buildBubblePlan(input, options);
 };
+
+// The click of a trigger in document pixels (a Wand event may report points)
+export const triggerClick = (trigger, resolution) => {
+  if (!trigger || trigger.source !== "wand" || !isFinite(trigger.x) || !isFinite(trigger.y)) return null;
+  const scale = trigger.unit === "distanceUnit" ? (resolution || 72) / 72 : 1;
+  return { x: trigger.x * scale, y: trigger.y * scale };
+};
+
+const unitNumber = (value) => (value !== null && typeof value === "object" && "_value" in value ? value._value : value);
+
+// A selection outline made of four straight, axis-aligned sides: a marquee
+export const isAxisRectangle = (rawPath) => {
+  const components = rawPath && rawPath.pathContents && rawPath.pathContents.pathComponents;
+  if (!components || components.length !== 1) return false;
+  const subs = components[0].subpathListKey || [];
+  if (subs.length !== 1 || !subs[0].points || subs[0].points.length !== 4) return false;
+  const xs = {};
+  const ys = {};
+  for (let i = 0; i < subs[0].points.length; i++) {
+    const point = subs[0].points[i];
+    const same = (a, b) => !a || !b || (unitNumber(a.horizontal) === unitNumber(b.horizontal) && unitNumber(a.vertical) === unitNumber(b.vertical));
+    if (!same(point.forward, point.anchor) || !same(point.backward, point.anchor)) return false;
+    xs[Math.round(unitNumber(point.anchor.horizontal) * 100)] = true;
+    ys[Math.round(unitNumber(point.anchor.vertical) * 100)] = true;
+  }
+  return Object.keys(xs).length === 2 && Object.keys(ys).length === 2;
+};
+
+// The source of a capture: the trigger's, or for a manual Paste a rectangle
+// when the selection is one, the wand route otherwise
+export const captureSource = (trigger, rawPath) => {
+  const source = trigger && trigger.source;
+  if (source === "wand" || source === "rectangle" || source === "lasso") return source;
+  return rawPath && isAxisRectangle(rawPath) ? "rectangle" : "wand";
+};

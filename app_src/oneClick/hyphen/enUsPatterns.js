@@ -1,19 +1,5 @@
-(function (root, exports) {
-  if (typeof define === "function" && define.amd) {
-    // AMD. Register as an anonymous module.
-    define([], function () {
-      return exports;
-    });
-  } else if (typeof module === "object" && module.exports) {
-    // Node. Does not work with strict CommonJS, but
-    // only CommonJS-like environments that support module.exports,
-    // like Node.
-    module.exports = exports;
-  } else {
-    // Browser globals (root is window)
-    root.hyphenationPatternsEnUs = exports;
-  }
-})(this, [
+// en-US hyphenation patterns of the hyphen library (ISC license, see LICENSE.txt).
+export default [
   [
     [0, 0, 0, 4],
     [0, 0, 4],
@@ -4047,4 +4033,4 @@
     retribution: [3, 6, 9],
     table: [2],
   },
-]);
+];
