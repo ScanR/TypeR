@@ -772,6 +772,10 @@ const computeHyphenSplits = (word) => {
     .slice(0, 3);
 };
 
+// Clean French syllable boundaries of a long word, best first (the smart
+// paste uses them when a translation only fits with one hyphen)
+const frenchHyphenPoints = (word) => computeHyphenSplits(word).map((split) => split.index);
+
 const buildWeights = (lineCount, curve = 0.5, shift = 0, minWeight = 0.35) => {
   if (lineCount <= 1) return [1];
   const center = (lineCount - 1) / 2 + shift;
@@ -2872,4 +2876,4 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
   };
 };
 
-export { generateTextShapeRVariants, generateManualTextShapeRVariant, estimateManualLineCount, setDehyphenationEnabled, setTextShapeRTuning, sanitizeTuning as sanitizeTextShapeRTuning, recordTextShapeRFeedback, retrainTextShapeRRanker, isTextShapeRLineModelStale, refitTextShapeRLineModel, scheduleTextShapeRLineModelRefit, visibleLength, visibleWidth };
+export { frenchHyphenPoints, generateTextShapeRVariants, generateManualTextShapeRVariant, estimateManualLineCount, setDehyphenationEnabled, setTextShapeRTuning, sanitizeTuning as sanitizeTextShapeRTuning, recordTextShapeRFeedback, retrainTextShapeRRanker, isTextShapeRLineModelStale, refitTextShapeRLineModel, scheduleTextShapeRLineModelRefit, visibleLength, visibleWidth };

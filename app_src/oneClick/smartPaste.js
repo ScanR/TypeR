@@ -1,0 +1,181 @@
+// Smart paste orchestration, shared by both hosts. It runs in the UXP host
+// and in the CEP panel; the host adapter only talks to Photoshop:
+//   adapter.capture(trigger) -> input (see bubblePlan.js) + { activeTextSize }
+//   adapter.measure(requests) -> replies (see measureSpec.js)
+//   adapter.resolveRunStyle(textStyle, run) -> textStyle (optional)
+//   adapter.useAtlas -> boolean
+// The result is a list of paste sessions the host commits in one history
+// state (see commitSmartPaste in each host).
+//
+// request = {
+//   trigger: { source: "wand" | "rectangle" | "lasso" | "manual", x, y },
+//   lines: [{ text, richTextRuns, style, styleLocked }],   // N, N+1, N+2
+//   roleStyles: { shout: style | null, narration: style | null },
+//   settings: { autoClean, distribute, minScale, hyphenation ("fr"|"en"|"off"),
+//               direction, padding, keepSize, pointText },
+// }
+
+import { buildPlan, subpathsFromDescriptor } from "./bubblePlan";
+import { chambersFor } from "./connected";
+import { planText, NoPlacementError } from "./layout";
+import { breakPointsFor } from "./hyphenation";
+import { clearGeometryCaches } from "./geometry";
+
+const clone = (value) => JSON.parse(JSON.stringify(value));
+
+export class SmartPasteError extends Error {
+  constructor(code, message) {
+    super(message || code);
+    this.name = "SmartPasteError";
+    this.code = code;
+  }
+}
+
+// Size presets by page width (TypeR's autoSizeByPageWidth), as the hosts do
+export const resolveStyleSizeForPage = (style, pageWidth) => {
+  if (!style || style.autoSizeByPageWidth !== true || !(pageWidth > 0)) return style;
+  const presets = style.sizePresets;
+  if (!presets || presets.length < 2) return style;
+  let defaultIndex = parseInt(style.sizePresetDefaultIndex, 10);
+  if (isNaN(defaultIndex) || defaultIndex < 0 || defaultIndex >= presets.length) defaultIndex = 0;
+  let selectedSize = parseFloat(presets[defaultIndex]);
+  let selectedThreshold = -1;
+  const minWidths = style.sizePresetMinWidths || [];
+  for (let i = 0; i < presets.length; i++) {
+    if (i === defaultIndex) continue;
+    const threshold = parseFloat(minWidths[i]);
+    const presetSize = parseFloat(presets[i]);
+    if (!isNaN(threshold) && threshold > 0 && !isNaN(presetSize) && presetSize > 0 && pageWidth >= threshold && threshold > selectedThreshold) {
+      selectedThreshold = threshold;
+      selectedSize = presetSize;
+    }
+  }
+  if (isNaN(selectedSize) || selectedSize <= 0) return style;
+  const ranges = style.textProps && style.textProps.layerText && style.textProps.layerText.textStyleRange;
+  if (!ranges || !ranges[0] || !ranges[0].textStyle) return style;
+  ranges[0].textStyle.size = selectedSize;
+  if (ranges[0].textStyle.impliedFontSize != null) ranges[0].textStyle.impliedFontSize = selectedSize;
+  return style;
+};
+
+const overrideSize = (style, size) => {
+  const ranges = style.textProps.layerText.textStyleRange;
+  for (let i = 0; i < ranges.length; i++) {
+    if (!ranges[i] || !ranges[i].textStyle) continue;
+    ranges[i].textStyle.size = size;
+    if (ranges[i].textStyle.impliedFontSize != null) ranges[i].textStyle.impliedFontSize = size;
+  }
+};
+
+// The style of a line in a bubble of this kind: a script prefix wins, then
+// the style marked for the kind in the current folder, then the line's style
+export const styleForKind = (line, kind, roleStyles) => {
+  if (!line.styleLocked && roleStyles && (kind === "shout" || kind === "narration") && roleStyles[kind]) {
+    return { style: roleStyles[kind], role: kind };
+  }
+  return { style: line.style, role: null };
+};
+
+const validStyle = (style) => !!(style && style.textProps && style.textProps.layerText &&
+  style.textProps.layerText.textStyleRange && style.textProps.layerText.textStyleRange[0] &&
+  style.textProps.layerText.paragraphStyleRange && style.textProps.layerText.paragraphStyleRange[0]);
+
+// What the commit needs of a plan (plain data, also crosses evalScript)
+const sessionPlan = (plan) => ({
+  documentId: plan.documentId,
+  source: plan.source,
+  kind: plan.kind,
+  click: plan.click,
+  connected: plan.connected,
+  neck: plan.neck,
+  necks: plan.necks || (plan.neck ? [plan.neck] : null),
+  cleanPolygon: plan.cleanPolygon,
+  cleanupPolygon: plan.cleanupPolygon,
+  cleanupInset: plan.cleanupInset,
+  autoClean: plan.autoClean,
+  cleanupSkipped: plan.cleanupSkipped,
+  fillRGB: plan.fillRGB,
+  selection: plan.selection,
+});
+
+export const prepareSmartPaste = async (request, adapter) => {
+  const settings = request.settings || {};
+  const lines = (request.lines || []).filter((line) => line && typeof line.text === "string" && line.text.trim());
+  if (!lines.length) throw new SmartPasteError("noText");
+  clearGeometryCaches();
+  const input = await adapter.capture(request.trigger || { source: "manual" });
+  if (!input) throw new SmartPasteError("noSelection");
+  input.direction = settings.direction;
+  const page = { width: input.width, height: input.height, resolution: input.resolution };
+  const subpaths = input.source === "rectangle" ? null : subpathsFromDescriptor(input.rawPath, input.resolution);
+  let plan;
+  try {
+    plan = buildPlan(input, { autoClean: !!settings.autoClean, subpaths });
+  } catch (error) {
+    throw new SmartPasteError("shape", error && error.message);
+  }
+  const wanted = settings.distribute === false ? 1 : Math.min(3, lines.length);
+  const chambers = wanted > 1 && plan.source === "wand" && plan.connected ? chambersFor(input, plan, subpaths, wanted, { autoClean: !!settings.autoClean }) : [plan];
+  const breakPoints = breakPointsFor(settings.hyphenation || "off");
+  const sessions = [];
+  for (let i = 0; i < chambers.length; i++) {
+    const chamber = chambers[i];
+    const line = lines[i];
+    const picked = styleForKind(line, chamber.kind, request.roleStyles);
+    if (!validStyle(picked.style)) throw new SmartPasteError("style", "The style has no text settings");
+    const style = resolveStyleSizeForPage(clone(picked.style), page.width);
+    if (settings.keepSize && input.activeTextSize > 0) overrideSize(style, input.activeTextSize);
+    const payload = {
+      text: line.text,
+      richTextRuns: line.richTextRuns || null,
+      style,
+      direction: settings.direction,
+      padding: settings.padding || 0,
+    };
+    let text;
+    try {
+      text = await planText(chamber, payload, {
+        page,
+        measure: adapter.measure,
+        useAtlas: !!adapter.useAtlas,
+        resolveRunStyle: adapter.resolveRunStyle,
+        breakPoints,
+        sizePolicy: { minScale: settings.minScale > 0 ? settings.minScale : 0.7, fixed: !!settings.keepSize },
+      });
+    } catch (error) {
+      // A later chamber that does not fit: paste the chambers before it
+      if (i > 0 && error instanceof NoPlacementError) break;
+      if (error instanceof NoPlacementError) throw new SmartPasteError("noPlacement", error.message);
+      throw error;
+    }
+    sessions.push({
+      plan: sessionPlan(chamber),
+      text: {
+        params: text.params,
+        renderedText: text.renderedText,
+        stroke: text.stroke,
+        pad: text.pad,
+        size: text.size,
+        tier: text.tier,
+        hyphenated: text.hyphenated,
+        axis: text.candidate.axis,
+        top: text.candidate.top,
+        bottom: text.candidate.bottom,
+        // The last line is a lone pause ("…"): its ink may be re-centred
+        terminalPause: text.candidate.lines.length > 1 && (text.candidate.lines[text.candidate.lines.length - 1].edge.flags & 1) === 1,
+      },
+      styleId: picked.style.id || null,
+      role: picked.role,
+      layerName: line.text.replace(/[\r\n]+/g, " ").substring(0, 100),
+    });
+  }
+  return {
+    documentId: input.documentId,
+    source: input.source,
+    selectionBounds: input.selectionBounds,
+    pointText: !!settings.pointText,
+    sessions,
+    consumed: sessions.length,
+    cleanupSkipped: plan.cleanupSkipped || null,
+  };
+};
