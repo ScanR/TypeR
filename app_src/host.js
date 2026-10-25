@@ -5230,3 +5230,30 @@ function replaySelectionTrigger(trigger) {
     return jamJSON.stringify({ error: "replay" });
   }
 }
+
+// Paste on click when Photoshop sends a selection event without its
+// descriptor (some CEP hosts): the current tool and the selection bounds
+function smartPasteSelectionProbe() {
+  if (!app.documents.length) return jamJSON.stringify({ error: "doc" });
+  var tool = "";
+  try {
+    tool = String(app.currentTool || "");
+  } catch (toolError) {
+    try {
+      var reference = new ActionReference();
+      reference.putProperty(charIDToTypeID("Prpr"), stringIDToTypeID("tool"));
+      reference.putEnumerated(charIDToTypeID("capp"), charID.Ordinal, charID.Target);
+      var descriptor = executeActionGet(reference);
+      tool = typeIDToStringID(descriptor.getEnumerationType(stringIDToTypeID("tool")));
+    } catch (amError) {
+      tool = "";
+    }
+  }
+  var selection = null;
+  try { selection = _getCurrentSelectionBounds(); } catch (selectionError) {}
+  return jamJSON.stringify({
+    documentId: app.activeDocument.id,
+    tool: tool,
+    bounds: selection ? { left: selection.left, top: selection.top, right: selection.right, bottom: selection.bottom } : null
+  });
+}

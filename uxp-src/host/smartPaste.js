@@ -512,7 +512,21 @@ async function replaySelectionTrigger(trigger) {
   }
 }
 
+// For parity with host.js (UXP events always carry their descriptor)
+function smartPasteSelectionProbe() {
+  if (!hasDocument()) return JSON.stringify({ error: "doc" });
+  let tool = "";
+  try {
+    const reply = get([{ _property: "tool" }, { _ref: "application", _enum: "ordinal", _value: "targetEnum" }]);
+    tool = (reply.tool && (reply.tool._enum || reply.tool._value)) || "";
+  } catch (error) {
+    tool = "";
+  }
+  const bounds = boxOf(get([{ _property: "selection" }, TARGET_DOCUMENT]).selection);
+  return JSON.stringify({ documentId: ps.app.activeDocument.id, tool, bounds });
+}
+
 module.exports = {
-  methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot, replaySelectionTrigger },
+  methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot, replaySelectionTrigger, smartPasteSelectionProbe },
   _internals: { captureSelection, measureRequests, commitSessions, inkFits },
 };

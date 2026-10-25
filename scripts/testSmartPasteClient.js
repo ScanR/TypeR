@@ -190,7 +190,7 @@ const baseState = () => ({
 
   // Paste on click gate
   const gate = require("./helpers/loadAppModule")({
-    "./utils": { ...utilsStub, addPhotoshopEventListener: () => () => {}, msSinceHostAction: () => 1000 },
+    "./utils": { ...utilsStub, addPhotoshopEventListener: () => () => {}, msSinceHostAction: () => 1000, csInterface: utilsStub.csInterface, safeJsonParse: utilsStub.safeJsonParse },
     "./context": { useContext: () => ({}) },
     "./shortcutCommands": { pasteInSelection: () => {} },
     react: { useEffect: () => {} },

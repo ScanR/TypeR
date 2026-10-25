@@ -8,9 +8,9 @@
 
 import React from "react";
 import { useContext } from "./context";
-import { addPhotoshopEventListener, msSinceHostAction } from "./utils";
+import { addPhotoshopEventListener, csInterface, msSinceHostAction, safeJsonParse } from "./utils";
 import { PS_EVENT_SET } from "./photoshopEvents";
-import { classifySelectionEvent, parseCepEventData } from "./oneClick/selectionEvent";
+import { classifySelectionEvent, parseCepEventData, triggerSourceForTool } from "./oneClick/selectionEvent";
 import {
   applyHistorySnapshot, hasPasteHistory, isSmartPasteSettling, rememberSelectionTrigger, smartPasteInSelection, syncPasteHistory,
 } from "./smartPasteClient";
@@ -21,6 +21,21 @@ export const TYPER_HISTORY_EVENT = 1215591779;
 
 // Selections TypeR itself makes are reported to a CEP panel shortly after
 const OWN_SELECTION_GRACE = 400;
+
+// A CEP event without its descriptor: ask the host for the tool and the
+// selection, and paste when a selection tool made a new selection
+let lastProbeBounds = null;
+const sameBounds = (a, b) => !!(a && b && a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom);
+const probeTrigger = () => new Promise((resolve) => {
+  csInterface.evalScript("smartPasteSelectionProbe()", (raw) => {
+    const probe = safeJsonParse(raw, {});
+    const source = triggerSourceForTool(probe.tool);
+    const changed = probe.bounds && !sameBounds(probe.bounds, lastProbeBounds);
+    lastProbeBounds = probe.bounds || null;
+    resolve(source && changed ? { source } : null);
+  });
+});
+const hasDescriptor = (eventData) => !!(eventData && typeof eventData === "object" && Object.keys(eventData).length);
 
 export const shouldPasteOnClick = (state, trigger, sinceHostAction) => !!(
   trigger && state && state.pasteOnClick && !state.multiBubbleMode &&
@@ -52,18 +67,22 @@ const PasteOnClick = () => {
         scheduleHistoryCheck();
         return;
       }
-      const state = getState();
-      const trigger = classifySelectionEvent(data.eventData);
-      if (trigger && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling()) rememberSelectionTrigger(trigger);
-      if (!shouldPasteOnClick(state, trigger, msSinceHostAction())) {
-        if (!trigger) scheduleHistoryCheck();
+      const paste = (trigger) => {
+        const state = getState();
+        if (trigger && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling()) rememberSelectionTrigger(trigger);
+        if (!shouldPasteOnClick(state, trigger, msSinceHostAction())) {
+          if (!trigger) scheduleHistoryCheck();
+          return;
+        }
+        if (state.smartPaste === true) smartPasteInSelection(getState, dispatch, { trigger });
+        else pasteInSelection({ state, dispatch, getState });
+      };
+      if (!hasDescriptor(data.eventData) && !isUxp) {
+        const state = getState();
+        if (state.pasteOnClick && !state.multiBubbleMode && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling()) probeTrigger().then(paste);
         return;
       }
-      if (state.smartPaste === true) {
-        smartPasteInSelection(getState, dispatch, { trigger });
-      } else {
-        pasteInSelection({ state, dispatch, getState });
-      }
+      paste(classifySelectionEvent(data.eventData));
     });
     const onFocus = () => scheduleHistoryCheck();
     window.addEventListener("focus", onFocus);
