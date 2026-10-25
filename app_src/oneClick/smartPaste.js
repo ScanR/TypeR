@@ -16,6 +16,7 @@
 // }
 
 import { buildPlan, subpathsFromDescriptor } from "./bubblePlan";
+import { isPageLeak } from "./openBubble";
 import { chambersFor } from "./connected";
 import { planText, NoPlacementError } from "./layout";
 import { breakPointsFor } from "./hyphenation";
@@ -107,15 +108,25 @@ export const prepareSmartPaste = async (request, adapter) => {
   if (!input) throw new SmartPasteError("noSelection");
   input.direction = settings.direction;
   const page = { width: input.width, height: input.height, resolution: input.resolution };
-  const subpaths = input.source === "rectangle" ? null : subpathsFromDescriptor(input.rawPath, input.resolution);
   let plan;
-  try {
-    plan = buildPlan(input, { autoClean: !!settings.autoClean, subpaths });
-  } catch (error) {
-    throw new SmartPasteError("shape", error && error.message);
+  let subpaths = null;
+  if (input.openPlan) {
+    // An open bubble the UXP host already isolated (openBubble.js)
+    plan = input.openPlan;
+  } else {
+    // A leaking wand selection needs the open-bubble recovery (UXP only)
+    if (input.source !== "rectangle" && isPageLeak(input.selectionBounds, input.width, input.height)) {
+      throw new SmartPasteError("openBubble", "The selection leaks into the page");
+    }
+    subpaths = input.source === "rectangle" ? null : subpathsFromDescriptor(input.rawPath, input.resolution);
+    try {
+      plan = buildPlan(input, { autoClean: !!settings.autoClean, subpaths });
+    } catch (error) {
+      throw new SmartPasteError("shape", error && error.message);
+    }
   }
   const wanted = settings.distribute === false ? 1 : Math.min(3, lines.length);
-  const chambers = wanted > 1 && plan.source === "wand" && plan.connected ? chambersFor(input, plan, subpaths, wanted, { autoClean: !!settings.autoClean }) : [plan];
+  const chambers = wanted > 1 && plan.source === "wand" && plan.connected && subpaths ? chambersFor(input, plan, subpaths, wanted, { autoClean: !!settings.autoClean }) : [plan];
   const breakPoints = breakPointsFor(settings.hyphenation || "off");
   const sessions = [];
   for (let i = 0; i < chambers.length; i++) {

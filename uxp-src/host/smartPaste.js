@@ -13,6 +13,8 @@ const photoshop = require("./photoshop");
 const { prepareSmartPaste } = require("../../app_src/oneClick/smartPaste");
 const { fillFromMask, triggerClick, captureSource } = require("../../app_src/oneClick/bubblePlan");
 const { solverInternals } = require("../../app_src/oneClick/solver");
+const openBubble = require("../../app_src/oneClick/openBubble");
+const { box: boxOfPolygon } = require("../../app_src/oneClick/geometry");
 const { resolveTypeRFontVariant } = require("../../app_src/fontVariantResolver.jsxinc");
 
 const host = photoshop._internals;
@@ -76,6 +78,9 @@ async function captureSelection(trigger, wants) {
     right: Math.min(page.width, selectionBounds.right + margin),
     bottom: Math.min(page.height, selectionBounds.bottom + margin),
   };
+  // A leaking wand click takes the open-bubble route below: no full-page read
+  const leakingClick = trigger.source !== "rectangle" && trigger.source !== "lasso" && !!triggerClick(trigger, page.resolution) &&
+    openBubble.isPageLeak(selectionBounds, page.width, page.height);
   let pixels = null;
   let components = 0;
   let pixelBounds = null;
@@ -84,7 +89,7 @@ async function captureSelection(trigger, wants) {
   let activeTextSize = null;
   await modal("TypeR Read Bubble", async (context) => {
     // Local pixels and the selection mask: the fill and the cleanup checks
-    if (ps.imaging && ps.imaging.getPixels) {
+    if (ps.imaging && ps.imaging.getPixels && !leakingClick) {
       let pixelResult = null;
       let maskResult = null;
       try {
@@ -104,7 +109,7 @@ async function captureSelection(trigger, wants) {
       }
     }
     if (wants.keepSize && host._layerIsTextLayer()) activeTextSize = host._getTextLayerSize();
-    if (trigger.source === "rectangle") return;
+    if (trigger.source === "rectangle" || leakingClick) return;
     // The selection's outline as a work path, read and rolled back: the
     // document (and any unsaved work path) is left untouched
     await suspendHistory(context, "TypeR Read Bubble", () => {
@@ -143,7 +148,13 @@ async function captureSelection(trigger, wants) {
   }
   const source = captureSource(trigger, rawPath);
   const click = source === "wand" ? triggerClick(trigger, page.resolution) : null;
+  // An open bubble (the wand leaked into the page): isolate the chamber
+  let openPlan = null;
+  if (leakingClick && click) {
+    openPlan = await recoverOpenBubble(doc, page, click, selectionBounds, wants);
+  }
   return {
+    openPlan,
     documentId: doc.id,
     width: page.width,
     height: page.height,
@@ -156,6 +167,57 @@ async function captureSelection(trigger, wants) {
     sample,
     activeTextSize,
   };
+}
+
+// The selection's work path, read inside a rolled-back suspension
+function readWorkPath() {
+  const replies = ps.action.batchPlay([
+    { _obj: "make", _target: [{ _ref: "path" }], from: SELECTION, tolerance: px(2), _options: { dialogOptions: "silent" } },
+    { _obj: "get", _target: [{ _ref: "path", _property: "workPath" }], _options: { dialogOptions: "silent" } },
+  ], { synchronousExecution: true, immediateRedraw: false });
+  if (!replies || replies.length !== 2 || replies.some((reply) => reply && reply._obj === "error")) return null;
+  return replies[1];
+}
+
+const polygonPoints = (polygon) => polygon.map((p) => ({ _obj: "paint", horizontal: px(p[0]), vertical: px(p[1]) }));
+
+// Open bubble: contract the leaking selection inside a square around the
+// click until the gaps close, keep the core around the click, grow it back
+// (rolled back), then solve the chamber on the local pixels
+async function recoverOpenBubble(doc, page, click, selectionBounds, wants) {
+  const frame = openBubble.openRecoveryFrame(page, click);
+  let prior = null;
+  await modal("TypeR Read Open Bubble", (context) => suspendHistory(context, "TypeR Read Open Bubble", () => {
+    const c = frame.crop;
+    play({ _obj: "intersectWith", _target: [SELECTION], to: { _obj: "polygon", points: polygonPoints([[c.left, c.top], [c.right, c.top], [c.right, c.bottom], [c.left, c.bottom]]) } });
+    play({ _obj: "contract", by: px(frame.radius) });
+    const core = openBubble.coreFromPath(readWorkPath(), page.resolution, click, frame, page);
+    if (!core) return;
+    play({ _obj: "set", _target: [SELECTION], to: { _obj: "polygon", points: polygonPoints(core) } });
+    play({ _obj: "expand", by: px(frame.radius) });
+    prior = openBubble.priorFromPath(readWorkPath(), page.resolution, click);
+  }, { rollback: true }));
+  if (!prior) throw Object.assign(new Error("Could not recover the clicked open bubble"), { code: "openBubble" });
+  const ticket = openBubble.localTicket(page, click, boxOfPolygon(prior.polygon));
+  if (!ticket) throw Object.assign(new Error("Open bubble crop is unsafe"), { code: "openBubble" });
+  let bytes = null;
+  await modal("TypeR Read Open Bubble", async () => {
+    const result = await ps.imaging.getPixels({ documentID: doc.id, sourceBounds: ticket.crop, componentSize: 8, colorSpace: "RGB" });
+    try {
+      ticket.crop = result.sourceBounds || ticket.crop;
+      ticket.channels = result.imageData.components;
+      bytes = new Uint8Array(await result.imageData.getData({ chunky: true }));
+    } finally {
+      result.imageData.dispose();
+    }
+  });
+  const mask = openBubble.solveOpenChamber(ticket, bytes, prior);
+  if (!mask) throw Object.assign(new Error("Could not isolate the clicked open chamber"), { code: "openBubble" });
+  try {
+    return openBubble.openPlan({ documentId: doc.id, width: page.width, height: page.height, click, selectionBounds }, mask, prior, { autoClean: !!wants.autoClean });
+  } catch (error) {
+    throw Object.assign(error, { code: "openBubble" });
+  }
 }
 
 /* ======================== measure ======================== */
@@ -360,7 +422,7 @@ async function smartPaste(request) {
     if (!request || !Array.isArray(request.lines)) return JSON.stringify({ ok: false, code: "noText" });
     const settings = request.settings || {};
     const prepared = await prepareSmartPaste(request, {
-      capture: (trigger) => captureSelection(trigger, { keepSize: !!settings.keepSize }),
+      capture: (trigger) => captureSelection(trigger, { keepSize: !!settings.keepSize, autoClean: !!settings.autoClean }),
       measure: measureRequests,
       resolveRunStyle: resolveRunStyle(),
       useAtlas: true,
