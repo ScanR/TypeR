@@ -5,6 +5,8 @@
   font-size: 12px;
   display: flex;
   align-items: center;
+  // Containing block of the notice toast shown above the footer
+  position: relative;
   .link {
     opacity: 0.7;
     &:hover {
@@ -32,6 +34,18 @@
   .link.footer-mode-adjacent {
     margin-left: 12px;
     padding-right: 4px;
+  }
+  // Dot + label only; the label gives way first when the panel is narrow
+  .link.footer-mode-compact {
+    margin-left: 10px;
+    padding-right: 0;
+    min-width: 0;
+    .footer-mode-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
   .footer-mode-dot {
     width: 8px;

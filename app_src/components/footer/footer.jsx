@@ -4,6 +4,7 @@ import React from "react";
 import { locale } from "../../utils";
 import { useContext } from "../../context";
 import HiddenFileInput from "../hiddenFileInput/hiddenFileInput";
+import Notice from "../notice/notice";
 import { nextAutoCenterMode } from "../../shortcutCommands";
 
 const AppFooter = React.memo(function AppFooter() {
@@ -12,6 +13,9 @@ const AppFooter = React.memo(function AppFooter() {
     multiBubbleMode: state.multiBubbleMode,
     inlineTextShapeR: state.inlineTextShapeR,
     autoCenterMode: state.autoCenterMode,
+    smartPaste: state.smartPaste,
+    pasteOnClick: state.pasteOnClick,
+    smartPasteAutoClean: state.smartPasteAutoClean,
     uiLayout: state.uiLayout,
   }));
   const openSettings = () => {
@@ -48,6 +52,14 @@ const AppFooter = React.memo(function AppFooter() {
   const cycleAutoCenter = () => {
     context.dispatch({ type: "setAutoCenterMode", value: nextAutoCenterMode(context.state.autoCenterMode) });
   };
+  const togglePasteOnClick = () => {
+    context.dispatch({ type: "setPasteOnClick", value: !context.state.pasteOnClick });
+  };
+
+  const toggleAutoClean = () => {
+    context.dispatch({ type: "setSmartPasteAutoClean", value: !context.state.smartPasteAutoClean });
+  };
+
   const autoCenterMode = context.state.autoCenterMode || "off";
   const autoCenterStatus = autoCenterMode === "multi"
     ? (locale.autoCenterModeMulti || "MULTI")
@@ -107,9 +119,30 @@ const AppFooter = React.memo(function AppFooter() {
         <span className="footer-mode-label">{locale.autoCenterModeLabel || "Auto-center"}</span>
         <span className="footer-mode-status">{autoCenterStatus}</span>
       </span>
+      {/* Compact toggles: the dot alone shows the state */}
+      <span
+        className="link footer-mode-indicator footer-mode-adjacent footer-mode-compact"
+        onClick={togglePasteOnClick}
+        title={locale.footerPasteOnClickTitle || "Paste on click: a Magic Wand click or a rectangle/lasso selection pastes the current line right away."}
+      >
+        <span className={`footer-mode-dot ${context.state.pasteOnClick ? "is-on" : ""}`} />
+        <span className="footer-mode-label">{locale.footerPasteOnClick || "Click paste"}</span>
+      </span>
+      {/* Auto clean belongs to smart paste: hidden while smart paste is off */}
+      {context.state.smartPaste !== false && (
+      <span
+        className="link footer-mode-indicator footer-mode-adjacent footer-mode-compact"
+        onClick={toggleAutoClean}
+        title={locale.footerAutoCleanTitle || "Auto clean: smart paste paints a white or black fill under the text to cover the original lettering."}
+      >
+        <span className={`footer-mode-dot ${context.state.smartPasteAutoClean ? "is-on" : ""}`} />
+        <span className="footer-mode-label">{locale.footerAutoClean || "Auto clean"}</span>
+      </span>
+      )}
       </React.Fragment>
       )}
       <HiddenFileInput ref={fileInputRef} />
+      <Notice />
     </React.Fragment>
   );
 });

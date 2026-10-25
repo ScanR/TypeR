@@ -26,6 +26,7 @@ import {
   normalizeStyleSizeTipCount,
   recordStyleSizeChange,
 } from "./styleSizeTip";
+import { normalizeRefontRules } from "./oneClick/refont";
 const storage = readStorage();
 // A successful application is the clearest signal that someone is relying on
 // TextShapeR. Five applied suggestions are enough to introduce the learning
@@ -36,6 +37,24 @@ const TEXT_SHAPER_LEARN_TIP_THRESHOLD = 5;
 // are untrusted, so unknown modes fall back to off.
 const AUTO_CENTER_MODES = ["off", "single", "multi"];
 const normalizeAutoCenterMode = (value) => (AUTO_CENTER_MODES.indexOf(value) !== -1 ? value : "off");
+// Smart paste: the style size is a ceiling the fit may shrink down to this
+// fraction of it. Stored and imported values are untrusted, so anything that
+// is not a finite number falls back to the default.
+const SMART_PASTE_MIN_SCALE_DEFAULT = 0.7;
+const normalizeSmartPasteMinScale = (value) => {
+  const num = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim() !== "" ? Number(value) : NaN;
+  if (!Number.isFinite(num)) return SMART_PASTE_MIN_SCALE_DEFAULT;
+  return Math.round(Math.min(1, Math.max(0.5, num)) * 100) / 100;
+};
+const SMART_PASTE_HYPHENATION_MODES = ["auto", "fr", "en", "off"];
+const normalizeSmartPasteHyphenation = (value) => (
+  SMART_PASTE_HYPHENATION_MODES.indexOf(value) !== -1 ? value : "auto"
+);
+// Transient toast shown above the footer (smart paste fallbacks, toggles)
+const NOTICE_KINDS = ["info", "warning"];
+let lastNoticeId = 0;
 const hasTextShapeRLearning = (value) => Number(value?.samples) > 0;
 // Quiet time after the last tuning change before the line-break model refit
 const TEXT_SHAPER_LINE_MODEL_IDLE_MS = 1500;
@@ -68,6 +87,13 @@ const storeFields = [
   "lastOpenedImagePath",
   "multiBubbleMode",
   "autoCenterMode",
+  "smartPaste",
+  "pasteOnClick",
+  "smartPasteAutoClean",
+  "smartPasteDistribute",
+  "smartPasteMinScale",
+  "smartPasteHyphenation",
+  "refontRules",
   "showTips",
   "exportFolderFontTipDismissed",
   "showQuickStyleSize",
@@ -316,6 +342,17 @@ const initialState = {
   keepSizeHeld: false,
   uiLayout: normalizeUiLayout(storage.data?.uiLayout),
   autoCenterMode: normalizeAutoCenterMode(storage.data?.autoCenterMode),
+  // Smart paste settings sit after the storage spread so stored values are
+  // always normalized. Smart paste and line distribution are on by default.
+  smartPaste: storage.data?.smartPaste !== false,
+  pasteOnClick: storage.data?.pasteOnClick === true,
+  smartPasteAutoClean: storage.data?.smartPasteAutoClean === true,
+  smartPasteDistribute: storage.data?.smartPasteDistribute !== false,
+  smartPasteMinScale: normalizeSmartPasteMinScale(storage.data?.smartPasteMinScale),
+  smartPasteHyphenation: normalizeSmartPasteHyphenation(storage.data?.smartPasteHyphenation),
+  refontRules: normalizeRefontRules(storage.data?.refontRules),
+  // Never persisted: a toast only belongs to the current session
+  notice: null,
   // The theme registry is filled by the theme manager at import time, so the
   // stored id can already point at a custom theme here
   customThemes: normalizeCustomThemes(storage.data?.customThemes),
@@ -428,6 +465,23 @@ const baseReducer = (state, action) => {
       }
       if ("autoCenterMode" in action.data) {
         newState.autoCenterMode = normalizeAutoCenterMode(action.data.autoCenterMode);
+      }
+      if ("smartPaste" in action.data) newState.smartPaste = action.data.smartPaste !== false;
+      if ("pasteOnClick" in action.data) newState.pasteOnClick = action.data.pasteOnClick === true;
+      if ("smartPasteAutoClean" in action.data) {
+        newState.smartPasteAutoClean = action.data.smartPasteAutoClean === true;
+      }
+      if ("smartPasteDistribute" in action.data) {
+        newState.smartPasteDistribute = action.data.smartPasteDistribute !== false;
+      }
+      if ("smartPasteMinScale" in action.data) {
+        newState.smartPasteMinScale = normalizeSmartPasteMinScale(action.data.smartPasteMinScale);
+      }
+      if ("smartPasteHyphenation" in action.data) {
+        newState.smartPasteHyphenation = normalizeSmartPasteHyphenation(action.data.smartPasteHyphenation);
+      }
+      if ("refontRules" in action.data) {
+        newState.refontRules = normalizeRefontRules(action.data.refontRules);
       }
       break;
     }
@@ -996,6 +1050,63 @@ const baseReducer = (state, action) => {
 
     case "setAutoCenterMode": {
       newState.autoCenterMode = normalizeAutoCenterMode(action.value);
+      break;
+    }
+
+    case "setSmartPaste": {
+      newState.smartPaste = !!action.value;
+      break;
+    }
+
+    case "setPasteOnClick": {
+      newState.pasteOnClick = !!action.value;
+      break;
+    }
+
+    case "setSmartPasteAutoClean": {
+      newState.smartPasteAutoClean = !!action.value;
+      break;
+    }
+
+    case "setSmartPasteDistribute": {
+      newState.smartPasteDistribute = !!action.value;
+      break;
+    }
+
+    case "setSmartPasteMinScale": {
+      newState.smartPasteMinScale = normalizeSmartPasteMinScale(action.value);
+      break;
+    }
+
+    case "setSmartPasteHyphenation": {
+      newState.smartPasteHyphenation = normalizeSmartPasteHyphenation(action.value);
+      break;
+    }
+
+    case "setRefontRules": {
+      newState.refontRules = normalizeRefontRules(action.rules);
+      break;
+    }
+
+    case "showNotice": {
+      const text = typeof action.text === "string" ? action.text.trim() : "";
+      if (!text) break;
+      // Unique even for two notices in the same millisecond, so a stale
+      // auto-dismiss timer can never clear the next message
+      lastNoticeId = Math.max(Date.now(), lastNoticeId + 1);
+      newState.notice = {
+        id: lastNoticeId,
+        text,
+        kind: NOTICE_KINDS.indexOf(action.kind) !== -1 ? action.kind : "info",
+      };
+      break;
+    }
+
+    case "clearNotice": {
+      if (!state.notice) break;
+      if (action.id === undefined || action.id === null || action.id === state.notice.id) {
+        newState.notice = null;
+      }
       break;
     }
 
@@ -1866,4 +1977,11 @@ ContextProvider.propTypes = {
   children: PropTypes.any.isRequired,
 };
 
-export { useContext, ContextProvider, defaultUiLayout, normalizeUiLayout };
+export {
+  useContext,
+  ContextProvider,
+  defaultUiLayout,
+  normalizeUiLayout,
+  normalizeSmartPasteMinScale,
+  normalizeSmartPasteHyphenation,
+};
