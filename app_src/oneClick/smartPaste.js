@@ -25,10 +25,12 @@ import { clearGeometryCaches } from "./geometry";
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 export class SmartPasteError extends Error {
-  constructor(code, message) {
+  constructor(code, message, details) {
     super(message || code);
     this.name = "SmartPasteError";
     this.code = code;
+    // The bubble's text colour, when it was read: the classic paste keeps it
+    if (details && details.textColor) this.textColor = details.textColor;
   }
 }
 
@@ -156,7 +158,7 @@ export const prepareSmartPaste = async (request, adapter) => {
     } catch (error) {
       // A later chamber that does not fit: paste the chambers before it
       if (i > 0 && error instanceof NoPlacementError) break;
-      if (error instanceof NoPlacementError) throw new SmartPasteError("noPlacement", error.message);
+      if (error instanceof NoPlacementError) throw new SmartPasteError("noPlacement", error.message, { textColor: chamber.textColor });
       throw error;
     }
     sessions.push({

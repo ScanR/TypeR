@@ -4949,10 +4949,14 @@ function _smartReadWorkPath() {
 }
 
 // Channel histograms of the selection (Photoshop computes them on the
-// selected pixels): the panel decides whether the bubble is solid white/black
+// selected pixels of the active layer): read on a stamp of the visible
+// layers, inside the caller's rolled-back history, so they show the page
 function _smartSelectionHistograms() {
   var out = [];
   try {
+    var stamp = new ActionDescriptor();
+    stamp.putBoolean(charIDToTypeID("Dplc"), true);
+    executeAction(charIDToTypeID("MrgV"), stamp, DialogModes.NO);
     var channels = app.activeDocument.componentChannels;
     for (var i = 0; i < channels.length && i < 3; i++) out.push(channels[i].histogram);
   } catch (histogramError) {
@@ -4973,7 +4977,7 @@ function smartPasteCapture(data) {
     height: size.height,
     resolution: _getDocumentResolution(),
     selectionBounds: { left: selection.left, top: selection.top, right: selection.right, bottom: selection.bottom },
-    histograms: _smartSelectionHistograms(),
+    histograms: [],
     rawPath: null,
     activeTextSize: null
   };
@@ -4982,14 +4986,20 @@ function smartPasteCapture(data) {
       if (_layerIsTextLayer()) result.activeTextSize = _getTextLayerSize();
     } catch (sizeError) {}
   }
-  if (!data || !data.trigger || data.trigger.source !== "rectangle") {
-    var read = _withTemporaryHistory("TypeR Read Bubble", function () {
+  var needsPath = !data || !data.trigger || data.trigger.source !== "rectangle";
+  var read = _withTemporaryHistory("TypeR Read Bubble", function () {
+    // Histograms first: making the work path consumes the selection
+    var histograms = _smartSelectionHistograms();
+    var path = null;
+    if (needsPath) {
       _makeWorkPathFromSelection(2.0);
-      return { path: _smartReadWorkPath() };
-    }, { discardRedo: true });
-    if (!read || read.error || !read.path) return jamJSON.stringify({ error: "shape" });
-    result.rawPath = read.path;
-  }
+      path = _smartReadWorkPath();
+    }
+    return { path: path, histograms: histograms };
+  }, { discardRedo: true });
+  if (!read || read.error || (needsPath && !read.path)) return jamJSON.stringify({ error: "shape" });
+  result.rawPath = read.path;
+  result.histograms = read.histograms || [];
   return jamJSON.stringify(result);
 }
 

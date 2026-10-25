@@ -437,7 +437,7 @@ async function smartPaste(request) {
       sessions: prepared.sessions.map((session) => ({ kind: session.plan.kind, role: session.role, styleId: session.styleId, size: session.text.size, tier: session.text.tier, hyphenated: session.text.hyphenated })),
     });
   } catch (error) {
-    return JSON.stringify({ ok: false, code: (error && error.code) || "error", message: String((error && error.message) || error) });
+    return JSON.stringify({ ok: false, code: (error && error.code) || "error", message: String((error && error.message) || error), textColor: (error && error.textColor) || null });
   }
 }
 

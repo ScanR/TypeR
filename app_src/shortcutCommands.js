@@ -75,14 +75,17 @@ const withAutoCenter = (ctx, options = {}) => ({
   resizeTextBox: !!ctx.state.resizeTextBoxOnCenter,
 });
 
+// Components pass a slice of the state: settings come from the store
+const fullState = (ctx) => (typeof ctx.getState === "function" ? ctx.getState : () => ctx.state);
+const smartPasteOn = (ctx) => fullState(ctx)().smartPaste === true;
+
 const pasteInSelection = (ctx, preferredOrder = [], options = {}) => {
   const storedSelections = ctx.state.storedSelections || [];
 
   if (ctx.state.multiBubbleMode && storedSelections.length > 0) {
     // Smart paste replays each stored selection (when it remembers its click)
-    if (ctx.state.smartPaste === true && canSmartPasteStoredSelections(storedSelections)) {
-      const getState = typeof ctx.getState === "function" ? ctx.getState : () => ctx.state;
-      smartPasteStoredSelections(getState, ctx.dispatch, options);
+    if (smartPasteOn(ctx) && canSmartPasteStoredSelections(storedSelections)) {
+      smartPasteStoredSelections(fullState(ctx), ctx.dispatch, options);
       return;
     }
     const payload = buildStoredSelectionPayload({
@@ -121,9 +124,8 @@ const pasteInSelection = (ctx, preferredOrder = [], options = {}) => {
 
     // Smart paste: the text fitted to the bubble's real shape (falls back
     // to the classic paste below when it cannot)
-    if (selection && ctx.state.smartPaste === true) {
-      const getState = typeof ctx.getState === "function" ? ctx.getState : () => ctx.state;
-      smartPasteInSelection(getState, ctx.dispatch, { ...options, trigger: { source: "manual" } });
+    if (selection && smartPasteOn(ctx)) {
+      smartPasteInSelection(fullState(ctx), ctx.dispatch, { ...options, trigger: { source: "manual" } });
       return;
     }
 

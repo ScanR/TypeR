@@ -849,6 +849,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           const storedHashSet = new Set((context.state.storedSelections || []).map((storedSelection) => getSelectionBoundsHash(storedSelection)));
           let nextLineIndex = context.state.currentLineIndex;
           const entries = [];
+          // A single new selection remembers the click that made it (smart paste replays it)
+          const trigger = selection.multiSelection.length === 1 ? recentSelectionTrigger() : null;
 
           for (const multiSelection of selection.multiSelection) {
             const { shiftKey, ...cleanSelection } = multiSelection;
@@ -858,7 +860,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
             }
 
             storedHashSet.add(selectionHash);
-            entries.push({ selection: cleanSelection, lineIndex: nextLineIndex });
+            entries.push({ selection: trigger ? { ...cleanSelection, trigger } : cleanSelection, lineIndex: nextLineIndex });
             const nextLine = getNextUsableLineIndex(context.state.lines || [], nextLineIndex);
             nextLineIndex = nextLine.index;
             if (!nextLine.advanced) {

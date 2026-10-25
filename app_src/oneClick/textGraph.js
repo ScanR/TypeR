@@ -100,14 +100,21 @@ const characterStyles = (data, resolveRunStyle) => {
 
 const COMMON_OPENINGS = /^(Abandoning|Surveillance|Extraordinary|Unbelievable|Everything|Something|Information|Communication|Congratulations|Unfortunately|Nevertheless|Understanding|Remembering|Continuing|Unexpected|Incredible|Perhaps|Farewell|Tomorrow|Yesterday|Remember|Everyone|Somewhere|Anything|Nothing|Welcome|Together|However|Because|Another|Already|Always|Without|Between|Before|Afterward|Suddenly|Finally|Actually|Really|Please)$/;
 
-// Names and acronyms are never hyphenated nor broken at their own hyphen
+// Names and acronyms are never hyphenated nor broken at their own hyphen. A
+// capitalized word that opens a sentence is not taken for a name (TypeR:
+// French scripts capitalize any first word)
+const sentenceStart = (source, index) => {
+  let i = index - 1;
+  while (i >= 0 && /[ \t"'«“(\[]/.test(source.charAt(i))) i--;
+  return i < 0 || /[.!?…\r\n]/.test(source.charAt(i));
+};
 const protectedCharacters = (source, styles, data) => {
   const out = [];
   for (let i = 0; i < source.length; i++) out[i] = styles[i].noBreak === true;
   const re = /https?:\/\/\S+|www\.\S+|\b[A-Z]{2,7}\b|\b[A-Z][a-z]+\b/g;
   let m;
   while ((m = re.exec(source)) !== null) {
-    if (m.index === 0 && COMMON_OPENINGS.test(m[0])) continue;
+    if (/^[A-Z][a-z]+$/.test(m[0]) && (sentenceStart(source, m.index) || COMMON_OPENINGS.test(m[0]))) continue;
     for (let j = m.index; j < m.index + m[0].length; j++) out[j] = true;
   }
   const phrases = data.protectedPhrases || [];

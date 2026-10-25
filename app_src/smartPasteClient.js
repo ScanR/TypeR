@@ -19,7 +19,7 @@ import { resolveTypeRFontVariant } from "./fontVariantResolver.jsxinc";
 const isUxp = () => !!(typeof window !== "undefined" && window.typerUXP);
 
 const evalHost = (script, timeout = 60000) => new Promise((resolve) => {
-  csInterface.evalScript(script, trackHostAction((result) => resolve(result), timeout));
+  csInterface.evalScript(script, trackHostAction((result) => resolve(result), timeout, true));
 });
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -173,8 +173,18 @@ export const runSmartPaste = async (request) => {
       sessions: prepared.sessions.map((session) => ({ kind: session.plan.kind, role: session.role, styleId: session.styleId, size: session.text.size, tier: session.text.tier })),
     };
   } catch (error) {
-    return { ok: false, code: (error && error.code) || "error", message: String((error && error.message) || error) };
+    return { ok: false, code: (error && error.code) || "error", message: String((error && error.message) || error), textColor: (error && error.textColor) || null };
   }
+};
+
+// Auto colour also holds for the classic paste: white text without a stroke
+export const styleWithTextColor = (style, textColor) => {
+  if (!style || !textColor) return style;
+  const out = clone(style);
+  const ranges = out.textProps && out.textProps.layerText && out.textProps.layerText.textStyleRange;
+  if (ranges) ranges.forEach((range) => { if (range.textStyle) range.textStyle.color = { ...textColor }; });
+  out.stroke = null;
+  return out;
 };
 
 /* ======================= undo sync ======================= */
@@ -214,7 +224,7 @@ let lastTrigger = null;
 export const rememberSelectionTrigger = (trigger) => {
   lastTrigger = trigger ? { trigger, at: Date.now() } : null;
 };
-export const recentSelectionTrigger = (maxAge = 2000) => (
+export const recentSelectionTrigger = (maxAge = 4000) => (
   lastTrigger && Date.now() - lastTrigger.at <= maxAge && (lastTrigger.trigger.source === "wand" || lastTrigger.trigger.source === "rectangle")
     ? lastTrigger.trigger
     : null
@@ -232,9 +242,9 @@ const notice = (dispatch, text, kind = "info") => {
 
 const reasonText = (code) => locale["smartPasteReason_" + code] || locale.smartPasteReason_error || code;
 
-const classicPaste = (state, dispatch, options) => new Promise((resolve) => {
+const classicPaste = (state, dispatch, options, textColor) => new Promise((resolve) => {
   const line = state.currentLine || { text: "" };
-  const style = getScaledStyle(state.currentStyle, state.textScale);
+  const style = styleWithTextColor(getScaledStyle(state.currentStyle, state.textScale), textColor);
   createTextLayerInSelection(line.text, style, state.pastePointText, state.internalPadding || 0, state.direction, (ok) => {
     if (ok) dispatch({ type: "nextLine", add: true });
     resolve(ok);
@@ -279,7 +289,7 @@ export const smartPasteInSelection = async (getState, dispatch, options = {}) =>
     notice(dispatch, String(locale.smartPasteFallback || "{reason}").replace("{reason}", reasonText(code)), "warning");
     const before = await getHistorySnapshot();
     const lineBefore = getState().currentLineIndex;
-    const ok = await classicPaste(getState(), dispatch, options);
+    const ok = await classicPaste(getState(), dispatch, options, result && result.textColor);
     if (ok && before) {
       const after = await getHistorySnapshot();
       if (after && after.current !== before.current) {
@@ -326,7 +336,7 @@ export const smartPasteStoredSelections = async (getState, dispatch, options = {
         }
       } else {
         notice(dispatch, String(locale.smartPasteFallback || "{reason}").replace("{reason}", reasonText((result && result.code) || "error")), "warning");
-        await new Promise((resolve) => createTextLayerInSelection(line.text, getScaledStyle(style || state.currentStyle, state.textScale), state.pastePointText, state.internalPadding || 0, state.direction, (ok) => {
+        await new Promise((resolve) => createTextLayerInSelection(line.text, styleWithTextColor(getScaledStyle(style || state.currentStyle, state.textScale), result && result.textColor), state.pastePointText, state.internalPadding || 0, state.direction, (ok) => {
           if (ok) pasted++;
           resolve();
         }, { preserveActiveTextSize: options.preserveActiveTextSize === true }));
