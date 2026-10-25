@@ -331,6 +331,35 @@ const linesInside = (session) => {
   assert.deepStrictEqual(metricFromBounds({ left: 568, right: 632, top: 818, bottom: 858 }, { width: 1200, height: 1700 }), { left: -0.515625, right: 0.515625, top: -0.515625, bottom: 0.140625 });
   assert.strictEqual(atlasMetrics({ pathContents: { pathComponents: [] } }, 1, page), null);
 
+  // Open bubble: a ring with a 10 px gap on a white page; the solver bridges
+  // the gap and returns the chamber around the click
+  const open = load("app_src/oneClick/openBubble.js");
+  assert.strictEqual(open.isPageLeak({ left: 0, top: 0, right: 1190, bottom: 1500 }, 1200, 1700), true);
+  assert.strictEqual(open.isPageLeak({ left: 100, top: 100, right: 500, bottom: 400 }, 1200, 1700), false);
+  const W = 700;
+  const H = 700;
+  const pixels = new Uint8Array(W * H).fill(255);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const e = ((x - 350) / 200) ** 2 + ((y - 350) / 140) ** 2;
+      const ring = e > 0.96 && e < 1.04;
+      const gap = x > 545 && Math.abs(y - 350) < 5;
+      if (ring && !gap) pixels[y * W + x] = 0;
+    }
+  }
+  const ticket = { width: W, height: H, crop: { left: 0, top: 0, right: W, bottom: H }, stride: 3, click: { x: 350, y: 350 }, channels: 1 };
+  const mask = open.solveOpenMask(ticket, pixels);
+  assert.ok(mask, "the open chamber is found");
+  const maskBox = geometry.box(mask.polygon);
+  assert.ok(maskBox.left > 140 && maskBox.right < 560 && maskBox.top > 200 && maskBox.bottom < 500, "the chamber stays inside the ring: " + JSON.stringify(maskBox));
+  assert.deepStrictEqual(mask.rgb, { red: 255, green: 255, blue: 255 });
+  const openInput = { documentId: 7, width: W, height: H, click: { x: 350, y: 350 }, selectionBounds: { left: 0, top: 0, right: W, bottom: H } };
+  const prior = { polygon: mask.polygon, contour: geometry.polygonContour(mask.polygon) };
+  const plan = open.openPlan(openInput, mask, prior, { autoClean: true });
+  assert.strictEqual(plan.open, true);
+  assert.strictEqual(plan.autoClean, true);
+  assert.strictEqual(plan.textColor, null);
+
   console.log("smart paste engine tests passed");
 })().catch((error) => {
   console.error(error);
