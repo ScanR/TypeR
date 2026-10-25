@@ -170,16 +170,19 @@ function _withSuspendedHistory(name, fn) {
 // Shape detection reads pixels through temporary channels, paths and selections.
 // Grouping those operations still retains a full scan in Photoshop history.
 // Roll back and delete only that new state, never the user's undo/redo states.
-function _withTemporaryHistory(name, fn) {
+function _withTemporaryHistory(name, fn, options) {
   var doc = app.activeDocument;
   var scanName = name;
   var historyLimit = null;
   var reservedHistorySlot = false;
+  // The smart paste reads right before a paste: that paste discards the redo
+  // branch anyway, so its reads may run after an Undo (discardRedo)
+  var discardRedo = !!(options && options.discardRedo);
   try {
     var count = doc.historyStates.length;
     // Starting a new operation after Undo would discard the redo branch.
-    if (_hostState.temporaryHistoryFailed || count < 2 ||
-        _getActiveHistoryIndex() !== count - 1) {
+    if (_hostState.temporaryHistoryFailed || count < (discardRedo ? 1 : 2) ||
+        (!discardRedo && _getActiveHistoryIndex() !== count - 1)) {
       return { error: "historyBusy" };
     }
     // A no-op or failed suspension must never match an existing user state.
@@ -4872,5 +4875,321 @@ function launchInstaller(filePath) {
     return 'ERROR: execute failed';
   } catch (e) {
     return 'ERROR: ' + e.message;
+  }
+}
+
+/* ========================================================= */
+/* ======================= smart paste ===================== */
+/* ========================================================= */
+// The CEP half of the smart paste. The engine (app_src/oneClick) runs in the
+// panel; these calls only talk to Photoshop:
+//   smartPasteCapture  - the selection's outline (work path, rolled back),
+//                        its bounds, its channel histograms
+//   smartPasteMeasure  - text lines rendered at 64 px (rolled back)
+//   smartPasteCommit   - cleanup fills and text layers, one history state
+//   getHistorySnapshot - history state ids, for the undo sync
+// uxp-src/host/smartPaste.js is the UXP counterpart (it runs the engine).
+
+var _SMART_CLEAN_LAYER = "TypeR Clean";
+var _SMART_HISTORY_NAME = "TyperTools Smart Paste";
+
+function _smartUnit(desc, key) {
+  var type = desc.getUnitDoubleType(key);
+  var unit = "pixelsUnit";
+  if (type === charIDToTypeID("#Rlt") || type === charIDToTypeID("#Pnt")) unit = "distanceUnit";
+  return { _unit: unit, _value: desc.getUnitDoubleValue(key) };
+}
+
+function _smartPathPoint(desc) {
+  return {
+    horizontal: _smartUnit(desc, charIDToTypeID("Hrzn")),
+    vertical: _smartUnit(desc, charIDToTypeID("Vrtc"))
+  };
+}
+
+// The work path as the actionJSON UXP returns: pathContents > pathComponents
+// > subpathListKey > points { anchor, forward, backward }
+function _smartReadWorkPath() {
+  var reference = new ActionReference();
+  reference.putProperty(charID.Path, charID.WorkPath);
+  var descriptor = executeActionGet(reference);
+  var contentsKey = stringIDToTypeID("pathContents");
+  if (!descriptor.hasKey(contentsKey)) return null;
+  var contents = descriptor.getObjectValue(contentsKey);
+  var componentList = contents.getList(stringIDToTypeID("pathComponents"));
+  var anchorKey = stringIDToTypeID("anchor");
+  var forwardKey = stringIDToTypeID("forward");
+  var backwardKey = stringIDToTypeID("backward");
+  var closedKey = stringIDToTypeID("closedSubpath");
+  var components = [];
+  var total = 0;
+  for (var c = 0; c < componentList.count; c++) {
+    var component = componentList.getObjectValue(c);
+    var subList = component.getList(stringIDToTypeID("subpathListKey"));
+    var subpaths = [];
+    for (var s = 0; s < subList.count; s++) {
+      var sub = subList.getObjectValue(s);
+      var pointList = sub.getList(stringIDToTypeID("points"));
+      var points = [];
+      total += pointList.count;
+      if (total > 4096) throw new Error("pathBudget");
+      for (var p = 0; p < pointList.count; p++) {
+        var pointDesc = pointList.getObjectValue(p);
+        var point = { anchor: _smartPathPoint(pointDesc.getObjectValue(anchorKey)) };
+        if (pointDesc.hasKey(forwardKey)) point.forward = _smartPathPoint(pointDesc.getObjectValue(forwardKey));
+        if (pointDesc.hasKey(backwardKey)) point.backward = _smartPathPoint(pointDesc.getObjectValue(backwardKey));
+        points.push(point);
+      }
+      subpaths.push({ closedSubpath: sub.hasKey(closedKey) && sub.getBoolean(closedKey), points: points });
+    }
+    components.push({ subpathListKey: subpaths });
+  }
+  return { pathContents: { pathComponents: components } };
+}
+
+// Channel histograms of the selection (Photoshop computes them on the
+// selected pixels): the panel decides whether the bubble is solid white/black
+function _smartSelectionHistograms() {
+  var out = [];
+  try {
+    var channels = app.activeDocument.componentChannels;
+    for (var i = 0; i < channels.length && i < 3; i++) out.push(channels[i].histogram);
+  } catch (histogramError) {
+    out = [];
+  }
+  return out;
+}
+
+function smartPasteCapture(data) {
+  if (!app.documents.length) return jamJSON.stringify({ error: "doc" });
+  var selection = _getCurrentSelectionBounds();
+  if (!selection || selection.width < 8 || selection.height < 8) return jamJSON.stringify({ error: "noSelection" });
+  var doc = app.activeDocument;
+  var size = _getDocumentPixelSize();
+  var result = {
+    documentId: doc.id,
+    width: size.width,
+    height: size.height,
+    resolution: _getDocumentResolution(),
+    selectionBounds: { left: selection.left, top: selection.top, right: selection.right, bottom: selection.bottom },
+    histograms: _smartSelectionHistograms(),
+    rawPath: null,
+    activeTextSize: null
+  };
+  if (data && data.keepSize) {
+    try {
+      if (_layerIsTextLayer()) result.activeTextSize = _getTextLayerSize();
+    } catch (sizeError) {}
+  }
+  if (!data || !data.trigger || data.trigger.source !== "rectangle") {
+    var read = _withTemporaryHistory("TypeR Read Bubble", function () {
+      _makeWorkPathFromSelection(2.0);
+      return { path: _smartReadWorkPath() };
+    }, { discardRedo: true });
+    if (!read || read.error || !read.path) return jamJSON.stringify({ error: "shape" });
+    result.rawPath = read.path;
+  }
+  return jamJSON.stringify(result);
+}
+
+function smartPasteMeasure(data) {
+  if (!app.documents.length) return jamJSON.stringify({ error: "doc" });
+  var requests = (data && data.requests) || [];
+  var measured = _withTemporaryHistory("TypeR text measurement", function () {
+    var replies = [];
+    var staging = false;
+    for (var i = 0; i < requests.length; i++) {
+      var params = requests[i].params;
+      if (!staging) {
+        jamEngine.jsonPlay("make", {
+          target: ["<reference>", [["textLayer", ["<class>", null]]]],
+          using: jamText.toLayerTextObject(params)
+        });
+        staging = true;
+      } else {
+        jamText.setLayerText(params);
+      }
+      var box = _currentLayerBox();
+      replies.push(box ? { bounds: { left: box.left, top: box.top, right: box.right, bottom: box.bottom } } : null);
+    }
+    return { replies: replies };
+  }, { discardRedo: true });
+  if (!measured || measured.error || !measured.replies) return jamJSON.stringify({ error: "measure" });
+  return jamJSON.stringify(measured.replies);
+}
+
+function _smartSelectPolygon(polygon) {
+  var desc = new ActionDescriptor();
+  var reference = new ActionReference();
+  reference.putProperty(charID.Channel, charID.FrameSelect);
+  desc.putReference(charID.Null, reference);
+  var shape = new ActionDescriptor();
+  var points = new ActionList();
+  for (var i = 0; i < polygon.length; i++) {
+    var point = new ActionDescriptor();
+    point.putUnitDouble(charID.Horizontal, charID.PixelUnit, polygon[i][0]);
+    point.putUnitDouble(charID.Vertical, charID.PixelUnit, polygon[i][1]);
+    points.putObject(charIDToTypeID("Pnt "), point);
+  }
+  shape.putList(charIDToTypeID("Pts "), points);
+  desc.putObject(charID.To, charIDToTypeID("Plgn"), shape);
+  executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+}
+
+// The document's "TypeR Clean" layer, created above the topmost pixel layer
+// (under every text layer) the first time
+function _smartCleanLayer() {
+  var doc = app.activeDocument;
+  var layers = doc.layers;
+  var anchor = null;
+  for (var i = 0; i < layers.length; i++) {
+    var layer = layers[i];
+    if (layer.typename !== "ArtLayer") continue;
+    if (layer.name === _SMART_CLEAN_LAYER && layer.kind === LayerKind.NORMAL) return layer;
+    if (!anchor && layer.kind !== LayerKind.TEXT) anchor = layer;
+  }
+  if (anchor) doc.activeLayer = anchor;
+  var created = doc.artLayers.add();
+  created.name = _SMART_CLEAN_LAYER;
+  return created;
+}
+
+function _smartPaintCleanup(plan, previousLayerId) {
+  var doc = app.activeDocument;
+  doc.activeLayer = _smartCleanLayer();
+  _smartSelectPolygon(plan.cleanupPolygon);
+  if (plan.cleanupInset > 0) doc.selection.contract(new UnitValue(plan.cleanupInset, "px"));
+  var rgb = plan.fillRGB || { red: 255, green: 255, blue: 255 };
+  var color = new SolidColor();
+  color.rgb.red = rgb.red;
+  color.rgb.green = rgb.green;
+  color.rgb.blue = rgb.blue;
+  doc.selection.fill(color, ColorBlendMode.NORMAL, 100, false);
+  doc.selection.deselect();
+  if (previousLayerId !== null && previousLayerId !== undefined) _selectLayerById(previousLayerId);
+}
+
+function _smartMakeText(params) {
+  try {
+    jamEngine.jsonPlay("make", {
+      target: ["<reference>", [["textLayer", ["<class>", null]]]],
+      using: jamText.toLayerTextObject(params)
+    });
+  } catch (makeError) {
+    // Older hosts reject directionType/textComposerEngine in a make
+    var ranges = params.layerText.paragraphStyleRange || [];
+    for (var i = 0; i < ranges.length; i++) {
+      if (!ranges[i].paragraphStyle) continue;
+      delete ranges[i].paragraphStyle.directionType;
+      delete ranges[i].paragraphStyle.textComposerEngine;
+    }
+    jamEngine.jsonPlay("make", {
+      target: ["<reference>", [["textLayer", ["<class>", null]]]],
+      using: jamText.toLayerTextObject(params)
+    });
+  }
+}
+
+function _smartPlaceText(session, pointText) {
+  var params = session.text.params;
+  _smartMakeText(params);
+  var ranges = params.layerText.textStyleRange;
+  if (ranges && ranges[0]) _applyMiddleEast(ranges[0].textStyle);
+  if (!pointText) {
+    // Paragraph text keeps the composed lines; point text otherwise
+    var before = _currentLayerBox();
+    _changeToBoxText();
+    var after = _currentLayerBox();
+    if (before && after) {
+      if (Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5) {
+        _changeToPointText();
+        var back = _currentLayerBox();
+        if (back) _moveLayer(before.left - back.left, before.top - back.top);
+      } else if (Math.abs(before.left - after.left) > 0.01 || Math.abs(before.top - after.top) > 0.01) {
+        _moveLayer(before.left - after.left, before.top - after.top);
+      }
+    }
+  }
+  if (session.text.stroke) _setLayerStroke(session.text.stroke);
+  return _getActiveLayerId();
+}
+
+function _smartPasteCommitRun() {
+  var state = _hostState.smartCommit;
+  var sessions = state.data.sessions || [];
+  var previous = _safeActiveLayerId();
+  try {
+    for (var i = 0; i < sessions.length; i++) {
+      var plan = sessions[i].plan;
+      if (plan.autoClean && plan.cleanupPolygon) _smartPaintCleanup(plan, previous);
+      try { app.activeDocument.selection.deselect(); } catch (deselectError) {}
+      var id = _smartPlaceText(sessions[i], !!state.data.pointText);
+      state.layerIds.push(id);
+      previous = id;
+    }
+  } catch (runError) {
+    state.error = String(runError && runError.message ? runError.message : runError);
+  }
+}
+
+// A history state's id (falls back on index and name on hosts without ids)
+function _smartHistoryKey(descriptor) {
+  var idKey = stringIDToTypeID("ID");
+  if (descriptor.hasKey(idKey)) return descriptor.getInteger(idKey);
+  var nameKey = charIDToTypeID("Nm  ");
+  var name = descriptor.hasKey(nameKey) ? descriptor.getString(nameKey) : "";
+  return "i" + descriptor.getInteger(stringIDToTypeID("itemIndex")) + ":" + name;
+}
+
+function _smartCurrentHistoryKey() {
+  var reference = new ActionReference();
+  reference.putEnumerated(stringIDToTypeID("historyState"), charID.Ordinal, charID.Target);
+  return _smartHistoryKey(executeActionGet(reference));
+}
+
+function smartPasteCommit(data) {
+  if (!app.documents.length) return jamJSON.stringify({ error: "doc" });
+  var doc = app.activeDocument;
+  if (!data || String(doc.id) !== String(data.documentId)) return jamJSON.stringify({ error: "doc" });
+  var before = null;
+  try { before = _smartCurrentHistoryKey(); } catch (beforeError) {}
+  var count = doc.historyStates.length;
+  _hostState.smartCommit = { data: data, layerIds: [], error: null };
+  try {
+    doc.suspendHistory(_SMART_HISTORY_NAME, "_smartPasteCommitRun()");
+  } catch (suspendError) {
+    _hostState.smartCommit.error = String(suspendError);
+  }
+  var state = _hostState.smartCommit;
+  _hostState.smartCommit = null;
+  if (state.error) {
+    // Undo whatever the failed run left, then let the panel fall back
+    try {
+      var states = doc.historyStates;
+      if (states.length > count && states[states.length - 1].name === _SMART_HISTORY_NAME) {
+        doc.activeHistoryState = states[states.length - 2];
+      }
+    } catch (rollbackError) {}
+    return jamJSON.stringify({ error: "commit", message: state.error });
+  }
+  var after = null;
+  try { after = _smartCurrentHistoryKey(); } catch (afterError) {}
+  return jamJSON.stringify({ layerIds: state.layerIds, history: { documentId: doc.id, before: before, after: after } });
+}
+
+function getHistorySnapshot() {
+  if (!app.documents.length) return jamJSON.stringify(null);
+  try {
+    var doc = app.activeDocument;
+    var count = doc.historyStates.length;
+    var states = [];
+    for (var i = 1; i <= count; i++) {
+      var reference = new ActionReference();
+      reference.putIndex(stringIDToTypeID("historyState"), i);
+      states.push(_smartHistoryKey(executeActionGet(reference)));
+    }
+    return jamJSON.stringify({ documentId: doc.id, current: _smartCurrentHistoryKey(), states: states });
+  } catch (snapshotError) {
+    return jamJSON.stringify(null);
   }
 }
