@@ -168,7 +168,11 @@ const mockRequire = (request) => {
     };
   }
   if (request === "./smartPasteClient") {
-    return { smartPasteInSelection: (...args) => utilityCalls.push(["smartPaste", ...args]) };
+    return {
+      smartPasteInSelection: (...args) => utilityCalls.push(["smartPaste", ...args]),
+      smartPasteStoredSelections: (...args) => utilityCalls.push(["smartPasteStored", ...args]),
+      canSmartPasteStoredSelections: () => false,
+    };
   }
   throw new Error(`Unexpected shortcutCommands dependency: ${request}`);
 };

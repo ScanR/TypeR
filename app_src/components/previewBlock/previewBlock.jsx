@@ -11,6 +11,7 @@ import { useContext } from "../../context";
 import { getScaledStyle } from "../../textLayerPayload";
 import { getBubbleCacheKey, haveSameLayerSize } from "../../textShapeRTracking";
 import { isShortcutActiveForEvent, pasteInSelection, withShortcutHint } from "../../shortcutCommands";
+import { isSmartPasteSettling, recentSelectionTrigger } from "../../smartPasteClient";
 import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPreview";
 import { notePerfRender } from "../../perfDebug";
 import TextShapeRFitPreview from "../textShapeRFitPreview";
@@ -817,7 +818,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   };
 
   const checkForSelectionChange = React.useCallback(() => {
-    if (!context.state.multiBubbleMode || context.state.modalType || document.hidden || selectionCheckPending.current || isHostActionPending()) return;
+    // A smart multi-bubble paste replays the stored selections: never store them again
+    if (!context.state.multiBubbleMode || context.state.modalType || document.hidden || selectionCheckPending.current || isHostActionPending() || isSmartPasteSettling()) return;
     // A click just happened inside the panel: let Photoshop's main thread
     // deliver it before spending a round-trip on selection polling
     if (isPanelInteracting()) return;
@@ -883,7 +885,9 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         const storedHashSet = new Set((context.state.storedSelections || []).map((storedSelection) => getSelectionBoundsHash(storedSelection)));
 
         if (!storedHashSet.has(newHash)) {
-          addSelectionAndAdvance(cleanSelection);
+          // The click that made it: smart paste selects it again at paste time
+          const trigger = recentSelectionTrigger();
+          addSelectionAndAdvance(trigger ? { ...cleanSelection, trigger } : cleanSelection);
         }
       }
     });

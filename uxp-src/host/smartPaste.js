@@ -429,7 +429,34 @@ async function smartPasteCommit(prepared) {
   }
 }
 
+// Select again what a stored multi-bubble selection remembers (see host.js)
+async function replaySelectionTrigger(trigger) {
+  if (!hasDocument()) return JSON.stringify({ error: "doc" });
+  if (!trigger) return JSON.stringify({ error: "trigger" });
+  let to = null;
+  const extra = {};
+  if (trigger.source === "wand") {
+    const scale = trigger.unit === "distanceUnit" ? ps.app.activeDocument.resolution / 72 : 1;
+    to = { _obj: "paint", horizontal: px(trigger.x * scale), vertical: px(trigger.y * scale) };
+    const options = trigger.options || {};
+    extra.tolerance = typeof options.tolerance === "number" ? options.tolerance : 32;
+    extra.antiAlias = options.antiAlias !== false;
+    if (options.contiguous === false) extra.contiguous = false;
+    if (options.merged === true) extra.merged = true;
+  } else if (trigger.source === "rectangle" && typeof trigger.left === "number") {
+    to = { _obj: "rectangle", top: px(trigger.top), left: px(trigger.left), bottom: px(trigger.bottom), right: px(trigger.right) };
+  } else {
+    return JSON.stringify({ error: "trigger" });
+  }
+  try {
+    await modal("TypeR", () => play(Object.assign({ _obj: "set", _target: [SELECTION], to }, extra)));
+    return JSON.stringify({ ok: true });
+  } catch (error) {
+    return JSON.stringify({ error: "replay" });
+  }
+}
+
 module.exports = {
-  methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot },
+  methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot, replaySelectionTrigger },
   _internals: { captureSelection, measureRequests, commitSessions, inkFits },
 };

@@ -11,7 +11,9 @@ import { useContext } from "./context";
 import { addPhotoshopEventListener, msSinceHostAction } from "./utils";
 import { PS_EVENT_SET } from "./photoshopEvents";
 import { classifySelectionEvent, parseCepEventData } from "./oneClick/selectionEvent";
-import { applyHistorySnapshot, hasPasteHistory, isSmartPasteSettling, smartPasteInSelection, syncPasteHistory } from "./smartPasteClient";
+import {
+  applyHistorySnapshot, hasPasteHistory, isSmartPasteSettling, rememberSelectionTrigger, smartPasteInSelection, syncPasteHistory,
+} from "./smartPasteClient";
 import { pasteInSelection } from "./shortcutCommands";
 
 // Sent by the UXP host (uxp-src/host/main.js); no CEP event uses this id
@@ -52,6 +54,7 @@ const PasteOnClick = () => {
       }
       const state = getState();
       const trigger = classifySelectionEvent(data.eventData);
+      if (trigger && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling()) rememberSelectionTrigger(trigger);
       if (!shouldPasteOnClick(state, trigger, msSinceHostAction())) {
         if (!trigger) scheduleHistoryCheck();
         return;

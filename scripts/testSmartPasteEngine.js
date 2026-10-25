@@ -298,7 +298,7 @@ const linesInside = (session) => {
   assert.deepStrictEqual(refontTextStyle(style("x", 12, "F")), { fontPostScriptName: "F", fontName: "F", fontStyleName: "Regular", color: { red: 0, green: 0, blue: 0 } });
 
   // Selection events
-  assert.deepStrictEqual(classifySelectionEvent({ _obj: "set", _target: [{ _ref: "channel", _property: "selection" }], to: { _obj: "paint", horizontal: px(10), vertical: px(20) }, tolerance: 32, contiguous: true }), { source: "wand", x: 10, y: 20 });
+  assert.deepStrictEqual(classifySelectionEvent({ _obj: "set", _target: [{ _ref: "channel", _property: "selection" }], to: { _obj: "paint", horizontal: px(10), vertical: px(20) }, tolerance: 32, contiguous: true }), { source: "wand", x: 10, y: 20, options: { tolerance: 32, contiguous: true } });
   assert.strictEqual(classifySelectionEvent({ _target: [{ _ref: "channel", _property: "selection" }], to: { _obj: "paint", horizontal: px(10), vertical: px(20) } }), null, "a restored selection never triggers");
   assert.deepStrictEqual(classifySelectionEvent({ null: { _ref: "channel", _property: "selection" }, to: { _obj: "rectangle", left: px(1), top: px(2), right: px(50), bottom: px(60) } }, "marqueeRectTool"), { source: "rectangle", left: 1, top: 2, right: 50, bottom: 60 });
   assert.strictEqual(classifySelectionEvent({ null: { _ref: "channel", _property: "selection" }, to: { _obj: "rectangle", left: px(1), top: px(2), right: px(3), bottom: px(60) } }, "marqueeRectTool"), null);

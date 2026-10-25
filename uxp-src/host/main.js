@@ -174,6 +174,7 @@ const methods = Object.assign({}, photoshop.methods, {
   smartPasteMeasure: smartPaste.methods.smartPasteMeasure,
   smartPasteCommit: smartPaste.methods.smartPasteCommit,
   getHistorySnapshot: smartPaste.methods.getHistorySnapshot,
+  replaySelectionTrigger: smartPaste.methods.replaySelectionTrigger,
   nativeAlert,
   nativeConfirm,
   reloadUserFonts,

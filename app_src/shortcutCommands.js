@@ -14,7 +14,7 @@ import {
   toggleCleaningLayers,
 } from "./utils";
 import { buildSelectedLayerPayload, buildStoredSelectionPayload, getScaledStyle } from "./textLayerPayload";
-import { smartPasteInSelection } from "./smartPasteClient";
+import { canSmartPasteStoredSelections, smartPasteInSelection, smartPasteStoredSelections } from "./smartPasteClient";
 
 const applyLinesToLayers = (ctx, layers, preferredOrder = [], options = {}) => {
   const selectedIds = layers
@@ -79,6 +79,12 @@ const pasteInSelection = (ctx, preferredOrder = [], options = {}) => {
   const storedSelections = ctx.state.storedSelections || [];
 
   if (ctx.state.multiBubbleMode && storedSelections.length > 0) {
+    // Smart paste replays each stored selection (when it remembers its click)
+    if (ctx.state.smartPaste === true && canSmartPasteStoredSelections(storedSelections)) {
+      const getState = typeof ctx.getState === "function" ? ctx.getState : () => ctx.state;
+      smartPasteStoredSelections(getState, ctx.dispatch, options);
+      return;
+    }
     const payload = buildStoredSelectionPayload({
       storedSelections,
       lines: ctx.state.lines,

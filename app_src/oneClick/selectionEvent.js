@@ -21,14 +21,22 @@ export const classifySelectionEvent = (descriptor, toolId) => {
   if (!to || typeof to !== "object") return null;
   const kind = to._obj || to._class || "";
   if (kind === "paint" || kind === "Pnt " || kind === "point") {
-    const options = WAND_OPTIONS.filter((field) => Object.prototype.hasOwnProperty.call(descriptor, field));
-    if (options.length < 2) return null;
+    const present = WAND_OPTIONS.filter((field) => Object.prototype.hasOwnProperty.call(descriptor, field));
+    if (present.length < 2) return null;
     const x = number(to.horizontal);
     const y = number(to.vertical);
     if (!isFinite(x) || !isFinite(y)) return null;
     // Points (distanceUnit) are converted by the capture, which knows the dpi
     const unit = to.horizontal && to.horizontal._unit === "distanceUnit" ? "distanceUnit" : "pixelsUnit";
-    return unit === "pixelsUnit" ? { source: "wand", x, y } : { source: "wand", x, y, unit };
+    const trigger = unit === "pixelsUnit" ? { source: "wand", x, y } : { source: "wand", x, y, unit };
+    // The options let a stored selection be replayed (multi-bubble)
+    const options = {};
+    if (isFinite(number(descriptor.tolerance))) options.tolerance = number(descriptor.tolerance);
+    ["contiguous", "antiAlias", "merged"].forEach((field) => {
+      if (typeof descriptor[field] === "boolean") options[field] = descriptor[field];
+    });
+    if (Object.keys(options).length) trigger.options = options;
+    return trigger;
   }
   if (kind === "rectangle" || kind === "Rctn") {
     if (toolId && toolId !== "marqueeRectTool") return null;

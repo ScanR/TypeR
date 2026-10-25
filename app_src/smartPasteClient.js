@@ -80,12 +80,13 @@ export const lineAfter = (state, index) => {
 };
 
 export const buildSmartPasteRequest = (state, trigger, options = {}) => {
-  const wanted = state.smartPasteDistribute === false ? 1 : 3;
-  const picked = nextPasteLines(state, wanted);
+  const wanted = state.smartPasteDistribute === false || options.single ? 1 : 3;
+  const from = typeof options.lineIndex === "number" ? { ...state, currentLineIndex: options.lineIndex } : state;
+  const picked = nextPasteLines(from, wanted);
   if (!picked.length) return null;
   const rules = refontRulesFor(state);
   const lines = picked.map((entry, i) => {
-    const source = i === 0 ? state.currentStyle : entry.line.usedStyle || entry.line.style || state.currentStyle;
+    const source = i === 0 && !options.style ? state.currentStyle : (i === 0 && options.style) || entry.line.usedStyle || entry.line.style || state.currentStyle;
     const parsed = applyRefont(buildRichTextPayload(entry.line.text), rules);
     return {
       text: parsed.text,
@@ -207,6 +208,18 @@ export const hasPasteHistory = () => pasteHistory.size() > 0;
 
 /* ======================= paste ======================= */
 
+// The last selection the user made in Photoshop, as a trigger (multi-bubble
+// stores it with each captured selection, to replay it at paste time)
+let lastTrigger = null;
+export const rememberSelectionTrigger = (trigger) => {
+  lastTrigger = trigger ? { trigger, at: Date.now() } : null;
+};
+export const recentSelectionTrigger = (maxAge = 2000) => (
+  lastTrigger && Date.now() - lastTrigger.at <= maxAge && (lastTrigger.trigger.source === "wand" || lastTrigger.trigger.source === "rectangle")
+    ? lastTrigger.trigger
+    : null
+);
+
 let busy = false;
 let lastFinishedAt = 0;
 
@@ -274,6 +287,54 @@ export const smartPasteInSelection = async (getState, dispatch, options = {}) =>
       }
     }
     return ok;
+  } finally {
+    busy = false;
+    lastFinishedAt = Date.now();
+  }
+};
+
+// Multi-bubble with smart paste: every stored selection that remembers the
+// click (or rectangle) that made it is selected again and pasted on its own
+// line. Answers false when a selection cannot be replayed (the panel then
+// uses the classic batch paste).
+export const canSmartPasteStoredSelections = (selections) => Array.isArray(selections) && selections.length > 0 &&
+  selections.every((selection) => selection && selection.trigger && (selection.trigger.source === "wand" || selection.trigger.source === "rectangle"));
+
+export const smartPasteStoredSelections = async (getState, dispatch, options = {}) => {
+  const selections = (getState().storedSelections || []).slice();
+  if (busy || !canSmartPasteStoredSelections(selections)) return false;
+  busy = true;
+  let pasted = 0;
+  try {
+    for (let i = 0; i < selections.length; i++) {
+      const selection = selections[i];
+      const state = getState();
+      const lineIndex = typeof selection.lineIndex === "number" ? selection.lineIndex : state.currentLineIndex;
+      const line = state.lines && state.lines[lineIndex];
+      if (!line || line.ignore) continue;
+      const replayed = safeJsonParse(await evalHost("replaySelectionTrigger(" + JSON.stringify(selection.trigger) + ")", 15000), { error: "error" });
+      if (replayed.error) continue;
+      const style = selection.styleId ? (state.styles || []).find((entry) => entry.id === selection.styleId) : null;
+      const built = buildSmartPasteRequest(state, selection.trigger, { ...options, lineIndex, single: true, style });
+      if (!built) continue;
+      const result = await runSmartPaste(built.request);
+      if (result && result.ok) {
+        pasted++;
+        dispatch({ type: "commitLineBatch", entries: [{ lineIndex, styleId: (result.sessions && result.sessions[0] && result.sessions[0].styleId) || (style && style.id) || (state.currentStyle && state.currentStyle.id) }] });
+        if (result.history && result.history.before != null && result.history.after != null) {
+          pasteHistory.register({ ...result.history, lineBefore: lineIndex, lineAfter: lineAfter(getState(), lineIndex) });
+        }
+      } else {
+        notice(dispatch, String(locale.smartPasteFallback || "{reason}").replace("{reason}", reasonText((result && result.code) || "error")), "warning");
+        await new Promise((resolve) => createTextLayerInSelection(line.text, getScaledStyle(style || state.currentStyle, state.textScale), state.pastePointText, state.internalPadding || 0, state.direction, (ok) => {
+          if (ok) pasted++;
+          resolve();
+        }, { preserveActiveTextSize: options.preserveActiveTextSize === true }));
+      }
+    }
+    dispatch({ type: "clearSelections", preserveLine: true });
+    await evalHost("deselectDocumentSelection()", 5000);
+    return pasted > 0;
   } finally {
     busy = false;
     lastFinishedAt = Date.now();

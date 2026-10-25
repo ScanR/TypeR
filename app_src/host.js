@@ -5193,3 +5193,41 @@ function getHistorySnapshot() {
     return jamJSON.stringify(null);
   }
 }
+
+// Select again what a stored multi-bubble selection remembers: the Magic
+// Wand click (with its options) or the rectangle
+function replaySelectionTrigger(trigger) {
+  if (!app.documents.length) return jamJSON.stringify({ error: "doc" });
+  if (!trigger) return jamJSON.stringify({ error: "trigger" });
+  try {
+    var desc = new ActionDescriptor();
+    var reference = new ActionReference();
+    reference.putProperty(charID.Channel, charID.FrameSelect);
+    desc.putReference(charID.Null, reference);
+    if (trigger.source === "wand") {
+      var scale = trigger.unit === "distanceUnit" ? _getDocumentResolution() / 72 : 1;
+      var point = new ActionDescriptor();
+      point.putUnitDouble(charID.Horizontal, charID.PixelUnit, trigger.x * scale);
+      point.putUnitDouble(charID.Vertical, charID.PixelUnit, trigger.y * scale);
+      desc.putObject(charID.To, charIDToTypeID("Pnt "), point);
+      var options = trigger.options || {};
+      desc.putInteger(charIDToTypeID("Tlrn"), typeof options.tolerance === "number" ? options.tolerance : 32);
+      desc.putBoolean(charIDToTypeID("AntA"), options.antiAlias !== false);
+      if (options.contiguous === false) desc.putBoolean(charIDToTypeID("Cntg"), false);
+      if (options.merged === true) desc.putBoolean(stringIDToTypeID("merged"), true);
+    } else if (trigger.source === "rectangle" && typeof trigger.left === "number") {
+      var rect = new ActionDescriptor();
+      rect.putUnitDouble(charIDToTypeID("Top "), charID.PixelUnit, trigger.top);
+      rect.putUnitDouble(charIDToTypeID("Left"), charID.PixelUnit, trigger.left);
+      rect.putUnitDouble(charIDToTypeID("Btom"), charID.PixelUnit, trigger.bottom);
+      rect.putUnitDouble(charIDToTypeID("Rght"), charID.PixelUnit, trigger.right);
+      desc.putObject(charID.To, charIDToTypeID("Rctn"), rect);
+    } else {
+      return jamJSON.stringify({ error: "trigger" });
+    }
+    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+    return jamJSON.stringify({ ok: true });
+  } catch (replayError) {
+    return jamJSON.stringify({ error: "replay" });
+  }
+}
