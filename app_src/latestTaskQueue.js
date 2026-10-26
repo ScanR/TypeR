@@ -4,14 +4,21 @@ export const createLatestTaskQueue = (run) => {
   let next = null;
   const start = (task) => {
     active = task;
-    run(task.value, (result) => {
+    let finished = false;
+    const finish = (result) => {
+      // A runner that calls done twice, or throws after calling it, must not
+      // finish the task twice or start the next one twice.
+      if (finished) return;
+      finished = true;
       const superseded = !!next;
       try { task.callback({ ...result, superseded }); }
       finally {
         active = null;
         if (next) { const taskToRun = next; next = null; start(taskToRun); }
       }
-    });
+    };
+    try { run(task.value, finish); }
+    catch (error) { finish({ ok: false, error: String((error && error.message) || error) }); }
   };
   return (value, callback) => {
     const task = { value, callback };

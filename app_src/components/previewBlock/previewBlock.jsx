@@ -11,42 +11,14 @@ import { useContext } from "../../context";
 import { getScaledStyle } from "../../textLayerPayload";
 import { getBubbleCacheKey, haveSameLayerSize } from "../../textShapeRTracking";
 import { isShortcutActiveForEvent, pasteInSelection, withShortcutHint } from "../../shortcutCommands";
+import { isSmartPasteSettling, recentSelectionTrigger } from "../../smartPasteClient";
 import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPreview";
 import { notePerfRender } from "../../perfDebug";
 import TextShapeRFitPreview from "../textShapeRFitPreview";
+import { createPanelSnapshotQueue } from "./panelSnapshot";
 
 let textShapeREnginePromise = null;
-let panelSnapshotPending = false;
-let panelSnapshotTimer = null;
-let panelSnapshotSignature = "";
-let panelSnapshotCallbacks = [];
-const schedulePanelSnapshot = () => {
-  if (panelSnapshotPending || panelSnapshotTimer) return;
-  panelSnapshotTimer = setTimeout(() => {
-    panelSnapshotTimer = null;
-    panelSnapshotPending = true;
-    const requestedSignature = panelSnapshotSignature;
-    const requestedCallbacks = panelSnapshotCallbacks;
-    panelSnapshotSignature = "";
-    panelSnapshotCallbacks = [];
-    csInterface.evalScript(`getTypeRPanelSnapshot(${JSON.stringify({ signature: requestedSignature })})`, (result) => {
-      panelSnapshotPending = false;
-      let snapshot = { activeLayer: null, selection: null, layers: [] };
-      try {
-        snapshot = JSON.parse(result || "{}") || snapshot;
-      } catch (error) {}
-      requestedCallbacks.forEach((snapshotCallback) => snapshotCallback(snapshot));
-      // Requests arriving while ExtendScript was busy belong to the next
-      // Photoshop state; do not satisfy them with the now-stale response.
-      if (panelSnapshotCallbacks.length) schedulePanelSnapshot();
-    });
-  }, 0);
-};
-const requestPanelSnapshot = (signature, callback) => {
-  panelSnapshotCallbacks.push(callback);
-  if (signature) panelSnapshotSignature = signature;
-  schedulePanelSnapshot();
-};
+const requestPanelSnapshot = createPanelSnapshotQueue((script, callback) => csInterface.evalScript(script, callback));
 const loadTextShapeREngine = () => {
   if (!textShapeREnginePromise) {
     textShapeREnginePromise = import(/* webpackChunkName: "text-shaper-engine" */ "../../textShapeR");
@@ -846,7 +818,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   };
 
   const checkForSelectionChange = React.useCallback(() => {
-    if (!context.state.multiBubbleMode || context.state.modalType || document.hidden || selectionCheckPending.current || isHostActionPending()) return;
+    // A smart multi-bubble paste replays the stored selections: never store them again
+    if (!context.state.multiBubbleMode || context.state.modalType || document.hidden || selectionCheckPending.current || isHostActionPending() || isSmartPasteSettling()) return;
     // A click just happened inside the panel: let Photoshop's main thread
     // deliver it before spending a round-trip on selection polling
     if (isPanelInteracting()) return;
@@ -876,6 +849,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           const storedHashSet = new Set((context.state.storedSelections || []).map((storedSelection) => getSelectionBoundsHash(storedSelection)));
           let nextLineIndex = context.state.currentLineIndex;
           const entries = [];
+          // A single new selection remembers the click that made it (smart paste replays it)
+          const trigger = selection.multiSelection.length === 1 ? recentSelectionTrigger() : null;
 
           for (const multiSelection of selection.multiSelection) {
             const { shiftKey, ...cleanSelection } = multiSelection;
@@ -885,7 +860,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
             }
 
             storedHashSet.add(selectionHash);
-            entries.push({ selection: cleanSelection, lineIndex: nextLineIndex });
+            entries.push({ selection: trigger ? { ...cleanSelection, trigger } : cleanSelection, lineIndex: nextLineIndex });
             const nextLine = getNextUsableLineIndex(context.state.lines || [], nextLineIndex);
             nextLineIndex = nextLine.index;
             if (!nextLine.advanced) {
@@ -912,7 +887,9 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         const storedHashSet = new Set((context.state.storedSelections || []).map((storedSelection) => getSelectionBoundsHash(storedSelection)));
 
         if (!storedHashSet.has(newHash)) {
-          addSelectionAndAdvance(cleanSelection);
+          // The click that made it: smart paste selects it again at paste time
+          const trigger = recentSelectionTrigger();
+          addSelectionAndAdvance(trigger ? { ...cleanSelection, trigger } : cleanSelection);
         }
       }
     });
@@ -956,18 +933,17 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       }
       if (selectionCheckInterval.current) {
         clearInterval(selectionCheckInterval.current);
-      }
-      if (shiftTipTimeout.current) {
-        clearTimeout(shiftTipTimeout.current);
-      }
-      if (clearAllTipTimeout.current) {
-        clearTimeout(clearAllTipTimeout.current);
-      }
-      if (clearButtonTimeout.current) {
-        clearTimeout(clearButtonTimeout.current);
+        selectionCheckInterval.current = null;
       }
     };
   }, [context.state.multiBubbleMode, context.state.modalType]);
+  // Tip and long-press timers only need clearing on unmount. Clearing them on
+  // every mode or modal change left the shift tip stuck on screen.
+  React.useEffect(() => () => {
+    if (shiftTipTimeout.current) clearTimeout(shiftTipTimeout.current);
+    if (clearAllTipTimeout.current) clearTimeout(clearAllTipTimeout.current);
+    if (clearButtonTimeout.current) clearTimeout(clearButtonTimeout.current);
+  }, []);
   React.useEffect(() => {
     if (!context.state.multiBubbleMode && shiftSelectionWarning) {
       setShiftSelectionWarning(false);

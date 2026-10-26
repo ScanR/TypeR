@@ -4,12 +4,31 @@
 
 ### UXP plugin
 
-- Add a UXP plugin for Photoshop 2025 and later (`TypeR-UXP.ccx`), which runs natively on Apple Silicon without Rosetta. It is the same application as the CEP extension, with the same features, layout and saved styles.
+- Add the new TypeR, a UXP plugin for Photoshop 2025 and later (`TypeR-UXP.ccx`), which runs natively on Apple Silicon without Rosetta. It is the same application as the CEP extension, with the same features, layout and saved styles.
 - Import the styles, profiles and settings of an installed CEP TypeR on first start, and keep the plugin's data outside Photoshop's version-specific folders.
 - Keep the global shortcuts through a small keyboard reader, which also reports mouse buttons 4 and 5 on macOS.
 - Read bubble and selection shapes from the selection mask, leave no history state for reads, and fix size changes on layers with floating-point colors, size changes on rich text and FontScanR on documents with a background layer.
 - Install updates from the panel through Creative Cloud's plugin installer.
-- The installers start by asking whether to install the UXP version or the Legacy (CEP) version, and the release archive contains the UXP plugin, so it installs offline.
+- The installers start by asking whether to install the new TypeR (UXP) or the Legacy (CEP) version, and the release archive contains the UXP plugin, so it installs offline.
+- The Legacy panel offers the switch to the new TypeR (UXP) when Photoshop can run it (2025 or later, with the Creative Cloud app): one click installs it, and it imports the styles, profiles and settings.
+
+### Smart paste
+
+- Paste fits the translation to the bubble's real outline: the style size is kept when the text fits and shrinks
+  down to a minimum size otherwise (70% by default), the lines follow the bubble's silhouette, the ink is centred
+  inside the outline, and one French or English hyphen is allowed only as a last resort.
+- Black bubbles get white text without a stroke. A style can be marked as the Shout or Narration style of its
+  folder; spiky bubbles and rectangles then use it, unless the script line has its own prefix style.
+- Double and triple bubbles receive the next script lines in their other chambers, in one history state.
+- Optional Auto clean paints the bubble under the text on a `TypeR Clean` layer (solid white or black only).
+- Conditional refont rules give the text between two markers another style's font.
+- When the text cannot be placed, the classic paste runs and a short notice explains why.
+- Multi-bubble batches select each stored bubble again and paste it with the smart paste.
+
+### Paste on click
+
+- A Magic Wand click, a rectangle or a lasso can paste the current line at once (footer toggle and shortcut).
+- Undoing a TypeR paste in Photoshop puts the script line back (live in UXP, checked lazily in Legacy).
 
 ### Workspace and typesetting
 
@@ -25,6 +44,7 @@
 
 ### Data and interface
 
+- Show Help, Settings and page import as icon buttons in the footer, apart from the mode toggles, which switch to icons in a narrow panel instead of being cut off.
 - Save through temporary files with a last-valid backup; preserve corrupt originals and expose save failures with recovery export.
 - Block profile switching when pending changes cannot be saved.
 - Validate imports before merging them, reject cyclic folder hierarchies and create a pre-import backup.

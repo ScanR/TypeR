@@ -29,6 +29,8 @@ import {
 import FontScanPromo from "./fontScanPromo";
 import UnsavedChangesDialog from "./unsavedChangesDialog";
 
+const BUBBLE_TYPES = ["shout", "narration"];
+
 const EditStyleModal = React.memo(function EditStyleModal() {
   const context = useContext((state) => ({
     modalData: state.modalData,
@@ -43,6 +45,10 @@ const EditStyleModal = React.memo(function EditStyleModal() {
     ["point", "paragraph"].includes(currentData.textType) ? currentData.textType : "inherit"
   );
   const [textProps, setTextProps] = React.useState(currentData.textProps || getDefaultStyle());
+  // Smart paste switches to this style for shout or narration bubbles
+  const [bubbleType, setBubbleType] = React.useState(
+    BUBBLE_TYPES.includes(currentData.bubbleType) ? currentData.bubbleType : ""
+  );
   const [sizePresets, setSizePresets] = React.useState(() => normalizeStyleSizePresets({
     ...currentData,
     textProps: currentData.textProps || getDefaultStyle(),
@@ -100,6 +106,11 @@ const EditStyleModal = React.memo(function EditStyleModal() {
 
   const changeTextType = (e) => {
     setTextType(e.target.value);
+    setEdited(true);
+  };
+
+  const changeBubbleType = (e) => {
+    setBubbleType(BUBBLE_TYPES.includes(e.target.value) ? e.target.value : "");
     setEdited(true);
   };
 
@@ -191,6 +202,7 @@ const EditStyleModal = React.memo(function EditStyleModal() {
       prefixes,
       prefixColor,
       stroke: fixedStroke,
+      bubbleType,
     };
     if (currentData.create) {
       data.id = Math.random().toString(36).substr(2, 8);
@@ -275,6 +287,22 @@ const EditStyleModal = React.memo(function EditStyleModal() {
                 </select>
               </div>
               <div className="field-descr">{locale.editStyleTextTypeDescr}</div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.bubbleTypeLabel || "Bubble type"}</div>
+              <div className="field-input">
+                <select
+                  value={bubbleType}
+                  onChange={changeBubbleType}
+                  className="topcoat-textarea"
+                  aria-label={locale.bubbleTypeLabel || "Bubble type"}
+                >
+                  <option value="">{locale.bubbleTypeNone || "Normal"}</option>
+                  <option value="shout">{locale.bubbleTypeShout || "Shout"}</option>
+                  <option value="narration">{locale.bubbleTypeNarration || "Narration"}</option>
+                </select>
+              </div>
+              <div className="field-descr">{locale.bubbleTypeHelp}</div>
             </div>
             <div className="field hostBrdTopContrast">
               <div className="field-label">{locale.editStyleCopyLabel}</div>

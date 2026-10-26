@@ -8,6 +8,11 @@
 # the mouse side buttons as "<id> MB|<5|6>|<modifiers>|<process>" lines in
 # "<state file>.mouse", the format of the CEP panel's watcher. The script
 # exits when Photoshop does.
+# The file holds "<state>|<beat>": the beat moves on every write and about
+# once a second, so the plugin can tell a quiet keyboard from a dead reader
+# (uxp-src/host/keysHelper.js restarts it). A restarted reader writes its
+# process id to "<state file>.owner"; an older one still running sees it and
+# exits, so two readers never write the same file.
 param([string]$StatePath)
 
 Add-Type -TypeDefinition @'
@@ -43,7 +48,11 @@ function Get-ForegroundName {
 }
 
 $mousePath = $StatePath + '.mouse'
+$ownerPath = $StatePath + '.owner'
+[System.IO.File]::WriteAllText($ownerPath, [string]$PID)
 $previous = ''
+$beat = 0
+$sinceWrite = 1000
 $lastHandle = [IntPtr]::Zero
 $foreground = ''
 $presses = 0
@@ -53,6 +62,11 @@ $tick = 0
 while ($true) {
   $tick++
   if (($tick % 40) -eq 0 -and -not (Get-Process -Name 'Photoshop' -ErrorAction SilentlyContinue)) { break }
+  if (($tick % 40) -eq 0) {
+    $owner = [string]$PID
+    try { $owner = [System.IO.File]::ReadAllText($ownerPath).Trim() } catch {}
+    if ($owner -ne [string]$PID) { exit }
+  }
   $handle = [TypeRKeys]::GetForegroundWindow()
   if ($handle -ne $lastHandle -or $foreground -eq '') { $lastHandle = $handle; $foreground = Get-ForegroundName }
   $front = $foreground -match 'photoshop'
@@ -75,10 +89,13 @@ while ($true) {
     }
     if ($key) { $state += $key + 'a' }
   }
-  if ($state -ne $previous) {
-    [System.IO.File]::WriteAllText($StatePath + '.tmp', $state)
+  $sinceWrite++
+  if ($state -ne $previous -or $sinceWrite -ge 25) {
+    $beat++
+    [System.IO.File]::WriteAllText($StatePath + '.tmp', "$state|$beat")
     Move-Item -LiteralPath ($StatePath + '.tmp') -Destination $StatePath -Force
     $previous = $state
+    $sinceWrite = 0
   }
   foreach ($button in 5, 6) {
     if (([TypeRKeys]::GetAsyncKeyState($button) -band 1) -ne 0 -and $front) {

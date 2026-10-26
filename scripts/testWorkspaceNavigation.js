@@ -16,4 +16,12 @@ assert.deepStrictEqual(state.tabs, tabs);
 assert.strictEqual(state.currentTabId, activeId);
 state = reducer(state, { type: 'setMultiTabEnabled', value: true });
 assert.deepStrictEqual(state.tabs, tabs);
+// Bubbles captured on one page must not be batched after switching page.
+state = reducer(state, { type: 'setLastOpenedImagePath', path: '/scans/01.psd' });
+state = reducer(state, { type: 'addSelection', selection: { left: 0, top: 0, right: 10, bottom: 10 } });
+assert.strictEqual(state.storedSelections.length, 1);
+state = reducer(state, { type: 'setLastOpenedImagePath', path: '/scans/01.psd' });
+assert.strictEqual(state.storedSelections.length, 1, 'reopening the same page keeps its bubbles');
+state = reducer(state, { type: 'setLastOpenedImagePath', path: '/scans/02.psd' });
+assert.deepStrictEqual(state.storedSelections, []);
 console.log('Workspace navigation regression tests passed');

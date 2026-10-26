@@ -158,6 +158,15 @@ const ExportModal = React.memo(function ExportModal() {
       data.autoScrollStyle = exportSource.autoScrollStyle;
       data.currentFolderTagPriority = exportSource.currentFolderTagPriority;
       data.pastePointText = !!exportSource.pastePointText;
+      // Smart paste preferences; undefined values (older profiles) are
+      // dropped by JSON and keep the importer's defaults
+      data.smartPaste = exportSource.smartPaste;
+      data.pasteOnClick = exportSource.pasteOnClick;
+      data.smartPasteAutoClean = exportSource.smartPasteAutoClean;
+      data.smartPasteDistribute = exportSource.smartPasteDistribute;
+      data.smartPasteMinScale = exportSource.smartPasteMinScale;
+      data.smartPasteHyphenation = exportSource.smartPasteHyphenation;
+      data.refontRules = exportSource.refontRules;
     }
     if (withFontFiles) {
       const result = await exportZipWithFonts({

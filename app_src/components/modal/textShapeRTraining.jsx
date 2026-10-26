@@ -4,10 +4,13 @@ import { FiChevronLeft, FiChevronRight, FiFolderPlus, FiStar, FiRotateCcw } from
 import { FaFileImport, FaFileExport } from "react-icons/fa";
 import { locale, scanTextShapeRTraining } from "../../utils";
 import { useContext } from "../../context";
-import { recordTextShapeRFeedback, setTextShapeRTuning } from "../../textShapeR";
+import { recordTextShapeRFeedback, retrainTextShapeRRanker, setTextShapeRTuning } from "../../textShapeR";
 import { makeTrainingPage, normalizeTrainingFiles, selectedTrainingEntries, trainTextShapeREntries } from "../../textShapeRTraining";
 
 const PAGE_SIZE = 15;
+// One chapter (15-20 pages) is the sweet spot: enough bubbles to fill the
+// ranker's memory, few enough to scan in a couple of minutes
+const RECOMMENDED_PAGES = { min: 15, max: 20 };
 const format = (text, values) => Object.keys(values).reduce((result, key) => result.replace(`{${key}}`, values[key]), text);
 
 export default function TextShapeRTraining({ onImportLearning, onExportLearning } = {}) {
@@ -19,6 +22,8 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
   const [progress, setProgress] = React.useState({ current: 0, total: 0, name: "" });
   const [message, setMessage] = React.useState("");
   const [resetConfirm, setResetConfirm] = React.useState(false);
+  // Off by default: imported pages wait for review unless the user opts in
+  const [autoTrain, setAutoTrain] = React.useState(false);
   const mounted = React.useRef(true);
   const cancelled = React.useRef(false);
   const busyRef = React.useRef(false);
@@ -42,6 +47,8 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
     setStage("scanning");
     setOffset(0);
     let firstPath = activePath;
+    const scanned = [];
+    let completed = false;
     try {
       for (let index = 0; index < files.length; index++) {
         if (cancelled.current) break;
@@ -50,14 +57,24 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
         const data = await new Promise((resolve) => scanTextShapeRTraining(file.path, resolve));
         if (!mounted.current) return;
         if (!firstPath) { firstPath = file.path; setActivePath(firstPath); }
+        const page = makeTrainingPage(file, data);
+        scanned.push(page);
         // Replace a retried file, retaining all other review choices.
-        setPages((current) => current.filter((page) => page.path !== file.path).concat(makeTrainingPage(file, data)));
+        setPages((current) => current.filter((item) => item.path !== file.path).concat(page));
       }
+      completed = !cancelled.current;
     } catch (error) {
       if (mounted.current) setMessage(locale.textShapeRTrainError);
     } finally {
       busyRef.current = false;
       if (mounted.current) setStage("review");
+    }
+    // "Train right after import": the freshly scanned pages train straight
+    // away with their default selection (visible, readable layers); review
+    // stays available for a later, finer pass
+    if (completed && autoTrain && mounted.current) {
+      const fresh = selectedTrainingEntries(scanned);
+      if (fresh.length) await train(fresh);
     }
   };
 
@@ -109,18 +126,20 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
     })));
   };
 
-  const train = async () => {
-    if (busyRef.current || !selected.length) return;
+  const train = async (entriesToTrain = selected) => {
+    const batch = Array.isArray(entriesToTrain) ? entriesToTrain : selected;
+    if (busyRef.current || !batch.length) return;
     busyRef.current = true;
     cancelled.current = false;
     setMessage("");
     setResetConfirm(false);
     setStage("training");
-    setProgress({ current: 0, total: selected.length, name: "" });
+    setProgress({ current: 0, total: batch.length, name: "" });
     const initialTuning = context.state.textShapeRTuning;
     try {
-      const result = await trainTextShapeREntries(selected, initialTuning, {
+      const result = await trainTextShapeREntries(batch, initialTuning, {
         recordFeedback: recordTextShapeRFeedback,
+        retrainRanker: retrainTextShapeRRanker,
         isCancelled: () => cancelled.current || !mounted.current,
         onProgress: (current, total) => { if (mounted.current) setProgress({ current, total, name: "" }); },
       });
@@ -161,6 +180,11 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
       <div className="textshaper-training-section">
         <div className="textshaper-training-heading">{locale.textShapeRTrainTitle}</div>
         <p className="field-descr">{locale.textShapeRTrainIntro}</p>
+        <p className="field-descr textshaper-training-hint">{format(locale.textShapeRTrainChapterHint || "", RECOMMENDED_PAGES)}</p>
+        <label className="textshaper-training-page-toggle">
+          <input type="checkbox" checked={autoTrain} disabled={busy} onChange={() => setAutoTrain(!autoTrain)} />
+          {locale.textShapeRTrainAuto}
+        </label>
         <input ref={fileInput} type="file" accept=".psd" multiple onChange={onFilesPicked} style={{ display: "none" }} />
         <div className="textshaper-training-actions">
           <button type="button" className="topcoat-button--large--cta" disabled={busy} onClick={pickFiles}>
@@ -206,7 +230,7 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
               <button type="button" className="topcoat-button--large" title={locale.textShapeRNextSuggestions} disabled={offset + PAGE_SIZE >= entries.length || busy} onClick={() => setOffset(offset + PAGE_SIZE)}><FiChevronRight /></button>
             </div>
           </React.Fragment>}
-          <button type="button" className="topcoat-button--large--cta" disabled={busy || !selected.length} onClick={train}><FiStar size={14} /> {locale.textShapeRTrainValidate}</button>
+          <button type="button" className="topcoat-button--large--cta" disabled={busy || !selected.length} onClick={() => train()}><FiStar size={14} /> {locale.textShapeRTrainValidate}</button>
         </React.Fragment>}
         {message && <p role="status" className="textshaper-training-message">{message}</p>}
       </div>

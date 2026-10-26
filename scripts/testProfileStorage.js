@@ -13,7 +13,7 @@ const extensionPath = "C:/TypeR";
 const NO_ERROR = 0;
 const ERR_NOT_FOUND = 3;
 
-const loadProfileStorage = (initialFiles = {}) => {
+const loadProfileStorage = (initialFiles = {}, undeletable = []) => {
   const files = new Map(Object.entries(initialFiles));
   global.window = {
     CSInterface: function CSInterface() {
@@ -34,6 +34,7 @@ const loadProfileStorage = (initialFiles = {}) => {
           return { err: 0 };
         },
         deleteFile(filePath) {
+          if (undeletable.includes(filePath)) return 1;
           if (!files.has(filePath)) return ERR_NOT_FOUND;
           files.delete(filePath);
           return NO_ERROR;
@@ -136,5 +137,28 @@ assert.strictEqual(
   recoverySetup.files.get(`${extensionPath}/storage_background`),
   "newer-background"
 );
+
+// If the old Default file cannot be deleted, the next launch must not copy
+// it over `storage` again and wipe changes made since the migration.
+const stuckPath = `${extensionPath}/storage_profile_default`;
+const stuckInitial = {
+  [`${extensionPath}/storage`]: JSON.stringify({ language: "fr_FR" }),
+  [stuckPath]: JSON.stringify(temporaryProfileData),
+  [`${extensionPath}/storage_profiles`]: JSON.stringify({
+    version: 1,
+    activeProfileId: "default",
+    profiles: [{ id: "default", name: "Default" }],
+  }),
+};
+const stuckSetup = loadProfileStorage(stuckInitial, [stuckPath]);
+stuckSetup.api.getProfileRegistry();
+assert.deepStrictEqual(JSON.parse(stuckSetup.files.get(`${extensionPath}/storage`)), temporaryProfileData);
+const newerData = { language: "es_SP", styles: [{ id: "edited-after-migration" }] };
+const relaunch = loadProfileStorage({
+  ...Object.fromEntries(stuckSetup.files),
+  [`${extensionPath}/storage`]: JSON.stringify(newerData),
+}, [stuckPath]);
+relaunch.api.getProfileRegistry();
+assert.deepStrictEqual(JSON.parse(relaunch.files.get(`${extensionPath}/storage`)), newerData);
 
 console.log("profile storage compatibility and management tests passed");

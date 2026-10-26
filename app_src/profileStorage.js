@@ -52,7 +52,7 @@ const deleteFile = (filePath) => {
 
 const migrateFile = (sourcePath, destinationPath) => {
   const source = window.cep.fs.readFile(sourcePath);
-  if (!source || source.err) return false;
+  if (!source || source.err || !source.data) return false;
   if (destinationPath.indexOf("background") === -1) {
     try { if (!writeJsonFile(destinationPath, JSON.parse(source.data))) return false; }
     catch (error) { return false; }
@@ -60,7 +60,11 @@ const migrateFile = (sourcePath, destinationPath) => {
     const written = window.cep.fs.writeFile(destinationPath, source.data);
     if (written && written.err) return false;
   }
-  deleteFile(sourcePath);
+  if (!deleteFile(sourcePath)) {
+    // A source that cannot be deleted would be copied again on every launch,
+    // overwriting newer data. Empty it so later launches skip it.
+    window.cep.fs.writeFile(sourcePath, "");
+  }
   return true;
 };
 

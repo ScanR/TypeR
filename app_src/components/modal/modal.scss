@@ -825,6 +825,77 @@
 .light-theme .settings-checkbox-hint {
     color: #333;
 }
+
+// Conditional refont rules (behavior tab, smart paste group): one compact row
+// per rule that wraps on very narrow panels
+.settings-refont-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.settings-refont-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.settings-refont-marker {
+    flex: 0 0 42px;
+    width: 42px;
+    min-width: 0;
+    box-sizing: border-box;
+    padding-left: 4px;
+    padding-right: 4px;
+    text-align: center;
+
+    &.is-invalid {
+        border-color: #d9534f !important;
+    }
+}
+
+.settings-refont-between {
+    opacity: 0.6;
+}
+
+.settings-refont-style {
+    flex: 1 1 110px;
+    min-width: 0;
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+.settings-refont-keep {
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+
+    .settings-checkbox-custom {
+        margin-top: 0;
+    }
+
+    span {
+        flex: 0 1 auto;
+        white-space: nowrap;
+    }
+}
+
+.settings-refont-remove {
+    flex: 0 0 auto;
+}
+
+.settings-refont-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+}
 .app-modal-inner--walkthrough {
     pointer-events: auto;
     top: 8px;
@@ -1422,9 +1493,10 @@
         box-shadow: 0 0 0 1px rgba(40, 142, 223, 0.35);
     }
 
+    // Footer icon buttons
     .mk-f {
-        width: 10px;
-        height: 3px;
+        width: 5px;
+        height: 5px;
         border-radius: 1px;
         background: rgba(255, 255, 255, 0.35);
         cursor: pointer;
@@ -2306,3 +2378,131 @@
     border-color: #a93226 !important;
     color: #fff;
 }
+
+// Switch from the Legacy panel to TypeR UXP
+.uxp-migration {
+    p {
+        margin: 0 0 8px;
+    }
+}
+
+.uxp-migration-lead {
+    font-weight: 600;
+}
+
+.uxp-migration-benefits {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+
+    li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 10px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.05);
+
+        & + li {
+            margin-top: 6px;
+        }
+    }
+
+    .light-theme & li {
+        background: rgba(0, 0, 0, 0.05);
+    }
+}
+
+.uxp-migration-benefit-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(40, 142, 223, 0.2);
+    color: #4ca1e4;
+
+    .light-theme & {
+        color: #1976d2;
+    }
+}
+
+.uxp-migration-hint {
+    opacity: 0.75;
+    font-size: 0.92em;
+}
+
+.uxp-migration-never {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    text-decoration: underline;
+    opacity: 0.6;
+    cursor: pointer;
+
+    &:hover {
+        opacity: 0.9;
+    }
+}
+
+.uxp-migration-icon {
+    display: block;
+    margin: 4px auto 12px;
+
+    &.m-done {
+        color: #34c759;
+    }
+}
+
+.uxp-migration-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+
+    svg {
+        flex: 0 0 auto;
+    }
+
+    &.m-error {
+        color: #ff9f0a;
+    }
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.06);
+    }
+}
+
+.uxp-migration-spin {
+    animation: uxp-migration-spin 1s linear infinite;
+}
+
+@keyframes uxp-migration-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.uxp-migration-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+
+    .uxp-migration-left {
+        margin-right: auto;
+    }
+}
+

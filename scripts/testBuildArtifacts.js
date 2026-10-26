@@ -13,7 +13,7 @@ function walk(relative) {
 ['app', 'CSXS', 'icons', 'locale'].forEach(walk);
 require('./helpers/loadAppModule')()('app_src/releasePackage.js').validateReleasePackage(files, bytes => crypto.createHash('sha256').update(bytes).digest('hex'), bytes => bytes.toString('utf8'), require('../package.json').version);
 for (const flavor of ['legacy', 'modern']) {
-  for (const name of ['modal-edit-folder', 'modal-edit-style', 'modal-export', 'modal-help', 'modal-settings', 'modal-update']) {
+  for (const name of ['modal-edit-folder', 'modal-edit-style', 'modal-export', 'modal-help', 'modal-settings', 'modal-update', 'modal-uxp-migration']) {
     assert(Object.keys(files).some(file => new RegExp('^app/' + flavor + '\\.' + name + '\\.[a-f0-9]{12}\\.index\\.js$').test(file)), 'Missing hashed chunk: ' + flavor + '/' + name);
   }
 }

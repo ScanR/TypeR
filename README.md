@@ -158,20 +158,20 @@ TypeR exists in two versions built from the same application:
 
 | Version | Photoshop | |
 | --- | --- | --- |
-| **UXP** (recommended) | 2025 (version 26.0) or later | Faster, built on Adobe's newer plugin framework, runs natively on Apple Silicon |
+| **New TypeR** (UXP, recommended) | 2025 (version 26.0) or later | Faster, built on Adobe's newer plugin framework, runs natively on Apple Silicon |
 | **Legacy** (CEP) | CC 2015 (version 16.0) or later | Works with more Photoshop versions; older and slower, but more thoroughly tested |
 
 The installers of the release archive (`install_win.cmd`, `install_mac.sh`) start by asking which version to install. `-Uxp` / `-Legacy` on Windows and `--uxp` / `--legacy` on macOS skip the question. Both versions can be installed side by side, but do not open both panels at the same time: each shortcut would run twice.
 
 UXP needs Photoshop 2025 (UXP 8.0): it is the first version whose plugin panels can display the plugin's own web pages, which TypeR's interface relies on.
 
-### Photoshop 2025 and later: UXP plugin
+### Photoshop 2025 and later: the new TypeR (UXP)
 
 1. [Download the latest `TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx).
-2. Double-click it: Creative Cloud installs the plugin. Without Creative Cloud's file association, run the installer of the [release archive](https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip) (`install_win.cmd` or `./install_mac.sh`, see below) and choose **1) UXP**, or run `install_uxp_win.cmd` / `./install_uxp_mac.sh`, which install it without asking. The archive contains the plugin, so no download is needed.
+2. Double-click it: Creative Cloud installs the plugin. Without Creative Cloud's file association, run the installer of the [release archive](https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip) (`install_win.cmd` or `./install_mac.sh`, see below) and choose **1) New TypeR (UXP)**, or run `install_uxp_win.cmd` / `./install_uxp_mac.sh`, which install it without asking. The archive contains the plugin, so no download is needed.
 3. In Photoshop, select **Plugins → TypeR → TypeR**.
 
-On its first start the plugin copies the styles, profiles and settings of an installed CEP TypeR (the CEP files are left untouched). Its own data lives in `~/Library/Application Support/TypeR/UXP` on macOS and `%APPDATA%\TypeR\UXP` on Windows, outside Photoshop's version-specific plugin folders, so a Photoshop upgrade keeps it. Updates are offered and installed from the panel like the CEP version's; restart Photoshop afterwards.
+On its first start the plugin copies the styles, profiles and settings of an installed CEP TypeR (the CEP files are left untouched). An updated Legacy panel also offers this switch by itself when Photoshop can run the new TypeR. Its own data lives in `~/Library/Application Support/TypeR/UXP` on macOS and `%APPDATA%\TypeR\UXP` on Windows, outside Photoshop's version-specific plugin folders, so a Photoshop upgrade keeps it. Updates are offered and installed from the panel like the CEP version's; restart Photoshop afterwards.
 
 Global shortcuts (such as Cmd+Ctrl for Paste) need to read the keyboard while the canvas has the focus. UXP cannot, so the plugin starts a small keyboard reader that reports the pressed keys while Photoshop is in front, and stops with Photoshop.
 
@@ -192,7 +192,7 @@ The Legacy version is distributed as an unsigned CEP extension. Both installers 
 1. [Download the latest `TypeR.zip`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip).
 2. Extract the archive completely.
 3. Close Photoshop.
-4. Double-click `install_win.cmd`, choose **2) Legacy** (or **1) UXP**, see above) and follow the terminal prompts.
+4. Double-click `install_win.cmd`, choose **2) Legacy** (or **1) New TypeR (UXP)**, see above) and follow the terminal prompts.
 5. Reopen Photoshop and select **Window → Extensions → TypeR**.
 
 ### macOS
@@ -206,11 +206,11 @@ chmod +x install_mac.sh
 ./install_mac.sh
 ```
 
-and choose **2) Legacy** (or **1) UXP**, see above).
+and choose **2) Legacy** (or **1) New TypeR (UXP)**, see above).
 
 4. Reopen Photoshop and select **Window → Extensions → TypeR**.
 
-On Apple Silicon, Photoshop 2026 (v27) and later only include extension (CEP) support in their Intel code, so the Legacy version appears only when Photoshop runs with Rosetta: Photoshop 2026 users should prefer the [UXP plugin](#photoshop-2025-and-later-uxp-plugin), which runs natively. For the Legacy version, recent macOS versions ignore Finder's **Open using Rosetta** option, so the installer creates a launcher in `~/Applications`, for example **Adobe Photoshop 2026 (TypeR)**. Put it in the Dock and use it instead of the usual Photoshop icon. TypeR is then under **Window → Extensions (Legacy) → TypeR**.
+On Apple Silicon, Photoshop 2026 (v27) and later only include extension (CEP) support in their Intel code, so the Legacy version appears only when Photoshop runs with Rosetta: Photoshop 2026 users should prefer the [new TypeR (UXP)](#photoshop-2025-and-later-the-new-typer-uxp), which runs natively. For the Legacy version, recent macOS versions ignore Finder's **Open using Rosetta** option, so the installer creates a launcher in `~/Applications`, for example **Adobe Photoshop 2026 (TypeR)**. Put it in the Dock and use it instead of the usual Photoshop icon. TypeR is then under **Window → Extensions (Legacy) → TypeR**.
 
 To repair an existing installation or recreate the launcher, close Photoshop and run from the extracted folder:
 

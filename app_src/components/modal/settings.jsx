@@ -6,8 +6,10 @@ import { MdSave } from "react-icons/md";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile } from "../../utils";
-import { useContext, defaultUiLayout, normalizeUiLayout } from "../../context";
+import { backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig } from "../../utils";
+import { readUxpMigrationState } from "../../uxpMigration";
+import { useContext, defaultUiLayout, normalizeUiLayout, normalizeSmartPasteMinScale } from "../../context";
+import { normalizeRefontRules } from "../../oneClick/refont";
 import { sanitizeTextShapeRTuning } from "../../textShapeR";
 import {
   CUSTOM_IMAGE_THEME_ID,
@@ -48,6 +50,11 @@ const LAYOUT_BLOCK_ELEMENTS = {
   styles: [],
   footer: ["footerHelp", "footerRepo", "footerModeToggles"],
 };
+// Same cap as normalizeRefontRules
+const MAX_REFONT_RULES = 16;
+const REFONT_MARKER_MAX_LENGTH = 8;
+// The smart paste minimum size is edited in percent of the style size
+const minScaleToPercent = (value) => String(Math.round(normalizeSmartPasteMinScale(value) * 100));
 
 const SettingsModal = React.memo(function SettingsModal() {
   const context = useContext((state) => ({
@@ -65,6 +72,14 @@ const SettingsModal = React.memo(function SettingsModal() {
     checkUpdates: state.checkUpdates,
     autoUpdate: state.autoUpdate,
     multiBubbleMode: state.multiBubbleMode,
+    autoCenterMode: state.autoCenterMode,
+    smartPaste: state.smartPaste,
+    pasteOnClick: state.pasteOnClick,
+    smartPasteDistribute: state.smartPasteDistribute,
+    smartPasteAutoClean: state.smartPasteAutoClean,
+    smartPasteMinScale: state.smartPasteMinScale,
+    smartPasteHyphenation: state.smartPasteHyphenation,
+    refontRules: state.refontRules,
     showTips: state.showTips,
     showQuickStyleSize: state.showQuickStyleSize,
     inlineTextShapeR: state.inlineTextShapeR,
@@ -118,6 +133,24 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [multiBubbleMode, setMultiBubbleMode] = React.useState(
     !!context.state.multiBubbleMode
   );
+  const [autoCenterMode, setAutoCenterMode] = React.useState(
+    context.state.autoCenterMode || "off"
+  );
+  const [smartPaste, setSmartPaste] = React.useState(context.state.smartPaste !== false);
+  const [pasteOnClick, setPasteOnClick] = React.useState(context.state.pasteOnClick === true);
+  const [smartPasteDistribute, setSmartPasteDistribute] = React.useState(
+    context.state.smartPasteDistribute !== false
+  );
+  const [smartPasteAutoClean, setSmartPasteAutoClean] = React.useState(
+    context.state.smartPasteAutoClean === true
+  );
+  const [smartPasteMinScale, setSmartPasteMinScale] = React.useState(
+    () => minScaleToPercent(context.state.smartPasteMinScale)
+  );
+  const [smartPasteHyphenation, setSmartPasteHyphenation] = React.useState(
+    context.state.smartPasteHyphenation || "auto"
+  );
+  const [refontRules, setRefontRules] = React.useState(() => normalizeRefontRules(context.state.refontRules));
   const [showTips, setShowTips] = React.useState(
     context.state.showTips !== false
   );
@@ -199,6 +232,15 @@ const SettingsModal = React.memo(function SettingsModal() {
   React.useEffect(() => {
     if (activeTab === "data") setCacheInfo(getTypeRCacheInfo());
   }, [activeTab]);
+
+  // Paste on click and auto clean also have a shortcut / footer toggle: follow
+  // a change made there so saving the modal never reverts it
+  React.useEffect(() => {
+    setPasteOnClick(context.state.pasteOnClick === true);
+  }, [context.state.pasteOnClick]);
+  React.useEffect(() => {
+    setSmartPasteAutoClean(context.state.smartPasteAutoClean === true);
+  }, [context.state.smartPasteAutoClean]);
 
   React.useEffect(() => {
     let active = true;
@@ -395,6 +437,78 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeDehyphenateTextShapeR = (e) => {
     setDehyphenateTextShapeR(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeAutoCenterMode = (e) => {
+    setAutoCenterMode(e.target.value);
+    setEdited(true);
+  };
+
+  const changeSmartPaste = (e) => {
+    setSmartPaste(e.target.checked);
+    setEdited(true);
+  };
+
+  const changePasteOnClick = (e) => {
+    setPasteOnClick(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeSmartPasteDistribute = (e) => {
+    setSmartPasteDistribute(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeSmartPasteAutoClean = (e) => {
+    setSmartPasteAutoClean(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeSmartPasteMinScale = (e) => {
+    const value = e.target.value;
+    // Allow clearing the field while typing; the value is clamped on blur/save
+    if (value === "" || /^\d{1,3}$/.test(value)) {
+      setSmartPasteMinScale(value);
+      setEdited(true);
+    }
+  };
+  const resetSmartPasteMinScale = () => {
+    const percent = parseInt(smartPasteMinScale, 10);
+    setSmartPasteMinScale(
+      Number.isFinite(percent)
+        ? String(Math.min(100, Math.max(50, percent)))
+        : minScaleToPercent(context.state.smartPasteMinScale)
+    );
+  };
+
+  const changeSmartPasteHyphenation = (e) => {
+    setSmartPasteHyphenation(e.target.value);
+    setEdited(true);
+  };
+
+  // Conditional refont rules: edited as a draft, normalized on save (rows
+  // with an empty marker are dropped there)
+  const updateRefontRule = (index, patch) => {
+    setRefontRules((rules) => rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)));
+    setEdited(true);
+  };
+  const changeRefontRuleStyle = (index, value) => {
+    const style = (context.state.styles || []).find((item) => String(item.id) === value);
+    updateRefontRule(index, { styleId: style ? style.id : null });
+  };
+  const addRefontRule = () => {
+    const firstStyle = (context.state.styles || [])[0];
+    setRefontRules((rules) => (rules.length >= MAX_REFONT_RULES ? rules : rules.concat({
+      open: "\"",
+      close: "\"",
+      keepMarkers: false,
+      styleId: firstStyle ? firstStyle.id : null,
+    })));
+    setEdited(true);
+  };
+  const removeRefontRule = (index) => {
+    setRefontRules((rules) => rules.filter((rule, i) => i !== index));
     setEdited(true);
   };
 
@@ -764,6 +878,38 @@ const SettingsModal = React.memo(function SettingsModal() {
         value: multiBubbleMode,
       });
     }
+    if (autoCenterMode !== (context.state.autoCenterMode || "off")) {
+      context.dispatch({
+        type: "setAutoCenterMode",
+        value: autoCenterMode,
+      });
+    }
+    if (smartPaste !== (context.state.smartPaste !== false)) {
+      context.dispatch({ type: "setSmartPaste", value: smartPaste });
+    }
+    if (pasteOnClick !== (context.state.pasteOnClick === true)) {
+      context.dispatch({ type: "setPasteOnClick", value: pasteOnClick });
+    }
+    if (smartPasteDistribute !== (context.state.smartPasteDistribute !== false)) {
+      context.dispatch({ type: "setSmartPasteDistribute", value: smartPasteDistribute });
+    }
+    if (smartPasteAutoClean !== (context.state.smartPasteAutoClean === true)) {
+      context.dispatch({ type: "setSmartPasteAutoClean", value: smartPasteAutoClean });
+    }
+    const minScalePercent = parseInt(smartPasteMinScale, 10);
+    if (Number.isFinite(minScalePercent)) {
+      const minScale = normalizeSmartPasteMinScale(minScalePercent / 100);
+      if (minScale !== context.state.smartPasteMinScale) {
+        context.dispatch({ type: "setSmartPasteMinScale", value: minScale });
+      }
+    }
+    if (smartPasteHyphenation !== (context.state.smartPasteHyphenation || "auto")) {
+      context.dispatch({ type: "setSmartPasteHyphenation", value: smartPasteHyphenation });
+    }
+    const refontRulesToSave = normalizeRefontRules(refontRules);
+    if (JSON.stringify(refontRulesToSave) !== JSON.stringify(normalizeRefontRules(context.state.refontRules))) {
+      context.dispatch({ type: "setRefontRules", rules: refontRulesToSave });
+    }
     if (showTips !== context.state.showTips) {
       context.dispatch({
         type: "setShowTips",
@@ -999,6 +1145,18 @@ const SettingsModal = React.memo(function SettingsModal() {
     context.dispatch({ type: "setModal", modal: "walkthrough", data: { source: "settings" } });
   };
 
+  // Legacy panel: the switch to the new TypeR (UXP), when Photoshop can run it
+  const uxpMigration = React.useMemo(() => {
+    try {
+      return readUxpMigrationState(getUpdateTestConfig());
+    } catch (error) {
+      return { eligibility: "uxp", forced: false };
+    }
+  }, []);
+  const openUxpMigration = () => {
+    context.dispatch({ type: "setModal", modal: "uxpMigration", data: { forced: uxpMigration.forced } });
+  };
+
   const checkUpdatesNow = () => {
     checkUpdate(config.appVersion).then((data) => {
       if (data) {
@@ -1199,6 +1357,23 @@ const SettingsModal = React.memo(function SettingsModal() {
                   {locale.settingsCheckUpdatesButton}
                 </button>
               </div>
+              {(uxpMigration.eligibility === "ok" || uxpMigration.forced) && (
+              <div className="field">
+                <div className="settings-checkbox-hint">
+                  {locale.settingsUxpMigrationHint || "Your Photoshop can run the new TypeR (UXP), the faster version of the panel."}
+                </div>
+                <button type="button" className="topcoat-button--large" onClick={openUxpMigration}>
+                  {locale.settingsUxpMigrationButton || "Switch to the new TypeR"}
+                </button>
+              </div>
+              )}
+              {uxpMigration.eligibility === "installed" && !uxpMigration.forced && (
+              <div className="field">
+                <div className="settings-checkbox-hint">
+                  {locale.settingsUxpMigrationInstalled || "The new TypeR (UXP) is installed: open it from the Plugins > TypeR menu."}
+                </div>
+              </div>
+              )}
             </div>
           </div>
         );
@@ -1709,6 +1884,149 @@ const SettingsModal = React.memo(function SettingsModal() {
         return (
           <div className="fields">
             <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsSmartPasteTitle || "Smart paste"}</div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  smartPaste,
+                  changeSmartPaste,
+                  <React.Fragment>
+                    {locale.settingsSmartPasteLabel || "Smart paste"}
+                    <b className="settings-new-badge">{locale.settingsNewBadge || "New"}</b>
+                  </React.Fragment>,
+                  locale.settingsSmartPasteHelp || "Paste fits the text to the real shape of the bubble: the style size is the maximum, text turns white on black bubbles, and styles marked shout or narration are used for those bubbles."
+                )}
+                {renderToggle(
+                  pasteOnClick,
+                  changePasteOnClick,
+                  locale.settingsPasteOnClickLabel || "Paste on click",
+                  locale.settingsPasteOnClickHelp || "A Magic Wand click or a rectangle/lasso selection pastes the current line right away, without pressing Paste."
+                )}
+                {smartPaste && renderToggle(
+                  smartPasteDistribute,
+                  changeSmartPasteDistribute,
+                  locale.settingsSmartPasteDistributeLabel || "Split lines across connected bubbles",
+                  locale.settingsSmartPasteDistributeHelp || "Double or triple bubbles receive the next lines, one per part."
+                )}
+                {smartPaste && renderToggle(
+                  smartPasteAutoClean,
+                  changeSmartPasteAutoClean,
+                  locale.settingsSmartPasteAutoCleanLabel || "Auto clean",
+                  locale.settingsSmartPasteAutoCleanHelp || "Paints a white or black fill under the text to cover the original lettering (plain white or black bubbles only)."
+                )}
+              </div>
+              {smartPaste && (
+                <div className="field">
+                  <div className="field-label">{locale.settingsSmartPasteMinScaleLabel || "Minimum text size (%)"}</div>
+                  <div className="field-input">
+                    <input
+                      type="number"
+                      min="50"
+                      max="100"
+                      step="5"
+                      value={smartPasteMinScale}
+                      onChange={changeSmartPasteMinScale}
+                      onBlur={resetSmartPasteMinScale}
+                      className="topcoat-text-input--large"
+                    />
+                  </div>
+                  <div className="field-descr">
+                    {locale.settingsSmartPasteMinScaleHelp || "To fit a small bubble, the text may shrink down to this share of the style size (50-100)."}
+                  </div>
+                </div>
+              )}
+              {smartPaste && (
+                <div className="field">
+                  <div className="field-label">{locale.settingsSmartPasteHyphenationLabel || "Hyphenation"}</div>
+                  <div className="field-input">
+                    <select value={smartPasteHyphenation} onChange={changeSmartPasteHyphenation} className="topcoat-textarea">
+                      <option value="auto">{locale.settingsHyphenationAuto || "Automatic (interface language)"}</option>
+                      <option value="fr">{locale.settingsHyphenationFr || "French"}</option>
+                      <option value="en">{locale.settingsHyphenationEn || "English"}</option>
+                      <option value="off">{locale.settingsHyphenationOff || "Off"}</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+              <div className="field settings-refont">
+                <div className="field-label">{locale.settingsRefontTitle || "Conditional refont"}</div>
+                <div className="field-descr">
+                  {locale.settingsRefontHelp || "Text between two markers takes the font of another style (the size is kept). Example: quoted passages in italics."}
+                </div>
+                {refontRules.length > 0 && (
+                  <div className="settings-refont-list">
+                    {refontRules.map((rule, index) => {
+                      const styles = context.state.styles || [];
+                      const styleValue = rule.styleId === null || rule.styleId === undefined ? "" : String(rule.styleId);
+                      const hasStyle = styles.some((style) => String(style.id) === styleValue);
+                      return (
+                        <div className="settings-refont-row" key={index}>
+                          <input
+                            type="text"
+                            maxLength={REFONT_MARKER_MAX_LENGTH}
+                            value={rule.open}
+                            onChange={(e) => updateRefontRule(index, { open: e.target.value })}
+                            className={"topcoat-text-input settings-refont-marker" + (rule.open ? "" : " is-invalid")}
+                            title={locale.settingsRefontOpen || "Opening marker"}
+                            aria-label={locale.settingsRefontOpen || "Opening marker"}
+                          />
+                          <span className="settings-refont-between" aria-hidden="true">…</span>
+                          <input
+                            type="text"
+                            maxLength={REFONT_MARKER_MAX_LENGTH}
+                            value={rule.close}
+                            onChange={(e) => updateRefontRule(index, { close: e.target.value })}
+                            className={"topcoat-text-input settings-refont-marker" + (rule.close ? "" : " is-invalid")}
+                            title={locale.settingsRefontClose || "Closing marker"}
+                            aria-label={locale.settingsRefontClose || "Closing marker"}
+                          />
+                          <select
+                            value={hasStyle ? styleValue : ""}
+                            onChange={(e) => changeRefontRuleStyle(index, e.target.value)}
+                            className="topcoat-textarea settings-refont-style"
+                            title={locale.settingsRefontStyle || "Font taken from"}
+                            aria-label={locale.settingsRefontStyle || "Font taken from"}
+                          >
+                            {!hasStyle && <option value="">—</option>}
+                            {styles.map((style) => (
+                              <option key={style.id} value={String(style.id)}>
+                                {style.name}
+                              </option>
+                            ))}
+                          </select>
+                          <label className="settings-checkbox-label settings-refont-keep">
+                            <input
+                              type="checkbox"
+                              checked={rule.keepMarkers === true}
+                              onChange={(e) => updateRefontRule(index, { keepMarkers: e.target.checked })}
+                            />
+                            <div className="settings-checkbox-custom"></div>
+                            <span>{locale.settingsRefontKeepMarkers || "Keep markers"}</span>
+                          </label>
+                          <button
+                            type="button"
+                            className="topcoat-icon-button--quiet settings-refont-remove"
+                            onClick={() => removeRefontRule(index)}
+                            title={locale.settingsRefontRemove || "Remove rule"}
+                            aria-label={locale.settingsRefontRemove || "Remove rule"}
+                          >
+                            <FiTrash2 size={13} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="topcoat-button settings-refont-add"
+                  onClick={addRefontRule}
+                  disabled={refontRules.length >= MAX_REFONT_RULES}
+                >
+                  <FiPlus size={13} /> {locale.settingsRefontAdd || "Add rule"}
+                </button>
+              </div>
+            </div>
+            <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupExperimental || "Experimental"}</div>
               <div className="settings-checkbox-grid">
                 {renderToggle(
@@ -1761,6 +2079,19 @@ const SettingsModal = React.memo(function SettingsModal() {
                     </button>
                   </React.Fragment>
                 )}
+              </div>
+              <div className="field">
+                <div className="field-label">{locale.settingsAutoCenterLabel || "Center after paste"}</div>
+                <div className="field-input">
+                  <select value={autoCenterMode} onChange={changeAutoCenterMode} className="topcoat-textarea">
+                    <option value="off">{locale.settingsAutoCenterOff || "Off"}</option>
+                    <option value="single">{locale.settingsAutoCenterSingle || "Center in the bubble"}</option>
+                    <option value="multi">{locale.settingsAutoCenterMulti || "Multi center (detects double bubbles)"}</option>
+                  </select>
+                </div>
+                <div className="field-descr">
+                  {locale.settingsAutoCenterHint || "Each pasted text is re-centered in the bubble detected around it. Multi center also recognizes double bubbles and splits them between their texts: a text already in the bubble moves to its part unless its layer is locked. Also switchable from the footer."}
+                </div>
               </div>
               <div className="field">
                 <div className="field-label">{locale.settingsInternalPaddingLabel || "Internal padding (px)"}</div>

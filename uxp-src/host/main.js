@@ -6,12 +6,13 @@ const ps = require("photoshop");
 const uxp = require("uxp");
 const os = require("os");
 const photoshop = require("./photoshop");
+const smartPaste = require("./smartPaste");
 const files = require("./files");
 const keyboard = require("./keyboard");
 const keysHelper = require("./keysHelper");
 const services = require("./services");
 const { runJsx } = require("./jsx");
-const { parseCall } = require("./evalScript");
+const { parseCall, callTimeout, createCallQueue } = require("./evalScript");
 
 const EXTENSION_ID = "typer";
 const PANEL_URL = "plugin:/web/index.html";
@@ -167,6 +168,14 @@ async function reloadUserFonts() {
 }
 
 const methods = Object.assign({}, photoshop.methods, {
+  // smart paste (uxp-src/host/smartPaste.js)
+  smartPaste: smartPaste.methods.smartPaste,
+  smartPasteCapture: smartPaste.methods.smartPasteCapture,
+  smartPasteMeasure: smartPaste.methods.smartPasteMeasure,
+  smartPasteCommit: smartPaste.methods.smartPasteCommit,
+  getHistorySnapshot: smartPaste.methods.getHistorySnapshot,
+  replaySelectionTrigger: smartPaste.methods.replaySelectionTrigger,
+  smartPasteSelectionProbe: smartPaste.methods.smartPasteSelectionProbe,
   nativeAlert,
   nativeConfirm,
   reloadUserFonts,
@@ -178,14 +187,8 @@ const methods = Object.assign({}, photoshop.methods, {
   launchInstaller: (path) => uxp.shell.openPath(path).then(() => "OK", (error) => "ERROR: " + error.message),
 });
 
-// ExtendScript ran one script at a time: so do the host calls, otherwise two
-// calls could interleave their Photoshop commands
-let hostQueue = Promise.resolve();
-function enqueue(task) {
-  const run = hostQueue.then(task, task);
-  hostQueue = run.catch(() => {});
-  return run;
-}
+// One host call at a time, each with a time limit (see evalScript.js)
+const enqueue = createCallQueue();
 
 // Photoshop notified a CEP panel of the commands its own scripts played too
 // (the panel relies on it: "the debounced Photoshop event refresh will
@@ -197,7 +200,10 @@ const DOCUMENT_CHANGING_CALLS = {
   setTextShapeRLayerText: "set",
   createTextLayerInSelection: "set",
   createTextLayersInStoredSelections: "set",
+  smartPaste: "set",
+  smartPasteCommit: "set",
   alignTextLayerToSelection: "set",
+  alignTextLayersToDoubleBubble: "set",
   changeActiveLayerTextSize: "set",
   toggleCleaningLayers: "set",
   undoLastTyperChange: "set",
@@ -257,7 +263,14 @@ async function init() {
 
 const requests = {
   init,
-  evalScript: (script) => enqueue(() => evalScript(script)),
+  // A call past its time limit answers like a call that threw, as CEP did
+  evalScript: (script) => {
+    const timeout = callTimeout(script);
+    return enqueue(() => evalScript(script), timeout, () => {
+      console.error("TypeR: host call still running after " + timeout / 1000 + " s, next calls go on", String(script).slice(0, 120));
+      return "EvalScript error.";
+    });
+  },
   writeMirror: (name, text) => {
     if (mirrorFiles) mirrorFiles.files[name] = String(text);
     return mirror.write(name, text);
@@ -369,6 +382,20 @@ function onPhotoshopEvent(name, descriptor) {
   post({ type: "psEvent", data: "ver1," + JSON.stringify({ eventID, eventData }) });
 }
 
+// History moves (undo, redo, a History panel click) for the smart paste's
+// undo sync. CEP has no such event: its panel checks history lazily.
+const HISTORY_EVENT_ID = 1215591779;
+
+function onHistoryChanged() {
+  let snapshot = null;
+  try {
+    snapshot = JSON.parse(smartPaste.methods.getHistorySnapshot());
+  } catch (error) {
+    snapshot = null;
+  }
+  if (snapshot) post({ type: "psEvent", data: "ver1," + JSON.stringify({ eventID: HISTORY_EVENT_ID, eventData: snapshot }) });
+}
+
 /* ======================== keyboard ======================== */
 
 keyboard.onChange((state) => post({ type: "keys", state }));
@@ -387,6 +414,11 @@ async function startOnce() {
     await ps.action.addNotificationListener(Object.keys(EVENT_IDS), onPhotoshopEvent);
   } catch (error) {
     console.error("TypeR: event listener", error);
+  }
+  try {
+    await ps.action.addNotificationListener(["historyStateChanged"], onHistoryChanged);
+  } catch (error) {
+    console.error("TypeR: history listener", error);
   }
   try {
     document.theme.onUpdated.addListener(onThemeChanged);

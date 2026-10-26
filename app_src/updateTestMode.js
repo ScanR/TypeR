@@ -30,6 +30,9 @@ const parseUpdateTestConfig = (raw) => {
     releasesUrl: data.releasesUrl,
     currentVersion,
     autoInstall: data.autoInstall === true,
+    // Opens the switch to TypeR UXP whatever the Photoshop version or the
+    // installed plugins; the package comes from the local release list
+    forceUxpMigration: data.forceUxpMigration === true,
   };
 };
 

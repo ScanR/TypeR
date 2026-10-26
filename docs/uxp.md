@@ -35,7 +35,9 @@ runtime around it differs:
 `csInterface.evalScript("setActiveLayerText({...})", callback)` in the panel becomes a message to the
 host. `uxp-src/host/evalScript.js` parses the call (it is never evaluated), `main.js` runs the method of
 `photoshop.js` with the same name, and the string result goes back to the callback. Host calls are
-queued and run one at a time, as ExtendScript did. An exception answers `"EvalScript error."`, like CEP.
+queued and run one at a time, as ExtendScript did. An exception answers `"EvalScript error."`, like CEP;
+so does a call still running after its time limit (60 s, 10 min for scans, document opening and font
+lists, none for dialogs), and the queue goes on.
 
 `photoshop.js` keeps the structure and helper names of `host.js`. ActionManager calls are synchronous
 `batchPlay` calls with `dialogOptions: "silent"` (`"dontDisplay"` still shows Photoshop's alerts).
@@ -57,7 +59,6 @@ Each one fixes something the CEP host gets wrong in Photoshop 2026:
   failed or empty operation leaves no empty history state.
 - Text colors Photoshop reports as unit floats (`redFloat`…) are read and written as 0–255 RGB. The CEP
   host wrote them back empty, which made the size buttons fail on such layers ("program error").
-- A size change keeps every style range (bold and italic runs) instead of flattening them to the first.
 - FontScanR reads every layer of a document with a background layer; the CEP host missed the topmost.
 - Redundant commands are skipped: a temporary channel is only deleted when it exists, and the Middle
   East overrides are only set when the layer does not already have the values (each costs a relayout).
@@ -81,13 +82,44 @@ the WebView refuses because of CORS (GitHub release downloads) is made again by 
 
 ## Keyboard reader
 
-The panel polls `getHotkeyPressed()`; in UXP the answer is the last state the keyboard reader wrote
-(`<data>/keys/state`, read every 25 ms), so polling costs nothing. The reader is started once per
-Photoshop session through ExtendScript's `app.system`, receives Photoshop's process id and exits with
-it. It only reports keys while Photoshop is the frontmost application. Key names follow ScriptUI's
+The CEP panel polls `getHotkeyPressed()`; in UXP the keyboard reader writes the state to
+`<data>/keys/state`, the host reads it every 25 ms and pushes each change to the panel, which matches it
+at once (`typerUXP.onKeys`), so a short press is not lost between two polls. The reader is started
+through ExtendScript's `app.system`, receives Photoshop's process id and exits with it. It writes
+`<state>|<beat>` and moves the beat at least once a second: a beat frozen for 2.5 s counts as no key
+held, and after 6 s the reader is started again. A start that fails (Photoshop in a modal state while it
+starts up) is retried after 2, 5, 10, then every 30 s, up to 10 times without a report. It only reports
+keys while Photoshop is the frontmost application; on macOS a release stays at least 100 ms so a quick
+tap or a double tap reaches the panel. Key names follow ScriptUI's
 (`LEFT`, `ENTER`, …) and are followed by the names the shortcut recorder uses (`ARROWLEFT`), so
 bindings recorded in either version match; the recorder keeps the first name. On macOS it also reports
 mouse buttons 4 and 5, which the CEP version only supported on Windows.
+
+## Moving Legacy users to UXP
+
+Versions up to 2.5.0 update themselves to the Legacy package only: their updater installs the first
+`.zip` asset of a release whose name contains "typer" (`TypeR.zip`). So the switch is offered by the
+Legacy panel once it is updated (`app_src/uxpMigration.js`, `components/modal/uxpMigration.jsx`).
+
+- The offer opens a few seconds after startup, once no other window is open, when Photoshop is 2025
+  (26.0) or later, Creative Cloud's plugin installer is present and TypeR UXP is not installed. It is
+  shown only to existing users with update checks on. "Later" asks again a week later, "Don't ask
+  again" stops it, and Settings > General > Updates keeps a button.
+- The panel downloads `TypeR-UXP.ccx` from the latest release, checks that it is a TypeR plugin, and
+  hands it to the plugin installer through the panel's Node.js (`child_process.execFile`, no
+  ExtendScript). Photoshop loads a first installation at once.
+- TypeR UXP imports the Legacy styles, profiles and settings on its first start. The Legacy version
+  stays installed; the panel offers to close it.
+- Without Creative Cloud's plugin installer (Photoshop installed without the Creative Cloud app),
+  nothing is offered: TypeR UXP could not update itself either.
+
+Every release must therefore publish `TypeR.zip` and `TypeR-UXP.ccx`, and no other `.zip` whose name
+contains "typer".
+
+Test it without publishing anything: `npm run package:uxp`, then `npm run test:uxp-migration` serves
+a local release holding the `.ccx` and writes `.typer-update-test.json` (`forceUxpMigration`) into
+the installed Legacy extension. The Legacy panel then offers the switch whatever the Photoshop version
+or the installed plugins. Ctrl+C removes the test file.
 
 ## Building
 

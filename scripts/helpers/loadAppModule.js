@@ -9,6 +9,13 @@ module.exports = function createLoader(stubs = {}) {
     const filename = path.resolve(root, relativePath);
     if (cache[filename]) return cache[filename].exports;
     if (filename.endsWith('.json')) return JSON.parse(fs.readFileSync(filename, 'utf8'));
+    if (filename.endsWith('.jsxinc')) {
+      // ExtendScript includes are plain scripts: "this" is the module exports
+      const script = { exports: {} };
+      cache[filename] = script;
+      new Function('module', 'exports', fs.readFileSync(filename, 'utf8')).call(script.exports, script, script.exports);
+      return script.exports;
+    }
     const { code } = babel.transformSync(fs.readFileSync(filename, 'utf8') + '\n' + append, {
       filename, babelrc: false, configFile: false,
       presets: ['@babel/preset-react'], plugins: ['@babel/plugin-transform-modules-commonjs'],

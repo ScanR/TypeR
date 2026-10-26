@@ -27,10 +27,14 @@ const bridge = {
 };
 
 const documentEvents = [];
+// The WebView's own visibility (a closed panel's view is hidden)
+let webViewHidden = false;
+global.Document = class Document {};
+Object.defineProperty(global.Document.prototype, "hidden", { configurable: true, get: () => webViewHidden });
 global.window = {};
-global.document = {
+global.document = Object.assign(Object.create(global.Document.prototype), {
   dispatchEvent: (event) => documentEvents.push(event.type),
-};
+});
 global.Event = class { constructor(type) { this.type = type; } };
 
 const load = createLoader({ "./bridge": bridge });
@@ -87,6 +91,20 @@ installCepEnvironment({
   assert.strictEqual(requests.length, before);
   assert.strictEqual(await new Promise((resolve) => cs.evalScript("getUserFonts()", resolve)), "result of getUserFonts()");
 
+  // ...and every change is pushed to the shortcut matcher as it arrives
+  const pushed = [];
+  const unsubscribe = window.typerUXP.onKeys((state) => pushed.push(state));
+  window.typerUXP.onKeys(() => { throw new Error("a failing listener must not stop the others"); });
+  const consoleError = console.error;
+  console.error = () => {};
+  handlers.keys.forEach((handler) => handler({ state: "aWINaCTRLaVa" }));
+  handlers.keys.forEach((handler) => handler({ state: "aWINaCTRLa" }));
+  unsubscribe();
+  handlers.keys.forEach((handler) => handler({}));
+  console.error = consoleError;
+  assert.deepStrictEqual(pushed, ["aWINaCTRLaVa", "aWINaCTRLa"]);
+  assert.strictEqual(await new Promise((resolve) => cs.evalScript("getHotkeyPressed()", resolve)), "a");
+
   // Photoshop events in the PhotoshopJSONCallback format
   const events = [];
   cs.addEventListener("com.adobe.PhotoshopJSONCallback" + cs.getExtensionID(), (event) => events.push(event));
@@ -106,6 +124,14 @@ installCepEnvironment({
   handlers.visibility.forEach((handler) => handler({ hidden: true }));
   assert.strictEqual(document.hidden, true);
   assert.deepStrictEqual(documentEvents, ["visibilitychange"]);
+  // Photoshop may not call hide() when the panel is closed: the WebView's
+  // own visibility is enough to read the panel as hidden
+  handlers.visibility.forEach((handler) => handler({ hidden: false }));
+  assert.strictEqual(document.hidden, false);
+  webViewHidden = true;
+  assert.strictEqual(document.hidden, true);
+  assert.strictEqual(document.visibilityState, "hidden");
+  webViewHidden = false;
 
   console.log("UXP panel CEP environment tests passed");
 })().catch((error) => {

@@ -138,8 +138,9 @@ const sanitizeStyle = (raw) => {
 
 // Pairwise learning-to-rank: every candidate maps to this fixed vector of
 // normalized (~0..1) interpretable features, and feedback adjusts one bounded
-// weight per feature so the shapes the user actually keeps rank first. Caps
-// keep any single learned weight below the physical-fit penalties.
+// weight per feature so the shapes the user actually keeps rank first. These
+// caps bound each learned weight; the ranker widens them (up to x4) only as
+// effective evidence accumulates, so a few lessons never outweigh physical fit.
 const FEATURE_CAPS = {
   hyphens: 110, // presence of hyphenated breaks (0..1, /2 scale)
   lineSurplus: 45, // lines above the context target
@@ -153,19 +154,36 @@ const FEATURE_CAPS = {
   minRatio: 130, // narrowest line / peak
   punctEnds: 50, // fraction of internal breaks landing on punctuation
   wideLines: 130, // fraction of lines close to the width cap
+  // Schema 2: absolute text density (units per line) on a log scale, with
+  // its square so a linear ranker can learn a preferred density anywhere in
+  // the range (a parabola) instead of only "more" or "fewer" lines
+  density: 400,
+  densitySq: 400,
+  meanRatio: 160, // mean line width / peak: flat blocks vs pointed shapes
+  // Distance to the nearest context-matched exemplar silhouette (memory
+  // retrieval as a ranking feature): how much the user's own past shapes
+  // should count here is learned like any other preference
+  memoryGap: 300,
 };
 
 const FEATURE_KEYS = Object.keys(FEATURE_CAPS);
-const PAIR_SCHEMA_VERSION = 1;
+// Stored weights may use the widest evidence-scaled caps (see the ranker)
+const RANK_CAP_GROWTH_LIMIT = 3;
+const RANK_OFFSET_LIMIT = 4;
+const PAIR_SCHEMA_VERSION = 2;
+// Schema 1 stored the first 12 features only. Its pairs stay usable: the
+// features added later are padded with identical values on both sides, so
+// they carry no preference and only the original features learn from them
+const LEGACY_PAIR_FEATURES = 12;
 
-const sanitizeWeights = (raw) => {
+const sanitizeWeights = (raw, capScale = 1 + RANK_CAP_GROWTH_LIMIT) => {
   if (!raw || typeof raw !== "object") return null;
   const weights = {};
   let hasSignal = false;
   FEATURE_KEYS.forEach((key) => {
     const value = Number(raw[key]);
     if (Number.isFinite(value) && value !== 0) {
-      weights[key] = clamp(value, -FEATURE_CAPS[key], FEATURE_CAPS[key]);
+      weights[key] = clamp(value, -FEATURE_CAPS[key] * capScale, FEATURE_CAPS[key] * capScale);
       hasSignal = true;
     }
   });
@@ -174,49 +192,56 @@ const sanitizeWeights = (raw) => {
 
 // Experience replay: every feedback stores its (chosen, rejected) feature
 // vector pairs, and each new feedback re-trains the ranking weights over the
-// whole buffer in a few epochs instead of a single online pass. This sharply
+// whole buffer instead of a single online pass. This sharply
 // reduces last-click drift; once full, the bounded buffer intentionally keeps
 // the most recent lessons so the user's style can still evolve.
-const MAX_TRAINING_PAIRS = 160;
-const TRAINING_EPOCHS = 5;
-// Passive-aggressive margin the chosen shape must win by, and the cap on how
-// far a single pair may move the weights (PA-I aggressiveness)
-const RANK_MARGIN = 12;
-const RANK_AGGRESSIVENESS = 25;
-
+// Sized for one chapter of batch import (15-20 pages, ~4 pairs per bubble):
+// about 200 bubbles of evidence, ~150 KB once stored
+const MAX_TRAINING_PAIRS = 800;
 const featuresToVector = (features) => FEATURE_KEYS.map((key) => (
   Math.round((features[key] || 0) * 1000) / 1000
 ));
 
-const sanitizeVector = (raw) => (
-  Array.isArray(raw) && raw.length === FEATURE_KEYS.length
-    && raw.every((value) => Number.isFinite(Number(value)))
-    ? raw.map((value) => clamp(Number(value), 0, 1))
-    : null
-);
+const sanitizeVector = (raw, length = FEATURE_KEYS.length) => {
+  if (!Array.isArray(raw) || raw.length !== length || !raw.every((value) => Number.isFinite(Number(value)))) return null;
+  const vector = raw.map((value) => clamp(Number(value), 0, 1));
+  while (vector.length < FEATURE_KEYS.length) vector.push(0);
+  return vector;
+};
 
-const sanitizeTrainingPairs = (raw) => {
+const sanitizeTrainingPairs = (raw, schemaVersion = PAIR_SCHEMA_VERSION) => {
   if (!Array.isArray(raw)) return null;
+  const length = schemaVersion === 1 ? LEGACY_PAIR_FEATURES : FEATURE_KEYS.length;
   const pairs = [];
   raw.forEach((entry) => {
     if (pairs.length >= MAX_TRAINING_PAIRS || !entry || typeof entry !== "object") return;
-    const chosen = sanitizeVector(entry.c);
-    const rejected = sanitizeVector(entry.r);
-    if (chosen && rejected) pairs.push({ c: chosen, r: rejected });
+    const chosen = sanitizeVector(entry.c, length);
+    const rejected = sanitizeVector(entry.r, length);
+    if (!chosen || !rejected) return;
+    const pair = { c: chosen, r: rejected };
+    // Feedback index the pair was learned at (recency weighting). Older
+    // buffers have none and fall back to their position in the buffer
+    const time = Number(entry.t);
+    if (Number.isFinite(time) && time >= 0) pair.t = Math.floor(time);
+    // Generator score gap (rejected minus chosen, temperature units) without
+    // the learned term: the ranker learns the residual on top of it
+    const offset = Number(entry.o);
+    if (Number.isFinite(offset)) pair.o = clamp(offset, -RANK_OFFSET_LIMIT, RANK_OFFSET_LIMIT);
+    pairs.push(pair);
   });
   return pairs.length ? pairs : null;
 };
 
-const getPairSortKey = (pair) => `${pair.c.join(",")}|${pair.r.join(",")}`;
+const getPairSortKey = (pair) => `${pair.c.join(",")}|${pair.r.join(",")}|${pair.t}|${pair.o}`;
 
 // Train in canonical feature order so a given replay buffer always produces
 // the same ranker. The buffer itself remains chronological because its cap is
 // intentionally a recency window once it reaches MAX_TRAINING_PAIRS.
-const sortTrainingPairs = (pairs) => pairs.slice().sort((a, b) => {
-  const left = getPairSortKey(a);
-  const right = getPairSortKey(b);
-  return left < right ? -1 : left > right ? 1 : 0;
-});
+// Keys are built once per pair, not once per comparison.
+const sortTrainingPairs = (pairs) => pairs
+  .map((pair) => ({ pair, key: getPairSortKey(pair) }))
+  .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+  .map((entry) => entry.pair);
 
 const pairSeparation = (weights, pair) => {
   let separation = 0;
@@ -228,8 +253,8 @@ const pairSeparation = (weights, pair) => {
 };
 
 // Fraction of stored preference pairs the weights rank correctly: the
-// training accuracy of the learned ranker, persisted as telemetry and used
-// as a validation guard against updates that make the model globally worse
+// training accuracy of the learned ranker, persisted as telemetry (measured
+// on the training buffer, so it is optimistic)
 const rankingAccuracy = (weights, pairs) => {
   if (!pairs.length) return 0;
   let correct = 0;
@@ -239,32 +264,172 @@ const rankingAccuracy = (weights, pairs) => {
   return correct / pairs.length;
 };
 
-// PA-I updates over the replay buffer: each violated pair moves the weights
-// just enough to restore the margin, scaled down by the pair's own feature
-// distance — big clear mistakes move fast, near-ties barely move at all.
-// Deterministic epoch order keeps training reproducible.
-const trainRankingWeights = (initialWeights, pairs, aggressiveness) => {
-  const weights = { ...(initialWeights || {}) };
-  for (let epoch = 0; epoch < TRAINING_EPOCHS; epoch++) {
-    pairs.forEach((pair) => {
-      const loss = RANK_MARGIN - pairSeparation(weights, pair);
-      if (loss <= 0) return;
-      let normSq = 0;
-      for (let index = 0; index < FEATURE_KEYS.length; index++) {
-        const diff = pair.r[index] - pair.c[index];
-        normSq += diff * diff;
+// Bayesian pairwise logistic ranker over the replay buffer (Bradley-Terry
+// likelihood, Gaussian prior, Laplace posterior). Each stored pair says
+// "the user kept c over r": its likelihood is sigmoid(w . (r - c)) in
+// temperature units, and a zero-mean Gaussian prior keeps every weight at the
+// hand-tuned generator until evidence accumulates. Unlike a fixed L2 over the
+// mean loss, the evidence term grows with the number of lessons, so the
+// ranker is cautious after one feedback and assertive after a chapter.
+//
+// - Recency: pairs are down-weighted by an exponential discount on their
+//   feedback age (weighted likelihood, as in discounted linear bandits for
+//   non-stationary preferences), so a style change is followed within a few
+//   lessons instead of being outvoted by the whole history.
+// - Uncertainty: the diagonal Laplace posterior variance of each weight
+//   moderates it (probit approximation of the predictive): weights backed
+//   by little or contradictory evidence are shrunk, well-supported ones keep
+//   their full value. The bounds below are only a safety net.
+// - Solver: full-batch preconditioned Newton steps; order independent.
+const RANK_TEMPERATURE = 150;
+const RANK_PRIOR_PRECISION = 1.2;
+// Candidate memory lengths (half-life, in feedbacks). The ranker keeps the
+// one that best predicts the user's latest lessons from the earlier ones
+const RANK_HALF_LIVES = [10, 40];
+const RANK_HALF_LIFE = 40; // default until there is enough history to choose
+const RANK_HOLDOUT_FEEDBACKS = 3;
+const RANK_SELECTION_MIN_FEEDBACKS = 8;
+const RANK_ITERATIONS = 60;
+// Converged once no weight moves more than this in a step (1/RANK_TEMPERATURE
+// units, so 1.5e-5 once stored), far below the 0.01 rounding of the weights
+const RANK_TOLERANCE = 1e-7;
+const RANK_STEP = 0.6;
+const RANK_CAP_GROWTH = RANK_CAP_GROWTH_LIMIT; // caps widen with effective evidence, up to x(1+3)
+const RANK_CAP_EVIDENCE = 60; // effective pairs for a full widening
+
+// Pairs from older buffers carry no feedback index: date them from their
+// chronological position (about four pairs per feedback, newest last)
+const datePairs = (pairs, samples) => pairs.map((pair, index) => (
+  pair.t == null
+    ? { ...pair, t: Math.max(0, samples - Math.ceil((pairs.length - index) / 4)) }
+    : pair
+));
+
+const getPairWeights = (pairs, halfLife = RANK_HALF_LIFE) => {
+  const latest = pairs.reduce((max, pair) => Math.max(max, pair.t || 0), 0);
+  const decay = Math.LN2 / halfLife;
+  return pairs.map((pair) => Math.exp(-decay * Math.max(0, latest - (pair.t || 0))));
+};
+
+// Pairs this far down the recency discount no longer move the weights
+const RANK_MIN_PAIR_WEIGHT = 1e-4;
+
+const trainRankingWeights = (pairs, halfLife = RANK_HALF_LIFE) => {
+  const count = FEATURE_KEYS.length;
+  const allWeights = getPairWeights(pairs, halfLife);
+  const evidence = allWeights.reduce((sum, weight) => sum + weight, 0);
+  // Flat typed arrays: this runs on every Learn click over up to
+  // MAX_TRAINING_PAIRS pairs, so the inner loops must stay allocation free
+  const kept = [];
+  allWeights.forEach((weight, index) => { if (weight >= RANK_MIN_PAIR_WEIGHT) kept.push(index); });
+  const pairCount = kept.length;
+  const diffs = new Float64Array(pairCount * count);
+  const pairWeights = new Float64Array(pairCount);
+  const offsets = new Float64Array(pairCount);
+  kept.forEach((source, pairIndex) => {
+    const pair = pairs[source];
+    for (let index = 0; index < count; index++) diffs[pairIndex * count + index] = pair.r[index] - pair.c[index];
+    pairWeights[pairIndex] = allWeights[source];
+    offsets[pairIndex] = pair.o || 0;
+  });
+  const capScale = 1 + RANK_CAP_GROWTH * Math.min(1, evidence / RANK_CAP_EVIDENCE);
+  const caps = FEATURE_KEYS.map((key) => FEATURE_CAPS[key] * capScale / RANK_TEMPERATURE);
+  // Zero-mean prior: with no evidence the generator ranks on its own
+  const units = new Float64Array(count);
+  const gradient = new Float64Array(count);
+  const hessian = new Float64Array(count);
+  for (let iteration = 0; iteration < RANK_ITERATIONS; iteration++) {
+    for (let index = 0; index < count; index++) {
+      gradient[index] = RANK_PRIOR_PRECISION * units[index];
+      hessian[index] = RANK_PRIOR_PRECISION;
+    }
+    for (let pairIndex = 0, offset = 0; pairIndex < pairCount; pairIndex++, offset += count) {
+      let margin = offsets[pairIndex];
+      for (let index = 0; index < count; index++) margin += units[index] * diffs[offset + index];
+      const probability = 1 / (1 + Math.exp(-margin));
+      const weight = pairWeights[pairIndex];
+      const pull = weight * (1 - probability);
+      const curvature = weight * probability * (1 - probability);
+      for (let index = 0; index < count; index++) {
+        const diff = diffs[offset + index];
+        gradient[index] -= pull * diff;
+        hessian[index] += curvature * diff * diff;
       }
-      if (normSq < 1e-6) return;
-      const step = Math.min(aggressiveness, loss / normSq);
-      for (let index = 0; index < FEATURE_KEYS.length; index++) {
-        const diff = pair.r[index] - pair.c[index];
-        if (!diff) continue;
-        const key = FEATURE_KEYS[index];
-        weights[key] = clamp((weights[key] || 0) + step * diff, -FEATURE_CAPS[key], FEATURE_CAPS[key]);
-      }
-    });
+    }
+    // Curvature floor: a saturated sigmoid must not stall the update
+    let largest = 0;
+    for (let index = 0; index < count; index++) {
+      const previous = units[index];
+      units[index] = clamp(previous - RANK_STEP * gradient[index] / Math.max(hessian[index], RANK_PRIOR_PRECISION), -caps[index], caps[index]);
+      largest = Math.max(largest, Math.abs(units[index] - previous));
+    }
+    if (largest < RANK_TOLERANCE) break;
   }
-  return weights;
+  // Moderated weights: E[w] / sqrt(1 + pi/8 * Var[w] * E[d^2]), the probit
+  // approximation of the predictive with the diagonal Laplace variance
+  const spread = new Float64Array(count);
+  for (let pairIndex = 0, offset = 0; pairIndex < pairCount; pairIndex++, offset += count) {
+    for (let index = 0; index < count; index++) spread[index] += pairWeights[pairIndex] * diffs[offset + index] * diffs[offset + index];
+  }
+  const weights = {};
+  FEATURE_KEYS.forEach((key, index) => {
+    const meanSquare = evidence > 0 ? spread[index] / evidence : 0;
+    const moderation = 1 / Math.sqrt(1 + (Math.PI / 8) * meanSquare / hessian[index]);
+    const value = Math.round(units[index] * moderation * RANK_TEMPERATURE * 100) / 100;
+    if (value) weights[key] = value;
+  });
+  return { weights, capScale };
+};
+
+// Log-likelihood of held-out pairs under trained weights (offsets included)
+const pairLogLikelihood = (weights, pairs) => pairs.reduce((sum, pair) => {
+  const margin = (pair.o || 0) + pairSeparation(weights, pair) / RANK_TEMPERATURE;
+  return sum - Math.log1p(Math.exp(-margin));
+}, 0);
+
+// Adaptive forgetting: a long memory is best for a stable style, a short one
+// right after the user changes style. Train each candidate on everything but
+// the latest feedbacks and keep the one predicting them best (prequential
+// validation), then retrain on the full buffer with it
+const selectHalfLife = (pairs) => {
+  const latest = pairs.reduce((max, pair) => Math.max(max, pair.t || 0), 0);
+  const earliest = pairs.reduce((min, pair) => Math.min(min, pair.t || 0), latest);
+  if (latest - earliest + 1 < RANK_SELECTION_MIN_FEEDBACKS) return RANK_HALF_LIFE;
+  const cutoff = latest - RANK_HOLDOUT_FEEDBACKS + 1;
+  const past = pairs.filter((pair) => (pair.t || 0) < cutoff);
+  const recent = pairs.filter((pair) => (pair.t || 0) >= cutoff);
+  if (!past.length || !recent.length) return RANK_HALF_LIFE;
+  let best = RANK_HALF_LIFE;
+  let bestLikelihood = -Infinity;
+  RANK_HALF_LIVES.forEach((halfLife) => {
+    const likelihood = pairLogLikelihood(trainRankingWeights(past, halfLife).weights, recent);
+    // Ties keep the longer, steadier memory
+    if (likelihood > bestLikelihood + 1e-6 || (Math.abs(likelihood - bestLikelihood) <= 1e-6 && halfLife > best)) {
+      bestLikelihood = likelihood;
+      best = halfLife;
+    }
+  });
+  return best;
+};
+
+// Rebuild from the buffer rather than warm-starting from the previous
+// weights: equal stored evidence produces equal weights regardless of the
+// path that led to it, so a retrain is idempotent
+const retrainRanker = (next) => {
+  if (!next.pairs || !next.pairs.length) return next;
+  const trainingPairs = sortTrainingPairs(datePairs(next.pairs, next.samples || 0));
+  const trained = trainRankingWeights(trainingPairs, selectHalfLife(trainingPairs));
+  next.weights = sanitizeWeights(trained.weights, trained.capScale);
+  next.pairAccuracy = Math.round(rankingAccuracy(trained.weights, trainingPairs) * 1000) / 1000;
+  return next;
+};
+
+// Batch commit after an import: one ranker fit and one line-break model fit.
+// Both start from their priors, so retraining the same tuning twice gives
+// the same result
+const retrainTextShapeRRanker = (currentTuning) => {
+  if (!currentTuning) return currentTuning;
+  return applyLineModel(retrainRanker(sanitizeTuning(currentTuning)));
 };
 
 // Exemplar memory: the actual shapes the user validated, kept verbatim with
@@ -275,7 +440,7 @@ const trainRankingWeights = (initialWeights, pairs, aggressiveness) => {
 // each, matched by one linear scan per generation, scoring only ever uses
 // the 3 nearest) — the cap only bounds how far back the memory reaches, and
 // batch learning fills ~15 per page, so keep room for a dozen pages or so
-const MAX_EXEMPLARS = 200;
+const MAX_EXEMPLARS = 300;
 
 const sanitizeExemplars = (raw) => {
   if (!Array.isArray(raw)) return null;
@@ -315,15 +480,25 @@ const sanitizeExemplars = (raw) => {
   return exemplars.length ? exemplars : null;
 };
 
+// Length of the structured line-break model weight vector (see trainDdpSteps)
+const DDP_FEATURES = 11;
+// Learned line-break energy weights (see trainDdpSteps); invalid shapes are dropped
+const sanitizeDdp = (value) => (
+  Array.isArray(value) && value.length === DDP_FEATURES && value.every((entry) => Number.isFinite(Number(entry)))
+    ? value.map((entry) => clamp(Number(entry), -400, 400))
+    : null
+);
+
 const sanitizeTuning = (raw) => {
   const source = raw && typeof raw === "object" ? raw : {};
   // Unversioned pairs came from the first replay implementation and use the
-  // same feature order as schema 1. Unknown future schemas must not be read as
-  // today's vectors merely because their array length happens to match.
+  // feature order of schema 1, which migrates forward. Unknown future
+  // schemas must not be read as today's vectors merely because their array
+  // length happens to match.
   const pairSchemaVersion = source.pairSchemaVersion == null
-    ? PAIR_SCHEMA_VERSION
+    ? 1
     : Math.floor(Number(source.pairSchemaVersion));
-  const compatiblePairSchema = pairSchemaVersion === PAIR_SCHEMA_VERSION;
+  const compatiblePairSchema = pairSchemaVersion === 1 || pairSchemaVersion === PAIR_SCHEMA_VERSION;
   const pick = (key, min, max) => {
     const value = Number(source[key]);
     return Number.isFinite(value) ? clamp(value, min, max) : TUNING_DEFAULTS[key];
@@ -337,8 +512,12 @@ const sanitizeTuning = (raw) => {
     style: sanitizeStyle(source.style),
     weights: sanitizeWeights(source.weights),
     exemplars: sanitizeExemplars(source.exemplars),
-    pairs: compatiblePairSchema ? sanitizeTrainingPairs(source.pairs) : null,
+    pairs: compatiblePairSchema ? sanitizeTrainingPairs(source.pairs, pairSchemaVersion) : null,
     pairSchemaVersion: PAIR_SCHEMA_VERSION,
+    ddp: sanitizeDdp(source.ddp),
+    // Fingerprint of the lessons the line-break model was fitted on: a
+    // mismatch with the current exemplars marks the model for an idle refit
+    ddpKey: typeof source.ddpKey === "string" && /^\d{1,4}-[0-9a-f]{1,8}$/.test(source.ddpKey) ? source.ddpKey : null,
     // Training accuracy of the ranking weights over the replay buffer:
     // telemetry for "how well trained is my TextShapeR"
     pairAccuracy: (() => {
@@ -592,6 +771,10 @@ const computeHyphenSplits = (word) => {
     .sort((a, b) => a.penalty - b.penalty || a.index - b.index)
     .slice(0, 3);
 };
+
+// Clean French syllable boundaries of a long word, best first (the smart
+// paste uses them when a translation only fits with one hyphen)
+const frenchHyphenPoints = (word) => computeHyphenSplits(word).map((split) => split.index);
 
 const buildWeights = (lineCount, curve = 0.5, shift = 0, minWeight = 0.35) => {
   if (lineCount <= 1) return [1];
@@ -900,6 +1083,21 @@ const getHyphenLineY = (lineTexts) => {
   return hyphenLines ? positionSum / hyphenLines : null;
 };
 
+// RMS silhouette distance to the closest exemplar curve, 0 (same shape) to 1
+// (0.3 of the peak width apart on average, or more). 0 without exemplars:
+// then every candidate shares the value and it carries no preference
+const getMemoryGap = (lengths, curves) => {
+  if (!curves || !curves.length || lengths.length < 2) return 0;
+  const curve = resampleSilhouette(lengths);
+  if (!curve) return 0;
+  let best = Infinity;
+  curves.forEach((exemplarCurve) => {
+    const distance = curveDistance(curve, exemplarCurve);
+    if (distance < best) best = distance;
+  });
+  return Number.isFinite(best) ? clamp(Math.sqrt(best) / 0.3, 0, 1) : 0;
+};
+
 // Normalized (~0..1) interpretable features of a shape, shared between live
 // scoring and the pairwise ranking updates so both speak the same language
 const extractShapeFeatures = (lengths, lineTexts, hyphenCount, profile) => {
@@ -927,6 +1125,10 @@ const extractShapeFeatures = (lengths, lineTexts, hyphenCount, profile) => {
   }
   let punctuationEnds = 0;
   let wideLines = 0;
+  let totalWidth = 0;
+  for (let index = 0; index < lineCount; index++) totalWidth += lengths[index];
+  // ln(units per line) mapped from [ln 4, ln 40] onto [0, 1]
+  const densityPosition = clamp(Math.log(Math.max(1, totalWidth / lineCount) / 4) / Math.LN10, 0, 1);
   for (let index = 0; index < lineCount; index++) {
     if (index < lineCount - 1 && endsWithBreakPunctuation(lineTexts[index])) punctuationEnds++;
     if (lengths[index] > maxLineWidth * 0.92) wideLines++;
@@ -944,7 +1146,513 @@ const extractShapeFeatures = (lengths, lineTexts, hyphenCount, profile) => {
     minRatio: clamp(Math.min.apply(null, lengths) / peak, 0, 1),
     punctEnds: lineCount > 1 ? punctuationEnds / (lineCount - 1) : 0,
     wideLines: wideLines / lineCount,
+    density: densityPosition,
+    densitySq: densityPosition * densityPosition,
+    meanRatio: clamp(totalWidth / lineCount / peak, 0, 1),
+    memoryGap: getMemoryGap(lengths, profile.exemplarCurves),
   };
+};
+
+
+// ---------------------------------------------------------------------------
+// Structured line-break model (differentiable dynamic programming).
+// Mensch & Blondel, "Differentiable Dynamic Programming for Structured
+// Prediction and Attention" (ICML 2018, arXiv:1802.03676): smoothing the
+// min of the line-break DP with negative entropy turns it into a log-sum-exp
+// recursion whose gradient is the expected line-break marginals. The user's
+// kept layout is then a structured label: the loss compares its energy with
+// the soft-min over every segmentation of the text into nearby line counts,
+// so one lesson teaches against thousands of alternatives instead of the five
+// shown. Energies are linear in per-line features, so the loss is convex.
+//
+// Cost: a fit is far too slow for a Learn click, so a click never runs one.
+// It only changes the exemplars, which no longer match the model's ddpKey;
+// the panel then refits once idle, in short time slices
+// (scheduleTextShapeRLineModelRefit), and a batch import fits it once at the
+// end (retrainTextShapeRRanker). Every fit starts from the prior, so the
+// model is a pure function of its lessons: refits are idempotent, and the
+// half-life check never sees the held-out lessons through its start point.
+// Fits run Newton's method to convergence (exact Hessian, see
+// ddpLatticeMoments), so the result does not depend on an iteration budget.
+// Constants tuned on scripts/textShapeRBench2.js (early shots, drift, mixed).
+const DDP_BETA = 30; // prior weight on line-width variance (feature 0)
+const DDP_PRIOR_PRECISION = 0.1; // Gaussian prior pulling theta back to DDP_PRIOR
+const DDP_SCALE = 40; // weight of the learned energy in scoreCandidate
+const DDP_ITERATIONS = 25; // Newton iterations cap; fits converge in about 5
+const DDP_TOLERANCE = 1e-3; // largest weight change that ends a fit
+const DDP_MAX_LESSONS = 20;
+// Lattice bounds: alternatives use the kept line count +-2, and lines are
+// pruned at the generator's own width limit (DP_WIDTH_PRUNE_RATIO)
+const DDP_LINE_SPREAD = 2;
+// The lattice grows with the square of the word count: longer texts (rare in
+// bubbles) still teach the ranker and the exemplar memory, but not this model
+const DDP_MAX_TOKENS = 48;
+// Recency half-lives (in lessons) chosen by held-out likelihood: a short one
+// to follow a style change quickly, a long one for a stable style.
+const DDP_HALF_LIVES = [3, 40];
+const DDP_HOLDOUT = 2;
+const DDP_MIN_LESSONS_FOR_SELECTION = 8;
+// Part of ddpKey: bump it when the lattice or the features change so stored
+// models are refitted instead of being read with another meaning
+const DDP_MODEL_VERSION = 1;
+const DDP_PRIOR = (() => { const p = new Array(DDP_FEATURES).fill(0); p[0] = DDP_BETA; return p; })();
+
+// Per-line feature vector; summing over the lines gives the layout's vector
+const ddpLineFeatures = (out, width, mean, lineIndex, lineCount, endsPunct, endsHyphen, aspectLog) => {
+  const r = width / Math.max(mean, 1e-6);
+  const inv = 1 / lineCount;
+  const u = lineCount > 1 ? (2 * lineIndex) / (lineCount - 1) - 1 : 0; // -1 top .. 1 bottom
+  const d = Math.log(Math.max(mean, 1) / 14) / Math.LN2;
+  const last = lineIndex === lineCount - 1;
+  out[0] = (r - 1) * (r - 1) * inv;
+  out[1] = r * u * u * inv;
+  out[2] = lineCount > 1 && lineIndex === 0 ? r : 0;
+  out[3] = lineCount > 1 && last ? r : 0;
+  out[4] = d * inv;
+  out[5] = d * d * inv;
+  out[6] = d * aspectLog * inv;
+  out[7] = !last && endsPunct ? 1 / Math.max(1, lineCount - 1) : 0;
+  out[8] = !last && endsHyphen ? 1 : 0;
+  out[9] = r < 0.5 ? inv : 0;
+  out[10] = r * u * inv;
+  return out;
+};
+
+const HYPHEN_TOKEN_END = /[A-Za-zÀ-ÖØ-öø-ÿ]-$/;
+
+// Layout feature vector from line widths and texts (scoring side)
+const ddpLayoutFeatures = (lengths, lineTexts, aspectLog) => {
+  const total = lengths.reduce((sum, width) => sum + width, 0);
+  const lineCount = lengths.length;
+  const mean = total / lineCount;
+  const sum = new Float64Array(DDP_FEATURES);
+  const buffer = new Float64Array(DDP_FEATURES);
+  for (let index = 0; index < lineCount; index++) {
+    ddpLineFeatures(buffer, lengths[index], mean, index, lineCount,
+      endsWithBreakPunctuation(lineTexts[index]), HYPHEN_TOKEN_END.test(lineTexts[index]), aspectLog);
+    for (let k = 0; k < DDP_FEATURES; k++) sum[k] += buffer[k];
+  }
+  return sum;
+};
+
+const logAddExp = (a, b) => {
+  if (a === -Infinity) return b;
+  if (b === -Infinity) return a;
+  return a > b ? a + Math.log1p(Math.exp(b - a)) : b + Math.log1p(Math.exp(a - b));
+};
+
+// The soft-min DP over every segmentation of a lesson's text into the kept
+// line count +-DDP_LINE_SPREAD. Line features do not depend on theta, so each
+// lattice is built once per lesson as flat typed arrays (arc source and
+// target node, constant, features); a training iteration is then only dot
+// products plus a forward-backward log-sum-exp. Nodes are (line, token).
+const buildDdpLattice = (tokens, aspectLog, keptLines) => {
+  const n = tokens.length;
+  const { prefix, endsBreak, punctOnly, breakCount } = getTokenMetrics(tokens);
+  const hyphens = tokens.map((token) => HYPHEN_TOKEN_END.test(token.text));
+  const totalWidth = prefix[n] + 0.45 * Math.max(0, n - 1);
+  const stride = n + 1;
+  const graphs = [];
+  const buffer = new Float64Array(DDP_FEATURES);
+  const bottom = Math.max(1, keptLines - DDP_LINE_SPREAD);
+  const top = Math.min(n, keptLines + DDP_LINE_SPREAD);
+  for (let lineCount = bottom; lineCount <= top; lineCount++) {
+    const mean = (totalWidth - 0.45 * (lineCount - 1)) / lineCount;
+    const pruneWidth = mean * (1 + DP_WIDTH_PRUNE_RATIO);
+    const reach = new Uint8Array((lineCount + 1) * stride);
+    reach[0] = 1;
+    const sources = [];
+    const targets = [];
+    const constants = [];
+    const all = [];
+    for (let line = 0; line < lineCount; line++) {
+      const last = line === lineCount - 1;
+      const maxTo = n - (lineCount - line - 1);
+      for (let from = line; from <= n; from++) {
+        if (!reach[line * stride + from]) continue;
+        for (let to = last ? n : from + 1; to <= maxTo; to++) {
+          const width = prefix[to] - prefix[from] + 0.45 * (to - from - 1);
+          if (width > pruneWidth && to > from + 1) break;
+          if (breakCount[to - 1] - breakCount[from] > 0) continue;
+          ddpLineFeatures(buffer, width, mean, line, lineCount, endsBreak[to - 1], hyphens[to - 1], aspectLog);
+          for (let k = 0; k < DDP_FEATURES; k++) all.push(buffer[k]);
+          sources.push(line * stride + from);
+          targets.push((line + 1) * stride + to);
+          constants.push(to - from === 1 && punctOnly[from] ? 3 : 0);
+          reach[(line + 1) * stride + to] = 1;
+        }
+      }
+    }
+    const end = lineCount * stride + n;
+    if (!reach[end]) continue;
+    // A feature equal on every arc adds lineCount times that value to every
+    // path (density terms, for instance): it moves the whole line count, not
+    // one break, so it stays out of the per-node moments below
+    const arcCount = sources.length;
+    const varying = [];
+    const fixed = new Float64Array(DDP_FEATURES);
+    for (let k = 0; k < DDP_FEATURES; k++) {
+      let arc = 1;
+      while (arc < arcCount && all[arc * DDP_FEATURES + k] === all[k]) arc++;
+      if (arc < arcCount) varying.push(k);
+      else fixed[k] = all[k];
+    }
+    const features = new Float64Array(arcCount * varying.length);
+    for (let arc = 0; arc < arcCount; arc++) {
+      for (let slot = 0; slot < varying.length; slot++) features[arc * varying.length + slot] = all[arc * DDP_FEATURES + varying[slot]];
+    }
+    graphs.push({ end, lineCount, sources: Int32Array.from(sources), targets: Int32Array.from(targets), constants: Float64Array.from(constants), varying, fixed, features });
+  }
+  return graphs;
+};
+
+// Scratch shared by every lattice pass (one lattice at a time)
+let ddpAlpha = new Float64Array(0);
+let ddpEnergies = new Float64Array(0);
+let ddpFirst = new Float64Array(0);
+let ddpSecond = new Float64Array(0);
+// Upper triangle (k <= j) of a symmetric matrix over `size` entries, flattened
+const triangleIndex = (size) => {
+  const rows = [];
+  const cols = [];
+  for (let k = 0; k < size; k++) {
+    for (let j = k; j < size; j++) { rows.push(k); cols.push(j); }
+  }
+  return { rows: Int32Array.from(rows), cols: Int32Array.from(cols), count: rows.length };
+};
+const DDP_TRIANGLES = [];
+for (let size = 0; size <= DDP_FEATURES; size++) DDP_TRIANGLES.push(triangleIndex(size));
+const DDP_PAIRS = DDP_TRIANGLES[DDP_FEATURES].count;
+
+// Forward pass over the lattices in the expectation semiring (Li & Eisner,
+// "First- and Second-Order Expectation Semirings", EMNLP 2009): besides the
+// log-partition, every node carries the first and second moments of the path
+// features given that node. One sweep then yields log Z, E_p[F] (gradient)
+// and Cov_p[F] (the exact Hessian of log Z) with no backward pass. Arcs are
+// stored line by line, so their order is a valid forward order. `covariance`
+// is the upper triangle of DDP_TRIANGLES[DDP_FEATURES].
+const ddpLatticeMoments = (graphs, theta, mean, covariance) => {
+  const results = [];
+  let logZ = -Infinity;
+  for (let graphIndex = 0; graphIndex < graphs.length; graphIndex++) {
+    const { sources, targets, constants, features, varying, fixed, lineCount, end } = graphs[graphIndex];
+    const arcCount = sources.length;
+    const width = varying.length;
+    let fixedEnergy = 0;
+    for (let k = 0; k < DDP_FEATURES; k++) fixedEnergy += theta[k] * fixed[k];
+    if (ddpAlpha.length < end + 1) ddpAlpha = new Float64Array(end + 1);
+    if (ddpEnergies.length < arcCount) ddpEnergies = new Float64Array(arcCount);
+    ddpAlpha.fill(-Infinity, 0, end + 1);
+    ddpAlpha[0] = 0;
+    for (let arc = 0, offset = 0; arc < arcCount; arc++, offset += width) {
+      let energy = constants[arc] + fixedEnergy;
+      for (let slot = 0; slot < width; slot++) energy += theta[varying[slot]] * features[offset + slot];
+      ddpEnergies[arc] = energy;
+      const source = ddpAlpha[sources[arc]];
+      if (source !== -Infinity) ddpAlpha[targets[arc]] = logAddExp(ddpAlpha[targets[arc]], source - energy);
+    }
+    const graphLogZ = ddpAlpha[end];
+    if (graphLogZ === -Infinity) continue;
+    logZ = logAddExp(logZ, graphLogZ);
+    if (!mean) continue;
+    const { rows, cols, count } = DDP_TRIANGLES[width];
+    const nodes = end + 1;
+    if (ddpFirst.length < nodes * width) ddpFirst = new Float64Array(nodes * width);
+    if (ddpSecond.length < nodes * count) ddpSecond = new Float64Array(nodes * count);
+    ddpFirst.fill(0, 0, nodes * width);
+    ddpSecond.fill(0, 0, nodes * count);
+    for (let arc = 0, offset = 0; arc < arcCount; arc++, offset += width) {
+      const source = sources[arc];
+      const target = targets[arc];
+      if (ddpAlpha[source] === -Infinity) continue;
+      // Probability of entering `target` through this arc
+      const share = Math.exp(ddpAlpha[source] - ddpEnergies[arc] - ddpAlpha[target]);
+      if (share < 1e-12) continue;
+      const from = source * width;
+      const to = target * width;
+      const fromPair = source * count;
+      const toPair = target * count;
+      for (let pair = 0; pair < count; pair++) {
+        const fk = features[offset + rows[pair]];
+        const fj = features[offset + cols[pair]];
+        ddpSecond[toPair + pair] += share * (ddpSecond[fromPair + pair] + fk * ddpFirst[from + cols[pair]] + fj * ddpFirst[from + rows[pair]] + fk * fj);
+      }
+      for (let slot = 0; slot < width; slot++) ddpFirst[to + slot] += share * (ddpFirst[from + slot] + features[offset + slot]);
+    }
+    // Expand to all features: fixed ones total lineCount x their value
+    const first = new Float64Array(DDP_FEATURES);
+    for (let k = 0; k < DDP_FEATURES; k++) first[k] = fixed[k] * lineCount;
+    varying.forEach((k, slot) => { first[k] = ddpFirst[end * width + slot]; });
+    const slotOf = new Int32Array(DDP_FEATURES).fill(-1);
+    varying.forEach((k, slot) => { slotOf[k] = slot; });
+    const second = new Float64Array(DDP_PAIRS);
+    const full = DDP_TRIANGLES[DDP_FEATURES];
+    for (let pair = 0; pair < DDP_PAIRS; pair++) {
+      const k = full.rows[pair];
+      const j = full.cols[pair];
+      if (slotOf[k] >= 0 && slotOf[j] >= 0) {
+        const low = Math.min(slotOf[k], slotOf[j]);
+        const high = Math.max(slotOf[k], slotOf[j]);
+        // Row-major upper triangle offset of (low, high)
+        second[pair] = ddpSecond[end * count + low * width - (low * (low - 1)) / 2 + (high - low)];
+      } else {
+        second[pair] = first[k] * first[j];
+      }
+    }
+    results.push({ logZ: graphLogZ, first, second });
+  }
+  if (!mean) return logZ;
+  // Mixture over line counts
+  mean.fill(0);
+  covariance.fill(0);
+  results.forEach((result) => {
+    const weight = Math.exp(result.logZ - logZ);
+    for (let k = 0; k < DDP_FEATURES; k++) mean[k] += weight * result.first[k];
+    for (let pair = 0; pair < DDP_PAIRS; pair++) covariance[pair] += weight * result.second[pair];
+  });
+  const full = DDP_TRIANGLES[DDP_FEATURES];
+  for (let pair = 0; pair < DDP_PAIRS; pair++) covariance[pair] -= mean[full.rows[pair]] * mean[full.cols[pair]];
+  return logZ;
+};
+
+// Solves the symmetric positive definite system A x = b (Cholesky); A is
+// dense n x n in row order. Returns null if A is not positive definite.
+const solveSpd = (matrix, vector, size) => {
+  const lower = new Float64Array(size * size);
+  for (let row = 0; row < size; row++) {
+    for (let col = 0; col <= row; col++) {
+      let sum = matrix[row * size + col];
+      for (let k = 0; k < col; k++) sum -= lower[row * size + k] * lower[col * size + k];
+      if (row === col) {
+        if (!(sum > 0)) return null;
+        lower[row * size + row] = Math.sqrt(sum);
+      } else {
+        lower[row * size + col] = sum / lower[col * size + col];
+      }
+    }
+  }
+  const solution = new Float64Array(size);
+  for (let row = 0; row < size; row++) {
+    let sum = vector[row];
+    for (let k = 0; k < row; k++) sum -= lower[row * size + k] * solution[k];
+    solution[row] = sum / lower[row * size + row];
+  }
+  for (let row = size - 1; row >= 0; row--) {
+    let sum = solution[row];
+    for (let k = row + 1; k < size; k++) sum -= lower[k * size + row] * solution[k];
+    solution[row] = sum / lower[row * size + row];
+  }
+  return solution;
+};
+
+const getDdpLessonKey = (exemplar) => `${exemplar.aspect}|${exemplar.lines.join("\n")}`;
+
+const buildDdpLesson = (exemplar) => {
+  const tokens = [];
+  const lineBreaks = [];
+  exemplar.lines.forEach((line) => {
+    mergePunctuationWords(splitWordsPreservingMarkdown(line)).forEach((word) => tokens.push({ text: word }));
+    lineBreaks.push(tokens.length);
+  });
+  if (tokens.length < 1 || tokens.length > DDP_MAX_TOKENS) return null;
+  const { prefix } = getTokenMetrics(tokens);
+  const lengths = [];
+  let from = 0;
+  lineBreaks.forEach((to) => { lengths.push(prefix[to] - prefix[from] + 0.45 * Math.max(0, to - from - 1)); from = to; });
+  const aspectLog = exemplar.aspect ? Math.log(exemplar.aspect) : 0;
+  return {
+    graphs: buildDdpLattice(tokens, aspectLog, exemplar.lines.length),
+    features: ddpLayoutFeatures(lengths, exemplar.lines, aspectLog),
+  };
+};
+
+// Lattices of the lessons used by the latest fit only: a lesson costs
+// hundreds of KB, and the next fit shares all but the newest one
+let ddpLessonCache = new Map();
+
+// The lessons: the latest exemplars, oldest first
+const getDdpLessonExemplars = (exemplars) => (exemplars || []).slice(-DDP_MAX_LESSONS);
+
+// 32-bit FNV-1a over the lessons, prefixed with the model version
+const getDdpKey = (exemplars) => {
+  let hash = 0x811c9dc5;
+  getDdpLessonExemplars(exemplars).forEach((exemplar) => {
+    const text = `${getDdpLessonKey(exemplar)}\u0000`;
+    for (let index = 0; index < text.length; index++) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+  });
+  return `${DDP_MODEL_VERSION}-${(hash >>> 0).toString(16)}`;
+};
+
+const ddpNll = (theta, lesson) => {
+  let energy = 0;
+  for (let k = 0; k < DDP_FEATURES; k++) energy += theta[k] * lesson.features[k];
+  return energy + ddpLatticeMoments(lesson.graphs, theta, null, null);
+};
+
+// Training runs as generators that yield after each lesson pass (a few ms
+// at most), so the same code runs straight through in a batch retrain or in
+// time slices on an idle panel.
+//
+// Damped Newton steps on the convex weighted NLL + Gaussian prior, always
+// from the prior, with the exact Hessian (prior + weighted feature
+// covariances under the model). A step that raises the objective is halved
+// and retried, so every fit converges; it stops once no weight moves by more
+// than DDP_TOLERANCE.
+const fitDdpSteps = function* (lessons, halfLife) {
+  const decay = Math.LN2 / halfLife;
+  const weights = lessons.map((_, index) => Math.exp(-decay * (lessons.length - 1 - index)));
+  let theta = DDP_PRIOR.slice();
+  let previous = null;
+  let step = 1;
+  const mean = new Float64Array(DDP_FEATURES);
+  const covariance = new Float64Array(DDP_PAIRS);
+  for (let iteration = 0; iteration < DDP_ITERATIONS; iteration++) {
+    let objective = 0;
+    const gradient = new Float64Array(DDP_FEATURES);
+    const hessian = new Float64Array(DDP_FEATURES * DDP_FEATURES);
+    for (let k = 0; k < DDP_FEATURES; k++) {
+      const offset = theta[k] - DDP_PRIOR[k];
+      objective += 0.5 * DDP_PRIOR_PRECISION * offset * offset;
+      gradient[k] = DDP_PRIOR_PRECISION * offset;
+      hessian[k * DDP_FEATURES + k] = DDP_PRIOR_PRECISION;
+    }
+    for (let index = 0; index < lessons.length; index++) {
+      const lesson = lessons[index];
+      const weight = weights[index];
+      const logZ = ddpLatticeMoments(lesson.graphs, theta, mean, covariance);
+      let energy = 0;
+      for (let k = 0; k < DDP_FEATURES; k++) {
+        energy += theta[k] * lesson.features[k];
+        gradient[k] += weight * (lesson.features[k] - mean[k]);
+      }
+      objective += weight * (energy + logZ);
+      for (let pair = 0; pair < DDP_PAIRS; pair++) {
+        const k = DDP_TRIANGLES[DDP_FEATURES].rows[pair];
+        const j = DDP_TRIANGLES[DDP_FEATURES].cols[pair];
+        hessian[k * DDP_FEATURES + j] += weight * covariance[pair];
+        if (j !== k) hessian[j * DDP_FEATURES + k] += weight * covariance[pair];
+      }
+      yield;
+    }
+    if (previous && !(objective <= previous.objective + 1e-9)) {
+      // Overshot: back off from the previous point with half the step
+      step /= 2;
+      theta = previous.theta.map((value, k) => value - step * previous.direction[k]);
+      if (step < 1e-3) { theta = previous.theta; break; }
+      continue;
+    }
+    const direction = solveSpd(hessian, gradient, DDP_FEATURES);
+    if (!direction) break;
+    previous = { theta, objective, direction };
+    step = 1;
+    let largest = 0;
+    theta = theta.map((value, k) => {
+      largest = Math.max(largest, Math.abs(step * direction[k]));
+      return value - step * direction[k];
+    });
+    if (largest < DDP_TOLERANCE) break;
+  }
+  return theta;
+};
+
+// Negative log-likelihood of the kept layout: E(kept) + log Z (soft-min DP).
+// Yields { ddp, ddpKey }; ddp is null when there is nothing to learn from.
+const trainDdpSteps = function* (exemplars) {
+  const ddpKey = getDdpKey(exemplars);
+  const cache = new Map();
+  const lessons = [];
+  const lessonExemplars = getDdpLessonExemplars(exemplars);
+  for (let index = 0; index < lessonExemplars.length; index++) {
+    const key = getDdpLessonKey(lessonExemplars[index]);
+    let lesson = cache.has(key) ? cache.get(key) : ddpLessonCache.get(key);
+    if (lesson === undefined) {
+      lesson = buildDdpLesson(lessonExemplars[index]);
+      yield;
+    }
+    cache.set(key, lesson);
+    if (lesson) lessons.push(lesson);
+  }
+  ddpLessonCache = cache;
+  if (!lessons.length) return { ddp: null, ddpKey };
+  let halfLife = DDP_HALF_LIVES[DDP_HALF_LIVES.length - 1];
+  if (DDP_HALF_LIVES.length > 1 && lessons.length >= DDP_MIN_LESSONS_FOR_SELECTION) {
+    // Fitted on the earlier lessons only, scored on the held-out latest ones
+    const past = lessons.slice(0, -DDP_HOLDOUT);
+    const held = lessons.slice(-DDP_HOLDOUT);
+    let best = Infinity;
+    const candidates = DDP_HALF_LIVES.slice().reverse();
+    for (let index = 0; index < candidates.length; index++) {
+      const theta = yield* fitDdpSteps(past, candidates[index]);
+      const nll = held.reduce((sum, lesson) => sum + ddpNll(theta, lesson), 0);
+      if (nll < best - 1e-6) { best = nll; halfLife = candidates[index]; }
+    }
+  }
+  const theta = yield* fitDdpSteps(lessons, halfLife);
+  return { ddp: theta.map((value) => Math.round(value * 1000) / 1000), ddpKey };
+};
+
+const runSteps = (steps) => {
+  let state = steps.next();
+  while (!state.done) state = steps.next();
+  return state.value;
+};
+
+const applyLineModel = (next) => {
+  const model = runSteps(trainDdpSteps(next.exemplars));
+  next.ddp = sanitizeDdp(model.ddp);
+  next.ddpKey = model.ddpKey;
+  return next;
+};
+
+// True when the exemplars changed since the line-break model was fitted
+const isTextShapeRLineModelStale = (value) => {
+  const exemplars = sanitizeExemplars(value && value.exemplars);
+  return !!exemplars && value.ddpKey !== getDdpKey(exemplars);
+};
+
+// Synchronous refit (tests, benchmarks, tools): the tuning with a fresh model
+const refitTextShapeRLineModel = (value) => applyLineModel(sanitizeTuning(value));
+
+const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+
+// Idle refit for the panel: works in slices of at most `sliceMs` between
+// timers so typing and repaints never wait on it, then calls
+// onDone({ ddp, ddpKey }). Returns a cancel function.
+const scheduleTextShapeRLineModelRefit = (value, onDone, options = {}) => {
+  const sliceMs = options.sliceMs || 8;
+  const exemplars = sanitizeExemplars(value && value.exemplars);
+  const steps = trainDdpSteps(exemplars);
+  let timer = null;
+  let cancelled = false;
+  const tick = () => {
+    timer = null;
+    if (cancelled) return;
+    const deadline = now() + sliceMs;
+    let state = steps.next();
+    while (!state.done && now() < deadline) state = steps.next();
+    if (!state.done) {
+      timer = setTimeout(tick, 0);
+      return;
+    }
+    onDone({ ddp: sanitizeDdp(state.value.ddp), ddpKey: state.value.ddpKey });
+  };
+  timer = setTimeout(tick, 0);
+  return () => {
+    cancelled = true;
+    if (timer) clearTimeout(timer);
+  };
+};
+
+const scoreDdp = (lengths, lineTexts, aspectLog) => {
+  const theta = tuning.ddp;
+  if (!theta) return 0;
+  const features = ddpLayoutFeatures(lengths, lineTexts, aspectLog);
+  let energy = 0;
+  for (let k = 0; k < DDP_FEATURES; k++) energy += (theta[k] - DDP_PRIOR[k]) * features[k];
+  return energy * DDP_SCALE;
 };
 
 const dotFeatures = (weights, features) => {
@@ -1024,23 +1732,6 @@ const scoreLearnedWeights = (lengths, lineTexts, hyphenCount, profile) => {
   const weights = tuning.weights;
   if (!weights) return 0;
   return dotFeatures(weights, extractShapeFeatures(lengths, lineTexts, hyphenCount, profile));
-};
-
-// Exemplar affinity: silhouette distance to the closest context-matched
-// exemplar. This is what "propose shapes in my style" means concretely.
-const scoreExemplarAffinity = (lengths, profile) => {
-  const curves = profile.exemplarCurves;
-  if (!curves || !curves.length || lengths.length < 2) return 0;
-  const confidence = getExemplarConfidence();
-  if (confidence <= 0) return 0;
-  const curve = resampleSilhouette(lengths);
-  if (!curve) return 0;
-  let best = Infinity;
-  curves.forEach((exemplarCurve) => {
-    const distance = curveDistance(curve, exemplarCurve);
-    if (distance < best) best = distance;
-  });
-  return Number.isFinite(best) ? best * 700 * confidence : 0;
 };
 
 // Style affinity: distance between a candidate and the learned profile.
@@ -1176,11 +1867,12 @@ const scoreCandidate = (lines, hyphenCount, profile) => {
   });
 
   score += scoreStyleAffinity(lengths, lines, hyphenCount);
+  if (tuning.ddp) score += scoreDdp(lengths, lines.map((line) => lineText(line)), profile.aspectLog || 0);
 
-  if (tuning.weights || (profile.exemplarCurves && profile.exemplarCurves.length)) {
-    const lineTexts = lines.map((line) => lineText(line));
-    if (tuning.weights) score += scoreLearnedWeights(lengths, lineTexts, hyphenCount, profile);
-    score += scoreExemplarAffinity(lengths, profile);
+  // Learned ranker. Exemplar memory enters through its memoryGap feature,
+  // so how much past shapes count in this context is learned, not fixed
+  if (tuning.weights) {
+    score += scoreLearnedWeights(lengths, lines.map((line) => lineText(line)), hyphenCount, profile);
   }
 
   if (shapeRows && maxLength > 0 && lineCount > 1) {
@@ -1703,6 +2395,7 @@ const generateTextShapeRVariants = (text, options = {}) => {
   if (exemplarCurves.length) {
     scoringProfile = { ...scoringProfile, exemplarCurves };
   }
+  if (aspect != null) scoringProfile = { ...scoringProfile, aspectLog: Math.log(aspect) };
   const baseMinLines = words.length <= 2 ? 1 : profile.minLines;
   let minLines = Math.min(Math.max(1, baseMinLines), Math.max(1, words.length));
   if (shapeRows.length > 1 && fit) {
@@ -1916,6 +2609,10 @@ const generateTextShapeRVariants = (text, options = {}) => {
   if (variantCache.size >= VARIANT_CACHE_LIMIT) {
     variantCache.delete(variantCache.keys().next().value);
   }
+  // The learning step must read features through the exact scoring context
+  // the list was ranked with (line target, width cap): hidden so callers and
+  // serialised variant lists never see it
+  Object.defineProperty(result, "scoringProfile", { value: scoringProfile, enumerable: false });
   variantCache.set(cacheKey, result);
   return result;
 };
@@ -2092,37 +2789,42 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
 
   // Pairwise learning-to-rank with experience replay: this sample's
   // (chosen, rejected) feature pairs join the stored buffer, then the
-  // weights re-train over the whole buffer with passive-aggressive margin
-  // updates. Old feedbacks keep teaching alongside new ones — the ranker
-  // converges on the whole preference history instead of being nudged by
-  // its last sample. Canonical training order makes the ranker reproducible
-  // for a given bounded preference buffer.
+  // weights re-train over the whole buffer with a regularised logistic
+  // pairwise loss. Old feedbacks keep teaching alongside new ones, so the
+  // ranker converges on the whole preference history instead of being nudged
+  // by its last sample. Canonical pair order keeps floating point sums, and
+  // so the ranker, reproducible for a given buffer.
   const chosenText = chosenLines.join("\n");
-  const rankProfile = {
+  // Same feature context as live scoring, otherwise the ranker learns
+  // weights against one line target / width cap and is applied with another
+  const rankProfile = variants.scoringProfile || {
     lineTarget: top.lines.length,
     maxLineWidth: (PROFILE_PRESETS[options.profile] || PROFILE_PRESETS.balanced).maxLineWidth || 28,
   };
   const chosenFeatures = extractShapeFeatures(lengths, chosenLines, chosenHyphens, rankProfile);
   const chosenVector = featuresToVector(chosenFeatures);
+  const matchedRank = variants.findIndex((variant) => variant.text === chosenText);
+  // Generator score without the learned term, so each pair records how far
+  // the fixed scorer already leans and the ranker learns only the residual
+  // needed to reorder (offset). A hand-typed layout has no generator score
+  const baseScore = (variant, features) => variant.score - dotFeatures(learningTuning.weights || {}, features);
+  const chosenBase = matchedRank >= 0 ? baseScore(variants[matchedRank], chosenFeatures) : null;
   const freshPairs = [];
   variants.slice(0, 5).forEach((variant) => {
     if (variant.text === chosenText) return;
     const variantFeatures = extractShapeFeatures(variant.lines.map(visibleWidth), variant.lines, variant.hyphenCount, rankProfile);
-    freshPairs.push({ c: chosenVector, r: featuresToVector(variantFeatures) });
+    const pair = { c: chosenVector, r: featuresToVector(variantFeatures), t: next.samples };
+    if (chosenBase != null && Number.isFinite(variant.score) && !variant.injected && !variants[matchedRank].injected) {
+      const offset = (baseScore(variant, variantFeatures) - chosenBase) / RANK_TEMPERATURE;
+      pair.o = Math.round(clamp(offset, -RANK_OFFSET_LIMIT, RANK_OFFSET_LIMIT) * 1000) / 1000;
+    }
+    freshPairs.push(pair);
   });
-  const matchedRank = variants.findIndex((variant) => variant.text === chosenText);
   const pairs = (next.pairs || []).concat(freshPairs).slice(-MAX_TRAINING_PAIRS);
-  if (pairs.length) {
-    const trainingPairs = sortTrainingPairs(pairs);
-    // Rebuild from the buffer rather than warm-starting from the previous
-    // weights: equal stored evidence now produces equal weights regardless of
-    // the path that led to it.
-    const trained = trainRankingWeights(null, trainingPairs, RANK_AGGRESSIVENESS);
-    const trainedAccuracy = rankingAccuracy(trained, trainingPairs);
-    next.weights = sanitizeWeights(trained);
-    next.pairAccuracy = Math.round(trainedAccuracy * 1000) / 1000;
-  }
   next.pairs = pairs.length ? pairs : null;
+  // A batch import defers the ranker to one retrain over the whole chapter
+  // (retrainTextShapeRRanker): retraining after every layer is quadratic
+  if (!options.deferRanker) retrainRanker(next);
   next.pairSchemaVersion = PAIR_SCHEMA_VERSION;
 
   // Exemplar memory: keep the shape itself with its context, so similar
@@ -2156,6 +2858,9 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
     hits: previousExemplar ? (previousExemplar.hits || 1) + 1 : 1,
   });
   next.exemplars = sanitizeExemplars(exemplars.slice(-MAX_EXEMPLARS));
+  // The structured line-break model is not refitted here: it is too slow for
+  // a click. Its ddpKey no longer matches these exemplars, so the panel
+  // refits it once idle, or the batch retrain does after an import
 
   next.samples += 1;
   return {
@@ -2171,4 +2876,4 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
   };
 };
 
-export { generateTextShapeRVariants, generateManualTextShapeRVariant, estimateManualLineCount, setDehyphenationEnabled, setTextShapeRTuning, sanitizeTuning as sanitizeTextShapeRTuning, recordTextShapeRFeedback, visibleLength, visibleWidth };
+export { frenchHyphenPoints, generateTextShapeRVariants, generateManualTextShapeRVariant, estimateManualLineCount, setDehyphenationEnabled, setTextShapeRTuning, sanitizeTuning as sanitizeTextShapeRTuning, recordTextShapeRFeedback, retrainTextShapeRRanker, isTextShapeRLineModelStale, refitTextShapeRLineModel, scheduleTextShapeRLineModelRefit, visibleLength, visibleWidth };

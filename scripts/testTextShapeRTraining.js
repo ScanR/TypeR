@@ -8,6 +8,12 @@ const { normalizeTrainingFiles, makeTrainingPage, selectedTrainingEntries, train
 async function testLearning() {
   const files = normalizeTrainingFiles(["/pages/10.psd", "/pages/2.psd", "/pages/2.psd", "/pages/no.png", null]);
   assert.deepStrictEqual(files.map((file) => file.name), ["2.psd", "10.psd"]);
+  // Picks may also be { name, path } objects whose path is an opaque token:
+  // the name alone carries the extension and the sort key
+  assert.deepStrictEqual(normalizeTrainingFiles([
+    { name: "02.psd", path: "token:b" }, { name: "01.PSD", path: "token:a" }, { name: "cover.png", path: "token:c" },
+    { name: "dup.psd", path: "token:a" }, { path: "/pages/03.psd" }, { name: "x.psd" },
+  ]), [{ path: "token:a", name: "01.PSD" }, { path: "token:b", name: "02.psd" }, { path: "/pages/03.psd", name: "03.psd" }]);
   const page = makeTrainingPage(files[0], { entries: [
     { text: "Hello\r\nthere", visible: true },
     { text: "Hidden\rtext", visible: false },
@@ -57,6 +63,15 @@ async function testLearning() {
   assert.strictEqual(real.learned, 2);
   assert.strictEqual(real.tuning.samples, 2);
   assert.deepStrictEqual(engine.generateTextShapeRVariants(text), before);
+  // A batch import stores evidence per layer and fits the ranker once
+  const deferred = await trainTextShapeREntries([{ text }, { text: "We have to\nkeep moving\nforward now." }], null, {
+    recordFeedback: engine.recordTextShapeRFeedback,
+    retrainRanker: engine.retrainTextShapeRRanker,
+  });
+  assert.strictEqual(deferred.learned, 2);
+  assert(deferred.tuning.pairs && deferred.tuning.pairs.length, "deferred lessons still store their pairs");
+  assert.strictEqual(typeof deferred.tuning.pairAccuracy, "number", "the single retrain runs at the end");
+  assert.deepStrictEqual(engine.retrainTextShapeRRanker(deferred.tuning).weights, deferred.tuning.weights, "retraining is idempotent");
 }
 
 function testPhotoshopScan() {
@@ -132,8 +147,23 @@ function testPhotoshopScan() {
   assert.strictEqual(JSON.parse(box.scanTextShapeRTraining("")).error, "document");
 }
 
+// The panel's idle refit of the line-break model commits only onto the
+// tuning it was fitted on: a lesson learned meanwhile must not be overwritten
+function testLineModelCommit() {
+  const { reducer, initial } = require("./helpers/loadContext")();
+  const base = { samples: 1, exemplars: [{ lines: ["Hello", "there"], units: 10 }] };
+  const state = reducer(initial, { type: "setTextShapeRTuning", value: base, learned: true });
+  const model = { ddp: new Array(11).fill(1), ddpKey: "1-abc" };
+  const applied = reducer(state, { type: "setTextShapeRLineModel", base, ...model });
+  assert.deepStrictEqual(applied.textShapeRTuning, { ...base, ...model });
+  const newer = reducer(state, { type: "setTextShapeRTuning", value: { ...base, samples: 2 }, learned: true });
+  const late = reducer(newer, { type: "setTextShapeRLineModel", base, ...model });
+  assert.strictEqual(late.textShapeRTuning, newer.textShapeRTuning, "A stale refit result is dropped");
+}
+
 (async () => {
   testPhotoshopScan();
+  testLineModelCommit();
   await testLearning();
   console.log("TextShapeR training selection, cancellation, ranker and PSD safety tests passed");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

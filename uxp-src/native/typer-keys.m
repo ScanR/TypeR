@@ -9,6 +9,9 @@
 //
 // Keys are only reported while Photoshop is the frontmost application, like
 // the CEP host did with lsappinfo. The helper exits when Photoshop does.
+// The file holds "<state>|<beat>": the beat moves on every write and at
+// least once a second, so the plugin can tell a quiet keyboard from a dead
+// helper (uxp-src/host/keysHelper.js restarts it).
 // Mouse side buttons go to a second file (<state file>.mouse) as
 // "<pid>-<press number> MB|<5|6>|<modifiers>|Photoshop", the line format of
 // the CEP panel's Windows watcher.
@@ -18,6 +21,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 typedef struct {
@@ -125,6 +129,38 @@ static NSString *pressedKeyNames(int shift) {
   return nil;
 }
 
+// The plugin reads the state file every 25 ms, less often while Photoshop's
+// main thread is busy: a release, or any state that follows one, stays at
+// least this long so a quick tap or a double tap is never missed. A press
+// that only adds keys goes out at once.
+static const uint64_t kMinShownMs = 100;
+
+static uint64_t nowMs(void) {
+  return clock_gettime_nsec_np(CLOCK_MONOTONIC) / 1000000ULL;
+}
+
+// True when every "a"-separated name of `old` is also in `next`
+static int addsKeys(const char *next, const char *old) {
+  const char *name = old;
+  while (*name) {
+    if (*name == 'a') {
+      name++;
+      continue;
+    }
+    const char *end = strchr(name, 'a');
+    size_t length = end ? (size_t)(end - name) : strlen(name);
+    char needle[260];
+    if (length + 3 > sizeof(needle)) return 0;
+    needle[0] = 'a';
+    memcpy(needle + 1, name, length);
+    needle[length + 1] = 'a';
+    needle[length + 2] = 0;
+    if (!strstr(next, needle)) return 0;
+    name += length;
+  }
+  return 1;
+}
+
 static void writeAtomically(const char *path, const char *text) {
   char temporary[4096];
   snprintf(temporary, sizeof(temporary), "%s.tmp", path);
@@ -142,7 +178,12 @@ int main(int argc, const char **argv) {
   char mousePath[4096];
   snprintf(mousePath, sizeof(mousePath), "%s.mouse", statePath);
   signal(SIGHUP, SIG_IGN);
-  char previous[512] = "";
+  char shown[512] = "a";
+  char released[512] = "";
+  int shownIsRelease = 0;
+  uint64_t shownAt = 0;
+  unsigned long beat = 0;
+  int sinceWrite = 1000;
   int mouseWasDown[2] = {0, 0};
   unsigned long presses = 0;
   int tick = 0;
@@ -170,9 +211,34 @@ int main(int argc, const char **argv) {
           }
         }
         const char *bytes = state.UTF8String;
-        if (strcmp(bytes, previous) != 0) {
-          writeAtomically(statePath, bytes);
-          strncpy(previous, bytes, sizeof(previous) - 1);
+        // The first release seen while the shown state is held back is kept,
+        // even if the key is pressed again meanwhile: that is a double tap
+        int differs = strcmp(bytes, shown) != 0;
+        if (differs && !released[0] && !addsKeys(bytes, shown)) {
+          strncpy(released, bytes, sizeof(released) - 1);
+          released[sizeof(released) - 1] = 0;
+        }
+        const char *next = released[0] ? released : (differs ? bytes : NULL);
+        uint64_t now = nowMs();
+        int changed = 0;
+        if (next) {
+          int nextIsRelease = !addsKeys(next, shown);
+          if (now - shownAt >= kMinShownMs || (!nextIsRelease && !shownIsRelease)) {
+            strncpy(shown, next, sizeof(shown) - 1);
+            shown[sizeof(shown) - 1] = 0;
+            shownIsRelease = nextIsRelease;
+            shownAt = now;
+            released[0] = 0;
+            changed = 1;
+          }
+        }
+        // Every change goes out at once, and the same state again about once
+        // a second with the next beat
+        if (changed || ++sinceWrite >= 50) {
+          char line[600];
+          snprintf(line, sizeof(line), "%s|%lu", shown, ++beat);
+          writeAtomically(statePath, line);
+          sinceWrite = 0;
         }
         // Mouse buttons 4 and 5 (CGMouseButton 3 and 4), on press only
         for (int button = 0; button < 2; button++) {
@@ -185,6 +251,10 @@ int main(int argc, const char **argv) {
           }
           mouseWasDown[button] = down;
         }
+        // NSWorkspace's frontmost application only follows app switches when
+        // its notifications are delivered: drain them without blocking (the
+        // main run loop returns at once when nothing is pending)
+        [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate date]];
       }
       usleep(20000);
     }

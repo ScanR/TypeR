@@ -4,6 +4,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import { locale, readStorage, writeToStorage, scrollToLine, scrollToStyle, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, nativeAlert } from "./utils";
 import { shouldRunUpdateCheck } from "./updateLogic";
+import { readUxpMigrationState, shouldOfferUxpMigration } from "./uxpMigration";
 import config from "./config";
 import { getNextLineNumberState } from "./lineNumbering";
 import { CUSTOM_IMAGE_THEME_ID, normalizeCustomThemes, normalizeEditorTheme, normalizePageLineColor, setCustomEditorThemes } from "./themePresets";
@@ -26,12 +27,38 @@ import {
   normalizeStyleSizeTipCount,
   recordStyleSizeChange,
 } from "./styleSizeTip";
+import { normalizeRefontRules } from "./oneClick/refont";
 const storage = readStorage();
 // A successful application is the clearest signal that someone is relying on
 // TextShapeR. Five applied suggestions are enough to introduce the learning
 // control without interrupting a first-time user.
 const TEXT_SHAPER_LEARN_TIP_THRESHOLD = 5;
+// Centring right after a paste: off, each text in its bubble, or the same
+// with double bubbles shared between their texts. Stored and imported values
+// are untrusted, so unknown modes fall back to off.
+const AUTO_CENTER_MODES = ["off", "single", "multi"];
+const normalizeAutoCenterMode = (value) => (AUTO_CENTER_MODES.indexOf(value) !== -1 ? value : "off");
+// Smart paste: the style size is a ceiling the fit may shrink down to this
+// fraction of it. Stored and imported values are untrusted, so anything that
+// is not a finite number falls back to the default.
+const SMART_PASTE_MIN_SCALE_DEFAULT = 0.7;
+const normalizeSmartPasteMinScale = (value) => {
+  const num = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim() !== "" ? Number(value) : NaN;
+  if (!Number.isFinite(num)) return SMART_PASTE_MIN_SCALE_DEFAULT;
+  return Math.round(Math.min(1, Math.max(0.5, num)) * 100) / 100;
+};
+const SMART_PASTE_HYPHENATION_MODES = ["auto", "fr", "en", "off"];
+const normalizeSmartPasteHyphenation = (value) => (
+  SMART_PASTE_HYPHENATION_MODES.indexOf(value) !== -1 ? value : "auto"
+);
+// Transient toast shown above the footer (smart paste fallbacks, toggles)
+const NOTICE_KINDS = ["info", "warning"];
+let lastNoticeId = 0;
 const hasTextShapeRLearning = (value) => Number(value?.samples) > 0;
+// Quiet time after the last tuning change before the line-break model refit
+const TEXT_SHAPER_LINE_MODEL_IDLE_MS = 1500;
 
 const storeFields = [
   "notFirstTime",
@@ -60,6 +87,14 @@ const storeFields = [
   "middleEast",
   "lastOpenedImagePath",
   "multiBubbleMode",
+  "autoCenterMode",
+  "smartPaste",
+  "pasteOnClick",
+  "smartPasteAutoClean",
+  "smartPasteDistribute",
+  "smartPasteMinScale",
+  "smartPasteHyphenation",
+  "refontRules",
   "showTips",
   "exportFolderFontTipDismissed",
   "showQuickStyleSize",
@@ -307,6 +342,18 @@ const initialState = {
   // persisted, and placed after the storage spread so it always starts false
   keepSizeHeld: false,
   uiLayout: normalizeUiLayout(storage.data?.uiLayout),
+  autoCenterMode: normalizeAutoCenterMode(storage.data?.autoCenterMode),
+  // Smart paste settings sit after the storage spread so stored values are
+  // always normalized. Smart paste and line distribution are on by default.
+  smartPaste: storage.data?.smartPaste !== false,
+  pasteOnClick: storage.data?.pasteOnClick === true,
+  smartPasteAutoClean: storage.data?.smartPasteAutoClean === true,
+  smartPasteDistribute: storage.data?.smartPasteDistribute !== false,
+  smartPasteMinScale: normalizeSmartPasteMinScale(storage.data?.smartPasteMinScale),
+  smartPasteHyphenation: normalizeSmartPasteHyphenation(storage.data?.smartPasteHyphenation),
+  refontRules: normalizeRefontRules(storage.data?.refontRules),
+  // Never persisted: a toast only belongs to the current session
+  notice: null,
   // The theme registry is filled by the theme manager at import time, so the
   // stored id can already point at a custom theme here
   customThemes: normalizeCustomThemes(storage.data?.customThemes),
@@ -416,6 +463,26 @@ const baseReducer = (state, action) => {
       }
       if (action.data.uiLayout) {
         newState.uiLayout = normalizeUiLayout(action.data.uiLayout);
+      }
+      if ("autoCenterMode" in action.data) {
+        newState.autoCenterMode = normalizeAutoCenterMode(action.data.autoCenterMode);
+      }
+      if ("smartPaste" in action.data) newState.smartPaste = action.data.smartPaste !== false;
+      if ("pasteOnClick" in action.data) newState.pasteOnClick = action.data.pasteOnClick === true;
+      if ("smartPasteAutoClean" in action.data) {
+        newState.smartPasteAutoClean = action.data.smartPasteAutoClean === true;
+      }
+      if ("smartPasteDistribute" in action.data) {
+        newState.smartPasteDistribute = action.data.smartPasteDistribute !== false;
+      }
+      if ("smartPasteMinScale" in action.data) {
+        newState.smartPasteMinScale = normalizeSmartPasteMinScale(action.data.smartPasteMinScale);
+      }
+      if ("smartPasteHyphenation" in action.data) {
+        newState.smartPasteHyphenation = normalizeSmartPasteHyphenation(action.data.smartPasteHyphenation);
+      }
+      if ("refontRules" in action.data) {
+        newState.refontRules = normalizeRefontRules(action.data.refontRules);
       }
       break;
     }
@@ -982,6 +1049,68 @@ const baseReducer = (state, action) => {
       break;
     }
 
+    case "setAutoCenterMode": {
+      newState.autoCenterMode = normalizeAutoCenterMode(action.value);
+      break;
+    }
+
+    case "setSmartPaste": {
+      newState.smartPaste = !!action.value;
+      break;
+    }
+
+    case "setPasteOnClick": {
+      newState.pasteOnClick = !!action.value;
+      break;
+    }
+
+    case "setSmartPasteAutoClean": {
+      newState.smartPasteAutoClean = !!action.value;
+      break;
+    }
+
+    case "setSmartPasteDistribute": {
+      newState.smartPasteDistribute = !!action.value;
+      break;
+    }
+
+    case "setSmartPasteMinScale": {
+      newState.smartPasteMinScale = normalizeSmartPasteMinScale(action.value);
+      break;
+    }
+
+    case "setSmartPasteHyphenation": {
+      newState.smartPasteHyphenation = normalizeSmartPasteHyphenation(action.value);
+      break;
+    }
+
+    case "setRefontRules": {
+      newState.refontRules = normalizeRefontRules(action.rules);
+      break;
+    }
+
+    case "showNotice": {
+      const text = typeof action.text === "string" ? action.text.trim() : "";
+      if (!text) break;
+      // Unique even for two notices in the same millisecond, so a stale
+      // auto-dismiss timer can never clear the next message
+      lastNoticeId = Math.max(Date.now(), lastNoticeId + 1);
+      newState.notice = {
+        id: lastNoticeId,
+        text,
+        kind: NOTICE_KINDS.indexOf(action.kind) !== -1 ? action.kind : "info",
+      };
+      break;
+    }
+
+    case "clearNotice": {
+      if (!state.notice) break;
+      if (action.id === undefined || action.id === null || action.id === state.notice.id) {
+        newState.notice = null;
+      }
+      break;
+    }
+
     case "setStyleSizeStep": {
       let step = parseFloat(action.step);
       if (!Number.isFinite(step) || step <= 0) step = 1;
@@ -1094,12 +1223,25 @@ const baseReducer = (state, action) => {
       break;
     }
 
+    case "setTextShapeRLineModel": {
+      // Idle refit result: it only applies to the tuning it was fitted on. A
+      // newer lesson in the meantime gets its own refit
+      if (action.base && state.textShapeRTuning === action.base) {
+        newState.textShapeRTuning = { ...action.base, ddp: action.ddp || null, ddpKey: action.ddpKey || null };
+      }
+      break;
+    }
+
     case "setDehyphenateTextShapeR": {
       newState.dehyphenateTextShapeR = action.value === true;
       break;
     }
 
     case "setLastOpenedImagePath": {
+      // Captured bubbles belong to one page: switching page invalidates them.
+      if (action.path && action.path !== state.lastOpenedImagePath) {
+        newState.storedSelections = [];
+      }
       newState.lastOpenedImagePath = action.path || null;
       break;
     }
@@ -1721,6 +1863,29 @@ const ContextProvider = React.memo(function ContextProvider(props) {
     listenersRef.current.forEach((listener) => listener());
   }, [state]);
   React.useEffect(() => dispatch({}), []);
+  // TextShapeR's line-break model is too slow to fit on a Learn click, so a
+  // click leaves it stale. Refit it once the panel has been idle for a moment,
+  // in short time slices; any newer tuning cancels the pending refit, so a
+  // burst of clicks costs a single fit.
+  React.useEffect(() => {
+    const base = state.textShapeRTuning;
+    if (!base || !Array.isArray(base.exemplars) || !base.exemplars.length) return undefined;
+    let active = true;
+    let cancelRefit = null;
+    const timer = setTimeout(() => {
+      import(/* webpackChunkName: "text-shaper-engine" */ "./textShapeR").then((engine) => {
+        if (!active || !engine.isTextShapeRLineModelStale(base)) return;
+        cancelRefit = engine.scheduleTextShapeRLineModelRefit(base, (model) => {
+          if (active) dispatch({ type: "setTextShapeRLineModel", base, ddp: model.ddp, ddpKey: model.ddpKey });
+        });
+      });
+    }, TEXT_SHAPER_LINE_MODEL_IDLE_MS);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      if (cancelRefit) cancelRefit();
+    };
+  }, [state.textShapeRTuning]);
   React.useEffect(() => {
     if (!state.inlineTextShapeR) return undefined;
     let active = true;
@@ -1807,10 +1972,46 @@ const ContextProvider = React.memo(function ContextProvider(props) {
       dispatch({ type: "setModal", modal: "update", data });
     }).catch(error => console.warn("Automatic update check failed:", error));
   }, [state.checkUpdates, state.autoUpdate]);
+  // Legacy panel: offer TypeR UXP once Photoshop can run it, a few seconds
+  // after startup and only while no other window is open (uxpMigration.js)
+  React.useEffect(() => {
+    let migration;
+    try {
+      migration = readUxpMigrationState(getUpdateTestConfig());
+    } catch (error) {
+      return undefined;
+    }
+    const current = stateRef.current;
+    if (!shouldOfferUxpMigration({
+      eligibility: migration.eligibility,
+      record: readStorage("uxpMigration"),
+      now: Date.now(),
+      notFirstTime: current.notFirstTime,
+      checkUpdates: current.checkUpdates,
+      force: migration.forced,
+    })) return undefined;
+    let timer = null;
+    const offer = () => {
+      if (stateRef.current.modalType) {
+        timer = setTimeout(offer, 5000);
+        return;
+      }
+      dispatch({ type: "setModal", modal: "uxpMigration", data: { forced: migration.forced } });
+    };
+    timer = setTimeout(offer, 4000);
+    return () => clearTimeout(timer);
+  }, []);
   return <Context.Provider value={contextValue}>{props.children}</Context.Provider>;
 });
 ContextProvider.propTypes = {
   children: PropTypes.any.isRequired,
 };
 
-export { useContext, ContextProvider, defaultUiLayout, normalizeUiLayout };
+export {
+  useContext,
+  ContextProvider,
+  defaultUiLayout,
+  normalizeUiLayout,
+  normalizeSmartPasteMinScale,
+  normalizeSmartPasteHyphenation,
+};

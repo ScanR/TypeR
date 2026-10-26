@@ -68,6 +68,7 @@ export function installCepEnvironment(init) {
   let hidden = !!init.hidden;
   const listeners = {};
   const watcherListeners = new Set();
+  const keyListeners = new Set();
 
   const dispatch = (type, data) => {
     (listeners[type] || []).slice().forEach((entry) => {
@@ -261,8 +262,18 @@ export function installCepEnvironment(init) {
   /* ---------------------- host notifications ---------------------- */
 
   on("psEvent", (message) => dispatch("com.adobe.PhotoshopJSONCallback" + init.extensionId, message.data));
+  // Every change of the keyboard reader's state goes straight to the
+  // shortcut matcher (app_src/hotkeys.jsx): a press shorter than a poll
+  // interval, or one made while a poll backs off, is otherwise never seen
   on("keys", (message) => {
     keyboardState = typeof message.state === "string" ? message.state : "a";
+    keyListeners.forEach((listener) => {
+      try {
+        listener(keyboardState);
+      } catch (error) {
+        console.error("TypeR: keyboard listener", error);
+      }
+    });
   });
   on("theme", (message) => {
     hostEnvironment = message.hostEnvironment || hostEnvironment;
@@ -275,11 +286,21 @@ export function installCepEnvironment(init) {
   });
   on("watcherLine", (message) => watcherListeners.forEach((listener) => listener(message.line)));
 
-  // A docked panel that is collapsed keeps its WebView alive: document.hidden
-  // is what the panel's pollers check before calling Photoshop
+  // A closed or collapsed panel keeps its WebView alive: document.hidden is
+  // what the panel checks before calling Photoshop (pollers, shortcuts, paste
+  // on click). Photoshop does not always call the panel's hide(), so the
+  // WebView's own visibility counts too: a closed panel's view is hidden.
+  const nativeHidden = (() => {
+    try {
+      const descriptor = typeof Document !== "undefined" && Object.getOwnPropertyDescriptor(Document.prototype, "hidden");
+      if (descriptor && descriptor.get) return () => !!descriptor.get.call(document);
+    } catch (error) {}
+    return () => false;
+  })();
+  const isHidden = () => hidden || nativeHidden();
   try {
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
-    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (hidden ? "hidden" : "visible") });
+    Object.defineProperty(document, "hidden", { configurable: true, get: isHidden });
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (isHidden() ? "hidden" : "visible") });
   } catch (error) {}
 
   window.typerUXP = {
@@ -291,6 +312,10 @@ export function installCepEnvironment(init) {
     onWatcherLine(listener) {
       watcherListeners.add(listener);
       return () => watcherListeners.delete(listener);
+    },
+    onKeys(listener) {
+      keyListeners.add(listener);
+      return () => keyListeners.delete(listener);
     },
   };
 }

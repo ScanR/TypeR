@@ -30,6 +30,7 @@ assert.deepStrictEqual(
     releasesUrl: "http://127.0.0.1:17831/releases",
     currentVersion: "2.9.9",
     autoInstall: true,
+    forceUxpMigration: false,
   }
 );
 assert.strictEqual(parseUpdateTestConfig("not json"), null);
