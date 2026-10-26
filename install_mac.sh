@@ -33,15 +33,15 @@ MSG_CREDITS_EN="TypeR developed by Sakushi & SeanR."
 MSG_TYPERTOOLS_EN="typertools, developed by Swirt: https://swirt.github.io/typertools/"
 MSG_DISCORD_EN="ScanR's Discord if you need help: https://discord.com/invite/Pdmfmqk"
 MSG_CHOOSE_EN="Which version of TypeR do you want to install?"
-MSG_CHOICE_UXP_EN="  1) UXP, recommended (faster, built on Adobe's newer plugin framework)
+MSG_CHOICE_UXP_EN="  1) New TypeR (UXP), recommended (faster, built on Adobe's newer plugin framework)
      Photoshop 2025 (version 26.0) or later"
 MSG_CHOICE_LEGACY_EN="  2) Legacy, CEP (works with more Photoshop versions; older and slower, but more thoroughly tested)
      Photoshop CC 2015 (version 16.0) or later; Photoshop 2026 on Apple Silicon must run under Rosetta"
 MSG_CHOICE_PROMPT_EN="Your choice [1/2] (Enter = 1): "
 MSG_BOTH_INSTALLED_EN="The other version of TypeR is installed too: do not open both panels at the same time (each shortcut would run twice)."
-MSG_UXP_NEED_CC_EN="Creative Cloud is required to install the UXP version: install it, then run this script again."
-MSG_UXP_DOWNLOAD_EN="Downloading the latest TypeR UXP plugin..."
-MSG_UXP_INSTALLING_EN="Installing TypeR (UXP)..."
+MSG_UXP_NEED_CC_EN="Creative Cloud is required to install the new TypeR (UXP): install it, then run this script again."
+MSG_UXP_DOWNLOAD_EN="Downloading the new TypeR (UXP)..."
+MSG_UXP_INSTALLING_EN="Installing the new TypeR (UXP)..."
 MSG_UXP_COMPLETE_EN="TypeR is installed: in Photoshop, open it from the menu [Plugins] > [TypeR]. If TypeR was already installed, restart Photoshop."
 MSG_UXP_FAILED_EN="The installation failed. Double-click TypeR-UXP.ccx to install it through Creative Cloud."
 
@@ -58,15 +58,15 @@ MSG_CREDITS_FR="TypeR développé par Sakushi & SeanR."
 MSG_TYPERTOOLS_FR="typertools, développé par Swirt : https://swirt.github.io/typertools/"
 MSG_DISCORD_FR="Discord de ScanR si besoin d'aide : https://discord.com/invite/Pdmfmqk"
 MSG_CHOOSE_FR="Quelle version de TypeR voulez-vous installer ?"
-MSG_CHOICE_UXP_FR="  1) UXP, recommandée (plus rapide, basée sur le framework de plugins le plus récent d'Adobe)
+MSG_CHOICE_UXP_FR="  1) Nouveau TypeR (UXP), recommandé (plus rapide, basé sur le framework de plugins le plus récent d'Adobe)
      Photoshop 2025 (version 26.0) ou plus récent"
 MSG_CHOICE_LEGACY_FR="  2) Legacy, CEP (compatible avec plus de versions de Photoshop ; plus ancienne et plus lente, mais mieux éprouvée)
      Photoshop CC 2015 (version 16.0) ou plus récent ; sur Mac Apple Silicon, Photoshop 2026 doit tourner sous Rosetta"
 MSG_CHOICE_PROMPT_FR="Votre choix [1/2] (Entrée = 1) : "
 MSG_BOTH_INSTALLED_FR="L'autre version de TypeR est aussi installée : n'ouvrez pas les deux panneaux en même temps (chaque raccourci s'exécuterait deux fois)."
-MSG_UXP_NEED_CC_FR="Creative Cloud est nécessaire pour installer la version UXP : installez-le, puis relancez ce script."
-MSG_UXP_DOWNLOAD_FR="Téléchargement du dernier plugin TypeR UXP..."
-MSG_UXP_INSTALLING_FR="Installation de TypeR (UXP)..."
+MSG_UXP_NEED_CC_FR="Creative Cloud est nécessaire pour installer le nouveau TypeR (UXP) : installez-le, puis relancez ce script."
+MSG_UXP_DOWNLOAD_FR="Téléchargement du nouveau TypeR (UXP)..."
+MSG_UXP_INSTALLING_FR="Installation du nouveau TypeR (UXP)..."
 MSG_UXP_COMPLETE_FR="TypeR est installé : dans Photoshop, ouvrez-le depuis le menu [Plug-ins] > [TypeR]. Si TypeR était déjà installé, redémarrez Photoshop."
 MSG_UXP_FAILED_FR="L'installation a échoué. Double-cliquez sur TypeR-UXP.ccx pour l'installer avec Creative Cloud."
 
@@ -83,15 +83,15 @@ MSG_CREDITS_ES="TypeR desarrollado por Sakushi & SeanR."
 MSG_TYPERTOOLS_ES="typertools, desarrollado por Swirt: https://swirt.github.io/typertools/"
 MSG_DISCORD_ES="Discord de ScanR si necesitas ayuda: https://discord.com/invite/Pdmfmqk"
 MSG_CHOOSE_ES="¿Qué versión de TypeR quieres instalar?"
-MSG_CHOICE_UXP_ES="  1) UXP, recomendada (más rápida, basada en el framework de plugins más reciente de Adobe)
+MSG_CHOICE_UXP_ES="  1) Nuevo TypeR (UXP), recomendado (más rápido, basado en el framework de plugins más reciente de Adobe)
      Photoshop 2025 (versión 26.0) o posterior"
 MSG_CHOICE_LEGACY_ES="  2) Legacy, CEP (compatible con más versiones de Photoshop; más antigua y lenta, pero más probada)
      Photoshop CC 2015 (versión 16.0) o posterior; en Mac Apple Silicon, Photoshop 2026 debe ejecutarse con Rosetta"
 MSG_CHOICE_PROMPT_ES="Tu elección [1/2] (Enter = 1): "
 MSG_BOTH_INSTALLED_ES="La otra versión de TypeR también está instalada: no abras ambos paneles a la vez (cada atajo se ejecutaría dos veces)."
-MSG_UXP_NEED_CC_ES="Se necesita Creative Cloud para instalar la versión UXP: instálalo y vuelve a ejecutar este script."
-MSG_UXP_DOWNLOAD_ES="Descargando el último plugin TypeR UXP..."
-MSG_UXP_INSTALLING_ES="Instalando TypeR (UXP)..."
+MSG_UXP_NEED_CC_ES="Se necesita Creative Cloud para instalar el nuevo TypeR (UXP): instálalo y vuelve a ejecutar este script."
+MSG_UXP_DOWNLOAD_ES="Descargando el nuevo TypeR (UXP)..."
+MSG_UXP_INSTALLING_ES="Instalando el nuevo TypeR (UXP)..."
 MSG_UXP_COMPLETE_ES="TypeR está instalado: en Photoshop, ábrelo desde el menú [Plugins] > [TypeR]. Si TypeR ya estaba instalado, reinicia Photoshop."
 MSG_UXP_FAILED_ES="La instalación falló. Haz doble clic en TypeR-UXP.ccx para instalarlo con Creative Cloud."
 
@@ -108,15 +108,15 @@ MSG_CREDITS_PT="TypeR desenvolvido por Sakushi & SeanR."
 MSG_TYPERTOOLS_PT="typertools, desenvolvido por Swirt: https://swirt.github.io/typertools/"
 MSG_DISCORD_PT="Discord do ScanR se precisar de ajuda: https://discord.com/invite/Pdmfmqk"
 MSG_CHOOSE_PT="Qual versão do TypeR você quer instalar?"
-MSG_CHOICE_UXP_PT="  1) UXP, recomendada (mais rápida, baseada no framework de plugins mais recente da Adobe)
+MSG_CHOICE_UXP_PT="  1) Novo TypeR (UXP), recomendado (mais rápido, baseado no framework de plugins mais recente da Adobe)
      Photoshop 2025 (versão 26.0) ou mais recente"
 MSG_CHOICE_LEGACY_PT="  2) Legacy, CEP (compatível com mais versões do Photoshop; mais antiga e lenta, mas mais testada)
      Photoshop CC 2015 (versão 16.0) ou mais recente; em Mac Apple Silicon, o Photoshop 2026 deve rodar com Rosetta"
 MSG_CHOICE_PROMPT_PT="Sua escolha [1/2] (Enter = 1): "
 MSG_BOTH_INSTALLED_PT="A outra versão do TypeR também está instalada: não abra os dois painéis ao mesmo tempo (cada atalho seria executado duas vezes)."
-MSG_UXP_NEED_CC_PT="O Creative Cloud é necessário para instalar a versão UXP: instale-o e execute este script novamente."
-MSG_UXP_DOWNLOAD_PT="Baixando o plugin TypeR UXP mais recente..."
-MSG_UXP_INSTALLING_PT="Instalando o TypeR (UXP)..."
+MSG_UXP_NEED_CC_PT="O Creative Cloud é necessário para instalar o novo TypeR (UXP): instale-o e execute este script novamente."
+MSG_UXP_DOWNLOAD_PT="Baixando o novo TypeR (UXP)..."
+MSG_UXP_INSTALLING_PT="Instalando o novo TypeR (UXP)..."
 MSG_UXP_COMPLETE_PT="O TypeR está instalado: no Photoshop, abra-o pelo menu [Plug-ins] > [TypeR]. Se o TypeR já estava instalado, reinicie o Photoshop."
 MSG_UXP_FAILED_PT="A instalação falhou. Clique duas vezes em TypeR-UXP.ccx para instalá-lo com o Creative Cloud."
 

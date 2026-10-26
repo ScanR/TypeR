@@ -1015,7 +1015,7 @@ const SettingsModal = React.memo(function SettingsModal() {
     context.dispatch({ type: "setModal", modal: "walkthrough", data: { source: "settings" } });
   };
 
-  // Legacy panel: the switch to TypeR UXP, when Photoshop can run it
+  // Legacy panel: the switch to the new TypeR (UXP), when Photoshop can run it
   const uxpMigration = React.useMemo(() => {
     try {
       return readUxpMigrationState(getUpdateTestConfig());
@@ -1230,17 +1230,17 @@ const SettingsModal = React.memo(function SettingsModal() {
               {(uxpMigration.eligibility === "ok" || uxpMigration.forced) && (
               <div className="field">
                 <div className="settings-checkbox-hint">
-                  {locale.settingsUxpMigrationHint || "Your Photoshop can run TypeR UXP, the faster version of the panel."}
+                  {locale.settingsUxpMigrationHint || "Your Photoshop can run the new TypeR (UXP), the faster version of the panel."}
                 </div>
                 <button type="button" className="topcoat-button--large" onClick={openUxpMigration}>
-                  {locale.settingsUxpMigrationButton || "Switch to TypeR UXP"}
+                  {locale.settingsUxpMigrationButton || "Switch to the new TypeR"}
                 </button>
               </div>
               )}
               {uxpMigration.eligibility === "installed" && !uxpMigration.forced && (
               <div className="field">
                 <div className="settings-checkbox-hint">
-                  {locale.settingsUxpMigrationInstalled || "TypeR UXP is installed: open it from the Plugins > TypeR menu."}
+                  {locale.settingsUxpMigrationInstalled || "The new TypeR (UXP) is installed: open it from the Plugins > TypeR menu."}
                 </div>
               </div>
               )}

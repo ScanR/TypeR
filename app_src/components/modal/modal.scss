@@ -2314,9 +2314,68 @@
     }
 }
 
+.uxp-migration-lead {
+    font-weight: 600;
+}
+
+.uxp-migration-benefits {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+
+    li {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 10px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.05);
+
+        & + li {
+            margin-top: 6px;
+        }
+    }
+
+    .light-theme & li {
+        background: rgba(0, 0, 0, 0.05);
+    }
+}
+
+.uxp-migration-benefit-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(40, 142, 223, 0.2);
+    color: #4ca1e4;
+
+    .light-theme & {
+        color: #1976d2;
+    }
+}
+
 .uxp-migration-hint {
     opacity: 0.75;
     font-size: 0.92em;
+}
+
+.uxp-migration-never {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    text-decoration: underline;
+    opacity: 0.6;
+    cursor: pointer;
+
+    &:hover {
+        opacity: 0.9;
+    }
 }
 
 .uxp-migration-icon {
