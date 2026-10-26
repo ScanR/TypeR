@@ -11,6 +11,7 @@ const modalLoaders = {
     export: () => import(/* webpackChunkName: "modal-export" */ './export'),
     fontScanR: () => import(/* webpackChunkName: "modal-font-scan" */ './fontScanR'),
     update: () => import(/* webpackChunkName: "modal-update" */ './update'),
+    uxpMigration: () => import(/* webpackChunkName: "modal-uxp-migration" */ './uxpMigration'),
 };
 const HelpModal = React.lazy(modalLoaders.help);
 const WalkthroughModal = React.lazy(modalLoaders.walkthrough);
@@ -20,6 +21,7 @@ const EditFolderModal = React.lazy(modalLoaders.editFolder);
 const ExportModal = React.lazy(modalLoaders.export);
 const FontScanRModal = React.lazy(modalLoaders.fontScanR);
 const UpdateModal = React.lazy(modalLoaders.update);
+const UxpMigrationModal = React.lazy(modalLoaders.uxpMigration);
 let modalStylesPromise = null;
 const loadModalStyles = () => {
     if (!modalStylesPromise) {
@@ -84,6 +86,7 @@ const Modal = React.memo(function Modal() {
     else if (modalType === 'export') modalContent = <ExportModal />;
     else if (modalType === 'fontScanR') modalContent = <FontScanRModal />;
     else if (modalType === 'update') modalContent = <UpdateModal />;
+    else if (modalType === 'uxpMigration') modalContent = <UxpMigrationModal />;
 
     React.useEffect(() => {
         if (!context.state.notFirstTime) {

@@ -10,6 +10,7 @@
 - Read bubble and selection shapes from the selection mask, leave no history state for reads, and fix size changes on layers with floating-point colors, size changes on rich text and FontScanR on documents with a background layer.
 - Install updates from the panel through Creative Cloud's plugin installer.
 - The installers start by asking whether to install the UXP version or the Legacy (CEP) version, and the release archive contains the UXP plugin, so it installs offline.
+- The Legacy panel offers the switch to TypeR UXP when Photoshop can run it (2025 or later, with the Creative Cloud app): one click installs the plugin, which imports the styles, profiles and settings.
 
 ### Workspace and typesetting
 

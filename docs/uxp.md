@@ -95,6 +95,32 @@ tap or a double tap reaches the panel. Key names follow ScriptUI's
 bindings recorded in either version match; the recorder keeps the first name. On macOS it also reports
 mouse buttons 4 and 5, which the CEP version only supported on Windows.
 
+## Moving Legacy users to UXP
+
+Versions up to 2.5.0 update themselves to the Legacy package only: their updater installs the first
+`.zip` asset of a release whose name contains "typer" (`TypeR.zip`). So the switch is offered by the
+Legacy panel once it is updated (`app_src/uxpMigration.js`, `components/modal/uxpMigration.jsx`).
+
+- The offer opens a few seconds after startup, once no other window is open, when Photoshop is 2025
+  (26.0) or later, Creative Cloud's plugin installer is present and TypeR UXP is not installed. It is
+  shown only to existing users with update checks on. "Later" asks again a week later, "Don't ask
+  again" stops it, and Settings > General > Updates keeps a button.
+- The panel downloads `TypeR-UXP.ccx` from the latest release, checks that it is a TypeR plugin, and
+  hands it to the plugin installer through the panel's Node.js (`child_process.execFile`, no
+  ExtendScript). Photoshop loads a first installation at once.
+- TypeR UXP imports the Legacy styles, profiles and settings on its first start. The Legacy version
+  stays installed; the panel offers to close it.
+- Without Creative Cloud's plugin installer (Photoshop installed without the Creative Cloud app),
+  nothing is offered: TypeR UXP could not update itself either.
+
+Every release must therefore publish `TypeR.zip` and `TypeR-UXP.ccx`, and no other `.zip` whose name
+contains "typer".
+
+Test it without publishing anything: `npm run package:uxp`, then `npm run test:uxp-migration` serves
+a local release holding the `.ccx` and writes `.typer-update-test.json` (`forceUxpMigration`) into
+the installed Legacy extension. The Legacy panel then offers the switch whatever the Photoshop version
+or the installed plugins. Ctrl+C removes the test file.
+
 ## Building
 
 ```sh

@@ -2306,3 +2306,72 @@
     border-color: #a93226 !important;
     color: #fff;
 }
+
+// Switch from the Legacy panel to TypeR UXP
+.uxp-migration {
+    p {
+        margin: 0 0 8px;
+    }
+}
+
+.uxp-migration-hint {
+    opacity: 0.75;
+    font-size: 0.92em;
+}
+
+.uxp-migration-icon {
+    display: block;
+    margin: 4px auto 12px;
+
+    &.m-done {
+        color: #34c759;
+    }
+}
+
+.uxp-migration-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+
+    svg {
+        flex: 0 0 auto;
+    }
+
+    &.m-error {
+        color: #ff9f0a;
+    }
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.06);
+    }
+}
+
+.uxp-migration-spin {
+    animation: uxp-migration-spin 1s linear infinite;
+}
+
+@keyframes uxp-migration-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.uxp-migration-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+
+    .uxp-migration-left {
+        margin-right: auto;
+    }
+}
+

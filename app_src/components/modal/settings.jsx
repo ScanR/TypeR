@@ -6,7 +6,8 @@ import { MdSave } from "react-icons/md";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile } from "../../utils";
+import { backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig } from "../../utils";
+import { readUxpMigrationState } from "../../uxpMigration";
 import { useContext, defaultUiLayout, normalizeUiLayout } from "../../context";
 import { sanitizeTextShapeRTuning } from "../../textShapeR";
 import {
@@ -1014,6 +1015,18 @@ const SettingsModal = React.memo(function SettingsModal() {
     context.dispatch({ type: "setModal", modal: "walkthrough", data: { source: "settings" } });
   };
 
+  // Legacy panel: the switch to TypeR UXP, when Photoshop can run it
+  const uxpMigration = React.useMemo(() => {
+    try {
+      return readUxpMigrationState(getUpdateTestConfig());
+    } catch (error) {
+      return { eligibility: "uxp", forced: false };
+    }
+  }, []);
+  const openUxpMigration = () => {
+    context.dispatch({ type: "setModal", modal: "uxpMigration", data: { forced: uxpMigration.forced } });
+  };
+
   const checkUpdatesNow = () => {
     checkUpdate(config.appVersion).then((data) => {
       if (data) {
@@ -1214,6 +1227,23 @@ const SettingsModal = React.memo(function SettingsModal() {
                   {locale.settingsCheckUpdatesButton}
                 </button>
               </div>
+              {(uxpMigration.eligibility === "ok" || uxpMigration.forced) && (
+              <div className="field">
+                <div className="settings-checkbox-hint">
+                  {locale.settingsUxpMigrationHint || "Your Photoshop can run TypeR UXP, the faster version of the panel."}
+                </div>
+                <button type="button" className="topcoat-button--large" onClick={openUxpMigration}>
+                  {locale.settingsUxpMigrationButton || "Switch to TypeR UXP"}
+                </button>
+              </div>
+              )}
+              {uxpMigration.eligibility === "installed" && !uxpMigration.forced && (
+              <div className="field">
+                <div className="settings-checkbox-hint">
+                  {locale.settingsUxpMigrationInstalled || "TypeR UXP is installed: open it from the Plugins > TypeR menu."}
+                </div>
+              </div>
+              )}
             </div>
           </div>
         );
