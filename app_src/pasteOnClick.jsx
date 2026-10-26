@@ -37,8 +37,22 @@ const probeTrigger = () => new Promise((resolve) => {
 });
 const hasDescriptor = (eventData) => !!(eventData && typeof eventData === "object" && Object.keys(eventData).length);
 
-export const shouldPasteOnClick = (state, trigger, sinceHostAction) => !!(
-  trigger && state && state.pasteOnClick && !state.multiBubbleMode &&
+// The panel is closed, collapsed or behind another tab: TypeR stays out of
+// the way. UXP: the shim's document.hidden. CEP: a closed panel is unloaded,
+// a collapsed one reports its window as hidden.
+export const isPanelHidden = () => {
+  if (typeof document !== "undefined" && document.hidden) return true;
+  try {
+    if (typeof csInterface.isWindowVisible === "function") {
+      const visible = csInterface.isWindowVisible();
+      return visible === false || visible === "false";
+    }
+  } catch (error) {}
+  return false;
+};
+
+export const shouldPasteOnClick = (state, trigger, sinceHostAction, hidden = false) => !!(
+  !hidden && trigger && state && state.pasteOnClick && !state.multiBubbleMode &&
   state.currentLine && !state.currentLine.ignore && state.currentLine.text &&
   sinceHostAction >= OWN_SELECTION_GRACE && !isSmartPasteSettling()
 );
@@ -70,7 +84,7 @@ const PasteOnClick = () => {
       const paste = (trigger) => {
         const state = getState();
         if (trigger && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling()) rememberSelectionTrigger(trigger);
-        if (!shouldPasteOnClick(state, trigger, msSinceHostAction())) {
+        if (!shouldPasteOnClick(state, trigger, msSinceHostAction(), isPanelHidden())) {
           if (!trigger) scheduleHistoryCheck();
           return;
         }
@@ -79,7 +93,7 @@ const PasteOnClick = () => {
       };
       if (!hasDescriptor(data.eventData) && !isUxp) {
         const state = getState();
-        if (state.pasteOnClick && !state.multiBubbleMode && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling()) probeTrigger().then(paste);
+        if (state.pasteOnClick && !state.multiBubbleMode && !isPanelHidden() && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling()) probeTrigger().then(paste);
         return;
       }
       paste(classifySelectionEvent(data.eventData));

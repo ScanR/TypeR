@@ -203,6 +203,7 @@ const baseState = () => ({
   assert.strictEqual(gate.shouldPasteOnClick({ ...ready, multiBubbleMode: true }, wand, 1000), false);
   assert.strictEqual(gate.shouldPasteOnClick(ready, null, 1000), false);
   assert.strictEqual(gate.shouldPasteOnClick(ready, wand, 100), false, "TypeR's own selections are ignored");
+  assert.strictEqual(gate.shouldPasteOnClick(ready, wand, 1000, true), false, "a closed or collapsed panel never pastes");
   assert.strictEqual(gate.shouldPasteOnClick({ ...ready, currentLine: { text: "", ignore: true } }, wand, 1000), false);
 
   console.log("smart paste panel client tests passed");
