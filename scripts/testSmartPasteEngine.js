@@ -255,6 +255,16 @@ const linesInside = (session) => {
   assert.strictEqual(rtl.consumed, 2);
   assert.ok(rtl.sessions[0].text.axis > rtl.sessions[1].text.axis, "RTL reading order");
 
+  // A tall single bubble with a shallow notch on each side (a hand-drawn
+  // shout or rectangle) is not a double bubble: its pinch is too shallow
+  const notched = [[900, 300], [1120, 300], [1120, 510], [1092, 525], [1120, 540], [1120, 750], [900, 750], [900, 540], [928, 525], [900, 510]];
+  const notchedInput = { source: "wand", click: { x: 1010, y: 420 }, selectionBounds: boundsOf(notched), rawPath: pathOf([polygonNodes(notched)]), fill: white };
+  assert.strictEqual(bubblePlan.buildPlan({ ...page, documentId: 7, ...notchedInput }, {}).connected, false, "shallow notches are no neck");
+  const notchedPaste = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Une seule bulle."), line("La ligne suivante attend.")], roleStyles: {}, settings: { distribute: true },
+  }, adapterFor(notchedInput));
+  assert.strictEqual(notchedPaste.consumed, 1);
+
   // Triple bubble
   const tripleOutline = (() => {
     const centres = [[300, 400], [540, 400], [780, 400]];

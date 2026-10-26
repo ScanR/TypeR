@@ -355,6 +355,23 @@ export const bodyBounds = (poly, b = box(poly)) => {
 // null (no neck), { ambiguous: true, ambiguousNeck } (click on the neck) or
 // { points, neck: [a, b], score }.
 const NECK_WIDTH_RATIO = 0.75;
+// Both ends of a real neck sit deep inside the outline's convex hull. The
+// notches of a hand-drawn rectangle, a shout or a cloud are shallow, or deep
+// on one side only (TypeR, measured on real pages: singles <= 0.15 of the
+// chord, connected bubbles >= 0.25).
+const NECK_PINCH_RATIO = 0.2;
+const hullDistance = (hull, point) => {
+  let best = Infinity;
+  for (let i = 0; i < hull.length; i++) {
+    const u = hull[i];
+    const v = hull[(i + 1) % hull.length];
+    const ex = v[0] - u[0];
+    const ey = v[1] - u[1];
+    const t = Math.max(0, Math.min(1, ((point[0] - u[0]) * ex + (point[1] - u[1]) * ey) / (ex * ex + ey * ey || 1)));
+    best = Math.min(best, Math.hypot(point[0] - u[0] - ex * t, point[1] - u[1] - ey * t));
+  }
+  return best;
+};
 
 export const findCut = (contours, click, bounds, openRecovery) => {
   let polygon = null;
@@ -381,6 +398,7 @@ export const findCut = (contours, click, bounds, openRecovery) => {
   const rootArea = Math.sqrt(polygonArea);
   const offsets = [0, 0.75, -0.75];
   const distances = [];
+  const hull = convexHull(polygon);
   let best = null;
   for (let i = 0; i < polygon.length; i++) {
     const prev = polygon[(i + polygon.length - 1) % polygon.length];
@@ -397,6 +415,7 @@ export const findCut = (contours, click, bounds, openRecovery) => {
       const dy = originalB[1] - originalA[1];
       const length = Math.sqrt(dx * dx + dy * dy);
       if (length < 3 || length > rootArea * 0.72) continue;
+      if (Math.min(hullDistance(hull, originalA), hullDistance(hull, originalB)) < NECK_PINCH_RATIO * length) continue;
       // Tiny parallel offsets disambiguate a neck meeting a straight edge
       for (let offsetIndex = 0; offsetIndex < 3; offsetIndex++) {
         const shift = offsets[offsetIndex];
