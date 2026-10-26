@@ -147,15 +147,30 @@ if (window.addEventListener) {
 // Tracks in-flight Photoshop actions so low-priority polling (hotkeys, inline
 // TextShapeR) can back off instead of contending in the ExtendScript queue
 let hostActionsPending = 0;
+let selectionActionsPending = 0;
+let lastSelectionActionAt = 0;
 const isHostActionPending = () => hostActionsPending > 0;
-const trackHostAction = (callback, timeout = 15000) => {
+// Photoshop reports the selections TypeR's own actions make (wand probes of
+// the auto-centre, the double bubble alignment...) to a CEP panel, a little
+// after the action: paste on click ignores selections for a moment after
+// an action that changes them (touchesSelection)
+const msSinceHostAction = () => (selectionActionsPending > 0 ? 0 : Date.now() - lastSelectionActionAt);
+const trackHostAction = (callback, timeout = 15000, touchesSelection = false) => {
   notePanelActivity();
   hostActionsPending++;
+  if (touchesSelection) {
+    selectionActionsPending++;
+    lastSelectionActionAt = Date.now();
+  }
   let settled = false;
   const release = () => {
     if (settled) return false;
     settled = true;
     hostActionsPending--;
+    if (touchesSelection) {
+      selectionActionsPending--;
+      lastSelectionActionAt = Date.now();
+    }
     return true;
   };
   // Safety net: never let a lost CEP callback disable polling forever
@@ -813,10 +828,10 @@ let selectionResultsSuppressedUntil = 0;
 
 const deselectDocument = (callback = () => {}) => {
   selectionResultsSuppressedUntil = Date.now() + 5000;
-  csInterface.evalScript("deselectDocumentSelection()", () => {
+  csInterface.evalScript("deselectDocumentSelection()", trackHostAction(() => {
     selectionResultsSuppressedUntil = Date.now();
     callback();
-  });
+  }, 15000, true));
 };
 
 const undoLastTextChange = (callback = () => {}) => {
@@ -913,7 +928,7 @@ const createTextLayerInSelection = (text, style, pointText, padding, direction, 
     else if (error === "sizeSource") nativeAlert(locale.errorKeepTextSizeNoLayer || locale.errorNoTextLayer, locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
     callback(!error);
-  }));
+  }, 15000, true));
 };
 
 const createTextLayersInStoredSelections = (texts, styles, selections, pointText, padding, direction, callback = () => {}, options = {}) => {
@@ -962,7 +977,7 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
     else if (error && error.indexOf("scriptError:") === 0) nativeAlert(error.replace("scriptError: ", ""), locale.errorTitle, true);
     else if (error) nativeAlert("Error: " + error, locale.errorTitle, true);
     callback(!error);
-  }));
+  }, 15000, true));
 };
 
 const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback = () => {}) => {
@@ -972,7 +987,7 @@ const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback 
     else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
     callback(!error);
-  }));
+  }, 15000, true));
 };
 
 // Each selected text layer is centred in its own part of a shared bubble.
@@ -990,7 +1005,7 @@ const alignTextLayersToDoubleBubble = (resizeTextBox = false, padding = 0, callb
     else if (error && error.indexOf("scriptError:") === 0) nativeAlert(error.replace("scriptError: ", ""), locale.errorTitle, true);
     else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
     callback(!error);
-  }));
+  }, 15000, true));
 };
 
 const changeActiveLayerTextSize = (val, callback = () => {}) => {
@@ -1364,4 +1379,4 @@ const scanPsdFonts = (path, callback) => {
   );
 };
 
-export { alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };
+export { trackHostAction, msSinceHostAction, safeJsonParse, buildRichTextPayload, alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };

@@ -825,6 +825,77 @@
 .light-theme .settings-checkbox-hint {
     color: #333;
 }
+
+// Conditional refont rules (behavior tab, smart paste group): one compact row
+// per rule that wraps on very narrow panels
+.settings-refont-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.settings-refont-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.settings-refont-marker {
+    flex: 0 0 42px;
+    width: 42px;
+    min-width: 0;
+    box-sizing: border-box;
+    padding-left: 4px;
+    padding-right: 4px;
+    text-align: center;
+
+    &.is-invalid {
+        border-color: #d9534f !important;
+    }
+}
+
+.settings-refont-between {
+    opacity: 0.6;
+}
+
+.settings-refont-style {
+    flex: 1 1 110px;
+    min-width: 0;
+    padding-left: 6px;
+    padding-right: 6px;
+}
+
+.settings-refont-keep {
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+
+    .settings-checkbox-custom {
+        margin-top: 0;
+    }
+
+    span {
+        flex: 0 1 auto;
+        white-space: nowrap;
+    }
+}
+
+.settings-refont-remove {
+    flex: 0 0 auto;
+}
+
+.settings-refont-add {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 6px;
+}
 .app-modal-inner--walkthrough {
     pointer-events: auto;
     top: 8px;
@@ -1422,9 +1493,10 @@
         box-shadow: 0 0 0 1px rgba(40, 142, 223, 0.35);
     }
 
+    // Footer icon buttons
     .mk-f {
-        width: 10px;
-        height: 3px;
+        width: 5px;
+        height: 5px;
         border-radius: 1px;
         background: rgba(255, 255, 255, 0.35);
         cursor: pointer;

@@ -6,6 +6,7 @@ const ps = require("photoshop");
 const uxp = require("uxp");
 const os = require("os");
 const photoshop = require("./photoshop");
+const smartPaste = require("./smartPaste");
 const files = require("./files");
 const keyboard = require("./keyboard");
 const keysHelper = require("./keysHelper");
@@ -167,6 +168,14 @@ async function reloadUserFonts() {
 }
 
 const methods = Object.assign({}, photoshop.methods, {
+  // smart paste (uxp-src/host/smartPaste.js)
+  smartPaste: smartPaste.methods.smartPaste,
+  smartPasteCapture: smartPaste.methods.smartPasteCapture,
+  smartPasteMeasure: smartPaste.methods.smartPasteMeasure,
+  smartPasteCommit: smartPaste.methods.smartPasteCommit,
+  getHistorySnapshot: smartPaste.methods.getHistorySnapshot,
+  replaySelectionTrigger: smartPaste.methods.replaySelectionTrigger,
+  smartPasteSelectionProbe: smartPaste.methods.smartPasteSelectionProbe,
   nativeAlert,
   nativeConfirm,
   reloadUserFonts,
@@ -191,6 +200,8 @@ const DOCUMENT_CHANGING_CALLS = {
   setTextShapeRLayerText: "set",
   createTextLayerInSelection: "set",
   createTextLayersInStoredSelections: "set",
+  smartPaste: "set",
+  smartPasteCommit: "set",
   alignTextLayerToSelection: "set",
   alignTextLayersToDoubleBubble: "set",
   changeActiveLayerTextSize: "set",
@@ -371,6 +382,20 @@ function onPhotoshopEvent(name, descriptor) {
   post({ type: "psEvent", data: "ver1," + JSON.stringify({ eventID, eventData }) });
 }
 
+// History moves (undo, redo, a History panel click) for the smart paste's
+// undo sync. CEP has no such event: its panel checks history lazily.
+const HISTORY_EVENT_ID = 1215591779;
+
+function onHistoryChanged() {
+  let snapshot = null;
+  try {
+    snapshot = JSON.parse(smartPaste.methods.getHistorySnapshot());
+  } catch (error) {
+    snapshot = null;
+  }
+  if (snapshot) post({ type: "psEvent", data: "ver1," + JSON.stringify({ eventID: HISTORY_EVENT_ID, eventData: snapshot }) });
+}
+
 /* ======================== keyboard ======================== */
 
 keyboard.onChange((state) => post({ type: "keys", state }));
@@ -389,6 +414,11 @@ async function startOnce() {
     await ps.action.addNotificationListener(Object.keys(EVENT_IDS), onPhotoshopEvent);
   } catch (error) {
     console.error("TypeR: event listener", error);
+  }
+  try {
+    await ps.action.addNotificationListener(["historyStateChanged"], onHistoryChanged);
+  } catch (error) {
+    console.error("TypeR: history listener", error);
   }
   try {
     document.theme.onUpdated.addListener(onThemeChanged);

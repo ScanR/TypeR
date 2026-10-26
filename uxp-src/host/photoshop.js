@@ -3758,6 +3758,9 @@ module.exports = {
   setTrace: (fn) => { trace = fn || null; },
   _internals: {
     play, get, modal, suspendHistory, jamText, _hostState, _getLayerStroke, _getLayerText,
+    // smart paste (uxp-src/host/smartPaste.js)
+    _makeTextLayer, _applyMiddleEast, _changeToBoxText, _changeToPointText, _setLayerStroke, _getActiveLayerId,
+    _layerIsTextLayer, _getTextLayerSize, _getFontList,
     _getCurrentTextLayerBounds, _getCurrentSelectionBounds, _getActiveHistoryIndex,
     // pure helpers, compared with host.js by scripts/testUxpHost.js
     _getHostDefaultStyle, _getHostDefaultStroke, _ensureStyle, _overrideStyleTextSize, _resolveStylePointText,

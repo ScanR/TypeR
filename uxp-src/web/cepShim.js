@@ -286,11 +286,21 @@ export function installCepEnvironment(init) {
   });
   on("watcherLine", (message) => watcherListeners.forEach((listener) => listener(message.line)));
 
-  // A docked panel that is collapsed keeps its WebView alive: document.hidden
-  // is what the panel's pollers check before calling Photoshop
+  // A closed or collapsed panel keeps its WebView alive: document.hidden is
+  // what the panel checks before calling Photoshop (pollers, shortcuts, paste
+  // on click). Photoshop does not always call the panel's hide(), so the
+  // WebView's own visibility counts too: a closed panel's view is hidden.
+  const nativeHidden = (() => {
+    try {
+      const descriptor = typeof Document !== "undefined" && Object.getOwnPropertyDescriptor(Document.prototype, "hidden");
+      if (descriptor && descriptor.get) return () => !!descriptor.get.call(document);
+    } catch (error) {}
+    return () => false;
+  })();
+  const isHidden = () => hidden || nativeHidden();
   try {
-    Object.defineProperty(document, "hidden", { configurable: true, get: () => hidden });
-    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (hidden ? "hidden" : "visible") });
+    Object.defineProperty(document, "hidden", { configurable: true, get: isHidden });
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => (isHidden() ? "hidden" : "visible") });
   } catch (error) {}
 
   window.typerUXP = {

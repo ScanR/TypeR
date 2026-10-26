@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Smart paste
+
+- Paste fits the translation to the bubble's real outline: the style size is kept when the text fits and shrinks
+  down to a minimum size otherwise (70% by default), the lines follow the bubble's silhouette, the ink is centred
+  inside the outline, and one French or English hyphen is allowed only as a last resort.
+- Black bubbles get white text without a stroke. A style can be marked as the Shout or Narration style of its
+  folder; spiky bubbles and rectangles then use it, unless the script line has its own prefix style.
+- Double and triple bubbles receive the next script lines in their other chambers, in one history state.
+- Optional Auto clean paints the bubble under the text on a `TypeR Clean` layer (solid white or black only).
+- Conditional refont rules give the text between two markers another style's font.
+- When the text cannot be placed, the classic paste runs and a short notice explains why.
+- Multi-bubble batches select each stored bubble again and paste it with the smart paste.
+
+### Paste on click
+
+- A Magic Wand click, a rectangle or a lasso can paste the current line at once (footer toggle and shortcut).
+- Undoing a TypeR paste in Photoshop puts the script line back (live in UXP, checked lazily in Legacy).
+
 ## 3.0.0
 
 ### UXP plugin

@@ -1,0 +1,96 @@
+// Toast anchored just above the footer (the footer block is its containing
+// block). The outer strip ignores the mouse so only the toast is clickable.
+.typer-notice {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 12;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.typer-notice__toast {
+  display: inline-flex;
+  align-items: flex-start;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 5px 9px 5px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: 3px solid #288edf;
+  border-radius: 5px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  font-size: 11px;
+  line-height: 1.35;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: typer-notice-in 0.16s ease-out;
+
+  &--warning {
+    border-left-color: #e0a030;
+
+    .typer-notice__icon {
+      color: #e0a030;
+    }
+  }
+
+  .light-theme & {
+    border-color: rgba(0, 0, 0, 0.14);
+    border-left-color: #1976d2;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  }
+
+  .light-theme &--warning {
+    border-left-color: #c77d00;
+
+    .typer-notice__icon {
+      color: #c77d00;
+    }
+  }
+
+  body[data-editor-theme]:not([data-editor-theme="system"]) & {
+    border-color: var(--editor-border);
+    border-left-color: var(--editor-accent);
+    color: var(--editor-text);
+  }
+
+  body[data-editor-theme]:not([data-editor-theme="system"]) &--warning {
+    border-left-color: #e0a030;
+
+    .typer-notice__icon {
+      color: #e0a030;
+    }
+  }
+}
+
+.typer-notice__icon {
+  flex: 0 0 auto;
+  margin: 2px 6px 0 0;
+  color: #64b5f6;
+
+  .light-theme & {
+    color: #1976d2;
+  }
+
+  body[data-editor-theme]:not([data-editor-theme="system"]) & {
+    color: var(--editor-accent);
+  }
+}
+
+.typer-notice__text {
+  min-width: 0;
+  word-wrap: break-word;
+}
+
+@keyframes typer-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

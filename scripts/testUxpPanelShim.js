@@ -27,10 +27,14 @@ const bridge = {
 };
 
 const documentEvents = [];
+// The WebView's own visibility (a closed panel's view is hidden)
+let webViewHidden = false;
+global.Document = class Document {};
+Object.defineProperty(global.Document.prototype, "hidden", { configurable: true, get: () => webViewHidden });
 global.window = {};
-global.document = {
+global.document = Object.assign(Object.create(global.Document.prototype), {
   dispatchEvent: (event) => documentEvents.push(event.type),
-};
+});
 global.Event = class { constructor(type) { this.type = type; } };
 
 const load = createLoader({ "./bridge": bridge });
@@ -120,6 +124,14 @@ installCepEnvironment({
   handlers.visibility.forEach((handler) => handler({ hidden: true }));
   assert.strictEqual(document.hidden, true);
   assert.deepStrictEqual(documentEvents, ["visibilitychange"]);
+  // Photoshop may not call hide() when the panel is closed: the WebView's
+  // own visibility is enough to read the panel as hidden
+  handlers.visibility.forEach((handler) => handler({ hidden: false }));
+  assert.strictEqual(document.hidden, false);
+  webViewHidden = true;
+  assert.strictEqual(document.hidden, true);
+  assert.strictEqual(document.visibilityState, "hidden");
+  webViewHidden = false;
 
   console.log("UXP panel CEP environment tests passed");
 })().catch((error) => {

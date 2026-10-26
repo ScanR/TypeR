@@ -1,0 +1,307 @@
+// Smart paste layout: measure the translation's words natively, search the
+// best lines inside the bubble polygon, verify the chosen lines with exact
+// native measurements, and compose the Photoshop text parameters. Ported
+// from MD TYPER's production/layout.js, with the author's permission.
+//
+// Size policy (TypeR): the style size is a ceiling. The search first tries
+// the exact style size, then shrinks down to minScale of it, then (when
+// enabled) allows one hyphen in a long word. "fixed" keeps one exact size.
+
+import { compileGraph, composeText, probesForGraph } from "./textGraph";
+import { measureEdges } from "./measureSpec";
+import { solve, solverInternals } from "./solver";
+
+export class NoPlacementError extends Error {
+  constructor(message) {
+    super(message || "No readable placement fits this bubble");
+    this.name = "NoPlacementError";
+    this.code = "noPlacement";
+  }
+}
+
+const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+
+// Multi-word lines are first estimated from their words and a measured space
+const estimateLineMetrics = (graph, probes, spaces, cache) => {
+  let space = 0.3;
+  for (let i = 0; i < spaces.length; i++) {
+    const sm = cache.get(spaces[i].key);
+    const xm = cache.get(probes[i].key);
+    if (!sm || !xm) throw new Error("Missing native font probe");
+    const gap = Math.max(0.05, sm.right - sm.left - 2 * (xm.right - xm.left));
+    space = i === 0 ? gap : Math.max(space, gap);
+  }
+  const estimated = {};
+  for (let v = 0; v < graph.variants.length; v++) {
+    const variant = graph.variants[v];
+    const singles = {};
+    for (let i = 0; i < variant.edges.length; i++) {
+      const edge = variant.edges[i];
+      if (edge.to === edge.from + 1) singles[edge.from] = edge;
+    }
+    for (let i = 0; i < variant.edges.length; i++) {
+      const edge = variant.edges[i];
+      if (cache.has(edge.key)) continue;
+      let width = 0;
+      let top = Infinity;
+      let bottom = -Infinity;
+      for (let n = edge.from; n < edge.to; n++) {
+        const atomic = singles[n];
+        // Adjacent authored spaces: an empty segment, its gap still counts
+        if (!atomic) {
+          if (n > edge.from) width += space;
+          continue;
+        }
+        const metric = cache.get(atomic.key);
+        if (!metric) throw new Error("Missing word measurement");
+        width += metric.right - metric.left + (n > edge.from ? space : 0);
+        top = Math.min(top, metric.top);
+        bottom = Math.max(bottom, metric.bottom);
+      }
+      cache.set(edge.key, { left: -width / 2, right: width / 2, top, bottom });
+      estimated[edge.key] = true;
+    }
+  }
+  return estimated;
+};
+
+const solverModel = (graph, plan, cache, probes, sizes, data) => {
+  const selection = plan.selection;
+  const poly = plan.cleanPolygon;
+  if (!selection || !poly) throw new Error("Bubble layout is incomplete");
+  let maxLead = 0;
+  let ascent = 0;
+  let minXHeight = Infinity;
+  for (let v = 0; v < graph.variants.length; v++) {
+    const edges = graph.variants[v].edges;
+    for (let i = 0; i < edges.length; i++) {
+      const metric = cache.get(edges[i].key);
+      if (!metric) throw new Error("Missing line metric");
+      maxLead = Math.max(maxLead, edges[i].leading);
+      ascent = Math.max(ascent, -metric.top);
+    }
+  }
+  for (let i = 0; i < probes.length; i++) {
+    const metric = cache.get(probes[i].key);
+    if (!metric) throw new Error("Missing x-height metric");
+    minXHeight = Math.min(minXHeight, metric.bottom - metric.top);
+    if (/^[\s.,!?;:…-]+$/.test(graph.source)) ascent = Math.max(ascent, -metric.top);
+  }
+  const dim = Math.min(selection.width, selection.height);
+  const borderPad = Math.max(2, dim * 0.035, Number(data.padding) || 0);
+  const geometricMax = Math.max(0.1, (selection.height - 2 * borderPad) / Math.max(0.05, minXHeight));
+  const opts = {
+    min: Math.max(0.1, sizes.min),
+    max: Math.min(geometricMax, sizes.max),
+    step: Math.max(0.75, dim / 100),
+    leading: maxLead || 1.2,
+    ascent: ascent || 0.8,
+    pad: borderPad + 0.75,
+    kind: plan.kind,
+    connected: !!plan.connected,
+    profileWords: (graph.source.match(/\S+/g) || []).length,
+    deadline: Date.now() + 2500,
+  };
+  if (opts.max < opts.min) opts.max = opts.min;
+  const variants = graph.variants.map((variant) => ({
+    nodes: variant.nodes,
+    insertion: variant.insertion,
+    edges: variant.edges.map((edge) => ({
+      from: edge.from,
+      to: edge.to,
+      flags: (/^(\.{2,}|…+|-)$/.test(edge.text) ? 1 : 0) + (/(\.{2,}|…+|-)$/.test(edge.text) ? 2 : 0) + (/^[\s.,!?;:]+$/.test(edge.text) ? 4 : 0),
+      leading: edge.leading,
+      metric: cache.get(edge.key),
+    })),
+  }));
+  return { variants, poly, selection, opts };
+};
+
+const packChoice = (candidate, variantIndex, model) => {
+  if (!candidate) return null;
+  const variant = model.variants[variantIndex];
+  return {
+    variant: variantIndex,
+    size: candidate.size,
+    axis: candidate.axis,
+    penalty: candidate.penalty,
+    lines: candidate.lines.map((line) => ({ edge: variant.edges.indexOf(line.edge), baseline: line.baseline, safe: line.safe || null })),
+  };
+};
+
+// The chosen lines with exact metrics: still inside the polygon? Then
+// re-centre and re-score them
+const verifyPackedChoice = (graph, model, choice, exact) => {
+  if (!choice) return null;
+  const variant = graph.variants[choice.variant];
+  if (!variant) return null;
+  const opts = model.opts;
+  let top = Infinity;
+  let bottom = -Infinity;
+  let valid = true;
+  const lines = [];
+  for (let i = 0; i < choice.lines.length; i++) {
+    const item = choice.lines[i];
+    const edge = variant.edges[item.edge];
+    const metric = edge && exact.get(edge.key);
+    if (!metric) return null;
+    const modelEdge = model.variants[choice.variant].edges[item.edge];
+    modelEdge.metric = metric;
+    const inkTop = item.baseline + metric.top * choice.size;
+    const inkBottom = item.baseline + metric.bottom * choice.size;
+    top = Math.min(top, inkTop);
+    bottom = Math.max(bottom, inkBottom);
+    const safe = item.safe;
+    const proven = safe && safe.pad >= opts.pad && inkTop >= safe.top && inkBottom <= safe.bottom &&
+      choice.axis + metric.left * choice.size >= safe.left && choice.axis + metric.right * choice.size <= safe.right;
+    if (!proven && !solverInternals.fitsExactBand(model.poly, metric, choice.size, item.baseline, choice.axis, opts.pad)) valid = false;
+    lines.push({ edge: modelEdge, baseline: item.baseline, safe });
+  }
+  if (!valid) return null;
+  const centered = solverInternals.centerLines(lines, top, bottom, model.selection.yMid, model.poly, choice.size, choice.axis, opts.pad, true);
+  const candidate = {
+    size: choice.size,
+    axis: choice.axis,
+    lines: centered.lines,
+    top: centered.top,
+    bottom: centered.bottom,
+    penalty: choice.penalty,
+    variant: model.variants[choice.variant],
+  };
+  solverInternals.rescore(candidate, model.selection, opts, model.poly);
+  return {
+    choice: {
+      variant: choice.variant,
+      size: candidate.size,
+      axis: candidate.axis,
+      penalty: candidate.penalty,
+      lines: candidate.lines.map((line) => ({ edge: model.variants[choice.variant].edges.indexOf(line.edge), baseline: line.baseline, safe: line.safe })),
+    },
+    candidate,
+  };
+};
+
+// Measure the chosen lines exactly; reflow at most three times
+const verifyNativeChoice = async (graph, model, choice, exact, measure) => {
+  if (!choice) return { verified: null, cache: exact };
+  const variantIndex = choice.variant;
+  const variant = graph.variants[variantIndex];
+  if (!variant) return { verified: null, cache: exact };
+  let cache = exact;
+  for (let pass = 0; choice && pass < 3; pass++) {
+    const lines = choice.lines.map((line) => variant.edges[line.edge]);
+    cache = (await measure(lines, cache)).cache;
+    const verified = verifyPackedChoice(graph, model, choice, cache);
+    if (verified) return { verified, cache };
+    const retry = model.variants[variantIndex];
+    for (let i = 0; i < retry.edges.length; i++) {
+      retry.edges[i].metric = cache.get(variant.edges[i].key) || retry.edges[i].metric;
+      if (!retry.edges[i].metric) throw new Error("Font measurements expired");
+    }
+    const opts = { ...model.opts, max: choice.size, deadline: Date.now() + 1500 };
+    choice = packChoice(solverInternals.search(retry, model.poly, model.selection, opts), variantIndex, model);
+  }
+  return { verified: null, cache };
+};
+
+// One search pass between sizes.min and sizes.max (pixels)
+const searchPass = async (graph, plan, data, sizes, cache, probes, estimated, measure) => {
+  const model = solverModel(graph, plan, cache, probes, sizes, data);
+  const solved = solve({ id: 1, models: [model] }).plans[0];
+  let exact = new Map();
+  cache.forEach((value, key) => { if (!estimated[key]) exact.set(key, value); });
+  let plain = solved && solved.plain;
+  if (!plain) {
+    // No estimated fit: measure every whole-word line and search again
+    exact = (await measure(graph.variants[0].edges, exact)).cache;
+    const variant = model.variants[0];
+    for (let i = 0; i < variant.edges.length; i++) variant.edges[i].metric = exact.get(graph.variants[0].edges[i].key);
+    plain = packChoice(solverInternals.search(variant, model.poly, model.selection, { ...model.opts, deadline: Date.now() + 2500 }), 0, model);
+  }
+  const check = await verifyNativeChoice(graph, model, plain, exact, measure);
+  exact = check.cache;
+  let best = check.verified;
+  const alternatives = (solved && solved.alternatives) || [];
+  for (let i = 0; i < Math.min(4, alternatives.length); i++) {
+    const proposal = alternatives[i];
+    const other = await verifyNativeChoice(graph, model, proposal, exact, measure);
+    exact = other.cache;
+    if (other.verified) {
+      if (!best || solverInternals.rank(other.verified.candidate) > solverInternals.rank(best.candidate)) best = other.verified;
+      const next = alternatives[i + 1];
+      if (!next || solverInternals.rank(other.verified.candidate) >= next.size - next.penalty) break;
+    }
+  }
+  return { best, model, exact };
+};
+
+// planText(plan, payload, context) -> { params, renderedText, size, stroke,
+// candidate, model, hyphenated, timing }
+// context = { page: { width, height, resolution }, measure (nativeMeasure),
+//   useAtlas, resolveRunStyle, breakPoints (null = no hyphenation),
+//   sizePolicy: { maxPx, minScale, fixed } }
+export const planText = async (plan, payload, context) => {
+  const started = now();
+  const page = context.page;
+  const dpi = page.resolution;
+  const policy = context.sizePolicy || {};
+  const timing = { measure: 0, solve: 0 };
+  const measure = async (edges, cache) => {
+    const mark = now();
+    const result = await measureEdges(edges, { textProps: graphRef.graph.data.style.textProps, baseSize: graphRef.graph.baseSize, dpi, page, useAtlas: context.useAtlas }, context.measure, cache);
+    timing.measure += now() - mark;
+    return result;
+  };
+  const graphRef = { graph: null };
+  const tryGraph = async (allowHyphen, tiers) => {
+    const graph = compileGraph(payload, {
+      dpi,
+      textColor: plan.textColor,
+      resolveRunStyle: context.resolveRunStyle,
+      allowHyphen,
+      breakPoints: context.breakPoints,
+    });
+    if (allowHyphen && graph.variants.length < 2) return null;
+    graphRef.graph = graph;
+    const { probes, spaces } = probesForGraph(graph);
+    const singles = [];
+    for (let v = 0; v < graph.variants.length; v++) {
+      const edges = graph.variants[v].edges;
+      for (let i = 0; i < edges.length; i++) if (edges[i].to === edges[i].from + 1) singles.push(edges[i]);
+    }
+    const initial = await measure([...probes, ...spaces, ...singles], null);
+    const cache = initial.cache;
+    const estimated = estimateLineMetrics(graph, probes, spaces, cache);
+    const stylePx = (graph.baseSize * dpi) / 72;
+    const maxPx = policy.maxPx > 0 ? policy.maxPx : stylePx;
+    for (let t = 0; t < tiers.length; t++) {
+      const sizes = tiers[t] === "exact" ? { min: maxPx, max: maxPx } : { min: maxPx * (policy.minScale || 0.7), max: maxPx };
+      const mark = now();
+      const pass = await searchPass(graph, plan, payload, sizes, new Map(cache), probes, estimated, measure);
+      timing.solve += now() - mark;
+      if (pass.best) return { graph, pass, tier: tiers[t] };
+    }
+    return null;
+  };
+  const tiers = policy.fixed ? ["exact"] : ["exact", "range"];
+  let found = await tryGraph(false, tiers);
+  let hyphenated = false;
+  if (!found && typeof context.breakPoints === "function") {
+    found = await tryGraph(true, tiers);
+    hyphenated = !!found;
+  }
+  if (!found) throw new NoPlacementError();
+  const { graph, pass } = found;
+  const composed = composeText(graph, pass.best.choice, page);
+  return {
+    params: composed.params,
+    renderedText: composed.renderedText,
+    size: pass.best.choice.size,
+    tier: found.tier,
+    hyphenated: hyphenated && !!graph.variants[pass.best.choice.variant].insertion,
+    stroke: graph.stroke,
+    candidate: pass.best.candidate,
+    pad: pass.model.opts.pad,
+    timing: { ...timing, total: now() - started },
+  };
+};

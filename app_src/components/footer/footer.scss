@@ -1,70 +1,158 @@
 .footer-block {
   box-sizing: border-box;
-  padding: 2px 10px 6px;
-  min-height: 20px;
+  padding: 3px 8px 4px;
+  min-height: 24px;
   font-size: 12px;
   display: flex;
   align-items: center;
-  .link {
-    opacity: 0.7;
-    &:hover {
-      opacity: 1;
-    }
+  gap: 6px;
+  // Containing block of the notice toast shown above the footer
+  position: relative;
+}
+
+// Help, settings, pages: icon buttons on the left
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.footer-icon-button,
+.footer-mode {
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  &:hover {
+    opacity: 1;
+    background: rgba(#fff, 0.08);
   }
-  .link-left {
-    margin-left: auto !important;
-    margin-right: 3%;
+  &:focus {
+    outline: none;
   }
-  .link + .link {
-    margin-left: 8px;
+  &:focus-visible {
+    opacity: 1;
+    box-shadow: 0 0 0 1px rgba(#288edf, 0.8);
   }
-  .link.footer-mode-indicator {
-    margin-left: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    cursor: pointer;
+  .light-theme &:hover {
+    background: rgba(#000, 0.07);
   }
-  .link.footer-mode-spacer {
-    margin-left: auto;
+}
+
+.footer-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  svg {
+    display: block;
   }
-  .link.footer-mode-adjacent {
-    margin-left: 12px;
-    padding-right: 4px;
+  // Pages are synced: the button desyncs them
+  &.is-active {
+    opacity: 1;
+    color: #34c759;
   }
-  .footer-mode-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #6b6b6b;
-    box-shadow: 0 0 0 1px rgba(#000, 0.35);
-    &.is-on {
-      background: #34c759;
-      box-shadow: 0 0 0 1px rgba(#34c759, 0.5);
-    }
-    &.is-on.is-multi {
-      background: #0a84ff;
-      box-shadow: 0 0 0 1px rgba(#0a84ff, 0.5);
-    }
+}
+
+// Mode toggles on the right. The group shrinks to the room left by the
+// actions and its toggles wrap onto more lines instead of being cut off.
+.footer-modes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1px 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  padding-left: 6px;
+  border-left: 1px solid rgba(#fff, 0.12);
+  .light-theme & {
+    border-left-color: rgba(#000, 0.14);
   }
-  .footer-mode-label {
-    font-weight: 600;
+}
+
+// Out of sight: only its width is read
+.footer-modes.footer-modes-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.footer-modes.is-compact .footer-mode {
+  padding: 0 3px;
+}
+
+.footer-mode-icon {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.footer-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.footer-mode-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6b6b6b;
+  box-shadow: 0 0 0 1px rgba(#000, 0.35);
+  &.is-on {
+    background: #34c759;
+    box-shadow: 0 0 0 1px rgba(#34c759, 0.5);
   }
-  .footer-mode-status {
-    font-size: 10px;
-    opacity: 0.8;
-    white-space: nowrap;
+  &.is-on.is-multi {
+    background: #0a84ff;
+    box-shadow: 0 0 0 1px rgba(#0a84ff, 0.5);
   }
+}
+
+.footer-mode-label {
+  font-weight: 600;
+}
+
+.footer-mode-status {
+  font-size: 10px;
+  opacity: 0.8;
 }
 
 @media (max-height: 450px) {
   .footer-block {
-    padding: 1px 5px 3px;
-    min-height: 16px;
+    padding: 1px 5px 2px;
+    min-height: 18px;
     font-size: 10px;
-    .link + .link {
-      margin-left: 5px;
-    }
+  }
+  .footer-icon-button {
+    width: 20px;
+    height: 18px;
+  }
+  .footer-mode {
+    height: 16px;
+    font-size: 10px;
   }
 }

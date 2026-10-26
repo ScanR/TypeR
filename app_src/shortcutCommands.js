@@ -14,6 +14,7 @@ import {
   toggleCleaningLayers,
 } from "./utils";
 import { buildSelectedLayerPayload, buildStoredSelectionPayload, getScaledStyle } from "./textLayerPayload";
+import { canSmartPasteStoredSelections, smartPasteInSelection, smartPasteStoredSelections } from "./smartPasteClient";
 
 const applyLinesToLayers = (ctx, layers, preferredOrder = [], options = {}) => {
   const selectedIds = layers
@@ -74,10 +75,19 @@ const withAutoCenter = (ctx, options = {}) => ({
   resizeTextBox: !!ctx.state.resizeTextBoxOnCenter,
 });
 
+// Components pass a slice of the state: settings come from the store
+const fullState = (ctx) => (typeof ctx.getState === "function" ? ctx.getState : () => ctx.state);
+const smartPasteOn = (ctx) => fullState(ctx)().smartPaste === true;
+
 const pasteInSelection = (ctx, preferredOrder = [], options = {}) => {
   const storedSelections = ctx.state.storedSelections || [];
 
   if (ctx.state.multiBubbleMode && storedSelections.length > 0) {
+    // Smart paste replays each stored selection (when it remembers its click)
+    if (smartPasteOn(ctx) && canSmartPasteStoredSelections(storedSelections)) {
+      smartPasteStoredSelections(fullState(ctx), ctx.dispatch, options);
+      return;
+    }
     const payload = buildStoredSelectionPayload({
       storedSelections,
       lines: ctx.state.lines,
@@ -109,6 +119,13 @@ const pasteInSelection = (ctx, preferredOrder = [], options = {}) => {
   getTypeRSelectionSnapshot(({ selection, layers }) => {
     if (!selection && layers.length >= 2) {
       applyLinesToLayers(ctx, layers, preferredOrder, options);
+      return;
+    }
+
+    // Smart paste: the text fitted to the bubble's real shape (falls back
+    // to the classic paste below when it cannot)
+    if (selection && smartPasteOn(ctx)) {
+      smartPasteInSelection(fullState(ctx), ctx.dispatch, { ...options, trigger: { source: "manual" } });
       return;
     }
 
@@ -348,6 +365,17 @@ const shortcutCommands = [
         ctx.dispatch({ type: "clearSelections" });
         deselectDocument();
       }
+    },
+  },
+  {
+    id: "togglePasteOnClick",
+    label: "shortcut_togglePasteOnClick",
+    defaultKeys: [],
+    repeatDelay: 300,
+    handler: (ctx) => {
+      const value = !ctx.state.pasteOnClick;
+      ctx.dispatch({ type: "setPasteOnClick", value });
+      ctx.dispatch({ type: "showNotice", text: value ? locale.pasteOnClickEnabled : locale.pasteOnClickDisabled, kind: "info" });
     },
   },
   {
