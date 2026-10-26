@@ -10,7 +10,7 @@ import { GiVerticalFlip, GiHorizontalFlip } from "react-icons/gi";
 import { TbAlphabetArabic } from "react-icons/tb";
 import { MdDelete, MdCancel, MdSave, MdFormatColorText } from "react-icons/md";
 import { GrSubscript, GrSuperscript, GrBlockQuote, GrMonospace } from "react-icons/gr";
-import { BsTypeBold, BsTypeItalic, BsFonts, BsType, BsTypeUnderline, BsTypeStrikethrough } from "react-icons/bs";
+import { BsTypeBold, BsTypeItalic, BsFonts, BsType, BsTypeUnderline, BsTypeStrikethrough, BsTextParagraph } from "react-icons/bs";
 import { AiOutlineLineHeight, AiOutlineFontSize, AiOutlineColumnHeight, AiOutlineToTop, AiOutlineAlignCenter, AiOutlineAlignLeft, AiOutlineAlignRight } from "react-icons/ai";
 
 import { SketchPicker } from "react-color";
@@ -861,6 +861,15 @@ const StyleDetails = React.memo(function StyleDetails(props) {
               <span className="style-edit-ligature-icon">fi</span>
             </button>
           )}
+          {textStyle.contextualLigatures ? (
+            <button className="topcoat-icon-button--large" title={locale.editStyleContextualAlternates} onClick={(e) => changeProp("contextualLigatures", false, e)}>
+              <span className="style-edit-ligature-icon m-upright">I</span>
+            </button>
+          ) : (
+            <button className="topcoat-icon-button--large--quiet" title={locale.editStyleContextualAlternates} onClick={(e) => changeProp("contextualLigatures", true, e)}>
+              <span className="style-edit-ligature-icon m-upright">I</span>
+            </button>
+          )}
         </div>
       </div>
       <div className="style-edit-props-row">
@@ -908,6 +917,15 @@ const StyleDetails = React.memo(function StyleDetails(props) {
           ) : (
             <button className="topcoat-icon-button--large--quiet" title={locale.editStyleHanging} onClick={(e) => changeParagraph("hangingRoman", true, e)}>
               <GrBlockQuote size={18} />
+            </button>
+          )}
+          {paragStyle.textEveryLineComposer ? (
+            <button className="topcoat-icon-button--large--quiet" title={locale.editStyleSingleLineComposer} onClick={(e) => changeParagraph("textEveryLineComposer", false, e)}>
+              <BsTextParagraph size={18} />
+            </button>
+          ) : (
+            <button className="topcoat-icon-button--large" title={locale.editStyleSingleLineComposer} onClick={(e) => changeParagraph("textEveryLineComposer", true, e)}>
+              <BsTextParagraph size={18} />
             </button>
           )}
         </div>
