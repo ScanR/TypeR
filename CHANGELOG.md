@@ -34,6 +34,7 @@
 
 ### Compatibility and distribution
 
+- Add a Rosetta launcher on Apple Silicon. Photoshop 2026 only loads CEP extensions in its Intel code and recent macOS ignores "Open using Rosetta"; the macOS installer and the new `fix_mac_rosetta.sh` create a launcher that opens Photoshop with Rosetta, install Rosetta if needed and remove the download quarantine.
 - Ship modern and compatibility builds in one package. Photoshop 2020+ with Chromium 74+ loads the modern build; older or unknown hosts load the compatibility build.
 - Keep Photoshop CC 2015 / version 16.0 as the declared minimum. The compatibility build uses ES5 JavaScript, legacy layout fallbacks and browser/Node compatibility helpers.
 - Validate release identity, version and SHA-256 inventories before installation. Stage files and restore the previous installation on failure without replacing user storage.

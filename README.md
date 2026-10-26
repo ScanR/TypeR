@@ -210,7 +210,15 @@ and choose **2) Legacy** (or **1) UXP**, see above).
 
 4. Reopen Photoshop and select **Window → Extensions → TypeR**.
 
-On Apple Silicon, some Photoshop/CEP combinations may require Photoshop to be launched using Rosetta: Photoshop 2026 users should prefer the [UXP plugin](#photoshop-2025-and-later-uxp-plugin). If the panel is missing or disabled, check the [troubleshooting section](#troubleshooting).
+On Apple Silicon, Photoshop 2026 (v27) and later only include extension (CEP) support in their Intel code, so the Legacy version appears only when Photoshop runs with Rosetta: Photoshop 2026 users should prefer the [UXP plugin](#photoshop-2025-and-later-uxp-plugin), which runs natively. For the Legacy version, recent macOS versions ignore Finder's **Open using Rosetta** option, so the installer creates a launcher in `~/Applications`, for example **Adobe Photoshop 2026 (TypeR)**. Put it in the Dock and use it instead of the usual Photoshop icon. TypeR is then under **Window → Extensions (Legacy) → TypeR**.
+
+To repair an existing installation or recreate the launcher, close Photoshop and run from the extracted folder:
+
+```sh
+bash fix_mac_rosetta.sh
+```
+
+The script checks each installed Photoshop, installs Rosetta if needed, creates the launcher only for builds that require it, enables the CEP debug setting and removes the macOS download quarantine from TypeR files. If Photoshop is already open without Rosetta, the launcher offers to quit and reopen it. If the panel is missing or disabled, check the [troubleshooting section](#troubleshooting).
 
 ### Update without opening TypeR
 
@@ -283,7 +291,7 @@ Shortcut behavior can vary with keyboard layouts and operating-system bindings. 
 1. Confirm that the archive was extracted before running the installer.
 2. Close every Photoshop window and run the installer again.
 3. Restart Photoshop and look under **Window → Extensions → TypeR**.
-4. On Apple Silicon, try launching Photoshop with **Open using Rosetta** enabled.
+4. On Apple Silicon, open Photoshop with the **Adobe Photoshop … (TypeR)** launcher in `~/Applications`, not the usual icon. If it is missing, close Photoshop and run `bash fix_mac_rosetta.sh`. Look under **Window → Extensions (Legacy)**.
 5. Confirm that you are using a standard desktop Photoshop build. Portable/light builds often remove or alter CEP support.
 
 The included installers configure `PlayerDebugMode` for supported CSXS versions automatically.

@@ -10,7 +10,7 @@ function walk(relative) {
   if (fs.statSync(absolute).isDirectory()) fs.readdirSync(absolute).sort().forEach(name => walk(relative + '/' + name));
   else files[relative] = fs.readFileSync(absolute);
 }
-['app', 'CSXS', 'icons', 'locale', 'install.ps1', 'install_mac.sh', 'install_win.cmd', 'install_uxp_mac.sh', 'install_uxp_win.cmd', 'update_typer_win.cmd', 'update_typer_mac.sh', 'README.md', 'LICENSE.md', 'CHANGELOG.md'].forEach(walk);
+['app', 'CSXS', 'icons', 'locale', 'install.ps1', 'install_mac.sh', 'fix_mac_rosetta.sh', 'install_win.cmd', 'install_uxp_mac.sh', 'install_uxp_win.cmd', 'update_typer_win.cmd', 'update_typer_mac.sh', 'README.md', 'LICENSE.md', 'CHANGELOG.md'].forEach(walk);
 // The installers install the UXP plugin offline from the TypeR-UXP.ccx next
 // to them (npm run package:uxp); --with-uxp makes it mandatory.
 const uxpPackage = path.join(root, 'Releases', 'TypeR-UXP.ccx');

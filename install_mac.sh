@@ -272,6 +272,9 @@ SUCCESS=1
 if [ -f "$DESTDIR/.typer-update-journal.json" ]; then rm "$DESTDIR/.typer-update-journal.json"; fi
 if [ -z "${TYPER_INSTALL_SKIP_DEBUG:-}" ]; then
   for version in {6..18}; do defaults write "com.adobe.CSXS.$version" PlayerDebugMode -string 1; done
+  # Apple Silicon: Photoshop 2026+ only loads extensions under Rosetta; create a launcher for it.
+  ROSETTA_FIX="$(cd "$(dirname "$0")" && pwd)/fix_mac_rosetta.sh"
+  if [ -f "$ROSETTA_FIX" ]; then TYPER_INSTALL_TARGET="$DESTDIR" bash "$ROSETTA_FIX" --from-installer || true; fi
 fi
 printf '%s\n' "$MSG_INSTALL_COMPLETE" "$MSG_OPEN_PHOTOSHOP"
 if compgen -G "$UXP_PLUGINS/com.scanr.typer_*" >/dev/null; then printf '%s\n' "$MSG_BOTH_INSTALLED"; fi
