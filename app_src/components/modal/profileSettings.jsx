@@ -1,7 +1,8 @@
 import React from "react";
 import { FiCheck, FiEdit2, FiPlus, FiTrash2, FiUser } from "react-icons/fi";
 
-import { locale, flushStorageWrite, nativeAlert, nativeConfirm } from "../../utils";
+import { locale, flushStorageForReload, reloadApp, nativeAlert, nativeConfirm } from "../../utils";
+import config from "../../config";
 import {
   DEFAULT_PROFILE_ID,
   activateProfile,
@@ -66,14 +67,14 @@ const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, h
 
   const switchToProfile = React.useCallback((profileId) => {
     if (!profileId || profileId === registry.activeProfileId) return;
-    confirmDiscardIfNeeded(() => {
-      if (!flushStorageWrite(true)) { showProfileError("storage"); return; }
+    confirmDiscardIfNeeded(async () => {
+      if (!(await flushStorageForReload())) { showProfileError("storage"); return; }
       const result = activateProfile(profileId);
       if (!result.ok) {
         showProfileError(result.error);
         return;
       }
-      window.location.reload();
+      await reloadApp();
     });
   }, [confirmDiscardIfNeeded, registry.activeProfileId, showProfileError]);
 
@@ -83,10 +84,11 @@ const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, h
       showProfileError("nameRequired");
       return;
     }
-    confirmDiscardIfNeeded(() => {
-      if (!flushStorageWrite(true)) { showProfileError("storage"); return; }
+    confirmDiscardIfNeeded(async () => {
+      if (!(await flushStorageForReload())) { showProfileError("storage"); return; }
       const created = createProfile(name, {
         notFirstTime: true,
+        whatsNewSeen: config.whatsNewVersion,
         language: currentLanguage || "auto",
       });
       if (!created.ok) {
@@ -99,7 +101,7 @@ const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, h
         showProfileError(activated.error);
         return;
       }
-      window.location.reload();
+      await reloadApp();
     });
   }, [confirmDiscardIfNeeded, currentLanguage, newProfileName, refreshRegistry, showProfileError]);
 
@@ -117,16 +119,16 @@ const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, h
     if (!selectedProfile) return;
     const message = (locale.profilesDeleteConfirm || "")
       .replace("{name}", selectedProfile.name);
-    nativeConfirm(message, locale.confirmTitle, (confirmed) => {
+    nativeConfirm(message, locale.confirmTitle, async (confirmed) => {
       if (!confirmed) return;
-      if (selectedProfile.id === registry.activeProfileId && !flushStorageWrite(true)) { showProfileError("storage"); return; }
+      if (selectedProfile.id === registry.activeProfileId && !(await flushStorageForReload())) { showProfileError("storage"); return; }
       const result = deleteProfile(selectedProfile.id);
       if (!result.ok) {
         showProfileError(result.error);
         return;
       }
       if (result.deletedActive) {
-        window.location.reload();
+        await reloadApp();
         return;
       }
       refreshRegistry(result.activeProfileId);

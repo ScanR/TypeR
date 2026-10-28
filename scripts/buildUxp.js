@@ -12,6 +12,8 @@ const out = path.join(root, "uxp");
 const pkg = require(path.join(root, "package.json"));
 const nativeSource = path.join(root, "uxp-src/native/typer-keys.m");
 const nativePacked = path.join(root, "uxp-src/native/typer-keys.json");
+const windowsSources = ["typer-keys.cs", "typer-keys.csproj", "typer-keys.ico"].map((name) => path.join(root, "uxp-src/native", name));
+const windowsPacked = path.join(root, "uxp-src/native/typer-keys-win.json");
 
 const copyDir = (from, to) => {
   fs.mkdirSync(to, { recursive: true });
@@ -25,9 +27,9 @@ const copyDir = (from, to) => {
 
 const sha256 = (data) => crypto.createHash("sha256").update(data).digest("hex");
 
-// The keyboard reader ships prebuilt (uxp-src/native/typer-keys.json), so the
-// plugin builds on any system; on macOS it is rebuilt whenever its source
-// changed. A .ccx may not carry a bare Mach-O, hence the base64 JSON.
+// The macOS keyboard reader ships prebuilt (uxp-src/native/typer-keys.json),
+// so the plugin builds on any system; on macOS it is rebuilt whenever its
+// source changed. A .ccx may not carry a bare Mach-O, hence the base64 JSON.
 function buildNativeHelper() {
   const sourceHash = sha256(fs.readFileSync(nativeSource));
   let packed = null;
@@ -50,9 +52,48 @@ function buildNativeHelper() {
   if (!packed) throw new Error("uxp-src/native/typer-keys.json is missing: build once on macOS");
   if (packed.sourceHash !== sourceHash) console.warn("Warning: the prebuilt keyboard reader is older than typer-keys.m");
   if (sha256(Buffer.from(packed.binary, "base64")) !== packed.sha256) throw new Error("Corrupt typer-keys.json");
+  // Emptied first: a reader dropped from the sources must not stay in the package
+  fs.rmSync(path.join(out, "native"), { recursive: true, force: true });
   fs.mkdirSync(path.join(out, "native"), { recursive: true });
   fs.writeFileSync(path.join(out, "native/typer-keys.json"), JSON.stringify({ sha256: packed.sha256, binary: packed.binary }));
-  fs.copyFileSync(path.join(root, "uxp-src/native/typer-keys.ps1"), path.join(out, "native/typer-keys.ps1"));
+}
+
+const hasDotnet = () => {
+  try {
+    execFileSync("dotnet", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+// The Windows reader is a .NET Framework 4.8 Windows application
+// (uxp-src/native/typer-keys.cs), shipped prebuilt in typer-keys-win.json
+// and rebuilt whenever its source changed on a system with the .NET SDK
+// (any OS: the reference assemblies come from NuGet).
+function buildWindowsHelper() {
+  const sourceHash = sha256(Buffer.concat(windowsSources.map((file) => fs.readFileSync(file))));
+  let packed = null;
+  try {
+    packed = JSON.parse(fs.readFileSync(windowsPacked, "utf8"));
+  } catch (error) {}
+  if ((!packed || packed.sourceHash !== sourceHash) && hasDotnet()) {
+    const work = fs.mkdtempSync(path.join(require("os").tmpdir(), "typer-keys-win-"));
+    try {
+      windowsSources.forEach((file) => fs.copyFileSync(file, path.join(work, path.basename(file))));
+      execFileSync("dotnet", ["build", "typer-keys.csproj", "-c", "Release", "-o", "out", "-nologo", "-v", "quiet"], { cwd: work, stdio: "inherit" });
+      const bytes = fs.readFileSync(path.join(work, "out/TypeR Shortcuts.exe"));
+      packed = { sourceHash, sha256: sha256(bytes), binary: bytes.toString("base64") };
+      fs.writeFileSync(windowsPacked, JSON.stringify(packed) + "\n");
+      console.log("Windows keyboard reader rebuilt (" + bytes.length + " bytes)");
+    } finally {
+      fs.rmSync(work, { recursive: true, force: true });
+    }
+  }
+  if (!packed) throw new Error("uxp-src/native/typer-keys-win.json is missing: build once with the .NET SDK");
+  if (packed.sourceHash !== sourceHash) console.warn("Warning: the prebuilt Windows keyboard reader is older than typer-keys.cs");
+  if (sha256(Buffer.from(packed.binary, "base64")) !== packed.sha256) throw new Error("Corrupt typer-keys-win.json");
+  fs.writeFileSync(path.join(out, "native/typer-keys-win.json"), JSON.stringify({ sha256: packed.sha256, binary: packed.binary }));
 }
 
 function writeManifest() {
@@ -74,6 +115,9 @@ function copyAssets() {
     fs.copyFileSync(path.join(root, "icons", name + "@2X.png"), path.join(out, "icons", name + "@2x.png"));
   });
   fs.copyFileSync(path.join(root, "LICENSE.md"), path.join(out, "LICENSE.md"));
+  // Practice page of the What's new tour, opened in Photoshop
+  fs.mkdirSync(path.join(out, "assets"), { recursive: true });
+  fs.copyFileSync(path.join(root, "app_src/assets/typer-practice-page.png"), path.join(out, "assets/typer-practice-page.png"));
 }
 
 function packageCcx(manifest) {
@@ -85,7 +129,7 @@ function packageCcx(manifest) {
     else if (!/(^|\/)\.DS_Store$|^host-test\.js$|\.map$/.test(relative)) files[relative] = fs.readFileSync(absolute);
   };
   walk("");
-  ["manifest.json", "index.html", "host.js", "web/index.html", "web/index.js", "native/typer-keys.json", "locale/messages.properties"].forEach((name) => {
+  ["manifest.json", "index.html", "host.js", "web/index.html", "web/index.js", "native/typer-keys.json", "native/typer-keys-win.json", "locale/messages.properties"].forEach((name) => {
     if (!files[name]) throw new Error("Incomplete UXP build: " + name);
   });
   if (Object.keys(files).some((name) => /\.(jsx|jsxinc)$/.test(name))) throw new Error("The UXP package must not contain ExtendScript files");
@@ -110,5 +154,6 @@ if (!fs.existsSync(path.join(out, "host.js")) || !fs.existsSync(path.join(out, "
 const manifest = writeManifest();
 copyAssets();
 buildNativeHelper();
+buildWindowsHelper();
 console.log("UXP plugin built in uxp/ (" + manifest.id + " " + manifest.version + ")");
 if (process.argv.includes("--package")) packageCcx(manifest);

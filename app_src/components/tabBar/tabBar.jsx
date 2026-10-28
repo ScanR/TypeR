@@ -85,6 +85,7 @@ const TabBar = React.memo(function TabBar() {
           <div
             key={tab.id}
             className={"tab-bar-tab" + (tab.id === currentTabId ? " m-active hostBgdLight" : "")}
+            data-tour-tab={tab.id}
             onClick={() => selectTab(tab)}
             onDoubleClick={() => startRename(tab)}
             title={locale.tabRenameHint || "Double-click to rename"}

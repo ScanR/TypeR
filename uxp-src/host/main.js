@@ -239,6 +239,7 @@ async function init() {
     await files.resolveFolders();
     storageRoot = files.getStorageRoot();
     await files.ensureFolder(storageRoot);
+    await files.recoverInterruptedWrites(storageRoot);
     const imported = await files.importCepStorage(storageRoot).catch((error) => {
       console.error("TypeR: CEP storage import failed", error);
       return false;
@@ -263,12 +264,16 @@ async function init() {
 
 const requests = {
   init,
-  // A call past its time limit answers like a call that threw, as CEP did
+  // A call past its time limit answers like a call that threw, as CEP did.
+  // The smart paste answers "timeout" instead: the panel must not paste the
+  // classic way while Photoshop may still finish the smart paste.
   evalScript: (script) => {
     const timeout = callTimeout(script);
-    return enqueue(() => evalScript(script), timeout, () => {
-      console.error("TypeR: host call still running after " + timeout / 1000 + " s, next calls go on", String(script).slice(0, 120));
-      return "EvalScript error.";
+    return enqueue(() => evalScript(script), timeout, (started) => {
+      const call = String(script).slice(0, 120);
+      if (started) console.error("TypeR: host call still running after " + timeout / 1000 + " s, next calls wait for it", call);
+      else console.error("TypeR: host call dropped, Photoshop is still busy with a late call", call);
+      return /^\s*smartPaste\s*\(/.test(String(script)) ? JSON.stringify({ ok: false, code: "timeout" }) : "EvalScript error.";
     });
   },
   writeMirror: (name, text) => {

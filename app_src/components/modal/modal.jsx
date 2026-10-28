@@ -1,10 +1,14 @@
 import React from 'react';
 import {useContext} from '../../context';
 import {locale} from '../../utils';
+import config from '../../config';
+import {getWhatsNewDock, restoreTourTuning, whatsNewSession} from '../../whatsNewSession';
+import {getGuideStyle} from '../../whatsNewGuide';
 
 const modalLoaders = {
     help: () => import(/* webpackChunkName: "modal-help" */ './help'),
     walkthrough: () => import(/* webpackChunkName: "modal-walkthrough" */ './walkthrough'),
+    whatsNew: () => import(/* webpackChunkName: "modal-whats-new" */ './whatsNew'),
     settings: () => import(/* webpackChunkName: "modal-settings" */ './settings'),
     editStyle: () => import(/* webpackChunkName: "modal-edit-style" */ './editStyle'),
     editFolder: () => import(/* webpackChunkName: "modal-edit-folder" */ './editFolder'),
@@ -15,6 +19,7 @@ const modalLoaders = {
 };
 const HelpModal = React.lazy(modalLoaders.help);
 const WalkthroughModal = React.lazy(modalLoaders.walkthrough);
+const WhatsNewModal = React.lazy(modalLoaders.whatsNew);
 const SettingsModal = React.lazy(modalLoaders.settings);
 const EditStyleModal = React.lazy(modalLoaders.editStyle);
 const EditFolderModal = React.lazy(modalLoaders.editFolder);
@@ -29,6 +34,29 @@ const loadModalStyles = () => {
     }
     return modalStylesPromise;
 };
+
+// The tip of the current tour step, under a window the tour sent the user
+// to (settings, style editor): the guide itself is hidden behind it
+const TourCoach = React.memo(function TourCoach() {
+    const [, refresh] = React.useReducer((count) => count + 1, 0);
+    React.useEffect(() => {
+        const timer = setInterval(refresh, 400);
+        return () => clearInterval(timer);
+    }, []);
+    const coach = whatsNewSession.coach;
+    if (!coach) return null;
+    const done = !!whatsNewSession.done[coach.stepId];
+    return (
+        <div className={`whats-new-coach hostBgdLight${done ? ' m-done' : ''}`} role="status">
+            <div className="whats-new-coach-title">
+                {done
+                    ? '✓ ' + (locale.whatsNewCoachDone || 'Done! Close this window to go on with the guide.')
+                    : locale.whatsNewCoachTitle || 'TypeR 3.0 guide'}
+            </div>
+            <div>{coach.text}</div>
+        </div>
+    );
+});
 
 class ModalErrorBoundary extends React.Component {
     constructor(props) {
@@ -70,6 +98,9 @@ const Modal = React.memo(function Modal() {
     const context = useContext((state) => ({
         modalType: state.modalType,
         notFirstTime: state.notFirstTime,
+        whatsNewSeen: state.whatsNewSeen,
+        modalData: state.modalData,
+        uiLayout: state.uiLayout,
     }));
     const close = React.useCallback(() => {
         context.dispatch({type: 'setModal'});
@@ -80,6 +111,7 @@ const Modal = React.memo(function Modal() {
     let modalType = context.state.modalType;
     if (modalType === 'help') modalContent = <HelpModal />;
     else if (modalType === 'walkthrough') modalContent = <WalkthroughModal />;
+    else if (modalType === 'whatsNew') modalContent = <WhatsNewModal />;
     else if (modalType === 'settings') modalContent = <SettingsModal />;
     else if (modalType === 'editStyle') modalContent = <EditStyleModal />;
     else if (modalType === 'editFolder') modalContent = <EditFolderModal />;
@@ -89,10 +121,24 @@ const Modal = React.memo(function Modal() {
     else if (modalType === 'uxpMigration') modalContent = <UxpMigrationModal />;
 
     React.useEffect(() => {
+        // A TextShapeR lesson left by a tour Photoshop closed in the middle of
+        if (!whatsNewSession.active) restoreTourTuning(context.dispatch);
         if (!context.state.notFirstTime) {
             context.dispatch({type: 'showFirstRunWalkthrough'});
+        } else if (context.state.whatsNewSeen !== config.whatsNewVersion) {
+            context.dispatch({type: 'showWhatsNew'});
         }
     }, []);
+
+    // A window opened from the What's new tour hands back to it on close
+    React.useEffect(() => {
+        if (!modalType && whatsNewSession.active) context.dispatch({type: 'setModal', modal: 'whatsNew'});
+    }, [modalType]);
+
+    // The walkthroughs float over the panel so it stays usable
+    const floating = modalType === 'walkthrough' || modalType === 'whatsNew';
+    const coached = !floating && whatsNewSession.active && !!whatsNewSession.coach &&
+        whatsNewSession.coach.modal === modalType;
 
     React.useEffect(() => {
         if (!modalType || stylesReady) return undefined;
@@ -114,15 +160,21 @@ const Modal = React.memo(function Modal() {
     }, [modalType, stylesReady]);
 
     return modalContent && stylesReady ? (
-        <div className={`app-modal${modalType === 'walkthrough' ? ' app-modal--walkthrough' : ''}`}>
-            {modalType !== 'walkthrough' && <div className="app-modal-hatch hostBgd"></div>}
-            <div className={`app-modal-inner hostBgdLight${modalType === 'walkthrough' ? ' app-modal-inner--walkthrough' : ''}`}>
+        <div className={`app-modal${floating ? ' app-modal--walkthrough' : ''}${coached ? ' app-modal--coached' : ''}`}>
+            {!floating && <div className="app-modal-hatch hostBgd"></div>}
+            {/* Own element for the tour: its dragged position never sticks to another window */}
+            <div
+                key={modalType === 'whatsNew' ? 'whats-new' : 'modal'}
+                className={`app-modal-inner hostBgdLight${floating ? ' app-modal-inner--walkthrough' : ''}${modalType === 'whatsNew' ? ' app-modal-inner--whats-new m-' + getWhatsNewDock(context.state.uiLayout) : ''}`}
+                style={modalType === 'whatsNew' ? getGuideStyle() : undefined}
+            >
                 <ModalErrorBoundary modalType={modalType} onClose={close}>
                     <React.Suspense fallback={<div className="app-modal-body"><div className="app-modal-body-inner">{locale.loading || 'Loading...'}</div></div>}>
                         {modalContent}
                     </React.Suspense>
                 </ModalErrorBoundary>
             </div>
+            {coached && <TourCoach />}
         </div>
     ) : null;
 });

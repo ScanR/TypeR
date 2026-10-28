@@ -108,6 +108,7 @@ var _hostState = {
     result: "",
     resize: false,
     padding: 0,
+    placements: {},
   },
   alignTextLayersToDoubleBubble: {
     result: "",
@@ -2074,45 +2075,65 @@ function _applyMiddleEast(textStyle) {
   if (textStyle.markYDistFromBaseline != null) _setMarkYOffset(textStyle.markYDistFromBaseline);
 }
 
-function _applyTextDirection(direction, textLength) {
+// A text set resets the diacritic offsets jamText cannot write: put back the
+// ones that differ from Photoshop's defaults (0 and 100)
+function _restoreMiddleEastOffsets(textStyle) {
+  if (!textStyle) return;
+  var diacOffset = textStyle.diacXOffset != null && textStyle.diacXOffset !== 0;
+  var markOffset = textStyle.markYDistFromBaseline != null && textStyle.markYDistFromBaseline !== 100;
+  if (diacOffset || markOffset) _applyMiddleEast(textStyle);
+}
+
+// Right-to-left text only lays out with the World-Ready (Optyca) composer;
+// left-to-right keeps the composer of the style
+function _setParagraphDirection(paragraphStyle, direction) {
+  paragraphStyle.directionType = direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
+  if (direction === "rtl") paragraphStyle.textComposerEngine = "textOptycaComposer";
+}
+
+function _bakeDirection(paragraphRanges, direction) {
+  for (var p = 0; p < paragraphRanges.length; p++) {
+    var paragraphRange = paragraphRanges[p] || {};
+    var bakedStyle = paragraphRange.paragraphStyle || {};
+    _setParagraphDirection(bakedStyle, direction);
+    paragraphRange.paragraphStyle = bakedStyle;
+    paragraphRanges[p] = paragraphRange;
+  }
+}
+
+function _stripDirection(paragraphRanges) {
+  for (var q = 0; q < paragraphRanges.length; q++) {
+    var retryStyle = paragraphRanges[q].paragraphStyle || {};
+    delete retryStyle.directionType;
+    delete retryStyle.textComposerEngine;
+  }
+}
+
+// Sets the direction of every paragraph of the active text layer, like the
+// Paragraph panel: fonts, sizes, diacritic offsets and the box stay as they are
+function _applyTextDirection(direction) {
   if (!direction) return;
-  var psDirection = direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
-
   try {
-    var currentText = jamText.getLayerText();
-    if (
-      !currentText ||
-      !currentText.layerText ||
-      !currentText.layerText.paragraphStyleRange ||
-      !currentText.layerText.paragraphStyleRange.length
-    ) {
-      return;
+    var paragraphStyle = new ActionDescriptor();
+    paragraphStyle.putEnumerated(
+      stringIDToTypeID("directionType"),
+      stringIDToTypeID("directionType"),
+      stringIDToTypeID(direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight")
+    );
+    if (direction === "rtl") {
+      paragraphStyle.putEnumerated(
+        stringIDToTypeID("textComposerEngine"),
+        stringIDToTypeID("textComposerEngine"),
+        stringIDToTypeID("textOptycaComposer")
+      );
     }
-
-    var updatedText = _clone(currentText);
-    var paragraphRanges = updatedText.layerText.paragraphStyleRange;
-    var targetLength = textLength;
-    if (targetLength == null && updatedText.layerText && updatedText.layerText.textKey) {
-      targetLength = updatedText.layerText.textKey.length;
-    }
-
-    for (var i = 0; i < paragraphRanges.length; i++) {
-      var range = paragraphRanges[i] || {};
-      var paragraphStyle = range.paragraphStyle || {};
-
-      paragraphStyle.directionType = psDirection;
-      paragraphStyle.textComposerEngine = "textOptycaComposer";
-
-      range.paragraphStyle = paragraphStyle;
-      if (targetLength != null) {
-        range.from = typeof range.from === "number" ? range.from : 0;
-        range.to = targetLength;
-      }
-      paragraphRanges[i] = range;
-    }
-
-    updatedText.layerText.paragraphStyleRange = paragraphRanges;
-    jamText.setLayerText(updatedText);
+    var reference = new ActionReference();
+    reference.putProperty(charID.Property, stringIDToTypeID("paragraphStyle"));
+    reference.putEnumerated(charID.TextLayer, charID.Ordinal, charID.Target);
+    var descriptor = new ActionDescriptor();
+    descriptor.putReference(charID.Null, reference);
+    descriptor.putObject(charID.To, stringIDToTypeID("paragraphStyle"), paragraphStyle);
+    executeAction(charID.Set, descriptor, DialogModes.NO);
   } catch (e) {
     // Ignore errors if directionType is not supported on this PS version
   }
@@ -2185,20 +2206,10 @@ function _createAndSetLayerText(data, width, height) {
     },
   ];
   // Bake the direction into the make call: the legacy post-make
-  // _applyTextDirection pass costs a full extra layer-text read plus a
-  // second complete relayout
+  // _applyTextDirection pass costs a second complete relayout
   var directionBaked = false;
   if (data.direction && style.textProps.layerText.paragraphStyleRange) {
-    var psDirection = data.direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
-    var paragraphRanges = style.textProps.layerText.paragraphStyleRange;
-    for (var p = 0; p < paragraphRanges.length; p++) {
-      var paragraphRange = paragraphRanges[p] || {};
-      var bakedStyle = paragraphRange.paragraphStyle || {};
-      bakedStyle.directionType = psDirection;
-      bakedStyle.textComposerEngine = "textOptycaComposer";
-      paragraphRange.paragraphStyle = bakedStyle;
-      paragraphRanges[p] = paragraphRange;
-    }
+    _bakeDirection(style.textProps.layerText.paragraphStyleRange, data.direction);
     directionBaked = true;
   }
   try {
@@ -2210,11 +2221,7 @@ function _createAndSetLayerText(data, width, height) {
     if (!directionBaked) throw makeError;
     // Some Photoshop versions reject directionType/textComposerEngine in a
     // make: strip them, retry, then use the legacy post-make pass
-    for (var q = 0; q < style.textProps.layerText.paragraphStyleRange.length; q++) {
-      var retryStyle = style.textProps.layerText.paragraphStyleRange[q].paragraphStyle || {};
-      delete retryStyle.directionType;
-      delete retryStyle.textComposerEngine;
-    }
+    _stripDirection(style.textProps.layerText.paragraphStyleRange);
     jamEngine.jsonPlay("make", {
       target: ["<reference>", [["textLayer", ["<class>", null]]]],
       using: jamText.toLayerTextObject(style.textProps),
@@ -2227,7 +2234,7 @@ function _createAndSetLayerText(data, width, height) {
   }
   // Apply text direction if it could not be baked into the make call
   if (data.direction && !directionBaked) {
-    _applyTextDirection(data.direction, data.text.length);
+    _applyTextDirection(data.direction);
   }
 }
 
@@ -2339,11 +2346,13 @@ function _setActiveLayerText() {
   var targetTextLength = 0;
 
   // "Paste text to the current layer" is deliberately content-only. Assigning
-  // contents directly avoids writing any font, size, paragraph, direction,
-  // text-box or position property.
+  // contents directly avoids writing any font, size, paragraph, text-box or
+  // position property. Only a right-to-left panel also sets the direction,
+  // so Arabic text never stays in a left-to-right layer.
   if (payload.contentOnly && (!dataRuns || !dataRuns.length)) {
     _forEachSelectedLayer(function () {
       app.activeDocument.activeLayer.textItem.contents = _normalizeTextKey(dataText);
+      if (payload.direction === "rtl") _applyTextDirection("rtl");
     });
     state.result = "";
     return;
@@ -2457,20 +2466,11 @@ function _setActiveLayerText() {
     var userDirection = payload.direction;
     if (userDirection === "") userDirection = null;
     // Bake the direction into the ranges of the main set call: the legacy
-    // post-set _applyTextDirection pass costs a full extra layer-text read
-    // plus a second complete relayout on every apply
+    // post-set _applyTextDirection pass costs a second complete relayout on
+    // every apply
     var directionBaked = false;
     if (userDirection && newTextParams.layerText.paragraphStyleRange) {
-      var psDirection = userDirection === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
-      var paragraphRanges = newTextParams.layerText.paragraphStyleRange;
-      for (var p = 0; p < paragraphRanges.length; p++) {
-        var paragraphRange = paragraphRanges[p] || {};
-        var bakedStyle = paragraphRange.paragraphStyle || {};
-        bakedStyle.directionType = psDirection;
-        bakedStyle.textComposerEngine = "textOptycaComposer";
-        paragraphRange.paragraphStyle = bakedStyle;
-        paragraphRanges[p] = paragraphRange;
-      }
+      _bakeDirection(newTextParams.layerText.paragraphStyleRange, userDirection);
       directionBaked = true;
     }
 
@@ -2499,13 +2499,9 @@ function _setActiveLayerText() {
       if (!directionBaked) throw setError;
       // Some Photoshop versions reject directionType/textComposerEngine in a
       // plain set: strip them, retry, then use the legacy post-set pass
-      for (var q = 0; q < newTextParams.layerText.paragraphStyleRange.length; q++) {
-        var retryStyle = newTextParams.layerText.paragraphStyleRange[q].paragraphStyle || {};
-        delete retryStyle.directionType;
-        delete retryStyle.textComposerEngine;
-      }
+      _stripDirection(newTextParams.layerText.paragraphStyleRange);
       jamText.setLayerText(newTextParams);
-      _applyTextDirection(userDirection, targetTextLength);
+      _applyTextDirection(userDirection);
     }
     _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
     if (dataStyle && dataStyle.stroke) {
@@ -2565,10 +2561,11 @@ function _setActiveLayerText() {
 
 // Lean text-only apply for TextShapeR: the panel already holds a full style
 // snapshot of the layer (read when it was selected), so this path skips the
-// expensive jamText.getLayerText() re-read, the Middle-East override actions,
-// and the stroke re-apply — none of them can have changed since only the
-// line breaking changes. Point text also skips both box conversions since it
-// can never soft-wrap: one relayout instead of four.
+// expensive jamText.getLayerText() re-read and the stroke re-apply — none of
+// them can have changed since only the line breaking changes. The
+// Middle-East override actions only run for offsets the set call resets.
+// Point text also skips both box conversions since it can never soft-wrap:
+// one relayout instead of four.
 function _setTextShapeRText() {
   var state = _hostState.setTextShapeRText;
   var payload = state.data;
@@ -2625,16 +2622,7 @@ function _setTextShapeRText() {
     if (userDirection === "") userDirection = null;
     var directionBaked = false;
     if (userDirection) {
-      var psDirection = userDirection === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
-      var paragraphRanges = newTextParams.layerText.paragraphStyleRange;
-      for (var p = 0; p < paragraphRanges.length; p++) {
-        var paragraphRange = paragraphRanges[p] || {};
-        var bakedStyle = paragraphRange.paragraphStyle || {};
-        bakedStyle.directionType = psDirection;
-        bakedStyle.textComposerEngine = "textOptycaComposer";
-        paragraphRange.paragraphStyle = bakedStyle;
-        paragraphRanges[p] = paragraphRange;
-      }
+      _bakeDirection(newTextParams.layerText.paragraphStyleRange, userDirection);
       directionBaked = true;
     }
 
@@ -2651,13 +2639,11 @@ function _setTextShapeRText() {
       jamText.setLayerText(newTextParams);
     } catch (setError) {
       if (!directionBaked) throw setError;
-      for (var q = 0; q < newTextParams.layerText.paragraphStyleRange.length; q++) {
-        var retryStyle = newTextParams.layerText.paragraphStyleRange[q].paragraphStyle || {};
-        delete retryStyle.directionType;
-        delete retryStyle.textComposerEngine;
-      }
+      _stripDirection(newTextParams.layerText.paragraphStyleRange);
       jamText.setLayerText(newTextParams);
+      _applyTextDirection(userDirection);
     }
+    _restoreMiddleEastOffsets(baseRange.textStyle);
 
     if (convertedToPoint) {
       _changeToBoxText();
@@ -2744,8 +2730,9 @@ function _alignCurrentTextLayerToSelection() {
   if (!_layerIsTextLayer()) {
     return "layer";
   }
-  
-  var selection = _checkSelection({ adaptiveOpen: true });
+
+  // The chamber of a double or triple bubble the panel found for this text
+  var selection = state.placements["id" + _safeActiveLayerId()] || _checkSelection({ adaptiveOpen: true });
   if (selection.error) {
     if (selection.error === "noSelection") {
       _createMagicWandSelection(20);
@@ -2766,7 +2753,9 @@ function _alignCurrentTextLayerToSelection() {
     bounds = _getCurrentTextLayerBounds();
   }
   
-  _deselect();
+  try {
+    _deselect();
+  } catch (deselectError) {}
   _positionLayerWithinSelection(selection, bounds);
   if (wasPoint) {
     _changeToPointText();
@@ -3529,13 +3518,128 @@ function createTextLayerInSelection(data, point) {
   return state.result;
 }
 
+// data.placements (from alignCapture and app_src/oneClick/alignPlan.js) send
+// texts of a double or triple bubble to their chamber; the others use the
+// selection, or the wand around them.
 function alignTextLayerToSelection(data) {
   var state = _hostState.alignTextLayerToSelection;
   state.resize = !!data.resizeTextBox;
   state.padding = data.padding || 0;
   state.result = "";
+  state.placements = {};
+  try {
+    if (data.placements && String(app.activeDocument.id) === String(data.documentId)) {
+      state.placements = _alignPlacementMap(data.placements);
+    }
+  } catch (placementError) {}
   app.activeDocument.suspendHistory("TyperTools Align", "_alignTextLayerToSelection()");
+  state.placements = {};
   return state.result;
+}
+
+// Placement rectangles by layer id ("id" + id). The centre may be the
+// chamber's optical centre: kept when it lies inside the rectangle.
+function _alignPlacementMap(list) {
+  var map = {};
+  for (var i = 0; list && i < list.length; i++) {
+    var placement = list[i];
+    var r = placement && placement.rect;
+    var rect = r ? _rectFrom(r.left, r.top, r.right, r.bottom) : null;
+    if (!rect || placement.id === undefined || placement.id === null) continue;
+    var x = Number(r.xMid);
+    var y = Number(r.yMid);
+    if (isFinite(x) && isFinite(y) && _containsPoint(rect, x, y)) {
+      rect.xMid = x;
+      rect.yMid = y;
+    }
+    map["id" + placement.id] = rect;
+  }
+  return map;
+}
+
+// What Align needs to split a double or triple bubble, read in a rolled-back
+// history (the document, its selection and work path stay as they were):
+// the selected texts (id, stack index, box) and the outline of the bubble
+// around them, as a work path. The user's selection is that bubble; without
+// one, each text gets the wand probes of the auto-centre. The panel cuts the
+// outlines into chambers (app_src/oneClick/alignPlan.js).
+function alignCapture() {
+  if (!documents.length) return jamJSON.stringify({ error: "doc" });
+  var read = _withTemporaryHistory("TypeR Read Bubble", _alignCaptureRun, { discardRedo: true });
+  if (!read || read.error) return jamJSON.stringify({ error: (read && read.error) || "capture" });
+  return jamJSON.stringify(read);
+}
+
+// Position in the layer stack: a text pasted later sits higher
+function _layerStackIndex(id) {
+  try {
+    var key = stringIDToTypeID("itemIndex");
+    var reference = new ActionReference();
+    reference.putProperty(charID.Property, key);
+    reference.putIdentifier(charID.Layer, id);
+    return executeActionGet(reference).getInteger(key);
+  } catch (indexError) {
+    return 0;
+  }
+}
+
+function _alignReadOutline() {
+  var bounds = _liveSelectionBounds();
+  if (!bounds) return null;
+  _makeWorkPathFromSelection(2.0);
+  var path = _smartReadWorkPath();
+  if (!path) return null;
+  return { selectionBounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom }, rawPath: path, textIds: [] };
+}
+
+function _alignCaptureRun() {
+  var docSize = _getDocumentPixelSize();
+  var entries = _targetLayerEntries();
+  var ids = [];
+  var texts = [];
+  var i, j;
+  for (i = 0; i < entries.length; i++) {
+    ids.push(entries[i].id);
+    if (!entries[i].text) continue;
+    _selectLayerById(entries[i].id);
+    var box = _currentLayerBox();
+    if (box) texts.push({ id: entries[i].id, index: _layerStackIndex(entries[i].id), box: box, sizePixels: _currentDisplayedTextPixels() });
+  }
+  var bubbles = [];
+  if (_liveSelectionBounds()) {
+    var outline = _alignReadOutline();
+    if (outline) {
+      for (i = 0; i < texts.length; i++) outline.textIds.push(texts[i].id);
+      bubbles.push(outline);
+    }
+  } else {
+    for (i = 0; i < texts.length; i++) {
+      var found = _probeBubble(texts[i].box, texts[i].sizePixels, [], docSize).best;
+      var live = found ? _liveSelectionBounds() : null;
+      if (!live) continue;
+      var known = null;
+      for (j = 0; j < bubbles.length && !known; j++) {
+        var b = bubbles[j].selectionBounds;
+        if (b.left === live.left && b.top === live.top && b.right === live.right && b.bottom === live.bottom) known = bubbles[j];
+      }
+      if (!known) {
+        known = _alignReadOutline();
+        if (!known) continue;
+        bubbles.push(known);
+      }
+      known.textIds.push(texts[i].id);
+    }
+  }
+  if (ids.length > 1) _selectLayersById(ids);
+  else if (ids.length) _selectLayerById(ids[0]);
+  return {
+    documentId: app.activeDocument.id,
+    width: docSize.width,
+    height: docSize.height,
+    resolution: _getDocumentResolution(),
+    texts: texts,
+    bubbles: bubbles,
+  };
 }
 
 // Answers "" or an error code the panel translates: "doc",
@@ -4967,6 +5071,7 @@ function _smartSelectionHistograms() {
 
 function smartPasteCapture(data) {
   if (!app.documents.length) return jamJSON.stringify({ error: "doc" });
+  if (data && data.trigger && data.trigger.documentKey && data.trigger.documentKey !== getTypeRDocumentKey()) return jamJSON.stringify({ error: "doc" });
   var selection = _getCurrentSelectionBounds();
   if (!selection || selection.width < 8 || selection.height < 8) return jamJSON.stringify({ error: "noSelection" });
   var doc = app.activeDocument;
@@ -5087,10 +5192,15 @@ function _smartMakeText(params) {
       using: jamText.toLayerTextObject(params)
     });
   } catch (makeError) {
-    // Older hosts reject directionType/textComposerEngine in a make
+    // Older hosts reject directionType/textComposerEngine in a make: strip
+    // them, retry, then set the direction on the new layer
     var ranges = params.layerText.paragraphStyleRange || [];
+    var direction = null;
     for (var i = 0; i < ranges.length; i++) {
       if (!ranges[i].paragraphStyle) continue;
+      if (ranges[i].paragraphStyle.directionType) {
+        direction = ranges[i].paragraphStyle.directionType === "dirRightToLeft" ? "rtl" : "ltr";
+      }
       delete ranges[i].paragraphStyle.directionType;
       delete ranges[i].paragraphStyle.textComposerEngine;
     }
@@ -5098,6 +5208,7 @@ function _smartMakeText(params) {
       target: ["<reference>", [["textLayer", ["<class>", null]]]],
       using: jamText.toLayerTextObject(params)
     });
+    _applyTextDirection(direction);
   }
 }
 
@@ -5208,6 +5319,7 @@ function getHistorySnapshot() {
 function replaySelectionTrigger(trigger) {
   if (!app.documents.length) return jamJSON.stringify({ error: "doc" });
   if (!trigger) return jamJSON.stringify({ error: "trigger" });
+  if (trigger.documentKey && trigger.documentKey !== getTypeRDocumentKey()) return jamJSON.stringify({ error: "doc" });
   try {
     var desc = new ActionDescriptor();
     var reference = new ActionReference();

@@ -211,7 +211,9 @@ const shortcutCommands = [
     repeatDelay: 0,
     handler: (ctx) => alignTextLayerToSelection(
       ctx.state.resizeTextBoxOnCenter,
-      ctx.state.internalPadding || 0
+      ctx.state.internalPadding || 0,
+      undefined,
+      ctx.state.direction
     ),
   },
   {

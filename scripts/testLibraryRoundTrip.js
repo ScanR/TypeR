@@ -13,6 +13,13 @@ const { reducer, initial } = require('./helpers/loadContext')();
 assert.strictEqual(reducer(initial, { type: 'importStyleLibrary', folders: cycle, styles: [{ ...style, folder: 'a' }] }), initial);
 const state = reducer(initial, { type: 'importStyleLibrary', folders: [{ id: 'f', name: 'Folder' }], styles: [{ ...style, folder: 'f' }] });
 assert.deepStrictEqual(state.styles[0].sizePresets, [12, 16, 20]);
+// FontScanR imports a new folder and styles without ids; the reducer assigns them
+const scanned = reducer(initial, { type: 'importStyleFolder', folder: { name: 'Scan' }, styles: [{ name: 'A', textProps: {}, prefixes: [] }, { name: 'B', textProps: {}, prefixes: [] }] });
+assert.notStrictEqual(scanned, initial);
+const scanFolder = scanned.folders.find(folder => folder.name === 'Scan');
+assert(scanFolder && scanFolder.id);
+assert.deepStrictEqual(scanned.styles.slice(-2).map(s => [s.name, s.folder, !!s.id]), [['A', scanFolder.id, true], ['B', scanFolder.id, true]]);
+assert.strictEqual(reducer(initial, { type: 'importStyleFolder', folder: { name: 'Scan' }, styles: [{ name: 'A', prefixes: 'bad' }] }), initial);
 const { collectDescendantIds } = load('app_src/folderUtils.js');
 assert.deepStrictEqual(collectDescendantIds(cycle, 'a'), ['b']);
 const tree = [{ id: 'r' }, { id: 'c1', parentId: 'r' }, { id: 'c2', parentId: 'r' }, { id: 'g1', parentId: 'c1' }, { id: 'x', parentId: 'other' }];

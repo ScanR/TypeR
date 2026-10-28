@@ -1,5 +1,6 @@
 const getImageBaseName = (image) => {
-  const source = String(image?.baseName || image?.name || image?.path || "");
+  if (image?.baseName) return String(image.baseName);
+  const source = String(image?.name || image?.path || "");
   const fileName = source.split(/[\\/]/).pop() || "";
   return fileName.replace(/\.[^.]+$/, "");
 };

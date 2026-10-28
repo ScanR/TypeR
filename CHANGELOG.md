@@ -24,6 +24,8 @@
 - Conditional refont rules give the text between two markers another style's font.
 - When the text cannot be placed, the classic paste runs and a short notice explains why.
 - Multi-bubble batches select each stored bubble again and paste it with the smart paste.
+- Align knows double and triple bubbles: each selected text is centred in its own chamber instead of on the
+  neck of the whole bubble, and a single text goes to the chamber it sits in (or the nearest one).
 
 ### Paste on click
 
@@ -41,9 +43,11 @@
 - Preserve undo history during temporary TextShapeR scans.
 - Refine compact panel settings, the active-size modifier and keyboard workflows.
 - Select styles 1 through 9 in the current folder with the numeric keypad while the panel has focus and no text field or modal is active.
+- Fix right-to-left text (Arabic): the Text direction setting now reaches Photoshop. Before, the paragraph direction was dropped on every write, so layers went back to left-to-right. Pasting into the current layer also sets right-to-left when the panel is set to RTL, styles keep their direction, composer and Arabic digits, and TextShapeR keeps the diacritic offsets.
 
 ### Data and interface
 
+- Add a hands-on What's new tour (about 4 and a half minutes, 7 chapters), shown once to users updating from an earlier version and available from Help and Settings > General. It opens a practice page with numbered bubbles in Photoshop, read from right to left like a manga, and a practice script in its own tab, and checks each exercise from the panel: smart paste, paste on click and undo, a rectangle on the art, black and double bubbles, auto clean, shout bubbles and narration boxes with their own styles, TextShapeR, tabs, auto-center, size presets and Font FindeR. The user does every gesture: a blue ring shows the real control to use and darkens the rest of the panel (footer toggle, Paste button, script line, tab, style, settings tab) along with the user's own shortcut, the guide can be dragged anywhere by its header and moves out of the way when it covers the ring, and a window the tour sends the user to (settings, style editor) shows the step's tip at its bottom. It floats over the panel, can be folded away, keeps the shortcuts working and comes back after those windows. Its progress is kept when it or Photoshop closes: reopening it offers to resume where the user left off or to start over. A step only passes on a gesture made during the run: a line pasted or a Shout style made in an earlier run does not count, and a footer toggle already on is shown for a moment, then passes by itself. What the TextShapeR star learns during the tour is undone when the user leaves that chapter, so their own learning is left as it was. The tour goes in order: no step can be skipped, Next and the later chapters open once the chapter is done, and a finished chapter moves on to the next one right away.
 - Show Help, Settings and page import as icon buttons in the footer, apart from the mode toggles, which switch to icons in a narrow panel instead of being cut off.
 - Save through temporary files with a last-valid backup; preserve corrupt originals and expose save failures with recovery export.
 - Block profile switching when pending changes cannot be saved.

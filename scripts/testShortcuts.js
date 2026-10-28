@@ -463,13 +463,26 @@ assert(
   "UXP must match the pushed keyboard state, and only CEP poll it"
 );
 assert(
-  /checkState\(state, !context\.getState\(\)\.modalType && !isHostActionPending\(\) && !isFormFieldActive\(\) && !document\.hidden\)/.test(hotkeySource),
+  /checkState\(state, !isBlockingModal\(context\.getState\(\)\.modalType\) && !isHostActionPending\(\) && !isFormFieldActive\(\) && !document\.hidden\)/.test(hotkeySource),
   "Pushed key state must not fire in a modal, during a host action, while typing in the panel or while the panel is hidden"
 );
 assert(
-  /if \(state\.modalType \|\| isHostActionPending\(\)\) return;/.test(hotkeySource),
+  /if \(isBlockingModal\(state\.modalType\) \|\| isHostActionPending\(\)\) return;/.test(hotkeySource),
   "A press the gate deferred must not run while a paste still runs: the same line would be pasted twice"
 );
+
+// The What's new tour floats over the panel and lets shortcuts run (it
+// teaches them); every other window blocks them
+{
+  const sessionSource = fs.readFileSync(path.join(__dirname, "..", "app_src", "whatsNewSession.js"), "utf8");
+  const match = sessionSource.match(/export const WHATS_NEW_MODAL = "(\w+)";[\s\S]*?export const isBlockingModal = (\(modalType\) => [^;]+);/);
+  assert(match, "isBlockingModal not found in whatsNewSession.js");
+  const isBlockingModal = new Function("WHATS_NEW_MODAL", "return " + match[2])(match[1]);
+  assert.strictEqual(isBlockingModal(null), false);
+  assert.strictEqual(isBlockingModal("whatsNew"), false, "Shortcuts must work during the What's new tour");
+  ["settings", "editStyle", "walkthrough", "help"].forEach((modal) => assert.strictEqual(isBlockingModal(modal), true, modal + " must block shortcuts"));
+  assert.strictEqual((hotkeySource.match(/isBlockingModal\(/g) || []).length, 5, "Every shortcut path must use isBlockingModal");
+}
 
 // --- typing in the panel ---------------------------------------------------
 

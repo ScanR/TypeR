@@ -179,7 +179,7 @@ const WalkthroughModal = React.memo(function WalkthroughModal() {
   const alignPhotoshopTextLayer = () => {
     alignTextLayerToSelection(context.state.resizeTextBoxOnCenter, context.state.internalPadding || 0, (ok) => {
       if (ok) setAlignDone(true);
-    });
+    }, context.state.direction);
   };
 
   const exportJson = async () => {

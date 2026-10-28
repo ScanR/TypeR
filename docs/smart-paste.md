@@ -31,6 +31,7 @@ app_src/oneClick/            shared engine (pure, ES5 after babel)
   geometry.js                outlines, containment, bubble body, neck finder, shape classifier, cleanup validator
   bubblePlan.js              plan of a wand / rectangle / lasso selection (from the work path and the fill)
   connected.js               double and triple chambers
+  alignPlan.js               Align: each selected text to its chamber (outlines read by alignCapture)
   textGraph.js               candidate lines of a translation, composition of the chosen lines
   solver.js                  beam search of lines inside the polygon (MD TYPER's frozen solver)
   measureSpec.js             64 px measuring parameters, metrics from bounds or vector atlases, metric cache

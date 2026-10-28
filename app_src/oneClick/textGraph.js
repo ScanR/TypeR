@@ -45,7 +45,8 @@ const setDirection = (params, direction, length) => {
   for (let i = 0; i < ranges.length; i++) {
     const style = ranges[i].paragraphStyle || {};
     style.directionType = direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
-    style.textComposerEngine = "textOptycaComposer";
+    // Right-to-left needs the World-Ready composer; left-to-right keeps the style's
+    if (direction === "rtl") style.textComposerEngine = "textOptycaComposer";
     ranges[i].paragraphStyle = style;
     ranges[i].from = typeof ranges[i].from === "number" ? ranges[i].from : 0;
     ranges[i].to = length;

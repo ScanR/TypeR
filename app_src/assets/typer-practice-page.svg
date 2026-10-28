@@ -1,0 +1,44 @@
+<!-- Source of typer-practice-page.png, the What's new tour practice page (render at 1200 x 1900) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1900" viewBox="0 0 1200 1900">
+<rect width="1200" height="1900" fill="#ffffff"/>
+<rect x="40" y="40" width="1120" height="560" fill="#d6d6d6" stroke="#111" stroke-width="6"/>
+<rect x="610" y="640" width="550" height="500" fill="#d6d6d6" stroke="#111" stroke-width="6"/>
+<rect x="40" y="640" width="530" height="500" fill="#d6d6d6" stroke="#111" stroke-width="6"/>
+<rect x="610" y="1180" width="550" height="680" fill="#d6d6d6" stroke="#111" stroke-width="6"/>
+<rect x="40" y="1180" width="530" height="680" fill="#d6d6d6" stroke="#111" stroke-width="6"/>
+<ellipse cx="780" cy="330" rx="270" ry="200" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<ellipse cx="270" cy="250" rx="110" ry="72" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<ellipse cx="960" cy="820" rx="130" ry="85" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<ellipse cx="800" cy="1010" rx="140" ry="90" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<rect x="85" y="665" width="380" height="100" fill="none" stroke="#1976d2" stroke-width="4" stroke-dasharray="14 10"/>
+<ellipse cx="305" cy="960" rx="205" ry="135" fill="#000000"/>
+<ellipse cx="980" cy="1360" rx="160" ry="108" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<ellipse cx="780" cy="1480" rx="160" ry="108" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<ellipse cx="980" cy="1360" rx="157.5" ry="105.5" fill="#ffffff"/>
+<polygon points="305.0,1220.0 278.5,1269.3 232.4,1232.6 229.6,1286.9 170.8,1268.3 192.2,1319.4 129.7,1321.9 171.9,1362.0 115.2,1385.0 171.9,1408.0 129.7,1448.1 192.2,1450.6 170.8,1501.7 229.6,1483.1 232.4,1537.4 278.5,1500.7 305.0,1550.0 331.5,1500.7 377.6,1537.4 380.4,1483.1 439.2,1501.7 417.8,1450.6 480.3,1448.1 438.1,1408.0 494.8,1385.0 438.1,1362.0 480.3,1321.9 417.8,1319.4 439.2,1268.3 380.4,1286.9 377.6,1232.6 331.5,1269.3" fill="#ffffff" stroke="#111" stroke-width="5" stroke-linejoin="miter"/>
+<ellipse cx="890" cy="1740" rx="210" ry="100" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<text x="890" y="1722" font-family="Hiragino Sans, Hiragino Kaku Gothic ProN, sans-serif" font-weight="700" font-size="46" text-anchor="middle" fill="#111">こんにちは、</text>
+<text x="890" y="1782" font-family="Hiragino Sans, Hiragino Kaku Gothic ProN, sans-serif" font-weight="700" font-size="46" text-anchor="middle" fill="#111">元気？</text>
+<rect x="85" y="1615" width="400" height="190" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<circle cx="1105" cy="95" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="1105" y="106" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">1</text>
+<circle cx="100" cy="175" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="100" y="186" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">2</text>
+<circle cx="1115" cy="690" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="1115" y="701" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">3</text>
+<circle cx="648" cy="900" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="648" y="911" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">4</text>
+<circle cx="520" cy="715" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="520" y="726" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">5</text>
+<circle cx="1122" cy="1218" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="1122" y="1229" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">7</text>
+<circle cx="525" cy="1222" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="525" y="1233" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">9</text>
+<circle cx="525" cy="1640" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="525" y="1649" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="27" letter-spacing="-1" text-anchor="middle" fill="#ffffff">10</text>
+<circle cx="525" cy="835" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="525" y="846" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">6</text>
+<circle cx="1125" cy="1650" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="1125" y="1661" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">8</text>
+<text x="1150" y="28" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="20" text-anchor="end" fill="#888">TypeR 3.0</text>
+</svg>

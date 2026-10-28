@@ -1,12 +1,12 @@
 import { useModalClose } from "../../modalClose";
-import { serializeStyle, validateImportData } from "../../librarySerialization";
+import { serializeStyle, validateImportData, hasStyleImportConflicts } from "../../librarySerialization";
 import React from "react";
 import { FiX, FiSettings, FiEye, FiEyeOff, FiToggleLeft, FiDatabase, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiType, FiEdit2, FiPlus, FiImage, FiTrash2, FiUsers } from "react-icons/fi";
 import { MdSave } from "react-icons/md";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig } from "../../utils";
+import { reloadApp, backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig } from "../../utils";
 import { readUxpMigrationState } from "../../uxpMigration";
 import { useContext, defaultUiLayout, normalizeUiLayout, normalizeSmartPasteMinScale } from "../../context";
 import { normalizeRefontRules } from "../../oneClick/refont";
@@ -98,8 +98,10 @@ const SettingsModal = React.memo(function SettingsModal() {
     tabs: state.tabs,
     textShapeRTuning: state.textShapeRTuning,
     styles: state.styles,
+    modalData: state.modalData,
   }));
-  const [activeTab, setActiveTab] = React.useState("general");
+  // Other windows (the What's new tour) can open a given tab
+  const [activeTab, setActiveTab] = React.useState(() => (context.state.modalData && context.state.modalData.tab) || "general");
   const [perfDebug, setPerfDebug] = React.useState(isPerfDebugEnabled);
   const [pastePointText, setPastePointText] = React.useState(context.state.pastePointText ? "1" : "");
   const [ignoreLinePrefixes, setIgnoreLinePrefixes] = React.useState(
@@ -238,6 +240,10 @@ const SettingsModal = React.memo(function SettingsModal() {
   React.useEffect(() => {
     setPasteOnClick(context.state.pasteOnClick === true);
   }, [context.state.pasteOnClick]);
+  // Multi-bubble too, since turning paste on click on there turns it off
+  React.useEffect(() => {
+    setMultiBubbleMode(!!context.state.multiBubbleMode);
+  }, [context.state.multiBubbleMode]);
   React.useEffect(() => {
     setSmartPasteAutoClean(context.state.smartPasteAutoClean === true);
   }, [context.state.smartPasteAutoClean]);
@@ -247,9 +253,11 @@ const SettingsModal = React.memo(function SettingsModal() {
     getFontViewerStatus()
       .then((status) => {
         if (active) setFontViewerAvailable(status.enabled === true);
+        if (active && status.enabled !== true) setActiveTab((tab) => (tab === "fontViewer" ? "general" : tab));
       })
       .catch(() => {
         if (active) setFontViewerAvailable(false);
+        if (active) setActiveTab((tab) => (tab === "fontViewer" ? "general" : tab));
       });
     return () => {
       active = false;
@@ -425,8 +433,10 @@ const SettingsModal = React.memo(function SettingsModal() {
     setEdited(true);
   };
 
+  // Multi-bubble and paste on click are exclusive: checking one unchecks the other
   const changeMultiBubbleMode = (e) => {
     setMultiBubbleMode(e.target.checked);
+    if (e.target.checked) setPasteOnClick(false);
     setEdited(true);
   };
 
@@ -452,6 +462,7 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changePasteOnClick = (e) => {
     setPasteOnClick(e.target.checked);
+    if (e.target.checked) setMultiBubbleMode(false);
     setEdited(true);
   };
 
@@ -821,7 +832,7 @@ const SettingsModal = React.memo(function SettingsModal() {
         type: "setLanguage",
         lang: language,
       });
-      setTimeout(() => window.location.reload(), 100);
+      setTimeout(() => reloadApp(), 100);
     }
     if (direction !== context.state.direction) {
       context.dispatch({
@@ -1072,8 +1083,12 @@ const SettingsModal = React.memo(function SettingsModal() {
             context.dispatch({ type: "importStyleLibrary", folders, styles });
             foldersImported += folders.length;
           } else {
-            context.dispatch({ type: "import", data });
-            setTimeout(() => window.location.reload(), 100);
+            const currentStyles = context.getState().styles;
+            const keepExistingStyles = data.styles && hasStyleImportConflicts(currentStyles, data.styles)
+              ? await new Promise(resolve => nativeConfirm(locale.settingsImportReplace, locale.confirmTitle, resolve))
+              : false;
+            context.dispatch({ type: "import", data, keepExistingStyles });
+            setTimeout(() => reloadApp(), 100);
             closeModal();
           }
         } catch (error) {
@@ -1145,6 +1160,10 @@ const SettingsModal = React.memo(function SettingsModal() {
     context.dispatch({ type: "setModal", modal: "walkthrough", data: { source: "settings" } });
   };
 
+  const openWhatsNew = () => {
+    context.dispatch({ type: "setModal", modal: "whatsNew", data: { source: "settings" } });
+  };
+
   // Legacy panel: the switch to the new TypeR (UXP), when Photoshop can run it
   const uxpMigration = React.useMemo(() => {
     try {
@@ -1180,7 +1199,7 @@ const SettingsModal = React.memo(function SettingsModal() {
             locale.successTitle,
             false
           );
-          setTimeout(() => window.location.reload(), 300);
+          setTimeout(() => reloadApp(), 300);
         } else {
           nativeAlert(
             locale.settingsResetProfileError,
@@ -1312,6 +1331,14 @@ const SettingsModal = React.memo(function SettingsModal() {
               </div>
               <div className="field-descr">
                 {locale.settingsOpenWalkthroughHint || "Replay the first-time guide for the complete TypeR workflow."}
+              </div>
+              <div className="field">
+                <button type="button" className="topcoat-button--large" onClick={openWhatsNew}>
+                  {locale.settingsOpenWhatsNew || "What's new in 3.0"}
+                </button>
+              </div>
+              <div className="field-descr">
+                {locale.settingsOpenWhatsNewHint || "Replay the tour of the main 3.0 features."}
               </div>
               <div className="settings-checkbox-grid">
                 {renderToggle(
@@ -2300,6 +2327,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                 <button
                   key={tab.id}
                   className={`settings-tab ${activeTab === tab.id ? 'settings-tab--active' : ''}${tab.disabled ? ' settings-tab--disabled' : ''}`}
+                  data-tour={"settings-" + tab.id}
                   aria-disabled={tab.disabled || undefined}
                   title={tab.disabled ? tab.disabledTitle : tab.label}
                   onClick={() => {

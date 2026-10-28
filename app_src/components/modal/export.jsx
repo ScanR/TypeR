@@ -24,6 +24,13 @@ const ExportModal = React.memo(function ExportModal() {
     autoScrollStyle: state.autoScrollStyle,
     currentFolderTagPriority: state.currentFolderTagPriority,
     pastePointText: state.pastePointText,
+    smartPaste: state.smartPaste,
+    pasteOnClick: state.pasteOnClick,
+    smartPasteAutoClean: state.smartPasteAutoClean,
+    smartPasteDistribute: state.smartPasteDistribute,
+    smartPasteMinScale: state.smartPasteMinScale,
+    smartPasteHyphenation: state.smartPasteHyphenation,
+    refontRules: state.refontRules,
   }));
   const profileRegistry = React.useMemo(getProfileRegistry, []);
   const [selectedProfileId, setSelectedProfileId] = React.useState(profileRegistry.activeProfileId);

@@ -58,6 +58,7 @@ const boxOf = (descriptor) => {
 
 async function captureSelection(trigger, wants) {
   if (!hasDocument()) throw Object.assign(new Error("No document"), { code: "doc" });
+  if (trigger && trigger.documentKey && trigger.documentKey !== photoshop.methods.getTypeRDocumentKey()) throw Object.assign(new Error("Document changed"), { code: "doc" });
   const doc = ps.app.activeDocument;
   const selectionDescriptor = get([{ _property: "selection" }, TARGET_DOCUMENT]).selection;
   const raw = boxOf(selectionDescriptor);
@@ -489,6 +490,7 @@ async function smartPasteCommit(prepared) {
 async function replaySelectionTrigger(trigger) {
   if (!hasDocument()) return JSON.stringify({ error: "doc" });
   if (!trigger) return JSON.stringify({ error: "trigger" });
+  if (trigger.documentKey && trigger.documentKey !== photoshop.methods.getTypeRDocumentKey()) return JSON.stringify({ error: "doc" });
   let to = null;
   const extra = {};
   if (trigger.source === "wand") {
@@ -505,7 +507,10 @@ async function replaySelectionTrigger(trigger) {
     return JSON.stringify({ error: "trigger" });
   }
   try {
-    await modal("TypeR", () => play(Object.assign({ _obj: "set", _target: [SELECTION], to }, extra)));
+    await modal("TypeR", () => {
+      if (trigger.documentKey && trigger.documentKey !== photoshop.methods.getTypeRDocumentKey()) throw new Error("Document changed");
+      return play(Object.assign({ _obj: "set", _target: [SELECTION], to }, extra));
+    });
     return JSON.stringify({ ok: true });
   } catch (error) {
     return JSON.stringify({ error: "replay" });

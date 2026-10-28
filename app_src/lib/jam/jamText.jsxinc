@@ -317,6 +317,15 @@ if (typeof jamText !== 'object')
                             case "pathTypeEffect":
                             case "pathTypeAlignment":
                             case "pathTypeAlignTo":
+                            // Middle Eastern (World-Ready) keys, written back so styles keep
+                            // their paragraph direction, composer and digits
+                            case "directionType":
+                            case "textComposerEngine":
+                            case "kashidaWidthType":
+                            case "digitSet":
+                            case "dirOverride":
+                            case "kashidas":
+                            case "diacVPos":
                                 typedValue = [ "<enumerated>", [ key, value ] ];
                                 break;
                             case "antiAlias":

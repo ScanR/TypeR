@@ -270,7 +270,7 @@ const StylesBlock = React.memo(function StylesBlock() {
           </button>
           {styleContextMenu.type === "style" && (
             <React.Fragment>
-              <button type="button" role="menuitem" onClick={duplicateContextStyle}>
+              <button type="button" role="menuitem" data-tour="duplicate-style" onClick={duplicateContextStyle}>
                 <FiPlusSquare size={15} />
                 <span>{locale.duplicateStyle}</span>
               </button>
@@ -287,7 +287,7 @@ const StylesBlock = React.memo(function StylesBlock() {
         <button className="topcoat-button--large" onClick={() => context.dispatch({ type: "setModal", modal: "editFolder", data: { create: true } })}>
           <FiFolderPlus size={18} /> {locale.addFolder}
         </button>
-        <button className="topcoat-button--large" onClick={() => context.dispatch({ type: "setModal", modal: "editStyle", data: { create: true } })}>
+        <button className="topcoat-button--large" data-tour="add-style" onClick={() => context.dispatch({ type: "setModal", modal: "editStyle", data: { create: true } })}>
           <FiPlus size={18} /> {locale.addStyle}
         </button>
       </div>
@@ -902,7 +902,7 @@ const StyleItem = React.memo(function StyleItem(props) {
             onMouseDown={stopQuickEvent}
             onClick={stopQuickEvent}
           >
-            <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} title={locale.editStyle} onClick={openStyle}>
+            <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} data-tour="edit-style" title={locale.editStyle} onClick={openStyle}>
               <MdEdit size={16} />
             </button>
             <div className="style-quick-size hostBrdContrast" title={locale.editStyleFontSize || "Font size"}>
@@ -924,7 +924,7 @@ const StyleItem = React.memo(function StyleItem(props) {
             </div>
           </div>
         ) : (
-          <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} title={locale.editStyle} onClick={openStyle}>
+          <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} data-tour="edit-style" title={locale.editStyle} onClick={openStyle}>
             <MdEdit size={16} />
           </button>
         )}

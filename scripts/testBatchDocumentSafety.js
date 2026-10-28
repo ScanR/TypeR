@@ -19,6 +19,8 @@ Object.assign(box, {
 });
 const key = box.getTypeRDocumentKey();
 const selection = { documentKey: key, width: 100, height: 100 };
+assert.strictEqual(JSON.parse(box.replaySelectionTrigger({ source: 'rectangle', documentKey: 'another-document' })).error, 'doc');
+assert.strictEqual(JSON.parse(box.smartPasteCapture({ trigger: { documentKey: 'another-document' } })).error, 'doc');
 const payload = () => ({ texts: ['one', 'two'], styles: [], selections: [selection, selection] });
 const invalid = payload(); invalid.selections[1] = { ...selection, width: 0 };
 assert.strictEqual(box.createTextLayersInStoredSelections(invalid, false), 'invalidSelection');

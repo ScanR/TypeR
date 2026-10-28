@@ -21,6 +21,31 @@ const migrateTabStorage = (storedData, defaultName, createId) => {
   let tabs = Array.isArray(data.tabs) ? data.tabs : [];
   let currentTabId = data.currentTabId;
   let migrated = false;
+  const seen = new Set();
+  tabs = tabs.reduce((result, tab) => {
+    if (!tab || typeof tab !== "object" || Array.isArray(tab)) {
+      migrated = true;
+      return result;
+    }
+    let next = tab;
+    const repair = (field, value) => { next = { ...next, [field]: value }; migrated = true; };
+    if (!((typeof tab.id === "string" && tab.id) || (typeof tab.id === "number" && Number.isFinite(tab.id))) || seen.has(tab.id)) {
+      const generated = createTab(defaultName, {}, createId).id;
+      let id = generated;
+      let suffix = 1;
+      while (seen.has(id)) id = generated + "_" + suffix++;
+      repair("id", id);
+    }
+    seen.add(next.id);
+    if (typeof tab.name !== "string") repair("name", defaultName);
+    if (typeof tab.text !== "string") repair("text", "");
+    if (tab.images !== undefined && !Array.isArray(tab.images)) repair("images", []);
+    if (tab.currentLineIndex !== undefined && (!Number.isInteger(tab.currentLineIndex) || tab.currentLineIndex < 0)) repair("currentLineIndex", 0);
+    if (tab.usedLineStyles !== undefined && (!tab.usedLineStyles || typeof tab.usedLineStyles !== "object" || Array.isArray(tab.usedLineStyles))) repair("usedLineStyles", {});
+    result.push(next);
+    return result;
+  }, []);
+  if (!migrated && Array.isArray(data.tabs)) tabs = data.tabs;
 
   if (!tabs.length) {
     const firstTab = createTab(defaultName, data, createId);

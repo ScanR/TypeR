@@ -59,6 +59,9 @@ const SELF_ENUM_KEYS = new Set([
   "japaneseAlternate", "gridAlignment", "wariChuJustification", "lineCap", "lineJoin", "leadingType",
   "burasagari", "preferredKinsokuOrder", "pathTypeEffect", "pathTypeAlignment", "pathTypeAlignTo",
   "mojiKumiName", "kinsokuSetName",
+  // Middle Eastern (World-Ready) keys, written back so styles keep their
+  // paragraph direction, composer and digits
+  "directionType", "textComposerEngine", "kashidaWidthType", "digitSet", "dirOverride", "kashidas", "diacVPos",
 ]);
 const LIST_KEYS = new Set(["textShape", "textStyleRange", "paragraphStyleRange", "kerningRange"]);
 const SELF_OBJECT_KEYS = new Set(["warp", "transform", "textStyle", "paragraphStyle"]);

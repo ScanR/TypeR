@@ -99,3 +99,20 @@ export const serializeStyle = (style) => {
   return result;
 };
 export const selectExportStyles = (styles, selectedFolderIds) => styles.filter(style => selectedFolderIds.includes(style.folder || null));
+
+// Ask before replacing missing or locally newer styles. The native dialog is
+// asynchronous in UXP, so the UI obtains the decision before dispatching.
+export const hasStyleImportConflicts = (current, incoming) => current.some(style => {
+  const imported = incoming.find(candidate => candidate.id === style.id);
+  return !imported || (style.edited && (!imported.edited || style.edited > imported.edited));
+});
+
+export const mergeImportedStyles = (current, incoming, keepExisting) => {
+  if (!keepExisting) return incoming.slice();
+  const kept = current.filter(style => {
+    const imported = incoming.find(candidate => candidate.id === style.id);
+    return !imported || (style.edited && (!imported.edited || style.edited > imported.edited));
+  });
+  const keptIds = new Set(kept.map(style => style.id));
+  return kept.concat(incoming.filter(style => !keptIds.has(style.id)));
+};

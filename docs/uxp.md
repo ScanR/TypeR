@@ -18,7 +18,9 @@ runtime around it differs:
   - `main.js` — entry points, the WebView, the message bridge, Photoshop events, theme, dialogs.
   - `photoshop.js` — the port of `host.js`. Same function names, arguments and string results.
   - `jamText.js` — `jamText.toLayerTextObject` / `fromLayerTextObject` on actionJSON.
-  - `files.js` — TypeR's storage files, the one-time import of a CEP install's storage.
+  - `files.js` — TypeR's storage files, the one-time import of a CEP install's storage (copied into
+    `.cep-import`, marked complete, then moved in, so an import cut short is finished or retried at the
+    next start).
   - `services.js` — file dialogs, files the user picks, font files, font installation, updates, fetch.
   - `keysHelper.js`, `keyboard.js` — start and follow the keyboard reader.
   - `jsx.js` — the few ExtendScript calls UXP cannot replace (`app.system`, `app.refreshFonts`).
@@ -26,8 +28,9 @@ runtime around it differs:
 - `uxp-src/web/` — the panel's entry: rebuilds the CEP environment the application expects
   (`CSInterface`, `cep.fs`, `cep.util`, `__adobe_cep__`) before loading `app_src/index.jsx`,
   plus `webkit.scss` for the few places WebKit lays the same CSS out differently.
-- `uxp-src/native/` — keyboard readers: `typer-keys.m` (macOS, shipped prebuilt as
-  `typer-keys.json` because a `.ccx` may not carry a bare executable) and `typer-keys.ps1` (Windows).
+- `uxp-src/native/` — keyboard readers, shipped prebuilt because a `.ccx` may not carry a bare
+  executable: `typer-keys.m` (macOS, packed as `typer-keys.json`) and `typer-keys.cs` (Windows, a
+  .NET Framework 4.8 Windows application packed as `typer-keys-win.json`).
 - `webpack.uxp.config.js`, `scripts/buildUxp.js` — build and packaging.
 
 ## How a host call travels
@@ -36,8 +39,11 @@ runtime around it differs:
 host. `uxp-src/host/evalScript.js` parses the call (it is never evaluated), `main.js` runs the method of
 `photoshop.js` with the same name, and the string result goes back to the callback. Host calls are
 queued and run one at a time, as ExtendScript did. An exception answers `"EvalScript error."`, like CEP;
-so does a call still running after its time limit (60 s, 10 min for scans, document opening and font
-lists, none for dialogs), and the queue goes on.
+so does a call still running after its time limit (60 s, 2 min for the smart paste, 10 min for scans,
+document opening and font lists, none for dialogs). Nothing can cancel that call and Photoshop may still
+finish it, so the next calls wait until it settles; each gets its own time limit meanwhile, and a call
+that times out while waiting never runs. The smart paste answers `{"ok":false,"code":"timeout"}`
+instead, and the panel then does not fall back to the classic paste.
 
 `photoshop.js` keeps the structure and helper names of `host.js`. ActionManager calls are synchronous
 `batchPlay` calls with `dialogOptions: "silent"` (`"dontDisplay"` still shows Photoshop's alerts).
@@ -72,7 +78,9 @@ and opens a web address in the browser.
 
 Synchronous CEP file calls on TypeR's own files (`storage*`, `.typer-update-test.json`, `locale/…`)
 are answered from a mirror the host sends at start; writes update the mirror at once and are persisted
-by the host (atomic rename, newest content only when writes pile up). Any other path, and the file
+by the host (atomic rename, newest content only when writes pile up). Windows cannot rename over a file:
+the original is moved aside, put back if the new file cannot replace it, and restored at the next start
+if a crash left it aside. A failed write is reported, never written in place. Any other path, and the file
 dialogs, return promises: their call sites `await` them, which changes nothing in CEP.
 
 Code that needs the plugin host checks `window.typerUXP` (set by `uxp-src/web/cepShim.js`): font files
@@ -84,8 +92,13 @@ the WebView refuses because of CORS (GitHub release downloads) is made again by 
 
 The CEP panel polls `getHotkeyPressed()`; in UXP the keyboard reader writes the state to
 `<data>/keys/state`, the host reads it every 25 ms and pushes each change to the panel, which matches it
-at once (`typerUXP.onKeys`), so a short press is not lost between two polls. The reader is started
-through ExtendScript's `app.system`, receives Photoshop's process id and exits with it. It writes
+at once (`typerUXP.onKeys`), so a short press is not lost between two polls. On macOS the reader is
+started through ExtendScript's `app.system`, receives Photoshop's process id and exits with it. On
+Windows `app.system` goes through `cmd.exe`, whose console window flashes on screen, so the reader is a
+windowed application without any window, `<data>/keys/TypeR Shortcuts.exe` (named, described and
+with TypeR's icon in the Task Manager), started through ExtendScript's `File.execute()` as a double
+click would; it finds its state file next to itself and exits once Photoshop is gone. A new build
+asks the running one to stop before replacing its locked `.exe`. It writes
 `<state>|<beat>` and moves the beat at least once a second: a beat frozen for 2.5 s counts as no key
 held, and after 6 s the reader is started again. A start that fails (Photoshop in a modal state while it
 starts up) is retried after 2, 5, 10, then every 30 s, up to 10 times without a report. It only reports
@@ -129,7 +142,9 @@ npm run package:uxp     # Releases/TypeR-UXP.ccx, added to TypeR.zip by scripts/
 npm run test:uxp        # the UXP suites (also run by npm test)
 ```
 
-Changing `uxp-src/native/typer-keys.m` on macOS rebuilds `typer-keys.json`; commit it.
+Changing `uxp-src/native/typer-keys.m` on macOS rebuilds `typer-keys.json`, and changing
+`typer-keys.cs`, `typer-keys.csproj` or `typer-keys.ico` on a system with the .NET SDK rebuilds `typer-keys-win.json`;
+commit them.
 
 ## Testing in Photoshop
 

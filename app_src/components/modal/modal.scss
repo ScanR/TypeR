@@ -2506,3 +2506,810 @@
     }
 }
 
+
+/* What's new tour (whatsNew.jsx): one short slide per 3.0 feature */
+.whats-new {
+    gap: 8px;
+    color: inherit;
+
+    h2 {
+        font-size: 15px;
+    }
+
+    .whats-new-hero + h2 {
+        text-align: center;
+    }
+}
+
+.whats-new-hero {
+    align-self: center;
+    margin: 4px 0 2px;
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1;
+    color: #6cb8f0;
+
+    &.m-done {
+        color: #54be78;
+    }
+
+    .light-theme & {
+        color: #1976d2;
+
+        &.m-done {
+            color: #248448;
+        }
+    }
+}
+
+.whats-new-topics {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.whats-new-topic {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    border: 0;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.16);
+    color: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+
+    span {
+        flex: 1;
+    }
+
+    &:hover {
+        background: rgba(40, 142, 223, 0.22);
+    }
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.05);
+
+        &:hover {
+            background: rgba(25, 118, 210, 0.12);
+        }
+    }
+
+    // Opens once the chapters before it are done
+    &.m-locked {
+        opacity: 0.45;
+        cursor: default;
+
+        &:hover {
+            background: rgba(0, 0, 0, 0.16);
+        }
+    }
+}
+
+.whats-new-topic-chevron {
+    opacity: 0.5;
+}
+
+.whats-new-art {
+    display: flex;
+    justify-content: center;
+    padding: 6px 0;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.16);
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.05);
+    }
+}
+
+.whats-new-svg {
+    display: block;
+    width: 100%;
+    max-width: 260px;
+    height: 96px;
+}
+
+.whats-new-bubble {
+    fill: #f4f4f4;
+    stroke: #3a3a3a;
+    stroke-width: 1.5;
+
+    &.m-black {
+        fill: #161616;
+        stroke: #8a8a8a;
+    }
+}
+
+.whats-new-bar {
+    fill: #3a3a3a;
+}
+
+.whats-new-bars.m-white .whats-new-bar {
+    fill: #f4f4f4;
+}
+
+.whats-new-bars.m-bold .whats-new-bar {
+    height: 6px;
+}
+
+.whats-new-bars.m-old .whats-new-bar {
+    fill: #c0504d;
+    opacity: 0.75;
+}
+
+.whats-new-selection,
+.whats-new-ants {
+    fill: none;
+    stroke: #6cb8f0;
+    stroke-width: 1.2;
+    stroke-dasharray: 4 3;
+}
+
+.whats-new-tag {
+    fill: currentColor;
+    font-size: 10px;
+    font-weight: 700;
+    text-anchor: middle;
+    opacity: 0.7;
+
+    &.m-accent {
+        fill: #6cb8f0;
+        opacity: 1;
+    }
+}
+
+.whats-new-arrow {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: 0.6;
+}
+
+.whats-new-card {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1;
+    opacity: 0.25;
+}
+
+.whats-new-choice {
+    opacity: 0.55;
+
+    &.m-chosen {
+        opacity: 1;
+
+        .whats-new-card {
+            stroke: #6cb8f0;
+            stroke-width: 2;
+            opacity: 1;
+        }
+    }
+}
+
+.whats-new-star {
+    fill: #f2c94c;
+    animation: whats-new-pulse 2.4s ease-in-out infinite;
+}
+
+.whats-new-cursor path {
+    fill: #fff;
+    stroke: #111;
+    stroke-width: 1.2;
+    stroke-linejoin: round;
+}
+
+
+
+
+.whats-new-where,
+.whats-new-note {
+    padding: 5px 7px;
+    border-left: 3px solid rgba(40, 142, 223, 0.8);
+    background: rgba(0, 0, 0, 0.16);
+    font-size: 11px;
+    line-height: 1.35;
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.05);
+    }
+}
+
+.whats-new-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+
+    button {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+}
+
+.whats-new-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 9px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+    cursor: pointer;
+
+    b {
+        font-size: 10px;
+        opacity: 0.7;
+    }
+
+    .light-theme & {
+        border-color: rgba(0, 0, 0, 0.2);
+    }
+}
+
+.whats-new-toggle-track {
+    position: relative;
+    width: 24px;
+    height: 13px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.25);
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.2);
+    }
+}
+
+.whats-new-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #fff;
+    transition: left 0.15s;
+}
+
+.whats-new-toggle.m-on {
+    border-color: rgba(84, 190, 120, 0.8);
+
+    .whats-new-toggle-track {
+        background: #54be78;
+    }
+
+    .whats-new-toggle-thumb {
+        left: 13px;
+    }
+
+    b {
+        opacity: 1;
+        color: #54be78;
+    }
+}
+
+.app-modal-inner--whats-new {
+    width: min(340px, calc(100% - 16px));
+    // Leaves room for the script and its current line; the body scrolls
+    max-height: min(calc(100% - 16px), 62vh);
+
+    &.m-bottom {
+        top: auto;
+        bottom: 8px;
+    }
+
+    @media (max-height: 760px) {
+        .whats-new-svg {
+            max-height: 72px;
+        }
+    }
+}
+
+.whats-new-header-actions {
+    display: flex;
+    gap: 2px;
+}
+
+// The guide is dragged by its header
+.whats-new-drag {
+    cursor: move;
+    user-select: none;
+
+    button {
+        cursor: pointer;
+    }
+}
+
+.whats-new-dragging,
+.whats-new-dragging * {
+    cursor: move !important;
+    user-select: none !important;
+}
+
+.whats-new-title {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 14px;
+}
+
+.whats-new-grip {
+    flex: none;
+    margin-left: -4px;
+    opacity: .45;
+}
+
+.whats-new-mini {
+    gap: 6px;
+    padding: 4px 6px;
+}
+
+.whats-new-mini-title {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 4px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+
+    span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    small {
+        flex: 0 0 auto;
+        font-weight: 400;
+        opacity: 0.7;
+    }
+}
+
+.whats-new-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    opacity: 0.72;
+
+    span {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+}
+
+.whats-new-total {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.whats-new-topic small {
+    flex: 0 0 auto;
+    font-size: 11px;
+    opacity: 0.65;
+}
+
+.whats-new-topic.m-done .whats-new-topic-check {
+    color: #54be78;
+}
+
+.whats-new-steps {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+}
+
+.whats-new-steps-count {
+    margin-left: auto;
+    font-size: 11px;
+    opacity: 0.7;
+}
+
+.whats-new-step-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    font-size: 11px;
+    cursor: pointer;
+
+    &.m-done {
+        border-color: #54be78;
+        background: rgba(84, 190, 120, 0.3);
+    }
+
+    &.m-skipped {
+        opacity: 0.45;
+    }
+
+    // A step opens once the ones before it are done
+    &:disabled {
+        opacity: 0.55;
+        cursor: default;
+    }
+
+    &.m-current {
+        border-color: #6cb8f0;
+        box-shadow: 0 0 0 2px rgba(108, 184, 240, 0.35);
+    }
+
+    .light-theme & {
+        border-color: rgba(0, 0, 0, 0.25);
+    }
+}
+
+.whats-new-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    padding: 7px 8px;
+    border-left: 3px solid rgba(84, 190, 120, 0.9);
+    background: rgba(84, 190, 120, 0.12);
+    font-size: 12px;
+    line-height: 1.4;
+
+    > svg {
+        flex: 0 0 auto;
+        margin-top: 1px;
+        color: #54be78;
+    }
+
+    .whats-new-actions {
+        margin-top: 6px;
+    }
+}
+
+.whats-new-task {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 8px;
+    border: 1px solid rgba(108, 184, 240, 0.45);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, 0.12);
+
+    p {
+        font-size: 12.5px;
+        line-height: 1.4;
+    }
+
+    &.m-again {
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.03);
+    }
+}
+
+.whats-new-task-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    opacity: 0.8;
+}
+
+.whats-new-badge {
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(84, 190, 120, 0.3);
+    font-size: 10px;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.whats-new-warning {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 6px 7px;
+    border-left: 3px solid #e0a43a;
+    background: rgba(224, 164, 58, 0.12);
+    font-size: 11.5px;
+    line-height: 1.35;
+
+    > button {
+        align-self: flex-start;
+    }
+}
+
+.whats-new-hint {
+    font-size: 11.5px;
+    opacity: 0.8;
+}
+
+.whats-new-link {
+    align-self: flex-start;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 11px;
+    text-decoration: underline;
+    opacity: 0.6;
+    cursor: pointer;
+
+    &:hover {
+        opacity: 0.9;
+    }
+}
+
+.whats-new-complete {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    color: #54be78;
+    font-weight: 700;
+}
+
+/* Spotlight: the ring around the real control the step asks for */
+.whats-new-spot {
+    display: none;
+    position: fixed;
+    z-index: 30;
+    box-sizing: border-box;
+    border: 2px solid #6cb8f0;
+    border-radius: 6px;
+    box-shadow: 0 0 0 3px rgba(108, 184, 240, 0.25), 0 0 14px rgba(108, 184, 240, 0.6);
+    pointer-events: none;
+    animation: whats-new-spot-in 0.3s ease-out;
+
+    // The rest of the panel goes dark: a shadow as wide as the panel around
+    // the ring, under the guide (.app-modal, z-index 10). The shadow takes no
+    // clicks, so the panel stays usable.
+    &.m-dim {
+        z-index: 9;
+        box-shadow: 0 0 0 3px rgba(108, 184, 240, 0.25), 0 0 14px rgba(108, 184, 240, 0.6),
+            0 0 0 9999px rgba(0, 0, 0, 0.55);
+    }
+
+    &::after {
+        content: "";
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        bottom: -6px;
+        left: -6px;
+        border: 2px solid rgba(108, 184, 240, 0.8);
+        border-radius: 10px;
+        animation: whats-new-spot 1.6s ease-out infinite;
+    }
+}
+
+// A window the tour sent the user to keeps the step's tip under it
+.app-modal--coached > .app-modal-inner {
+    bottom: 86px;
+}
+
+.whats-new-coach {
+    position: absolute;
+    z-index: 3;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    max-height: 72px;
+    overflow: hidden;
+    padding: 6px 9px;
+    border: 1px solid rgba(108, 184, 240, 0.7);
+    border-left-width: 3px;
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+    font-size: 11.5px;
+    line-height: 1.35;
+    animation: whats-new-in 0.3s ease-out;
+
+    &.m-done {
+        border-color: rgba(84, 190, 120, 0.9);
+    }
+}
+
+.whats-new-coach-title {
+    margin-bottom: 2px;
+    color: #6cb8f0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+
+    .m-done & {
+        color: #54be78;
+    }
+}
+
+// The user's own shortcut, as keycaps
+.whats-new-keys {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+
+    > span:first-child {
+        opacity: 0.75;
+    }
+
+    small {
+        margin-right: 2px;
+        font-size: 10.5px;
+        opacity: 0.75;
+    }
+
+    kbd {
+        display: inline-block;
+        min-width: 14px;
+        padding: 1px 5px;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.08);
+        font-family: inherit;
+        font-size: 10.5px;
+        font-weight: 600;
+        line-height: 1.4;
+        text-align: center;
+
+        .light-theme & {
+            border-color: rgba(0, 0, 0, 0.25);
+            background: rgba(0, 0, 0, 0.05);
+        }
+    }
+}
+
+.whats-new-keys-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.whats-new-keys-sep {
+    margin: 0 3px;
+    opacity: 0.5;
+}
+
+// Offered only when the real control is hidden in the panel layout
+.whats-new-fallback {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11px;
+    opacity: 0.9;
+}
+
+// A step done by the user's own gesture
+.whats-new-result,
+.whats-new-task {
+    animation: whats-new-in 0.35s ease-out;
+}
+
+/* Animations: opacity and translate only, for the old CEP runtime */
+.whats-new-bars.m-animated .whats-new-bar {
+    animation: whats-new-line 3.2s ease-out infinite;
+}
+
+.whats-new-bars.m-after-click .whats-new-bar {
+    animation: whats-new-line-late 3.2s ease-out infinite;
+}
+
+@for $row from 1 through 4 {
+    .whats-new-bars .whats-new-bar.m-row#{$row} {
+        animation-delay: #{($row - 1) * 0.15}s;
+    }
+}
+
+.whats-new-bars.m-second .whats-new-bar {
+    animation-delay: 0.7s;
+}
+
+.whats-new-cursor {
+    animation: whats-new-cursor 3.2s ease-in-out infinite;
+}
+
+.whats-new-ants {
+    animation: whats-new-ants 3.2s linear infinite;
+}
+
+.whats-new-ripple {
+    fill: none;
+    stroke: #6cb8f0;
+    stroke-width: 2;
+    opacity: 0;
+    transform-origin: 110px 48px;
+    animation: whats-new-ripple 3.2s ease-out infinite;
+}
+
+@keyframes whats-new-line {
+    0%, 8% { opacity: 0; }
+    22%, 85% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@keyframes whats-new-line-late {
+    0%, 40% { opacity: 0; }
+    52%, 85% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@keyframes whats-new-cursor {
+    0% { transform: translate(60px, 30px); }
+    30%, 34% { transform: translate(0, 0); }
+    38% { transform: translate(0, 2px); }
+    42%, 80% { transform: translate(0, 0); }
+    100% { transform: translate(60px, 30px); }
+}
+
+@keyframes whats-new-ants {
+    0%, 36% { opacity: 0; stroke-dashoffset: 0; }
+    40% { opacity: 1; }
+    85% { opacity: 1; stroke-dashoffset: -28; }
+    100% { opacity: 0; stroke-dashoffset: -34; }
+}
+
+@keyframes whats-new-ripple {
+    0%, 36% { opacity: 0; transform: scale(0.3); }
+    40% { opacity: 0.9; }
+    55%, 100% { opacity: 0; transform: scale(1.8); }
+}
+
+@keyframes whats-new-spot-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes whats-new-spot {
+    0% { opacity: 0.9; }
+    70%, 100% { opacity: 0; }
+}
+
+@keyframes whats-new-in {
+    0% { opacity: 0; transform: translateY(4px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes whats-new-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .whats-new-svg *,
+    .whats-new-spot,
+    .whats-new-spot::after,
+    .whats-new-coach,
+    .whats-new-result,
+    .whats-new-task {
+        animation: none !important;
+    }
+}

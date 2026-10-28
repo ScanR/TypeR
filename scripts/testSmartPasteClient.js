@@ -161,6 +161,14 @@ const baseState = () => ({
   assert.strictEqual(await client.smartPasteInSelection(getState, dispatch, {}), false);
   assert.strictEqual(classicCalls.length, 0);
 
+  // Past the host's time limit Photoshop may still finish the smart paste:
+  // no classic paste on top of it
+  dispatched.length = 0;
+  hostReplies = { smartPaste: JSON.stringify({ ok: false, code: "timeout" }) };
+  assert.strictEqual(await client.smartPasteInSelection(getState, dispatch, {}), false);
+  assert.strictEqual(classicCalls.length, 0);
+  assert.ok(!dispatched.some((action) => action.type === "nextLine"));
+
   // Multi-bubble: every remembered selection is replayed then pasted
   assert.strictEqual(client.canSmartPasteStoredSelections([{ trigger: { source: "wand" } }, { trigger: { source: "rectangle" } }]), true);
   assert.strictEqual(client.canSmartPasteStoredSelections([{ trigger: { source: "wand" } }, {}]), false);
@@ -181,6 +189,51 @@ const baseState = () => ({
   assert.strictEqual(second.lines.length, 1, "one line per stored selection");
   assert.strictEqual(second.lines[0].text, "Deuxième");
   assert.ok(dispatched.some((action) => action.type === "clearSelections"));
+
+  // A failed replay keeps every unprocessed bubble and never pastes elsewhere.
+  dispatched.length = 0;
+  evalCalls.length = 0;
+  current.storedSelections[0].documentKey = "session:3";
+  hostReplies = { replaySelectionTrigger: JSON.stringify({ error: "doc" }) };
+  assert.strictEqual(await client.smartPasteStoredSelections(getState, dispatch), false);
+  assert.strictEqual(evalCalls.length, 1);
+  assert.strictEqual(JSON.parse(evalCalls[0].slice("replaySelectionTrigger(".length, -1)).documentKey, "session:3");
+  assert(!dispatched.some(action => action.type === "clearSelections"));
+
+  // If the second replay fails, only the successful first bubble is removed.
+  dispatched.length = 0;
+  let replays = 0;
+  hostReplies = {
+    replaySelectionTrigger: () => JSON.stringify(++replays === 1 ? { ok: true } : { error: "replay" }),
+    smartPaste: JSON.stringify({ ok: true, consumed: 1 }),
+  };
+  assert.strictEqual(await client.smartPasteStoredSelections(getState, dispatch), true);
+  const cleared = dispatched.find(action => action.type === "clearSelections");
+  assert.deepStrictEqual(cleared.completed, [current.storedSelections[0]]);
+  const { reducer, initial } = require("./helpers/loadContext")();
+  const remaining = reducer({ ...initial, storedSelections: current.storedSelections }, cleared).storedSelections;
+  assert.deepStrictEqual(remaining, [current.storedSelections[1]]);
+
+  // A document change detected after replay must not trigger a classic fallback.
+  dispatched.length = 0;
+  classicCalls.length = 0;
+  hostReplies = {
+    replaySelectionTrigger: JSON.stringify({ ok: true }),
+    smartPaste: JSON.stringify({ ok: false, code: "doc" }),
+  };
+  assert.strictEqual(await client.smartPasteStoredSelections(getState, dispatch), false);
+  assert.strictEqual(classicCalls.length, 0);
+  assert(!dispatched.some(action => action.type === "clearSelections"));
+
+  // Nor after a smart paste past the host's time limit
+  dispatched.length = 0;
+  hostReplies = {
+    replaySelectionTrigger: JSON.stringify({ ok: true }),
+    smartPaste: JSON.stringify({ ok: false, code: "timeout" }),
+  };
+  assert.strictEqual(await client.smartPasteStoredSelections(getState, dispatch), false);
+  assert.strictEqual(classicCalls.length, 0);
+  assert(!dispatched.some(action => action.type === "clearSelections"));
 
   // Remembered triggers expire
   client.rememberSelectionTrigger({ source: "wand", x: 1, y: 1 });

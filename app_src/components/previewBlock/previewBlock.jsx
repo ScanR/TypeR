@@ -992,7 +992,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
       if (context.state.multiBubbleMode && (context.state.storedSelections || []).length > 0) {
         resetStoredSelections(true);
       }
-    });
+    }, context.state.direction);
   }, [context.state, resetStoredSelections]);
 
   const handleDecrease = React.useCallback(() => {
@@ -1252,7 +1252,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         )}
         {showPreviewMainControls && <div className="preview-top_main-controls">
           {uiVisible.previewCreateButton !== false && (
-            <button className={"preview-top_big-btn preview-top_big-btn--small topcoat-button--large--cta" + (context.state.keepSizeHeld ? " m-keep-size" : "")} title={`${withShortcutHint(
+            <button data-tour="paste" className={"preview-top_big-btn preview-top_big-btn--small topcoat-button--large--cta" + (context.state.keepSizeHeld ? " m-keep-size" : "")} title={`${withShortcutHint(
               context.state.multiBubbleMode && context.state.storedSelections && context.state.storedSelections.length > 0
                 ? (locale.multiBubbleCreateLayersDescr || "Paste {count} text layer(s)").replace("{count}", context.state.storedSelections.length)
                 : locale.createLayerDescr,

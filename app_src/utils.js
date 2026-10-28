@@ -4,6 +4,7 @@ import { mergeLocaleBundle } from "./localeBundle";
 import { readJsonStorage, writeJsonStorage, reportStorageIssue } from "./storageIO";
 import "./lib/CSInterface";
 import { resolveStylePointText } from "./textLayerPayload";
+import { planAlignment } from "./oneClick/alignPlan";
 import { findNewerReleases, pickUpdateDownloadUrl } from "./updateLogic";
 import { installUpdateInPlace, uint8ToBase64 } from "./updateInstaller";
 import { UPDATE_TEST_CONFIG_FILE, parseUpdateTestConfig } from "./updateTestMode";
@@ -298,6 +299,28 @@ if (window.addEventListener) {
   window.addEventListener("beforeunload", () => flushStorageWrite(true));
 }
 
+// A UXP mirror write is synchronous only in the panel. Wait for its disk
+// acknowledgement before changing profiles or replacing the WebView.
+const flushStorageForReload = async () => {
+  try {
+    if (!flushStorageWrite(true)) return false;
+    if (uxpHost) await uxpHost.flushStorage();
+    return true;
+  } catch (error) {
+    reportStorageIssue(storagePath, "write");
+    return false;
+  }
+};
+
+const reloadApp = async () => {
+  if (!(await flushStorageForReload())) {
+    nativeAlert(locale.storageWarning, locale.errorTitle, true);
+    return false;
+  }
+  window.location.reload();
+  return true;
+};
+
 const backupStorage = () => {
   if (!flushStorageWrite(true)) return false;
   const storage = loadStorageCache();
@@ -386,7 +409,7 @@ const nativeAlert = (text, title, isError) => {
 
 const nativeConfirm = (text, title, callback) => {
   const data = JSON.stringify({ text, title });
-  csInterface.evalScript("nativeConfirm(" + data + ")", (result) => callback(!!result));
+  csInterface.evalScript("nativeConfirm(" + data + ")", (result) => callback(result === "1"));
 };
 
 let userFonts = null;
@@ -693,6 +716,7 @@ const setActiveLayerText = (text, style, direction, callback = () => {}, options
         text: parsed.text,
         style: null,
         contentOnly: true,
+        direction,
         richTextRuns: parsed.richTextRuns,
       }
     : {
@@ -980,14 +1004,32 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
   }, 15000, true));
 };
 
-const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback = () => {}) => {
-  const data = JSON.stringify({ resizeTextBox: !!resizeTextBox, padding: padding || 0 });
-  csInterface.evalScript("alignTextLayerToSelection(" + data + ")", trackHostAction((error) => {
-    if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
-    else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
-    else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
-    callback(!error);
-  }, 15000, true));
+// A text in a double or triple bubble goes to its own chamber: the host reads
+// the bubble outlines (alignCapture), the smart paste's neck finder cuts them
+// (oneClick/alignPlan.js) and Align centres each text on its chamber. Any
+// failure there leaves the classic Align, centred on the whole bubble.
+const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback = () => {}, direction = "ltr") => {
+  const align = (capture) => {
+    let placements = [];
+    try {
+      placements = capture && !capture.error ? planAlignment(capture, direction) : [];
+    } catch (planError) {
+      placements = [];
+    }
+    const data = JSON.stringify({
+      resizeTextBox: !!resizeTextBox,
+      padding: padding || 0,
+      documentId: capture && capture.documentId,
+      placements,
+    });
+    csInterface.evalScript("alignTextLayerToSelection(" + data + ")", trackHostAction((error) => {
+      if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
+      else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
+      else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
+      callback(!error);
+    }, 15000, true));
+  };
+  csInterface.evalScript("alignCapture()", trackHostAction((raw) => align(safeJsonParse(raw, null)), 30000, true));
 };
 
 // Each selected text layer is centred in its own part of a shared bubble.
@@ -1379,4 +1421,4 @@ const scanPsdFonts = (path, callback) => {
   );
 };
 
-export { trackHostAction, msSinceHostAction, safeJsonParse, buildRichTextPayload, alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };
+export { flushStorageForReload, reloadApp, trackHostAction, msSinceHostAction, safeJsonParse, buildRichTextPayload, alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };

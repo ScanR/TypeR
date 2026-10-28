@@ -1674,45 +1674,37 @@ function _applyMiddleEast(textStyle) {
   }
 }
 
-function _applyTextDirection(direction, textLength) {
+// Right-to-left text only lays out with the World-Ready (Optyca) composer;
+// left-to-right keeps the composer of the style
+function _setParagraphDirection(paragraphStyle, direction) {
+  paragraphStyle.directionType = direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
+  if (direction === "rtl") paragraphStyle.textComposerEngine = "textOptycaComposer";
+}
+
+// Sets the direction of every paragraph of the active text layer, like the
+// Paragraph panel: fonts, sizes, diacritic offsets and the box stay as they are
+// A text set resets the diacritic offsets jamText cannot write: put back the
+// ones that differ from Photoshop's defaults (0 and 100)
+function _restoreMiddleEastOffsets(textStyle) {
+  if (!textStyle) return;
+  const diacOffset = textStyle.diacXOffset != null && textStyle.diacXOffset !== 0;
+  const markOffset = textStyle.markYDistFromBaseline != null && textStyle.markYDistFromBaseline !== 100;
+  if (diacOffset || markOffset) _applyMiddleEast(textStyle);
+}
+
+function _applyTextDirection(direction) {
   if (!direction) return;
-  const psDirection = direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
-
   try {
-    const currentText = _getLayerText();
-    if (
-      !currentText ||
-      !currentText.layerText ||
-      !currentText.layerText.paragraphStyleRange ||
-      !currentText.layerText.paragraphStyleRange.length
-    ) {
-      return;
-    }
-
-    const updatedText = _clone(currentText);
-    const paragraphRanges = updatedText.layerText.paragraphStyleRange;
-    let targetLength = textLength;
-    if (targetLength == null && updatedText.layerText && updatedText.layerText.textKey) {
-      targetLength = updatedText.layerText.textKey.length;
-    }
-
-    for (let i = 0; i < paragraphRanges.length; i++) {
-      const range = paragraphRanges[i] || {};
-      const paragraphStyle = range.paragraphStyle || {};
-
-      paragraphStyle.directionType = psDirection;
-      paragraphStyle.textComposerEngine = "textOptycaComposer";
-
-      range.paragraphStyle = paragraphStyle;
-      if (targetLength != null) {
-        range.from = typeof range.from === "number" ? range.from : 0;
-        range.to = targetLength;
-      }
-      paragraphRanges[i] = range;
-    }
-
-    updatedText.layerText.paragraphStyleRange = paragraphRanges;
-    _setLayerText(updatedText);
+    const paragraphStyle = {
+      _obj: "paragraphStyle",
+      directionType: { _enum: "directionType", _value: direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight" },
+    };
+    if (direction === "rtl") paragraphStyle.textComposerEngine = { _enum: "textComposerEngine", _value: "textOptycaComposer" };
+    play({
+      _obj: "set",
+      _target: [{ _ref: "property", _property: "paragraphStyle" }, TARGET_TEXT_LAYER],
+      to: paragraphStyle,
+    });
   } catch (e) {
     // Ignore errors if directionType is not supported on this PS version
   }
@@ -1778,12 +1770,10 @@ function _applyRichTextRanges(textParams, textRuns, textLength) {
 }
 
 function _bakeDirection(paragraphRanges, direction) {
-  const psDirection = direction === "rtl" ? "dirRightToLeft" : "dirLeftToRight";
   for (let p = 0; p < paragraphRanges.length; p++) {
     const paragraphRange = paragraphRanges[p] || {};
     const bakedStyle = paragraphRange.paragraphStyle || {};
-    bakedStyle.directionType = psDirection;
-    bakedStyle.textComposerEngine = "textOptycaComposer";
+    _setParagraphDirection(bakedStyle, direction);
     paragraphRange.paragraphStyle = bakedStyle;
     paragraphRanges[p] = paragraphRange;
   }
@@ -1849,7 +1839,7 @@ function _createAndSetLayerText(data, width, height) {
     _setLayerStroke(style.stroke);
   }
   if (data.direction && !directionBaked) {
-    _applyTextDirection(data.direction, data.text.length);
+    _applyTextDirection(data.direction);
   }
 }
 
@@ -1929,10 +1919,13 @@ function _setActiveLayerText(payload) {
   let targetTextLength = 0;
 
   // "Paste text to the current layer" is deliberately content-only: only the
-  // contents change, never a font, size, paragraph, direction, box or position
+  // contents change, never a font, size, paragraph, box or position. Only a
+  // right-to-left panel also sets the direction, so Arabic text never stays in
+  // a left-to-right layer.
   if (payload.contentOnly && (!dataRuns || !dataRuns.length)) {
     _forEachSelectedLayer(() => {
       _setTextContentsOnly(_normalizeTextKey(dataText));
+      if (payload.direction === "rtl") _applyTextDirection("rtl");
     });
     return "";
   }
@@ -2066,7 +2059,7 @@ function _setActiveLayerText(payload) {
       if (!directionBaked) throw setError;
       _stripDirection(newTextParams.layerText.paragraphStyleRange);
       _setLayerText(newTextParams);
-      _applyTextDirection(userDirection, targetTextLength);
+      _applyTextDirection(userDirection);
     }
     _applyMiddleEast(newTextParams.layerText.textStyleRange[0].textStyle);
     if (dataStyle && dataStyle.stroke) {
@@ -2137,7 +2130,8 @@ function _setTextContentsOnly(text) {
 }
 
 // Lean text-only apply for TextShapeR (see host.js): the panel holds a full
-// style snapshot, only the line breaking changes
+// style snapshot, only the line breaking changes. The Middle-East override
+// actions only run for offsets the set call resets.
 function _setTextShapeRText(payload) {
   if (!payload) return "";
   if (!hasDocument()) return "doc";
@@ -2196,7 +2190,9 @@ function _setTextShapeRText(payload) {
       if (!directionBaked) throw setError;
       _stripDirection(newTextParams.layerText.paragraphStyleRange);
       _setLayerText(newTextParams);
+      _applyTextDirection(userDirection);
     }
+    _restoreMiddleEastOffsets(baseRange.textStyle);
 
     if (convertedToPoint) {
       _changeToBoxText();
@@ -2254,7 +2250,8 @@ function _createTextLayerInSelection(state) {
 function _alignCurrentTextLayerToSelection(state) {
   if (!_layerIsTextLayer()) return "layer";
 
-  let selection = _checkSelection({ adaptiveOpen: true });
+  // The chamber of a double or triple bubble the panel found for this text
+  let selection = (state.placements && state.placements["id" + _safeActiveLayerId()]) || _checkSelection({ adaptiveOpen: true });
   if (selection.error) {
     if (selection.error === "noSelection") {
       _createMagicWandSelection(20);
@@ -2273,7 +2270,9 @@ function _alignCurrentTextLayerToSelection(state) {
     bounds = _getCurrentTextLayerBounds();
   }
 
-  _deselect();
+  try {
+    _deselect();
+  } catch (deselectError) {}
   _positionLayerWithinSelection(selection, bounds);
   if (wasPoint) {
     _changeToPointText();
@@ -2867,9 +2866,113 @@ async function createTextLayerInSelection(data, point) {
   return modal("TypeR", (context) => suspendHistory(context, "TyperTools Paste", () => _createTextLayerInSelection(state)));
 }
 
+// data.placements (from alignCapture and app_src/oneClick/alignPlan.js) send
+// texts of a double or triple bubble to their chamber (see host.js)
 async function alignTextLayerToSelection(data) {
-  const state = { resize: !!data.resizeTextBox, padding: data.padding || 0 };
+  const state = { resize: !!data.resizeTextBox, padding: data.padding || 0, placements: {} };
+  try {
+    if (data.placements && hasDocument() && String(activeDocument().id) === String(data.documentId)) {
+      state.placements = _alignPlacementMap(data.placements);
+    }
+  } catch (placementError) {}
   return modal("TypeR", (context) => suspendHistory(context, "TyperTools Align", () => _alignTextLayerToSelection(state)));
+}
+
+// Placement rectangles by layer id ("id" + id); the chamber's optical centre
+// is kept when it lies inside the rectangle
+function _alignPlacementMap(list) {
+  const map = {};
+  for (let i = 0; list && i < list.length; i++) {
+    const placement = list[i];
+    const r = placement && placement.rect;
+    const rect = r ? _rectFrom(r.left, r.top, r.right, r.bottom) : null;
+    if (!rect || placement.id === undefined || placement.id === null) continue;
+    const x = Number(r.xMid);
+    const y = Number(r.yMid);
+    if (isFinite(x) && isFinite(y) && _containsPoint(rect, x, y)) {
+      rect.xMid = x;
+      rect.yMid = y;
+    }
+    map["id" + placement.id] = rect;
+  }
+  return map;
+}
+
+// The selected texts and the outline of the bubble around them, read in a
+// rolled-back history (see host.js)
+async function alignCapture() {
+  if (!hasDocument()) return JSON.stringify({ error: "doc" });
+  try {
+    const read = await modal("TypeR", (context) => suspendHistory(context, "TypeR Read Bubble", _alignCaptureRun, { rollback: true }));
+    return JSON.stringify(read || { error: "capture" });
+  } catch (error) {
+    return JSON.stringify({ error: "capture" });
+  }
+}
+
+// Position in the layer stack: a text pasted later sits higher
+function _layerStackIndex(id) {
+  try {
+    return integerValue(get([{ _property: "itemIndex" }, { _ref: "layer", _id: id }]).itemIndex);
+  } catch (indexError) {
+    return 0;
+  }
+}
+
+function _alignReadOutline() {
+  const bounds = _liveSelectionBounds();
+  if (!bounds) return null;
+  play({ _obj: "make", _target: [{ _ref: "path" }], from: SELECTION, tolerance: px(2) });
+  const path = get([{ _ref: "path", _property: "workPath" }]);
+  if (!path || !path.pathContents) return null;
+  return { selectionBounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom }, rawPath: path, textIds: [] };
+}
+
+function _alignCaptureRun() {
+  const docSize = _bubbleDocumentSize();
+  const entries = _targetLayerEntries();
+  const ids = entries.map((entry) => entry.id);
+  const texts = [];
+  entries.forEach((entry) => {
+    if (!entry.text) return;
+    _selectLayerById(entry.id);
+    const box = _currentLayerBox();
+    if (box) texts.push({ id: entry.id, index: _layerStackIndex(entry.id), box, sizePixels: _currentDisplayedTextPixels() });
+  });
+  const bubbles = [];
+  if (_liveSelectionBounds()) {
+    const outline = _alignReadOutline();
+    if (outline) {
+      outline.textIds = texts.map((text) => text.id);
+      bubbles.push(outline);
+    }
+  } else {
+    texts.forEach((text) => {
+      const found = _probeBubble(text.box, text.sizePixels, [], docSize).best;
+      const live = found ? _liveSelectionBounds() : null;
+      if (!live) return;
+      let known = bubbles.find((bubble) => {
+        const b = bubble.selectionBounds;
+        return b.left === live.left && b.top === live.top && b.right === live.right && b.bottom === live.bottom;
+      });
+      if (!known) {
+        known = _alignReadOutline();
+        if (!known) return;
+        bubbles.push(known);
+      }
+      known.textIds.push(text.id);
+    });
+  }
+  if (ids.length > 1) _selectLayersById(ids);
+  else if (ids.length) _selectLayerById(ids[0]);
+  return {
+    documentId: activeDocument().id,
+    width: docSize.width,
+    height: docSize.height,
+    resolution: _bubbleDocumentResolution(),
+    texts,
+    bubbles,
+  };
 }
 
 // Answers "" or an error code the panel translates (see host.js). A failed
@@ -3731,6 +3834,7 @@ module.exports = {
     setTextShapeRLayerText,
     createTextLayerInSelection,
     alignTextLayerToSelection,
+    alignCapture,
     alignTextLayersToDoubleBubble,
     changeActiveLayerTextSize,
     toggleCleaningLayers,
@@ -3770,7 +3874,7 @@ module.exports = {
     // auto-centre, double bubble, size +/- and TextShapeR live size
     _rectFrom, _unionRect, _usableBubble, _bubbleCandidateValid, _probePoints, _probeMargin, _pickBubble,
     _splitBubble, _autoCenterEnabled, _doubleBubbleEntriesValid, _transformScale, _displayedTextSize,
-    _scaleTextShape, _textResizePlan, _appliedSizeRatio, _keepLiveTextSize,
+    _scaleTextShape, _textResizePlan, _appliedSizeRatio, _keepLiveTextSize, _alignPlacementMap,
     // the auto-centre entry point, run against a simulated Photoshop
     _autoCenterCreated,
   },

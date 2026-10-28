@@ -5,6 +5,7 @@ import React from "react";
 import { csInterface, getHotkeyPressed, isHostActionPending, isPanelIdle, isPanelInteracting, notePanelActivity, onMouseShortcut, startForegroundWatcher } from "./utils";
 import { useContext } from "./context";
 import { shortcutCommands } from "./shortcutCommands";
+import { isBlockingModal } from "./whatsNewSession";
 
 const intervalTime = 75;
 // After a few idle minutes the keyboard poll slows to this rate: even 13 host
@@ -150,7 +151,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
   // the same line would be pasted twice)
   const runCommand = (command, options) => () => {
     const state = context.getState();
-    if (state.modalType || isHostActionPending()) return;
+    if (isBlockingModal(state.modalType) || isHostActionPending()) return;
     command.handler({ state, dispatch: context.dispatch, getState: context.getState }, options);
   };
 
@@ -186,13 +187,13 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     // (an open modal, typing in the panel, a host action still running)
     const subscribeToKeys = window.typerUXP && window.typerUXP.onKeys;
     const unsubscribeKeys = subscribeToKeys
-      ? subscribeToKeys((state) => checkState(state, !context.getState().modalType && !isHostActionPending() && !isFormFieldActive() && !document.hidden))
+      ? subscribeToKeys((state) => checkState(state, !isBlockingModal(context.getState().modalType) && !isHostActionPending() && !isFormFieldActive() && !document.hidden))
       : null;
 
     const interval = subscribeToKeys ? null : setInterval(() => {
       // Back off while a paste/align/apply runs: polling would queue behind it
       // in the ExtendScript engine and delay the action's completion
-      if (context.getState().modalType || isFormFieldActive() || hotkeyPollPendingRef.current || isHostActionPending() || document.hidden) return;
+      if (isBlockingModal(context.getState().modalType) || isFormFieldActive() || hotkeyPollPendingRef.current || isHostActionPending() || document.hidden) return;
       // The user is clicking inside the panel: a host round-trip right now
       // would land on Photoshop's main thread while it should be delivering
       // the click, which is exactly what made every button feel laggy
@@ -212,7 +213,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
         requestModalClose(() => context.dispatch({ type: "setModal" }));
       }
       syncKeepSizeHeld(context, getDomModifierKeys(e));
-      if (!e.repeat && !context.getState().modalType && !isFormFieldActive() && getDomModifierKeys(e).length === 0 && (e.location === 3 || /^Numpad[1-9]$/.test(e.code || ''))) {
+      if (!e.repeat && !isBlockingModal(context.getState().modalType) && !isFormFieldActive() && getDomModifierKeys(e).length === 0 && (e.location === 3 || /^Numpad[1-9]$/.test(e.code || ''))) {
         const state = context.getState();
         const styleId = getNumpadStyleId(state.styles, state.currentStyleId, [e.code || ('NUMPAD' + e.key)]);
         if (styleId !== null) {
@@ -253,7 +254,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
       const ctxState = context.getState();
       // No isFormFieldActive() guard: a side button never types a character,
       // and the panel's textarea usually holds focus while the user works
-      if (ctxState.modalType) return;
+      if (isBlockingModal(ctxState.modalType)) return;
       const command = matchMouseBinding(state, ctxState.shortcut);
       if (!command) return;
       gateRef.current.press(command, runCommand(command, getCommandOptions(state, ctxState.shortcut)), true);

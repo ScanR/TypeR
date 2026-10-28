@@ -1,6 +1,8 @@
 const config = {
   appTitle: "TypeR",
   appVersion: "3.0.0",
+  // Bump to show the "What's new" tour again after an update
+  whatsNewVersion: "3.0",
   appUrl: "https://typer.hayasaku.fr/",
   typerToolsUrl: "https://swirt.github.io/typertools/",
   authorName: "Sakushi & SeanR",

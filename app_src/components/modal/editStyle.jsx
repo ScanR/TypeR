@@ -288,7 +288,7 @@ const EditStyleModal = React.memo(function EditStyleModal() {
               </div>
               <div className="field-descr">{locale.editStyleTextTypeDescr}</div>
             </div>
-            <div className="field hostBrdTopContrast">
+            <div className="field hostBrdTopContrast" data-tour="bubble-type">
               <div className="field-label">{locale.bubbleTypeLabel || "Bubble type"}</div>
               <div className="field-input">
                 <select

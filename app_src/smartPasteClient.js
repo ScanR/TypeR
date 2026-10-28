@@ -240,6 +240,10 @@ const notice = (dispatch, text, kind = "info") => {
   if (text) dispatch({ type: "showNotice", text, kind });
 };
 
+// No classic paste after these: there is nothing to paste into, or (timeout)
+// Photoshop may still be finishing the smart paste and would get both
+const stopsWithoutFallback = (code) => code === "doc" || code === "noSelection" || code === "timeout";
+
 const reasonText = (code) => locale["smartPasteReason_" + code] || locale.smartPasteReason_error || code;
 
 const classicPaste = (state, dispatch, options, textColor) => new Promise((resolve) => {
@@ -282,7 +286,7 @@ export const smartPasteInSelection = async (getState, dispatch, options = {}) =>
     }
     // Classic paste, recorded too so an Undo still moves the line back
     const code = (result && result.code) || "error";
-    if (code === "doc" || code === "noSelection") {
+    if (stopsWithoutFallback(code)) {
       notice(dispatch, reasonText(code), "warning");
       return false;
     }
@@ -315,35 +319,52 @@ export const smartPasteStoredSelections = async (getState, dispatch, options = {
   if (busy || !canSmartPasteStoredSelections(selections)) return false;
   busy = true;
   let pasted = 0;
+  const completed = [];
+  const initialTabId = getState().currentTabId;
   try {
     for (let i = 0; i < selections.length; i++) {
       const selection = selections[i];
       const state = getState();
+      if (state.currentTabId !== initialTabId) break;
       const lineIndex = typeof selection.lineIndex === "number" ? selection.lineIndex : state.currentLineIndex;
       const line = state.lines && state.lines[lineIndex];
       if (!line || line.ignore) continue;
-      const replayed = safeJsonParse(await evalHost("replaySelectionTrigger(" + JSON.stringify(selection.trigger) + ")", 15000), { error: "error" });
-      if (replayed.error) continue;
+      const trigger = { ...selection.trigger, documentKey: selection.documentKey || selection.trigger.documentKey };
+      const replayed = safeJsonParse(await evalHost("replaySelectionTrigger(" + JSON.stringify(trigger) + ")", 15000), { error: "error" });
+      if (replayed.error) {
+        notice(dispatch, reasonText(replayed.error), "warning");
+        break;
+      }
+      if (getState().currentTabId !== initialTabId) break;
       const style = selection.styleId ? (state.styles || []).find((entry) => entry.id === selection.styleId) : null;
-      const built = buildSmartPasteRequest(state, selection.trigger, { ...options, lineIndex, single: true, style });
+      const built = buildSmartPasteRequest(state, trigger, { ...options, lineIndex, single: true, style });
       if (!built) continue;
       const result = await runSmartPaste(built.request);
+      if (getState().currentTabId !== initialTabId) break;
       if (result && result.ok) {
         pasted++;
+        completed.push(selection);
         dispatch({ type: "commitLineBatch", entries: [{ lineIndex, styleId: (result.sessions && result.sessions[0] && result.sessions[0].styleId) || (style && style.id) || (state.currentStyle && state.currentStyle.id) }] });
         if (result.history && result.history.before != null && result.history.after != null) {
           pasteHistory.register({ ...result.history, lineBefore: lineIndex, lineAfter: lineAfter(getState(), lineIndex) });
         }
       } else {
+        if (result && stopsWithoutFallback(result.code)) {
+          notice(dispatch, reasonText(result.code), "warning");
+          break;
+        }
         notice(dispatch, String(locale.smartPasteFallback || "{reason}").replace("{reason}", reasonText((result && result.code) || "error")), "warning");
         await new Promise((resolve) => createTextLayerInSelection(line.text, styleWithTextColor(getScaledStyle(style || state.currentStyle, state.textScale), result && result.textColor), state.pastePointText, state.internalPadding || 0, state.direction, (ok) => {
-          if (ok) pasted++;
+          if (ok) { pasted++; completed.push(selection); }
           resolve();
         }, { preserveActiveTextSize: options.preserveActiveTextSize === true }));
+        if (!completed.includes(selection)) break;
       }
     }
-    dispatch({ type: "clearSelections", preserveLine: true });
-    await evalHost("deselectDocumentSelection()", 5000);
+    if (getState().currentTabId === initialTabId && completed.length) {
+      dispatch({ type: "clearSelections", preserveLine: true, completed });
+      if (completed.length === selections.length) await evalHost("deselectDocumentSelection()", 5000);
+    }
     return pasted > 0;
   } finally {
     busy = false;

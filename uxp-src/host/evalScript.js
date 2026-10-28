@@ -50,12 +50,13 @@ function parseCall(script) {
   }
 }
 
-// Time limits of the host calls: past it, a call that never settled answers
-// and the next one runs. Dialogs wait for the user and have none; calls that
-// open documents, walk every layer (auto-centre, apply to many layers) or
-// list the fonts get a longer one: a timed-out call Photoshop still finishes
-// would be retried by the user and applied twice.
+// Time limits of the host calls: past it, a call that has not settled
+// answers as failed (the next call still waits for it, see createCallQueue).
+// Dialogs wait for the user and have none; calls that open documents, walk
+// every layer (auto-centre, apply to many layers) or list the fonts get a
+// longer one; the smart paste gets the two minutes the panel waits for it.
 const CALL_TIMEOUT_MS = 60 * 1000;
+const SMART_PASTE_TIMEOUT_MS = 2 * 60 * 1000;
 const LONG_CALL_TIMEOUT_MS = 10 * 60 * 1000;
 const CALL_TIMEOUTS = {
   nativeAlert: 0,
@@ -70,6 +71,7 @@ const CALL_TIMEOUTS = {
   alignTextLayersToDoubleBubble: LONG_CALL_TIMEOUT_MS,
   openFile: LONG_CALL_TIMEOUT_MS,
   scanPsdFonts: LONG_CALL_TIMEOUT_MS,
+  smartPaste: SMART_PASTE_TIMEOUT_MS,
 };
 
 function callTimeout(script) {
@@ -79,24 +81,70 @@ function callTimeout(script) {
 }
 
 // Host calls run one at a time, as ExtendScript ran one script at a time:
-// two calls could otherwise interleave their Photoshop commands. A call that
-// never settles must not block every later one: past `timeoutMs` (0: no
-// limit) the call answers onTimeout() and the next one starts. Nothing can
-// cancel the late call; its result is dropped.
+// two calls would otherwise interleave their Photoshop commands. Past
+// `timeoutMs` (0: no limit) a call answers onTimeout(started), but nothing
+// can cancel it and Photoshop may still finish it, so the next call waits
+// until it settles. While a late call holds the queue, each call waiting
+// behind it gets its own limit; a call answered while it waited never runs.
 function createCallQueue({ schedule = setTimeout, cancel = clearTimeout } = {}) {
   let tail = Promise.resolve();
+  let late = 0;
+  const waiting = new Set();
   return function enqueue(task, timeoutMs = 0, onTimeout = () => undefined) {
+    let answered = false;
+    let started = false;
+    let overdue = false;
+    let timer = null;
+    let settle = null;
+    const reply = new Promise((resolve, reject) => {
+      settle = { resolve, reject };
+    });
+    const disarm = () => {
+      if (timer !== null) cancel(timer);
+      timer = null;
+    };
+    const answer = (deliver) => {
+      if (answered) return;
+      answered = true;
+      disarm();
+      waiting.delete(entry);
+      try {
+        deliver();
+      } catch (error) {
+        settle.reject(error);
+      }
+    };
+    const expire = () => {
+      timer = null;
+      if (started) {
+        overdue = true;
+        late++;
+        waiting.forEach((other) => other.arm());
+      }
+      answer(() => settle.resolve(onTimeout(started)));
+    };
+    const entry = {
+      arm: () => {
+        if (timeoutMs > 0 && timer === null && !answered) timer = schedule(expire, timeoutMs);
+      },
+    };
+    waiting.add(entry);
+    if (late > 0) entry.arm();
     const run = tail.then(() => {
+      waiting.delete(entry);
+      if (answered) return undefined;
+      started = true;
+      // The time spent waiting does not count against the call itself
+      disarm();
+      entry.arm();
       const work = Promise.resolve().then(task);
-      if (!(timeoutMs > 0)) return work;
-      let timer = null;
-      const limit = new Promise((resolve) => {
-        timer = schedule(() => resolve(onTimeout()), timeoutMs);
+      work.then((value) => answer(() => settle.resolve(value)), (error) => answer(() => settle.reject(error)));
+      return work.catch(() => undefined).then(() => {
+        if (overdue) late--;
       });
-      return Promise.race([work, limit]).finally(() => cancel(timer));
     });
     tail = run.catch(() => {});
-    return run;
+    return reply;
   };
 }
 

@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>TypeR · Réglages repensés (maquette)</title>
+<style>
+  :root {
+    --bg: #1e1e1e; --panel: #262626; --row: #2d2d2d; --row-h: #343434;
+    --line: #3a3a3a; --text: #e8e8e8; --muted: #9a9a9a; --dim: #6f6f6f;
+    --accent: #288edf; --accent-h: #3d9ae7; --danger: #e5534b; --ok: #3fb950;
+    --r: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0; color: var(--text);
+    font: 12px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif;
+    display: flex; gap: 28px; align-items: flex-start; justify-content: center; flex-wrap: wrap;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  /* ---------- Panel frame (420 x 720) ---------- */
+  .frame {
+    width: 420px; height: 720px; background: var(--bg); border: 1px solid #000;
+    border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0,0,0,.6); position: relative; flex: 0 0 auto;
+  }
+  .ps-titlebar {
+    height: 22px; background: #3b3b3b; display: flex; align-items: center; padding: 0 8px;
+    font-size: 11px; color: #bbb; border-bottom: 1px solid #000; flex: 0 0 auto;
+  }
+  .head {
+    display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 8px 0 12px;
+    border-bottom: 1px solid var(--line); flex: 0 0 auto; background: var(--panel);
+  }
+  .head-title { font-size: 14px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn {
+    width: 28px; height: 28px; border: 0; background: transparent; border-radius: 6px;
+    display: grid; place-items: center; cursor: pointer; color: var(--muted); flex: 0 0 auto;
+  }
+  .icon-btn:hover { background: var(--row-h); color: var(--text); }
+  .back { display: flex; align-items: center; gap: 2px; border: 0; background: transparent; color: var(--accent);
+    cursor: pointer; padding: 4px 6px 4px 0; font-size: 12px; }
+  .back:hover { color: var(--accent-h); }
+  .crumb-sep { color: var(--dim); }
+
+  .body { flex: 1; overflow-y: auto; padding: 12px 12px 24px; scroll-behavior: smooth; }
+  .body::-webkit-scrollbar { width: 8px; }
+  .body::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+
+  /* ---------- Home ---------- */
+  .profile-card {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--row);
+    border-radius: var(--r); cursor: pointer; margin-bottom: 10px; border: 1px solid transparent;
+  }
+  .profile-card:hover { background: var(--row-h); }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg,#288edf,#7b5cff);
+    display: grid; place-items: center; font-weight: 700; font-size: 14px; flex: 0 0 auto; }
+  .pc-text { flex: 1; min-width: 0; }
+  .pc-label { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .pc-name { font-size: 13px; font-weight: 600; }
+  .pc-action { color: var(--accent); font-size: 11px; white-space: nowrap; }
+
+  .search {
+    display: flex; align-items: center; gap: 6px; background: #181818; border: 1px solid var(--line);
+    border-radius: var(--r); padding: 0 10px; height: 32px; margin-bottom: 14px;
+  }
+  .search:focus-within { border-color: var(--accent); }
+  .search input { flex: 1; border: 0; background: transparent; outline: none; }
+  .search svg { color: var(--dim); flex: 0 0 auto; }
+
+  .group-label { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+    margin: 14px 4px 6px; font-weight: 600; }
+  .group-label:first-child { margin-top: 0; }
+  .list { background: var(--row); border-radius: var(--r); overflow: hidden; }
+  .nav-row {
+    display: flex; align-items: center; gap: 10px; padding: 9px 10px; cursor: pointer; width: 100%;
+    border: 0; background: transparent; text-align: left;
+  }
+  .nav-row + .nav-row { border-top: 1px solid var(--line); }
+  .nav-row:hover { background: var(--row-h); }
+  .nav-ico { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; flex: 0 0 auto; color: #fff; }
+  .nav-text { flex: 1; min-width: 0; }
+  .nav-title { font-size: 12.5px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .nav-sub { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chev { color: var(--dim); flex: 0 0 auto; }
+  .badge { font-size: 9px; font-weight: 700; background: var(--accent); color: #fff; padding: 1px 5px; border-radius: 8px; letter-spacing: .03em; }
+  .version { text-align: center; color: var(--dim); font-size: 10.5px; margin-top: 16px; }
+
+  /* ---------- Settings page ---------- */
+  .page-intro { color: var(--muted); margin: 0 4px 12px; font-size: 11.5px; }
+  .section { margin-bottom: 16px; }
+  .section-title { font-size: 10px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+    margin: 0 4px 6px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  .card { background: var(--row); border-radius: var(--r); overflow: hidden; }
+  .row { padding: 9px 12px; display: flex; gap: 10px; align-items: center; transition: background .4s; }
+  .row + .row, .sub + .row, .row + .sub, .adv + .row, .row + .adv { border-top: 1px solid var(--line); }
+  .row.stack { flex-direction: column; align-items: stretch; gap: 6px; }
+  .row-main { flex: 1; min-width: 0; }
+  .row-label { font-size: 12.5px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .row-hint { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .row.flash { background: rgba(40,142,223,.28); }
+  .row.disabled { opacity: .45; pointer-events: none; }
+  .sub { background: #282828; }
+  .sub .row { padding-left: 26px; position: relative; }
+  .sub .row::before { content: ""; position: absolute; left: 14px; top: 0; bottom: 0; border-left: 2px solid #3d3d3d; }
+  .sub .row + .row { border-top: 1px solid #333; }
+
+  /* Toggle switch */
+  .sw { position: relative; width: 32px; height: 18px; flex: 0 0 auto; }
+  .sw input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .sw span { position: absolute; inset: 0; background: #4a4a4a; border-radius: 10px; cursor: pointer; transition: .15s; }
+  .sw span::after { content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: .15s; }
+  .sw input:checked + span { background: var(--accent); }
+  .sw input:checked + span::after { transform: translateX(14px); }
+
+  /* Segmented */
+  .seg { display: flex; background: #1a1a1a; border-radius: 6px; padding: 2px; gap: 2px; }
+  .seg button { flex: 1; border: 0; background: transparent; padding: 5px 6px; border-radius: 4px; cursor: pointer; color: var(--muted); white-space: nowrap; font-size: 11.5px; }
+  .seg button.on { background: #3e3e3e; color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  .seg button:hover:not(.on) { color: var(--text); }
+
+  select, .num, textarea, .txt {
+    background: #1a1a1a; border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; outline: none;
+  }
+  select:focus, .num:focus, textarea:focus, .txt:focus { border-color: var(--accent); }
+  select { max-width: 170px; }
+  .num { width: 64px; text-align: right; }
+  textarea { width: 100%; resize: vertical; min-height: 46px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+  .unit { color: var(--muted); font-size: 11px; margin-left: -4px; }
+  input[type=range] { accent-color: var(--accent); }
+
+  .btn { border: 1px solid var(--line); background: #383838; border-radius: 6px; padding: 6px 10px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .btn:hover { background: #424242; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-h); }
+  .btn.danger { color: var(--danger); border-color: rgba(229,83,75,.45); background: rgba(229,83,75,.08); }
+  .btn.danger:hover { background: rgba(229,83,75,.16); }
+  .btn.full { width: 100%; justify-content: center; }
+  .btn-row { display: flex; gap: 6px; }
+  .btn-row .btn { flex: 1; justify-content: center; }
+  .link { color: var(--accent); cursor: pointer; font-size: 11px; background: none; border: 0; padding: 0; display: inline-flex; align-items: center; gap: 3px; }
+
+  .adv-toggle { width: 100%; border: 0; background: transparent; color: var(--muted); padding: 8px 12px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .adv-toggle:hover { color: var(--text); }
+  .adv-toggle svg { transition: transform .15s; }
+  .adv-toggle.open svg { transform: rotate(90deg); }
+
+  .note { background: rgba(40,142,223,.1); border: 1px solid rgba(40,142,223,.3); border-radius: var(--r); padding: 8px 10px; color: #b9d9f3; font-size: 11px; display: flex; gap: 8px; align-items: flex-start; }
+
+  /* Themes */
+  .themes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px; }
+  .theme { border: 2px solid transparent; border-radius: 7px; cursor: pointer; background: none; padding: 0; text-align: left; }
+  .theme.on { border-color: var(--accent); }
+  .theme-prev { height: 54px; border-radius: 5px; padding: 6px; display: flex; flex-direction: column; gap: 4px; position: relative; }
+  .theme-prev i { display: block; height: 4px; border-radius: 2px; }
+  .theme-name { font-size: 11px; padding: 4px 2px 2px; color: var(--muted); }
+  .theme.on .theme-name { color: var(--text); }
+  .theme-add .theme-prev { border: 1px dashed #555; display: grid; place-items: center; color: var(--muted); }
+
+  /* Refont rules */
+  .rule { display: grid; grid-template-columns: 34px 10px 34px 1fr 24px; gap: 5px; align-items: center; padding: 7px 12px; }
+  .rule + .rule { border-top: 1px solid var(--line); }
+  .rule .txt { width: 34px; text-align: center; padding: 4px; font-family: ui-monospace, Menlo, monospace; }
+  .rule select { max-width: none; width: 100%; }
+  .rule-head { display: grid; grid-template-columns: 34px 10px 34px 1fr 24px; gap: 5px; padding: 8px 12px 0; color: var(--dim); font-size: 10px; }
+
+  /* Layout blocks */
+  .block { padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+  .block + .block, .block-detail + .block { border-top: 1px solid var(--line); }
+  .grip { color: var(--dim); cursor: grab; }
+  .block-name { flex: 1; font-size: 12.5px; }
+  .block-meta { color: var(--muted); font-size: 11px; }
+  .block.hidden .block-name { color: var(--dim); text-decoration: line-through; }
+  .block-detail { background: #282828; padding: 8px 12px 10px 36px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #333; }
+  .check { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 11.5px; }
+  .check input { accent-color: var(--accent); margin: 0; }
+  .slider-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+  .slider-row input[type=range] { flex: 1; }
+
+  /* Shortcuts */
+  .sc { display: flex; align-items: center; gap: 8px; padding: 7px 12px; }
+  .sc + .sc { border-top: 1px solid var(--line); }
+  .sc-label { flex: 1; font-size: 12px; min-width: 0; }
+  .keys { display: flex; gap: 3px; cursor: pointer; padding: 2px; border-radius: 5px; border: 1px solid transparent; }
+  .keys:hover { border-color: var(--line); }
+  kbd { background: #1a1a1a; border: 1px solid #4a4a4a; border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; font: 10.5px ui-monospace, Menlo, monospace; color: var(--text); }
+  .keys.empty { color: var(--dim); font-size: 11px; padding: 2px 6px; border: 1px dashed #444; }
+
+  /* Profiles */
+  .prof { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+  .prof + .prof { border-top: 1px solid var(--line); }
+  .prof .avatar { width: 26px; height: 26px; font-size: 11px; }
+  .prof-name { flex: 1; font-size: 12.5px; }
+  .tag-active { color: var(--ok); font-size: 10.5px; display: flex; align-items: center; gap: 4px; }
+
+  /* Search results */
+  .result { display: block; width: 100%; border: 0; background: transparent; text-align: left; padding: 8px 12px; cursor: pointer; }
+  .result + .result { border-top: 1px solid var(--line); }
+  .result:hover { background: var(--row-h); }
+  .result-path { font-size: 10.5px; color: var(--muted); }
+  .result-label { font-size: 12.5px; }
+  .result-label mark { background: rgba(40,142,223,.35); color: inherit; border-radius: 2px; }
+  .empty { color: var(--muted); text-align: center; padding: 24px 0; }
+
+  /* Saved toast */
+  .toast { position: absolute; left: 50%; bottom: 14px; transform: translate(-50%, 20px); opacity: 0;
+    background: #333; border: 1px solid #444; padding: 6px 12px; border-radius: 16px; font-size: 11px; display: flex; gap: 6px; align-items: center;
+    transition: .2s; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast svg { color: var(--ok); }
+
+  /* ---------- Notes column ---------- */
+  .notes { width: 420px; max-width: 100%; color: var(--foreground, #cfcfcf); font-size: 12.5px; line-height: 1.55; }
+  .notes h1 { font-size: 18px; margin: 0 0 4px; color: var(--foreground, #fff); }
+  .notes h2 { font-size: 13px; margin: 22px 0 8px; color: var(--foreground, #fff); text-transform: uppercase; letter-spacing: .06em; }
+  .notes p { margin: 0 0 8px; color: var(--muted-foreground, #aaa); }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li { margin-bottom: 5px; }
+  .tree { font: 11.5px/1.65 var(--font-mono, ui-monospace, Menlo, monospace); background: var(--code-background, #1a1a1a); border-radius: var(--radius, 8px); padding: 16px; white-space: pre; overflow-x: auto; color: var(--foreground, #cfcfcf); }
+  .tree b { font-weight: 700; }
+  .tree em { color: var(--muted-foreground, #9a9a9a); font-style: normal; }
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  td { padding: 5px 6px; border-top: 1px solid var(--border, #2c2c2c); vertical-align: top; }
+  td:first-child { color: var(--muted-foreground, #999); width: 46%; }
+  .arrow { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="frame" id="frame">
+  <div class="ps-titlebar">TypeR</div>
+  <div class="head" id="head"></div>
+  <div class="body" id="body"></div>
+  <div class="toast" id="toast"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg>Enregistré</div>
+</div>
+
+<aside class="notes">
+  <h1>Réglages repensés</h1>
+  <p>Maquette interactive à 420 × 720 : clique dans les catégories, essaie la recherche (« centr », « psd », « police »…), active ou désactive les options pour voir les sous-options apparaître.</p>
+
+  <h2>Principes</h2>
+  <ul>
+    <li><b>Une liste au lieu de 8 onglets.</b> La grille d'onglets 4 × 2 tronque les libellés à 420 px. Une liste avec un sous-titre explique ce que contient chaque catégorie avant d'y entrer.</li>
+    <li><b>Classé selon le travail du typo</b> : le script qu'on lit, la pose dans Photoshop, puis les styles. Plus de fourre-tout « Comportement » ni de section « Expérimental ».</li>
+    <li><b>Chaque réglage à un seul endroit</b>, et ce qui va ensemble est regroupé : tout ce qui touche au centrage est dans « Pose du texte › Centrage », tout ce qui touche aux styles dans « Styles ».</li>
+    <li><b>Les sous-options n'apparaissent que si l'option parente est active</b> (smart paste, TextShapeR, tailles rapides, multi-onglet, mises à jour, diagnostic).</li>
+    <li><b>Les options rares sont repliées</b> sous « Réglages avancés » (taille mini, césure, marge…).</li>
+    <li><b>Enregistrement immédiat</b> : plus de bouton Enregistrer ni de « modifications non enregistrées ». Un petit « Enregistré » s'affiche. À valider, c'est le seul vrai changement de comportement.</li>
+    <li><b>Une recherche</b> qui couvre tous les réglages et y amène directement.</li>
+    <li><b>Le profil devient une carte en haut</b>, comme un compte : on voit tout de suite dans quel profil on règle.</li>
+    <li><b>Font FindeR sort des réglages</b> : c'est un outil, pas un réglage. Il reste accessible en bas de l'accueil (idéalement aussi depuis le panneau principal).</li>
+  </ul>
+
+  <h2>Arborescence</h2>
+<div class="tree"><b>Réglages</b>
+├─ <em>[Carte profil]</em> → Profils
+├─ <em>[Recherche]</em>
+├─ <b>Travail</b>
+│  ├─ Pose du texte   <em>collage · centrage</em>
+│  ├─ Script & pages  <em>lecture · pages · sens</em>
+│  ├─ Styles          <em>auto · tailles · refont</em>
+│  ├─ TextShapeR      <em>suggestions · apprentissage</em>
+│  └─ Raccourcis      <em>groupés par action</em>
+├─ <b>Interface</b>
+│  ├─ Apparence       <em>thème · couleurs · échelle</em>
+│  └─ Disposition     <em>blocs · onglets</em>
+├─ <b>TypeR</b>
+│  ├─ Général         <em>langue · aide · MAJ</em>
+│  └─ Données         <em>sauvegarde · cache · reset</em>
+└─ <b>Outils</b>
+   └─ Font FindeR ↗</div>
+
+  <h2>Où est passé… ?</h2>
+  <table>
+    <tr><td>Profils (1er onglet)</td><td><span class="arrow">→</span> carte en haut de l'accueil</td></tr>
+    <tr><td>Texte › Type de calque, Ajuster la boîte</td><td><span class="arrow">→</span> Pose du texte</td></tr>
+    <tr><td>Texte › Style par défaut</td><td><span class="arrow">→</span> Styles › Sélection auto</td></tr>
+    <tr><td>Texte › Marques, balises, markdown, compteur</td><td><span class="arrow">→</span> Script & pages</td></tr>
+    <tr><td>Texte › Direction, Moyen-Orient</td><td><span class="arrow">→</span> Script & pages › Sens</td></tr>
+    <tr><td>Comportement › Smart paste, Coller au clic</td><td><span class="arrow">→</span> Pose du texte › Collage</td></tr>
+    <tr><td>Comportement › Multi-bulle, Centrage, Marge</td><td><span class="arrow">→</span> Pose du texte</td></tr>
+    <tr><td>Comportement › Refont conditionnel</td><td><span class="arrow">→</span> Styles › Changement de police</td></tr>
+    <tr><td>Comportement › Styles (défilement, tags, tailles)</td><td><span class="arrow">→</span> Styles</td></tr>
+    <tr><td>Expérimental › TextShapeR</td><td><span class="arrow">→</span> page TextShapeR</td></tr>
+    <tr><td>Expérimental › Multi-onglet</td><td><span class="arrow">→</span> Disposition › Onglets</td></tr>
+    <tr><td>Automatisations › Fermer le PSD</td><td><span class="arrow">→</span> Script & pages › Pages (c'est au changement de page qu'il agit)</td></tr>
+    <tr><td>Apparence › Disposition + Échelle</td><td><span class="arrow">→</span> page Disposition / Apparence</td></tr>
+    <tr><td>Général › Astuces, guides</td><td><span class="arrow">→</span> Général › Aide</td></tr>
+    <tr><td>Données › Apprentissage TextShapeR</td><td><span class="arrow">→</span> TextShapeR</td></tr>
+    <tr><td>Font FindeR (onglet)</td><td><span class="arrow">→</span> Outils, hors des réglages</td></tr>
+    <tr><td>Badges « Nouveau » partout</td><td><span class="arrow">→</span> un seul badge, sur la ligne de l'accueil</td></tr>
+  </table>
+</aside>
+
+<script>
+/* ---------- Icons ---------- */
+const I = {
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  chev: '<path d="m9 18 6-6-6-6"/>',
+  back: '<path d="m15 18-6-6 6-6"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+  paste: '<path d="M4 7V4h16v3M9 20h6M12 4v16"/>',
+  script: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>',
+  styles: '<path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
+  shape: '<path d="M12 3c5 0 9 3.6 9 8s-4 8-9 8c-1 0-2-.1-3-.4L4 20l1.3-3.9C3.9 14.7 3 12.9 3 11c0-4.4 4-8 9-8z"/>',
+  keys: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22"/>',
+  layout: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  db: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  font: '<path d="M4 20 10 4h4l6 16M7 14h10"/>',
+  ext: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  trash: '<path d="M3 6h18M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6M9 6V4h6v2"/>',
+  grip: '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
+  play: '<circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/>',
+  reset: '<path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+  up: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+  down: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+};
+const ico = (n, s = 14, w = 2) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
+
+/* ---------- State ---------- */
+const S = {
+  layerKind: "box", smartPaste: true, distribute: true, autoClean: false, minScale: 75, hyphen: "auto",
+  pasteOnClick: true, multiBubble: false, center: "multi", fitBox: true, padding: 8,
+  prefixes: "//\n#", tags: "[SFX]\n(TL:", markdown: true, resetCounter: true, closePsd: false,
+  direction: "ltr", middleEast: false,
+  defaultStyle: "Bulle", folderTags: true, autoScroll: true, quickSizes: true, sizeStep: 0.5,
+  refont: [{ open: "*", close: "*", style: "Pensée (italique)" }, { open: "«", close: "»", style: "Citation" }],
+  shaper: true, dehyphen: true,
+  theme: "dark", pageColor: "#3a2f1f", scale: 100,
+  multiTab: true, tabBar: true,
+  blocks: [
+    { id: "preview", name: "Aperçu & actions", visible: true, h: 130, open: false,
+      els: [["Bouton créer le calque", true], ["Bouton aligner", true], ["Taille du texte", true], ["Flèches de navigation", true], ["Aperçu de ligne / TextShapeR", true]] },
+    { id: "text", name: "Texte", visible: true, auto: true, open: false, els: [] },
+    { id: "styles", name: "Styles", visible: true, h: 220, open: false, els: [] },
+    { id: "footer", name: "Pied de page", visible: true, fixed: true, open: false,
+      els: [["Lien Aide", true], ["Lien du dépôt", true], ["Boutons de modes", true]] },
+  ],
+  language: "auto", tips: true, checkUpdates: true, autoUpdate: false, perf: false,
+  showAdv: {},
+};
+const styles = ["Bulle", "Cri", "Narration", "Pensée (italique)", "Citation", "SFX"];
+
+/* ---------- Pages ---------- */
+// Each item: {id, type, label, hint, ...}. Items are also the search index.
+const PAGES = {
+  pose: {
+    title: "Pose du texte", icon: "paste", color: "#288edf", sub: "Collage intelligent, coller au clic, centrage",
+    intro: "Ce qui se passe quand TypeR pose une ligne dans Photoshop.",
+    sections: [
+      { title: "Collage", items: [
+        { id: "layerKind", type: "seg", label: "Type de calque créé", options: [["box", "Texte de paragraphe"], ["point", "Texte ponctuel"]] },
+        { id: "smartPaste", type: "toggle", label: "Collage intelligent", hint: "Adapte le texte à la vraie forme de la bulle, passe en blanc sur les bulles noires et prend les styles cri / narration quand il faut.",
+          children: [
+            { id: "distribute", type: "toggle", label: "Répartir sur les bulles reliées", hint: "Une double ou triple bulle reçoit les lignes suivantes, une par partie." },
+            { id: "autoClean", type: "toggle", label: "Nettoyage auto", hint: "Peint un fond blanc ou noir sous le texte pour masquer le lettrage d'origine (bulles unies uniquement)." },
+          ],
+          advanced: [
+            { id: "minScale", type: "num", label: "Taille minimale", unit: "%", min: 50, max: 100, step: 5, hint: "Jusqu'où le texte peut rétrécir pour tenir dans une petite bulle." },
+            { id: "hyphen", type: "select", label: "Césure", options: [["auto", "Auto (langue de l'interface)"], ["fr", "Français"], ["en", "Anglais"], ["off", "Désactivée"]] },
+          ] },
+        { id: "pasteOnClick", type: "toggle", label: "Coller au clic", hint: "Un clic à la baguette magique ou une sélection rectangle / lasso pose la ligne tout de suite." },
+        { id: "multiBubble", type: "toggle", label: "Mode multi-bulle", hint: "Capture plusieurs sélections pour poser plusieurs lignes d'un coup.", extra: `<button class="link" onclick="event.preventDefault()">${ico("play", 11)} Voir la démo</button>` },
+      ] },
+      { title: "Centrage", items: [
+        { id: "center", type: "seg", label: "Centrer après la pose", options: [["off", "Non"], ["single", "Dans la bulle"], ["multi", "Multi"]],
+          hintFor: { off: "Le texte reste où il a été posé.", single: "Chaque texte posé est recentré dans la bulle détectée autour.", multi: "Reconnaît aussi les doubles bulles et répartit les textes entre leurs parties." } },
+        { id: "fitBox", type: "toggle", label: "Ajuster la boîte de texte à la bulle", hint: "Redimensionne la boîte avant de centrer, sans toucher à la taille de police." },
+        { id: "padding", type: "num", label: "Marge intérieure", unit: "px", min: 0, max: 100, hint: "Espace gardé entre le texte et le bord de la bulle." },
+      ] },
+    ],
+  },
+  script: {
+    title: "Script & pages", icon: "script", color: "#2fa36b", sub: "Lignes ignorées, balises, pages, sens du texte",
+    intro: "Comment TypeR lit le script que tu colles dans le bloc Texte.",
+    sections: [
+      { title: "Lecture du script", items: [
+        { id: "prefixes", type: "textarea", label: "Lignes à ignorer", hint: "Une ligne qui commence par une de ces marques est sautée, comme une ligne vide. Une marque par ligne ou séparées par « ; »." },
+        { id: "tags", type: "textarea", label: "Balises à retirer", hint: "Retirées du texte posé, le reste de la ligne est gardé." },
+        { id: "markdown", type: "toggle", label: "Interpréter le markdown", hint: "**gras** et *italique* sont appliqués dans le calque." },
+      ] },
+      { title: "Pages", items: [
+        { id: "resetCounter", type: "toggle", label: "Renuméroter à chaque page", hint: "Les lignes repartent de 1 après chaque marqueur « Page N »." },
+        { id: "closePsd", type: "toggle", label: "Fermer le PSD précédent", hint: "Quand tu passes à la page suivante, le PSD de la page d'avant est fermé." },
+      ] },
+      { title: "Sens du texte", items: [
+        { id: "direction", type: "seg", label: "Direction", options: [["ltr", "Gauche → droite"], ["rtl", "Droite → gauche"]] },
+        { id: "middleEast", type: "toggle", label: "Mode Moyen-Orient", hint: "Composeur de texte adapté à l'arabe et à l'hébreu." },
+      ] },
+    ],
+  },
+  styles: {
+    title: "Styles", icon: "styles", color: "#a46cf0", sub: "Style par défaut, changement de police, tailles rapides",
+    sections: [
+      { title: "Sélection automatique", items: [
+        { id: "defaultStyle", type: "select", label: "Style par défaut", options: [["", "Aucun"], ...styles.map((s) => [s, s])], hint: "Activé sur les lignes sans tag." },
+        { id: "folderTags", type: "toggle", label: "Tags limités au dossier courant", hint: "Un tag du script ne peut pas choisir un style d'un autre dossier." },
+        { id: "autoScroll", type: "toggle", label: "Faire défiler jusqu'au style actif" },
+      ] },
+      { title: "Tailles rapides", items: [
+        { id: "quickSizes", type: "toggle", label: "Afficher les tailles rapides", hint: "Les tailles cliquables sur chaque style.",
+          children: [{ id: "sizeStep", type: "num", label: "Pas", unit: "pt", min: 0.01, step: 0.5, hint: "Incrément utilisé pour modifier une taille." }] },
+      ] },
+      { title: "Changement de police", items: [{ id: "refont", type: "refont", label: "Changement de police (refont)", hint: "Le texte entre deux marques prend la police d'un autre style (la taille est gardée). Ex. : les passages entre * en italique." }] },
+    ],
+  },
+  textshaper: {
+    title: "TextShapeR", icon: "shape", color: "#e0883a", sub: "Suggestions de forme, apprentissage", badge: "Nouveau",
+    sections: [
+      { title: "Suggestions", items: [
+        { id: "shaper", type: "toggle", label: "Activer TextShapeR", hint: "Propose des formes de texte directement dans le panneau principal. Peut ralentir les vieux postes.",
+          children: [{ id: "dehyphen", type: "toggle", label: "Recoller les mots coupés", hint: "Désactive si de vrais mots composés doivent rester séparés." }] },
+      ] },
+      { title: "Apprentissage", items: [
+        { id: "shapeLearn", type: "buttons", label: "Importer / exporter l'apprentissage", hint: "TextShapeR apprend de tes corrections. Partage-le en .json ; importer remplace l'apprentissage actuel.",
+          buttons: [["down", "Importer"], ["up", "Exporter"]] },
+      ] },
+    ],
+  },
+  shortcuts: { title: "Raccourcis", icon: "keys", color: "#6b7280", sub: "27 raccourcis, groupés par action", custom: "shortcuts" },
+  appearance: {
+    title: "Apparence", icon: "eye", color: "#d64f8f", sub: "Thème, couleurs, échelle",
+    sections: [
+      { title: "Thème", items: [{ id: "theme", type: "themes", label: "Thème" }] },
+      { title: "Couleurs", items: [
+        { id: "pageColor", type: "color", label: "Fond des lignes de page", hint: "Couleur des lignes « Page N » dans le bloc Texte." },
+      ] },
+      { title: "Taille", items: [
+        { id: "scale", type: "range", label: "Échelle de l'interface", unit: "%", min: 70, max: 150, step: 5 },
+      ] },
+    ],
+  },
+  layout: {
+    title: "Disposition", icon: "layout", color: "#14a3a3", sub: "Blocs du panneau, onglets multi-séries",
+    sections: [
+      { title: "Blocs du panneau", action: `<button class="link" onclick="resetLayout()">${ico("reset", 10)} Réinitialiser</button>`, items: [{ id: "blocks", type: "blocks", label: "Blocs du panneau", hint: "Ordre, visibilité et hauteur des blocs" }] },
+      { title: "Onglets", items: [
+        { id: "multiTab", type: "toggle", label: "Onglets multi-séries", hint: "Plusieurs séries ouvertes à la fois, chacune avec son texte et sa synchro PSD.",
+          children: [{ id: "tabBar", type: "toggle", label: "Afficher la barre d'onglets" }] },
+      ] },
+    ],
+  },
+  general: {
+    title: "Général", icon: "gear", color: "#7a7a7a", sub: "Langue, aide, mises à jour",
+    sections: [
+      { title: "Langue", items: [
+        { id: "language", type: "select", label: "Langue de l'interface", options: [["auto", "Automatique"], ["fr", "Français"], ["en", "English"], ["es", "Español"], ["de", "Deutsch"], ["pt", "Português"], ["ru", "Русский"], ["uk", "Українська"], ["tr", "Türkçe"], ["vi", "Tiếng Việt"], ["ar", "العربية"]] },
+      ] },
+      { title: "Aide", items: [
+        { id: "tips", type: "toggle", label: "Afficher les astuces", hint: "Petites bulles d'aide dans l'interface." },
+        { id: "walkthrough", type: "link", label: "Revoir le guide de démarrage" },
+        { id: "whatsnew", type: "link", label: "Nouveautés de la 3.0" },
+      ] },
+      { title: "Mises à jour", items: [
+        { id: "checkUpdates", type: "toggle", label: "Rechercher les mises à jour",
+          children: [{ id: "autoUpdate", type: "toggle", label: "Les installer automatiquement", hint: "Effectif au prochain redémarrage de Photoshop." }] },
+        { id: "checkNow", type: "status", label: "TypeR 3.0.0", hint: "À jour · vérifié il y a 2 min", button: "Vérifier" },
+      ] },
+    ],
+  },
+  data: {
+    title: "Données & maintenance", icon: "db", color: "#5b6bd6", sub: "Sauvegarde, cache, diagnostic, réinitialisation",
+    sections: [
+      { title: "Sauvegarde", items: [
+        { id: "io", type: "buttons", label: "Styles et réglages", hint: "Exporte en fichier pour les partager ou les sauvegarder. L'import accepte aussi des .psd : TypeR en tire les polices et en fait des styles.",
+          buttons: [["down", "Importer"], ["up", "Exporter"]] },
+      ] },
+      { title: "Cache", items: [
+        { id: "cache", type: "status", label: "Cache : 12,4 Mo", hint: "Fichiers temporaires. Textes, styles, thèmes et sauvegardes ne sont pas touchés.", button: "Vider" },
+      ] },
+      { title: "Diagnostic", items: [
+        { id: "perf", type: "toggle", label: "Journal de performance", hint: "Mesure les appels Photoshop et la latence. À laisser éteint sauf si le panneau rame.",
+          children: [{ id: "perfBtns", type: "buttons", label: "", buttons: [["info", "Voir le rapport"], ["reset", "Remettre à zéro"]] }] },
+      ] },
+      { title: "Zone de danger", items: [
+        { id: "resetProfile", type: "danger", label: "Réinitialiser le profil « Défaut »", hint: "Supprime ses réglages, styles, scripts et sauvegardes. Les autres profils ne sont pas touchés." },
+      ] },
+    ],
+  },
+  profiles: { title: "Profils", custom: "profiles", hidden: true,
+    sections: [{ title: "", items: [{ id: "profilesIdx", label: "Créer, renommer, changer de profil", hint: "Chaque profil a ses propres styles, réglages, onglets et sauvegardes." }] }] },
+};
+
+const HOME = [
+  ["Travail", ["pose", "script", "styles", "textshaper", "shortcuts"]],
+  ["Interface", ["appearance", "layout"]],
+  ["TypeR", ["general", "data"]],
+];
+
+const SHORTCUTS = [
+  ["Navigation", [["Ligne précédente", ["Ctrl", "Tab"]], ["Ligne suivante", ["Ctrl", "↵"]], ["Page précédente", []], ["Page suivante", ["⇧", "X"]], ["Onglet précédent", []], ["Onglet suivant", []]]],
+  ["Pose", [["Ajouter", ["⌘", "Ctrl"]], ["Insérer le texte dans le calque actuel", ["⌘", "⇧", "V"]], ["Coller des lignes consécutives dans les calques sélectionnés", []], ["Garder la taille du calque sélectionné (maintenir)", ["⌥"]]]],
+  ["Centrage", [["Centrer", ["⌘", "⌥"]], ["Centrer double bulle", []], ["Changer le mode de centrage", []]]],
+  ["Styles & taille", [["Appliquer le style", ["⌘", "⇧"]], ["Appliquer uniquement le style actif", []], ["Style précédent", []], ["Style suivant", []], ["Augmenter la taille", ["Ctrl", "⇧", "+"]], ["Diminuer la taille", ["Ctrl", "⇧", "−"]], ["Taille rapide suivante", []]]],
+  ["Multi-bulle", [["Activer / désactiver", ["Ctrl", "⌥", "M"]], ["Retirer la dernière sélection", []], ["Vider les sélections", []]]],
+  ["Modes", [["Coller au clic", []], ["TextShapeR", []], ["Afficher / masquer les calques de nettoyage", ["Ctrl", "H"]]]],
+];
+
+const PROFILES = ["Défaut", "Sakura Scans", "Projet Berserk"];
+let activeProfile = "Défaut";
+
+/* ---------- Rendering ---------- */
+let route = "home";
+let query = "";
+const $ = (id) => document.getElementById(id);
+
+function head() {
+  const close = `<button class="icon-btn" title="Fermer">${ico("x", 16)}</button>`;
+  if (route === "home") return `<div class="head-title">Réglages</div>${close}`;
+  const p = PAGES[route];
+  return `<button class="back" onclick="go('home')">${ico("back", 15)}Réglages</button>
+    <span class="crumb-sep">/</span><div class="head-title">${p.title}</div>${close}`;
+}
+
+function home() {
+  let h = `<div class="profile-card" onclick="go('profiles')">
+      <div class="avatar">${activeProfile[0]}</div>
+      <div class="pc-text"><div class="pc-label">Profil actif</div><div class="pc-name">${activeProfile}</div></div>
+      <span class="pc-action">Changer</span>${ico("chev", 14)}
+    </div>
+    <label class="search">${ico("search", 14)}<input id="q" placeholder="Rechercher un réglage" value="${query}" oninput="query=this.value; renderBody(true)"></label>`;
+  if (query.trim()) return h + results();
+  HOME.forEach(([label, ids]) => {
+    h += `<div class="group-label">${label}</div><div class="list">`;
+    ids.forEach((id) => (h += navRow(id)));
+    h += `</div>`;
+  });
+  h += `<div class="group-label">Outils</div><div class="list">
+      <button class="nav-row"><span class="nav-ico" style="background:#c0392b">${ico("font", 14)}</span>
+      <span class="nav-text"><span class="nav-title">Font FindeR</span><span class="nav-sub">Trouver et installer des polices manga</span></span>
+      <span class="chev">${ico("ext", 13)}</span></button></div>
+    <div class="version">TypeR 3.0.0 · UXP</div>`;
+  return h;
+}
+
+function navRow(id) {
+  const p = PAGES[id];
+  return `<button class="nav-row" onclick="go('${id}')">
+    <span class="nav-ico" style="background:${p.color}">${ico(p.icon, 14)}</span>
+    <span class="nav-text"><span class="nav-title">${p.title}${p.badge ? `<span class="badge">${p.badge}</span>` : ""}</span>
+    <span class="nav-sub">${p.sub}</span></span><span class="chev">${ico("chev", 14)}</span></button>`;
+}
+
+/* Search index: every item of every page, with its section */
+function index() {
+  const out = [];
+  Object.entries(PAGES).forEach(([pid, p]) => {
+    (p.sections || []).forEach((s) => {
+      const walk = (it) => {
+        if (it.label) out.push({ pid, page: p.title, section: s.title, id: it.id, label: it.label, hint: it.hint || "" });
+        (it.children || []).forEach(walk);
+        (it.advanced || []).forEach(walk);
+      };
+      s.items.forEach(walk);
+    });
+  });
+  SHORTCUTS.forEach(([g, list]) => list.forEach(([l]) => out.push({ pid: "shortcuts", page: "Raccourcis", section: g, id: "sc-" + l, label: l, hint: "" })));
+  out.push({ pid: "profiles", page: "Profils", section: "", id: "prof", label: "Profils de projet", hint: "créer renommer supprimer changer" });
+  return out;
+}
+const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+function results() {
+  const q = norm(query.trim());
+  const hits = index().filter((r) => norm(r.label + " " + r.hint + " " + r.section).includes(q)).slice(0, 30);
+  if (!hits.length) return `<div class="empty">Aucun réglage pour « ${query} »</div>`;
+  const hl = (t) => { const i = norm(t).indexOf(q); return i < 0 ? t : t.slice(0, i) + "<mark>" + t.slice(i, i + q.length) + "</mark>" + t.slice(i + q.length); };
+  return `<div class="list">${hits.map((r) => `<button class="result" onclick="go('${r.pid}','${r.id}')">
+      <div class="result-path">${r.page}${r.section ? " › " + r.section : ""}</div><div class="result-label">${hl(r.label)}</div></button>`).join("")}</div>`;
+}
+
+function page(id) {
+  const p = PAGES[id];
+  if (p.custom === "shortcuts") return shortcutsPage();
+  if (p.custom === "profiles") return profilesPage();
+  let h = p.intro ? `<div class="page-intro">${p.intro}</div>` : "";
+  p.sections.forEach((s) => {
+    h += `<div class="section"><div class="section-title"><span>${s.title}</span>${s.action || ""}</div><div class="card">`;
+    s.items.forEach((it) => (h += item(it)));
+    h += `</div></div>`;
+  });
+  return h;
+}
+
+function item(it, nested) {
+  const v = S[it.id];
+  const hint = it.hintFor ? it.hintFor[v] : it.hint;
+  const hintHtml = hint ? `<div class="row-hint">${hint}</div>` : "";
+  const label = (extra = "") => `<div class="row-main"><div class="row-label">${it.label}${extra}</div>${hintHtml}${it.extra ? `<div style="margin-top:4px">${it.extra}</div>` : ""}</div>`;
+  let h = "";
+  switch (it.type) {
+    case "toggle":
+      h = `<div class="row" data-id="${it.id}">${label()}<label class="sw"><input type="checkbox" ${v ? "checked" : ""} onchange="set('${it.id}', this.checked)"><span></span></label></div>`;
+      break;
+    case "seg":
+      h = `<div class="row stack" data-id="${it.id}"><div class="row-label">${it.label}</div>
+        <div class="seg">${it.options.map(([k, l]) => `<button class="${v === k ? "on" : ""}" onclick="set('${it.id}','${k}')">${l}</button>`).join("")}</div>${hintHtml}</div>`;
+      break;
+    case "select":
+      h = `<div class="row" data-id="${it.id}">${label()}<select onchange="set('${it.id}', this.value)">${it.options.map(([k, l]) => `<option value="${k}" ${v === k ? "selected" : ""}>${l}</option>`).join("")}</select></div>`;
+      break;
+    case "num":
+      h = `<div class="row" data-id="${it.id}">${label()}<input class="num" type="number" value="${v}" min="${it.min}" max="${it.max ?? ""}" step="${it.step || 1}" onchange="set('${it.id}', this.value)"><span class="unit">${it.unit}</span></div>`;
+      break;
+    case "range":
+      h = `<div class="row stack" data-id="${it.id}"><div class="row-label" style="justify-content:space-between">${it.label}<span id="rv-${it.id}" style="color:var(--muted)">${v} ${it.unit}</span></div>
+        <input type="range" min="${it.min}" max="${it.max}" step="${it.step}" value="${v}" oninput="S['${it.id}']=this.value; $('rv-${it.id}').textContent=this.value+' ${it.unit}'" onchange="saved()"></div>`;
+      break;
+    case "textarea":
+      h = `<div class="row stack" data-id="${it.id}"><div class="row-label">${it.label}</div><textarea rows="2" onchange="set('${it.id}', this.value, true)">${v}</textarea>${hintHtml}</div>`;
+      break;
+    case "color":
+      h = `<div class="row" data-id="${it.id}">${label()}<input type="color" value="${v}" style="width:34px;height:24px;border:0;background:none;padding:0;cursor:pointer" onchange="set('${it.id}', this.value, true)"></div>`;
+      break;
+    case "buttons":
+      h = `<div class="row stack" data-id="${it.id}">${it.label ? `<div class="row-label">${it.label}</div>` : ""}${hintHtml}<div class="btn-row">${it.buttons.map(([i, l]) => `<button class="btn">${ico(i, 13)}${l}</button>`).join("")}</div></div>`;
+      break;
+    case "status":
+      h = `<div class="row" data-id="${it.id}">${label()}<button class="btn">${it.button}</button></div>`;
+      break;
+    case "link":
+      h = `<div class="row" data-id="${it.id}" style="cursor:pointer">${label()}<span class="chev">${ico("chev", 14)}</span></div>`;
+      break;
+    case "danger":
+      h = `<div class="row stack" data-id="${it.id}">${hintHtml}<button class="btn danger full">${ico("trash", 13)}${it.label}</button></div>`;
+      break;
+    case "themes": h = themes(); break;
+    case "refont": h = refont(); break;
+    case "blocks": h = blocks(); break;
+  }
+  if (it.children && v) h += `<div class="sub">${it.children.map((c) => item(c, true)).join("")}</div>`;
+  if (it.advanced && v) {
+    const open = S.showAdv[it.id];
+    h += `<div class="adv"><button class="adv-toggle ${open ? "open" : ""}" onclick="S.showAdv['${it.id}']=!S.showAdv['${it.id}']; renderBody(true)">${ico("chev", 11)} Réglages avancés</button></div>`;
+    if (open) h += `<div class="sub">${it.advanced.map((c) => item(c, true)).join("")}</div>`;
+  }
+  return h;
+}
+
+function themes() {
+  const t = [["dark", "Sombre", "#1e1e1e", "#2d2d2d", "#288edf", "#ddd"], ["light", "Clair", "#f2f2f2", "#ffffff", "#288edf", "#333"],
+    ["ps", "Photoshop", "#323232", "#3d3d3d", "#2d8ceb", "#ccc"], ["night", "Minuit", "#0f1424", "#1a2238", "#8b7cf6", "#cfd6ee"], ["sakura", "Sakura", "#2a1f24", "#3a2a31", "#ff7aa8", "#f0dbe3"]];
+  return `<div class="themes" data-id="theme">${t.map(([id, n, bg, bar, acc, tx]) => `
+    <button class="theme ${S.theme === id ? "on" : ""}" onclick="set('theme','${id}')">
+      <div class="theme-prev" style="background:${bg}"><i style="background:${bar};height:8px"></i><i style="background:${tx};width:80%;opacity:.7"></i><i style="background:${tx};width:55%;opacity:.4"></i><i style="background:${acc};width:35%;height:6px;margin-top:auto"></i></div>
+      <div class="theme-name">${n}</div></button>`).join("")}
+    <button class="theme theme-add"><div class="theme-prev">${ico("plus", 16)}</div><div class="theme-name">Nouveau / image</div></button></div>`;
+}
+
+function refont() {
+  const sel = (cur, i) => `<select onchange="S.refont[${i}].style=this.value; saved()">${styles.map((s) => `<option ${s === cur ? "selected" : ""}>${s}</option>`).join("")}</select>`;
+  return `<div data-id="refont"><div class="row" style="padding-bottom:4px"><div class="row-main"><div class="row-hint" style="margin:0">Le texte entre deux marques prend la police d'un autre style (la taille est gardée). Ex. : les passages entre * en italique.</div></div></div>
+    ${S.refont.length ? `<div class="rule-head"><span>Ouvre</span><span></span><span>Ferme</span><span>Police de</span><span></span></div>` : ""}
+    ${S.refont.map((r, i) => `<div class="rule"><input class="txt" value="${r.open}"><span style="color:var(--dim)">…</span><input class="txt" value="${r.close}">${sel(r.style, i)}
+      <button class="icon-btn" style="width:24px;height:24px" onclick="S.refont.splice(${i},1); set()">${ico("trash", 12)}</button></div>`).join("")}
+    <div class="row" style="border-top:1px solid var(--line)"><button class="link" onclick="S.refont.push({open:'[',close:']',style:'Bulle'}); set()">${ico("plus", 11)} Ajouter une règle</button></div></div>`;
+}
+
+function blocks() {
+  return `<div data-id="blocks">${S.blocks.map((b, i) => `
+    <div class="block ${b.visible ? "" : "hidden"}">
+      <span class="grip" title="Glisser pour réordonner">${b.fixed ? `<span style="display:inline-block;width:14px"></span>` : ico("grip", 14)}</span>
+      <span class="block-name">${b.name}</span>
+      <span class="block-meta">${!b.visible ? "masqué" : b.auto ? "remplit l'espace" : b.h ? b.h + " px" : ""}</span>
+      ${b.els.length || b.h ? `<button class="icon-btn" style="width:24px;height:24px" title="Détails" onclick="S.blocks[${i}].open=!S.blocks[${i}].open; renderBody(true)"><span style="display:inline-block;transform:rotate(${b.open ? 90 : 0}deg)">${ico("chev", 13)}</span></button>` : `<span style="width:24px"></span>`}
+      <button class="icon-btn" style="width:24px;height:24px" title="${b.visible ? "Masquer" : "Afficher"}" onclick="S.blocks[${i}].visible=!S.blocks[${i}].visible; set()">${ico(b.visible ? "eye" : "eyeOff", 13)}</button>
+    </div>
+    ${b.open ? `<div class="block-detail">
+      ${b.h ? `<div class="slider-row">Hauteur<input type="range" min="70" max="400" value="${b.h}" oninput="S.blocks[${i}].h=+this.value; this.nextElementSibling.textContent=this.value+' px'" onchange="renderBody(true); saved()"><span>${b.h} px</span></div>` : ""}
+      ${b.els.map(([n, on], j) => `<label class="check"><input type="checkbox" ${on ? "checked" : ""} onchange="S.blocks[${i}].els[${j}][1]=this.checked; saved()">${n}</label>`).join("")}
+    </div>` : ""}`).join("")}
+    <div class="row" style="border-top:1px solid var(--line)"><div class="row-hint" style="margin:0">Glisse les poignées pour changer l'ordre. Le bloc Texte prend toujours la place restante.</div></div></div>`;
+}
+
+function shortcutsPage() {
+  let h = `<div class="page-intro">Clique sur un raccourci puis appuie sur la nouvelle combinaison.</div>
+    <label class="search" style="margin-bottom:12px">${ico("search", 14)}<input placeholder="Filtrer les raccourcis" oninput="filterSc(this.value)"></label>`;
+  SHORTCUTS.forEach(([g, list]) => {
+    h += `<div class="section sc-group"><div class="section-title">${g}</div><div class="card">${list.map(([l, k]) => `
+      <div class="sc" data-id="sc-${l}" data-l="${norm(l)}"><span class="sc-label">${l}</span>
+      ${k.length ? `<span class="keys">${k.map((x) => `<kbd>${x}</kbd>`).join("")}</span>` : `<span class="keys empty">Aucun</span>`}</div>`).join("")}</div></div>`;
+  });
+  h += `<button class="btn full" style="margin-top:4px">${ico("reset", 13)}Rétablir les raccourcis par défaut</button>
+    <div class="row-hint" style="text-align:center;margin-top:6px">Si des raccourcis ne répondent plus, les rétablir règle souvent le problème.</div>`;
+  return h;
+}
+function filterSc(v) {
+  const q = norm(v);
+  document.querySelectorAll(".sc").forEach((el) => (el.style.display = el.dataset.l.includes(q) ? "" : "none"));
+  document.querySelectorAll(".sc-group").forEach((g) => (g.style.display = [...g.querySelectorAll(".sc")].some((e) => e.style.display !== "none") ? "" : "none"));
+}
+
+function profilesPage() {
+  return `<div class="page-intro">Chaque profil a ses propres styles, dossiers, réglages, onglets et sauvegardes. Pratique pour séparer les équipes ou les projets.</div>
+    <div class="section" data-id="profilesIdx"><div class="section-title">Mes profils</div><div class="card">
+    ${PROFILES.map((p) => `<div class="prof"><div class="avatar">${p[0]}</div><span class="prof-name">${p}</span>
+      ${p === activeProfile ? `<span class="tag-active">${ico("check", 11, 3)}Actif</span><button class="btn" style="padding:4px 8px">Renommer</button>`
+        : `<button class="btn" style="padding:4px 8px" onclick="activeProfile='${p}'; renderBody(); saved()">Activer</button>
+           ${p === "Défaut" ? "" : `<button class="icon-btn" style="width:26px;height:26px" title="Supprimer">${ico("trash", 13)}</button>`}`}
+    </div>`).join("")}</div></div>
+    <div class="section"><div class="section-title">Nouveau profil</div><div class="card"><div class="row" style="gap:6px">
+      <input class="txt" style="flex:1" placeholder="Nom du projet ou de l'équipe"><button class="btn primary">${ico("plus", 12)}Créer</button></div>
+      <div class="row"><div class="row-hint" style="margin:0">Un nouveau profil démarre avec les réglages par défaut et une bibliothèque de styles vide.</div></div></div></div>
+    <div class="note">${ico("info", 14)}<span>Le profil « Défaut » ne peut pas être supprimé : les anciennes versions de TypeR l'utilisent.</span></div>`;
+}
+
+/* ---------- Actions ---------- */
+function renderBody(keepScroll) {
+  const body = $("body");
+  const top = body.scrollTop;
+  $("head").innerHTML = head();
+  body.innerHTML = route === "home" ? home() : page(route);
+  if (keepScroll) body.scrollTop = top;
+  const q = $("q");
+  if (q && document.activeElement !== q && query) { q.focus(); q.setSelectionRange(query.length, query.length); }
+}
+function go(r, focusId) {
+  route = r;
+  if (r !== "home") query = "";
+  renderBody();
+  $("body").scrollTop = 0;
+  if (focusId) {
+    // Reveal advanced options if the target lives there
+    Object.values(PAGES[r]?.sections || {}).forEach((s) => s.items.forEach((it) => {
+      if ((it.advanced || []).some((a) => a.id === focusId)) { S.showAdv[it.id] = true; renderBody(); }
+    }));
+    const el = document.querySelector(`[data-id="${CSS.escape(focusId)}"]`);
+    if (el) {
+      el.scrollIntoView({ block: "center" });
+      const row = el.classList.contains("row") || el.classList.contains("sc") ? el : el.querySelector(".row") || el;
+      row.classList.add("flash");
+      if (!row.classList.contains("row")) row.style.background = "rgba(40,142,223,.28)";
+      setTimeout(() => { row.classList.remove("flash"); row.style.background = ""; }, 1200);
+    }
+  }
+}
+function set(id, v, silent) {
+  if (id) S[id] = v;
+  if (!silent) renderBody(true);
+  saved();
+}
+let toastT;
+function saved() {
+  const t = $("toast");
+  t.classList.add("show");
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.remove("show"), 1100);
+}
+function resetLayout() { S.blocks.forEach((b) => { b.visible = true; b.els.forEach((e) => (e[1] = true)); }); S.blocks[0].h = 130; S.blocks[2].h = 220; set(); }
+
+renderBody();
+// Standalone viewing: no host theme variables, so give the page its own dark backdrop
+if (!getComputedStyle(document.documentElement).getPropertyValue("--background").trim()) {
+  document.body.style.background = "#121212";
+  document.body.style.padding = "24px";
+}
+</script>
+</body>
+</html>

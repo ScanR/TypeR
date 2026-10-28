@@ -63,6 +63,34 @@ assert.deepStrictEqual(
   { _obj: "grayscale", gray: 100 }
 );
 
+// Middle Eastern keys are written back by both hosts: dropping directionType
+// sent every right-to-left layer back to left-to-right
+{
+  const middleEast = {
+    layerText: {
+      paragraphStyleRange: [{ from: 0, to: 1, paragraphStyle: { directionType: "dirRightToLeft", textComposerEngine: "textOptycaComposer", kashidaWidthType: "kashidaWidthMedium" } }],
+      textStyleRange: [{ from: 0, to: 1, textStyle: { digitSet: "arabicDigits", dirOverride: "dirOverrideDefault", kashidas: "kashidaDefault", diacVPos: "diacVPosOpenType" } }],
+    },
+  };
+  const uxpWritten = jamText.toLayerTextObject(middleEast);
+  const uxpParagraph = uxpWritten.paragraphStyleRange[0].paragraphStyle;
+  const uxpText = uxpWritten.textStyleRange[0].textStyle;
+  const vm = require("vm");
+  const cep = {};
+  vm.createContext(cep);
+  vm.runInContext(fs.readFileSync(path.join(root, "app_src/lib/jam/jamText.jsxinc"), "utf8").replace(/^﻿/, ""), cep);
+  const cepWritten = cep.jamText.toLayerTextObject(middleEast)[1][1];
+  const cepParagraph = cepWritten.paragraphStyleRange[1][0][1][1].paragraphStyle[1][1];
+  const cepText = cepWritten.textStyleRange[1][0][1][1].textStyle[1][1];
+  [[middleEast.layerText.paragraphStyleRange[0].paragraphStyle, uxpParagraph, cepParagraph],
+    [middleEast.layerText.textStyleRange[0].textStyle, uxpText, cepText]].forEach(([source, uxp, cepStyle]) => {
+    Object.keys(source).forEach((key) => {
+      assert.deepStrictEqual(uxp[key], { _enum: key, _value: source[key] }, "UXP writes " + key);
+      assert.deepStrictEqual(JSON.parse(JSON.stringify(cepStyle[key])), ["<enumerated>", [key, source[key]]], "CEP writes " + key);
+    });
+  });
+}
+
 /* ------------------------ evalScript ------------------------ */
 
 assert.deepStrictEqual(parseCall("getActiveLayerText()"), { name: "getActiveLayerText", args: [] });
@@ -99,24 +127,63 @@ const queueChecks = (async () => {
       if (index !== -1) timers.splice(index, 1);
     },
   });
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+  // A timer that fired is gone, as with setTimeout
+  const fire = (timer) => {
+    timers.splice(timers.indexOf(timer), 1);
+    timer.fn();
+  };
   const order = [];
   let finishStuck = null;
-  const stuck = enqueue(() => new Promise((resolve) => { finishStuck = resolve; }), 60000, () => "EvalScript error.");
+  const stuck = enqueue(() => new Promise((resolve) => { order.push("stuck"); finishStuck = resolve; }), 60000, (started) => (started ? "late" : "dropped"));
   const next = enqueue(() => { order.push("next"); return "ok"; }, 60000, () => "timeout");
   const failing = enqueue(() => { throw new Error("boom"); });
   const afterFailure = enqueue(() => "after");
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.deepStrictEqual(order, [], "Calls run one at a time");
-  assert.strictEqual(timers.length, 1);
+  await flush();
+  assert.deepStrictEqual(order, ["stuck"], "Calls run one at a time");
+  assert.strictEqual(timers.length, 1, "Calls waiting behind a call within its limit have no timer");
   assert.strictEqual(timers[0].ms, 60000);
-  timers[0].fn();
-  assert.strictEqual(await stuck, "EvalScript error.", "A call past its limit answers the timeout result");
-  assert.strictEqual(await next, "ok", "The queue goes on after a call that timed out");
+  fire(timers[0]);
+  assert.strictEqual(await stuck, "late", "A call past its limit answers the timeout result");
+  await flush();
+  assert.deepStrictEqual(order, ["stuck"], "Photoshop may still finish a late call: the next one waits for it");
+  assert.strictEqual(timers.length, 1, "A call waiting behind a late call gets a limit");
+  finishStuck("late result");
+  assert.strictEqual(await next, "ok", "The queue goes on once the late call settles");
+  assert.deepStrictEqual(order, ["stuck", "next"]);
   assert.deepStrictEqual(timers, [], "A settled call clears its timer");
   await assert.rejects(failing, /boom/);
   assert.strictEqual(await afterFailure, "after", "A failed call does not stop the queue");
-  finishStuck("late");
-  assert.strictEqual(await enqueue(() => "last", 0), "last", "A late result is dropped");
+
+  // A call that times out while a late call holds the queue never runs:
+  // the panel took it as failed, it must not happen minutes later
+  let finishSecond = null;
+  const second = enqueue(() => new Promise((resolve) => { finishSecond = resolve; }), 60000, (started) => (started ? "late" : "dropped"));
+  let ranDropped = false;
+  const dropped = enqueue(() => { ranDropped = true; return "ran"; }, 60000, (started) => (started ? "late" : "dropped"));
+  const unlimited = enqueue(() => "unlimited", 0);
+  await flush();
+  fire(timers[0]);
+  assert.strictEqual(await second, "late");
+  assert.strictEqual(timers.length, 1, "Only the waiting call with a limit is armed");
+  fire(timers[0]);
+  assert.strictEqual(await dropped, "dropped", "A waiting call answers once its own limit passes");
+  finishSecond("done");
+  assert.strictEqual(await unlimited, "unlimited", "A call without a limit waits for the late call");
+  assert.strictEqual(ranDropped, false, "A call answered while it waited never runs");
+
+  // Once it runs, a call that waited behind a late call gets its full limit
+  let finishThird = null;
+  const third = enqueue(() => new Promise((resolve) => { finishThird = resolve; }), 60000, () => "late");
+  const patient = enqueue(() => "patient", 60000, () => "dropped");
+  await flush();
+  fire(timers[0]);
+  assert.strictEqual(await third, "late");
+  const waitTimer = timers[0];
+  finishThird("done");
+  assert.strictEqual(await patient, "patient");
+  assert.ok(!timers.includes(waitTimer), "The waiting limit is replaced when the call starts");
+  assert.strictEqual(await enqueue(() => "last", 0), "last", "The queue is free again");
 })();
 
 /* ------------------------ keyboard reader ------------------------ */
@@ -208,7 +275,7 @@ const HOST_HELPERS = [
   // auto-centre, double bubble, size +/- and TextShapeR live size
   "_rectFrom", "_unionRect", "_usableBubble", "_bubbleCandidateValid", "_probePoints", "_probeMargin", "_pickBubble",
   "_splitBubble", "_autoCenterEnabled", "_doubleBubbleEntriesValid", "_transformScale", "_displayedTextSize",
-  "_scaleTextShape", "_textResizePlan", "_appliedSizeRatio", "_keepLiveTextSize",
+  "_scaleTextShape", "_textResizePlan", "_appliedSizeRatio", "_keepLiveTextSize", "_alignPlacementMap",
 ];
 const host = new Function(hostSource + "\nreturn {" + HOST_HELPERS.join(", ") + "};")();
 
@@ -297,6 +364,16 @@ assert.deepStrictEqual(port._probePoints(textBox, 7), host._probePoints(textBox,
   [boundsOf(0, 0, 600, 600), [boundsOf(20, 20, 120, 80), boundsOf(300, 300, 380, 380), boundsOf(450, 30, 560, 90)]],
   [boundsOf(0, 0, 300, 300), [boundsOf(100, 100, 200, 200), boundsOf(100, 100, 200, 200)]],
 ].forEach(([merged, boxes]) => assert.deepStrictEqual(port._splitBubble(merged, boxes), host._splitBubble(merged, boxes)));
+// Align placements in a double bubble: the chamber's optical centre is kept
+// only inside its rectangle; broken entries are dropped
+[
+  [{ id: 4, rect: { left: 10, top: 20, right: 110, bottom: 90, xMid: 40, yMid: 60 } }, { id: 5, rect: { left: 0, top: 0, right: 50, bottom: 50, xMid: 400, yMid: 9 } }],
+  [{ id: null, rect: { left: 0, top: 0, right: 5, bottom: 5 } }, { id: 6, rect: { left: 9, top: 0, right: 5, bottom: 5 } }, { id: 7 }, null],
+  null,
+].forEach((list) => assert.deepStrictEqual(port._alignPlacementMap(list), host._alignPlacementMap(list)));
+assert.strictEqual(host._alignPlacementMap([{ id: 4, rect: { left: 10, top: 20, right: 110, bottom: 90, xMid: 40, yMid: 60 } }]).id4.xMid, 40);
+assert.strictEqual(host._alignPlacementMap([{ id: 5, rect: { left: 0, top: 0, right: 50, bottom: 50, xMid: 400, yMid: 9 } }]).id5.xMid, 25);
+assert.ok(/^async function alignCapture\(/m.test(fs.readFileSync(path.join(root, "uxp-src/host/photoshop.js"), "utf8")));
 [{ autoCenter: "single" }, { autoCenter: "multi" }, { autoCenter: "off" }, { autoCenter: "constructor" }, null].forEach((data) => {
   assert.strictEqual(port._autoCenterEnabled(data), host._autoCenterEnabled(data));
 });

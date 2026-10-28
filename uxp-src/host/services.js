@@ -76,6 +76,19 @@ async function showSaveDialog(options = {}) {
   return entry ? entry.nativePath : "";
 }
 
+/* ======================= practice page ====================== */
+
+// The What's new tour's practice page, copied to the temporary folder so a
+// Save in Photoshop never targets the plugin's own (read-only) file
+async function practicePagePath() {
+  const plugin = await lfs.getPluginFolder();
+  const assets = await plugin.getEntry("assets");
+  const source = await assets.getEntry("typer-practice-page.png");
+  const temporary = await lfs.getTemporaryFolder();
+  await source.copyTo(temporary, { overwrite: true });
+  return (await temporary.getEntry(source.name)).nativePath;
+}
+
 /* ======================== user files ======================== */
 
 async function readUserFile(path, encoding) {
@@ -407,6 +420,7 @@ module.exports = {
     installFonts: (fontFiles) => installFonts(fontFiles, buildWindowsRegistrationScript),
     installUpdatePackage,
     pluginVersion: () => readManifestVersion(),
+    practicePagePath,
   },
   _internals: { buildFontIndex, readFontNames, validatePackage, psSingleQuote },
 };

@@ -18,6 +18,7 @@ const ModeToggle = ({ mode, compact }) => {
     <button
       type="button"
       className="footer-mode"
+      data-tour={"mode-" + mode.id}
       aria-pressed={!!on}
       aria-label={label}
       title={compact ? label + " (" + state + ") – " + hint : hint}
@@ -196,7 +197,7 @@ const AppFooter = React.memo(function AppFooter() {
           <FiHelpCircle size={14} />
         </button>
         )}
-        <button type="button" className="footer-icon-button" title={locale.footerSettings} aria-label={locale.footerSettings} onClick={openSettings}>
+        <button type="button" className="footer-icon-button" data-tour="settings" title={locale.footerSettings} aria-label={locale.footerSettings} onClick={openSettings}>
           <FiSettings size={14} />
         </button>
         {uiVisible.footerRepo !== false && (

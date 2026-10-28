@@ -15,6 +15,7 @@ import {
     FiPlayCircle,
     FiSave,
     FiSearch,
+    FiStar,
     FiVideo,
     FiX,
 } from 'react-icons/fi';
@@ -105,6 +106,7 @@ const HelpModal = React.memo(function HelpModal() {
 
     const close = () => context.dispatch({type: 'setModal'});
     const openWalkthrough = () => context.dispatch({type: 'setModal', modal: 'walkthrough', data: {source: 'help'}});
+    const openWhatsNew = () => context.dispatch({type: 'setModal', modal: 'whatsNew', data: {source: 'help'}});
 
     const steps = [
         {
@@ -372,6 +374,9 @@ const HelpModal = React.memo(function HelpModal() {
                     <div className="help-actions">
                         <button type="button" className="topcoat-button--large--cta help-action" onClick={openWalkthrough}>
                             <FiPlayCircle size={15} /> {locale.helpOpenWalkthrough || 'Interactive walkthrough'}
+                        </button>
+                        <button type="button" className="topcoat-button--large help-action" onClick={openWhatsNew}>
+                            <FiStar size={15} /> {locale.helpOpenWhatsNew || "What's new in 3.0"}
                         </button>
                         <button type="button" className="topcoat-button--large help-action" onClick={() => openUrl(VIDEO_URL)}>
                             <FiVideo size={15} /> {videoIsLegacy
