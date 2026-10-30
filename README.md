@@ -168,7 +168,7 @@ UXP needs Photoshop 2025 (UXP 8.0): it is the first version whose plugin panels 
 ### Photoshop 2025 and later: the new TypeR (UXP)
 
 1. [Download the latest `TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx).
-2. Double-click it: Creative Cloud installs the plugin. Without Creative Cloud's file association, run the installer of the [release archive](https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip) (`install_win.cmd` or `./install_mac.sh`, see below) and choose **1) New TypeR (UXP)**, or run `install_uxp_win.cmd` / `./install_uxp_mac.sh`, which install it without asking. The archive contains the plugin, so no download is needed.
+2. Double-click it: Creative Cloud installs the plugin. Without Creative Cloud, or without its file association, run the installer of the [release archive](https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip) (`install_win.cmd` or `./install_mac.sh`, see below) and choose **1) New TypeR (UXP)**, or run `install_uxp_win.cmd` / `./install_uxp_mac.sh`, which install it without asking. The archive contains the plugin, so no download is needed.
 3. In Photoshop, select **Plugins → TypeR → TypeR**.
 
 On its first start the plugin copies the styles, profiles and settings of an installed CEP TypeR (the CEP files are left untouched). An updated Legacy panel also offers this switch by itself when Photoshop can run the new TypeR. Its own data lives in `~/Library/Application Support/TypeR/UXP` on macOS and `%APPDATA%\TypeR\UXP` on Windows, outside Photoshop's version-specific plugin folders, so a Photoshop upgrade keeps it. Updates are offered and installed from the panel like the CEP version's; restart Photoshop afterwards.
@@ -181,7 +181,7 @@ Global shortcuts (such as Cmd+Ctrl for Paste) need to read the keyboard while th
 | --- | --- |
 | Adobe Photoshop | CC 2015 / version 16.0 or newer (CEP extension); 2025 / version 26.0 or newer (UXP plugin, tested with Photoshop 2026) |
 | Operating system | Windows or macOS |
-| Photoshop build | Standard desktop installation with CEP extension support, or with Creative Cloud for the UXP plugin |
+| Photoshop build | Standard desktop installation with CEP extension support, or Photoshop 2025 or later for the UXP plugin (Creative Cloud is optional) |
 
 Photoshop 16.0+ and CEP 6+ are declared by the extension manifest. TypeR 3.0 contains two builds of the same application: Photoshop 2020+ with Chromium 74+ loads the modern build; older or unknown runtimes load the compatibility build automatically. The project does not yet maintain a verified OS/version matrix, so compatibility is not guaranteed for every Photoshop and operating-system combination. Portable or heavily modified Photoshop builds may not load CEP panels correctly.
 

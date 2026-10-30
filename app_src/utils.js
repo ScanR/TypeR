@@ -182,20 +182,41 @@ const trackHostAction = (callback, timeout = 15000, touchesSelection = false) =>
   };
 };
 
+// Loads the updated host script into the running ExtendScript engine, which a
+// panel reload alone leaves as it was
+const reloadHostScript = () => new Promise((resolve) => {
+  csInterface.evalScript(
+    "try{$.evalFile(new File(" + getExtendScriptString(path + "/app/host.jsx") + "));\"ok\"}catch(e){\"error\"}",
+    (result) => resolve(result === "ok")
+  );
+});
+
 const downloadAndInstallUpdate = async (downloadUrl, onProgress, onComplete, onError, options = {}) => {
   try {
     onProgress && onProgress(locale.updateDownloading);
     const zipBytes = await fetchUpdateZip(downloadUrl);
     onProgress && onProgress(locale.updateInstalling);
     if (uxpHost) {
-      // The plugin host checks the package, then hands it to Creative
-      // Cloud's plugin installer, which replaces and reloads the plugin
+      // The plugin host checks the package and installs it. Through Creative
+      // Cloud's plugin installer, Photoshop replaces this panel with the new
+      // version and this call never returns: it returns when a restart is needed
+      const testConfig = getUpdateTestConfig();
+      // The next version starts on its own: it must not update itself again
+      if (testConfig) clearUpdateTestConfig();
       await uxpHost.flushStorage();
-      await uxpHost.request("installUpdatePackage", uint8ToBase64(zipBytes), options.expectedVersion);
+      await uxpHost.request("installUpdatePackage", uint8ToBase64(zipBytes), options.expectedVersion, {
+        forceManual: !!(testConfig && testConfig.forceManualPluginInstall),
+      });
     } else {
-      await installUpdateInPlace(zipBytes, path, null, options.expectedVersion);
+      const { manifestChanged } = await installUpdateInPlace(zipBytes, path, null, options.expectedVersion);
+      // Photoshop reads the manifest at its start; everything else can reload now
+      if (!manifestChanged && (await flushStorageForReload()) && (await reloadHostScript())) {
+        onComplete && onComplete({ reloading: true });
+        window.location.reload();
+        return;
+      }
     }
-    onComplete && onComplete(false);
+    onComplete && onComplete({ reloading: false });
   } catch (error) {
     console.error('Update failed:', error);
     onError && onError(error.message || locale.updateFailed);

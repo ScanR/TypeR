@@ -9,6 +9,9 @@ const files = require("./files");
 const { systemCall } = require("./jsx");
 const { matchFontRef, normalize } = require("../../app_src/fontFileExport");
 const { buildWindowsRegistrationScript } = require("../../app_src/fontInstaller");
+const { installPluginFiles, pluginFolderName, stalePluginFolders } = require("../../app_src/uxpManualInstall");
+const { legacyManifestWithName } = require("../../app_src/legacyPanelName");
+const updateScript = require("../../app_src/uxpUpdateScript");
 
 const PLUGIN_ID = "com.scanr.typer";
 
@@ -78,12 +81,16 @@ async function showSaveDialog(options = {}) {
 
 /* ======================= practice page ====================== */
 
-// The What's new tour's practice page, copied to the temporary folder so a
-// Save in Photoshop never targets the plugin's own (read-only) file
-async function practicePagePath() {
+// A guided tour's practice page (the What's new tour's, or the basics
+// walkthrough's), copied to the temporary folder so a Save in Photoshop never
+// targets the plugin's own (read-only) file
+const PRACTICE_PAGES = ["typer-practice-page.png", "typer-basics-page.png"];
+
+async function practicePagePath(name) {
+  const page = PRACTICE_PAGES.indexOf(name) >= 0 ? name : PRACTICE_PAGES[0];
   const plugin = await lfs.getPluginFolder();
   const assets = await plugin.getEntry("assets");
-  const source = await assets.getEntry("typer-practice-page.png");
+  const source = await assets.getEntry(page);
   const temporary = await lfs.getTemporaryFolder();
   await source.copyTo(temporary, { overwrite: true });
   return (await temporary.getEntry(source.name)).nativePath;
@@ -363,49 +370,143 @@ function validatePackage(bytes, expectedVersion, pluginId) {
   return manifest;
 }
 
-async function installUpdatePackage(base64, expectedVersion) {
+async function installUpdatePackage(base64, expectedVersion, options = {}) {
   const bytes = base64ToBytes(base64);
   const manifest = validatePackage(bytes, expectedVersion, PLUGIN_ID);
-  const temporary = await lfs.getTemporaryFolder();
-  const packagePath = files.joinPath(temporary.nativePath, "TypeR-" + manifest.version + ".ccx");
-  await files.writeBinary(packagePath, bytes);
-  // Creative Cloud's plugin installer adds the new version, which Photoshop
-  // loads at its next start; without it, the package opens in Creative Cloud
   const installer = upiaPath();
-  if (await files.exists(installer) && (await runInstaller(installer, packagePath)) === 0) {
-    return { ok: true, method: "upia" };
+  // Through Creative Cloud's plugin installer, Photoshop swaps the plugin at
+  // once and this call never returns (app_src/uxpUpdateScript.js). It returns
+  // when the new version waits for Photoshop's next start. Without the
+  // installer, or when it fails, the package is installed by hand, which needs
+  // that restart too.
+  const hasInstaller = !options.forceManual && await files.exists(installer);
+  let packagePath = null;
+  if (hasInstaller) {
+    try {
+      packagePath = await prepareUpdateFolder(bytes);
+      if (await runUpdateScript(installer, manifest)) return { ok: true, method: "upia" };
+    } catch (error) {
+      console.error("TypeR: plugin installer", error);
+    }
+  }
+  try {
+    await installPluginManually(bytes);
+    return { ok: true, method: "manual" };
+  } catch (error) {
+    console.error("TypeR: manual plugin installation", error);
+    if (!packagePath) throw error;
   }
   await uxp.shell.openPath(packagePath);
   return { ok: true, method: "open" };
 }
 
-// The installer takes several seconds: it runs in the background (app.system
-// would hold Photoshop's main thread until it returns) and reports its exit
-// code in a file, polled here
-async function runInstaller(installer, packagePath) {
-  const marker = packagePath + ".status";
-  await files.remove(marker);
+async function updateFolder() {
+  await files.resolveFolders();
+  return files.joinPath(files.getStorageRoot(), updateScript.UPDATE_FOLDER);
+}
+
+// The update folder is outside the plugin's, which the removal deletes. The
+// files of the by-hand installation are ready in it for when the plugin is gone
+// and the installer fails. They are prepared from the current registry, so an
+// unreadable one stops here rather than later.
+async function prepareUpdateFolder(bytes) {
+  const folder = await updateFolder();
+  await files.removeTree(folder);
+  const packagePath = files.joinPath(folder, updateScript.UPDATE_PACKAGE);
+  await files.writeBinary(packagePath, bytes);
+  await writePluginFiles(bytes, files.joinPath(folder, updateScript.UPDATE_FALLBACK), (text) => (
+    files.writeText(files.joinPath(folder, updateScript.UPDATE_FALLBACK, updateScript.UPDATE_REGISTRY), text)
+  ));
+  return packagePath;
+}
+
+// The script runs in the background: app.system would hold Photoshop's main
+// thread until it returns. Returns true when the new version waits for
+// Photoshop's next start, false when it was not installed.
+async function runUpdateScript(installer, manifest) {
+  const folder = await updateFolder();
+  const { pluginsFolder, registry } = await files.getPluginInstallPaths();
+  const options = { upia: installer, pluginName: manifest.name, pluginFolder: pluginFolderName(manifest), pluginsFolder, registry };
   if (isWindows()) {
-    const script = packagePath + ".cmd";
-    await files.writeText(script, "@echo off\r\n\"" + installer + "\" --install \"" + packagePath + "\"\r\necho %ERRORLEVEL%> \"" + marker + "\"\r\n");
-    await systemCall("start \"\" /B cmd /c \"" + script + "\"");
+    await files.writeText(files.joinPath(folder, updateScript.UPDATE_SCRIPT_WINDOWS), updateScript.buildWindowsUpdateScript(options));
+    await systemCall(updateScript.windowsUpdateCommand());
   } else {
-    const quote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
-    await systemCall("( " + quote(installer) + " --install " + quote(packagePath) + " >/dev/null 2>&1; echo $? > " + quote(marker) + " ) >/dev/null 2>&1 &");
+    const script = files.joinPath(folder, updateScript.UPDATE_SCRIPT_MAC);
+    await files.writeText(script, updateScript.buildMacUpdateScript(options));
+    await systemCall(updateScript.macUpdateCommand(script));
   }
   const started = Date.now();
   while (Date.now() - started < 120000) {
     await new Promise((resolve) => setTimeout(resolve, 500));
+    if (Date.now() - started > 20000 && !(await files.exists(files.joinPath(folder, updateScript.UPDATE_STARTED)))) return false;
+    let status = "";
     try {
-      const status = (await files.readText(marker)).trim();
-      if (status !== "") return parseInt(status, 10);
+      status = (await files.readText(files.joinPath(folder, updateScript.UPDATE_STATUS))).trim();
     } catch (error) {}
+    if (status === updateScript.UPDATE_STATUS_RESTART) return true;
+    if (status === updateScript.UPDATE_STATUS_FAILED) return false;
   }
-  return -1;
+  return false;
+}
+
+// Left by the update that installed this version
+async function removeUpdateFolder() {
+  await files.removeTree(await updateFolder());
+}
+
+async function writePluginFiles(bytes, pluginsFolder, writeRegistry) {
+  const { registry } = await files.getPluginInstallPaths();
+  await installPluginFiles(bytes, {
+    pluginsFolder,
+    join: files.joinPath,
+    removeTree: files.removeTree,
+    rename: files.rename,
+    writeFile: files.writeBinary,
+    readRegistry: async () => ((await files.exists(registry)) ? files.readText(registry) : ""),
+    writeRegistry,
+  });
+}
+
+async function installPluginManually(bytes) {
+  const { pluginsFolder, registry } = await files.getPluginInstallPaths();
+  await writePluginFiles(bytes, pluginsFolder, (text) => files.writeTextAtomic(registry, text));
+}
+
+// After an update installed by hand, the previous version's folder stays until
+// Photoshop runs the new one. Creative Cloud's installer cleans up after itself.
+async function removeStalePluginFolders(options = {}) {
+  if (!options.forceManual && await files.exists(upiaPath())) return;
+  const { pluginsFolder, registry } = await files.getPluginInstallPaths();
+  if (!(await files.exists(registry))) return;
+  const own = files.basename((await lfs.getPluginFolder()).nativePath);
+  const names = (await files.listFolder(pluginsFolder)).map((child) => child.name);
+  for (const name of stalePluginFolders(names, await files.readText(registry), own)) {
+    await files.removeTree(files.joinPath(pluginsFolder, name));
+  }
+}
+
+// This plugin is installed: a Legacy (CEP) panel still there is called
+// "TypeR (old)" from Photoshop's next start (app_src/legacyPanelName.js). The
+// shared /Library folder usually refuses it, which only leaves the name as it is.
+async function renameLegacyPanel() {
+  for (const root of await files.getCepStorageRoots()) {
+    const manifest = files.joinPath(root, "CSXS", "manifest.xml");
+    if (!(await files.exists(manifest))) continue;
+    try {
+      const text = await files.readText(manifest);
+      const next = legacyManifestWithName(text, true);
+      if (next !== text) await files.writeTextAtomic(manifest, next);
+    } catch (error) {
+      console.warn("TypeR: could not rename the Legacy panel", manifest, error);
+    }
+  }
 }
 
 module.exports = {
   pluginVersion: () => manifestVersion || "",
+  removeStalePluginFolders,
+  removeUpdateFolder,
+  renameLegacyPanel,
   bytesToBase64,
   base64ToBytes,
   requests: {

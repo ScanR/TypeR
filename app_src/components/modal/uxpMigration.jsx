@@ -11,7 +11,7 @@ import {
 const REASONS = {
   download: () => locale.uxpMigrationReason_download || "the download failed",
   package: () => locale.uxpMigrationReason_package || "the downloaded file is not a TypeR package",
-  installer: () => locale.uxpMigrationReason_installer || "Creative Cloud's plugin installer failed",
+  installer: () => locale.uxpMigrationReason_installer || "the plugin could not be installed",
   node: () => locale.uxpMigrationReason_node || "this panel cannot run the installer",
 };
 
@@ -19,11 +19,11 @@ const REASONS = {
 const BENEFITS = [
   { Icon: FiZap, text: () => locale.uxpMigrationBenefitSpeed || "Faster and more responsive" },
   { Icon: FiCpu, text: () => locale.uxpMigrationBenefitSilicon || "Native on Apple Silicon Macs" },
-  { Icon: FiDownloadCloud, text: () => locale.uxpMigrationBenefitUpdates || "Updated through Creative Cloud" },
+  { Icon: FiDownloadCloud, text: () => locale.uxpMigrationBenefitUpdates || "Installs its own updates" },
 ];
 
-// Legacy panel only: installs the new TypeR (the UXP plugin) through
-// Creative Cloud's plugin installer (app_src/uxpMigration.js)
+// Legacy panel only: installs the new TypeR, the UXP plugin, or says where it
+// is once installed (app_src/uxpMigration.js)
 const UxpMigrationModal = React.memo(function UxpMigrationModal() {
   const context = useContext((state) => ({ modalData: state.modalData }));
   const forced = !!(context.state.modalData && context.state.modalData.forced);
@@ -31,6 +31,7 @@ const UxpMigrationModal = React.memo(function UxpMigrationModal() {
   const [phase, setPhase] = React.useState("offer");
   const [status, setStatus] = React.useState("");
   const [reason, setReason] = React.useState("");
+  const [method, setMethod] = React.useState("");
 
   const close = () => {
     if (phase === "working") return;
@@ -53,10 +54,10 @@ const UxpMigrationModal = React.memo(function UxpMigrationModal() {
     try {
       const testConfig = getUpdateTestConfig();
       const bytes = await downloadUxpPackage(testConfig && testConfig.forceUxpMigration ? testConfig : null);
-      setStatus(locale.uxpMigrationInstalling || "Installing through Creative Cloud...");
+      setStatus(locale.uxpMigrationInstalling || "Installing the new TypeR...");
       // The new TypeR imports these styles and settings on its first start
       flushStorageWrite(true);
-      await runUxpInstaller(getNode(), bytes);
+      setMethod(await runUxpInstaller(getNode(), bytes, { forceManual: !!(testConfig && testConfig.forceManualPluginInstall) }));
       writeToStorage({ uxpMigration: { installedAt: Date.now() } });
       if (forced) clearUpdateTestConfig();
       setPhase("done");
@@ -94,7 +95,11 @@ const UxpMigrationModal = React.memo(function UxpMigrationModal() {
         <div className="app-modal-body">
           <div className="app-modal-body-inner article-format uxp-migration">
             <FiCheckCircle size={40} className="uxp-migration-icon m-done" />
-            <p>{locale.uxpMigrationDoneText || "Open it from the Plugins > TypeR menu. Your styles, profiles and settings are copied over the first time it starts."}</p>
+            <p>
+              {method === "manual"
+                ? (locale.uxpMigrationDoneRestart || "Restart Photoshop, then open it from the Plugins > TypeR menu. Your styles, profiles and settings are copied over the first time it starts.")
+                : (locale.uxpMigrationDoneText || "Open it from the Plugins > TypeR menu. Your styles, profiles and settings are copied over the first time it starts.")}
+            </p>
             <p className="uxp-migration-hint">{locale.uxpMigrationDoneHint || "Use one version at a time: changes made in the Legacy version from now on are not copied to the new TypeR."}</p>
           </div>
         </div>

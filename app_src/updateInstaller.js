@@ -1,5 +1,6 @@
 import { unzip } from 'fflate';
 import { validateReleasePackage } from './releasePackage';
+import { manifestNeedsRestart } from './updateLogic';
 import { makeBuffer, makeDirectories, removeTree } from './nodeCompat';
 
 const unzipAsync = (bytes) => new Promise((resolve, reject) => {
@@ -15,7 +16,7 @@ const unzipAsync = (bytes) => new Promise((resolve, reject) => {
   });
 });
 
-// Keep content-addressed chunks from the running version until Photoshop reloads.
+// Keep content-addressed chunks from the running version until the panel reloads.
 // Every replacement is journaled before writing; interrupted installs can be rolled back.
 export const installPackageFiles = (files, target, node) => {
   const { fs, path, Buffer: BufferClass } = node;
@@ -89,7 +90,11 @@ export const installUpdateInPlace = async (zipBytes, targetRoot, onProgress, exp
   if (typeof requireNode !== 'function' || !targetRoot) throw new Error('Node filesystem unavailable; use the manual installer');
   const fs = requireNode('fs'), path = requireNode('path'), crypto = requireNode('crypto'), BufferClass = requireNode('buffer').Buffer;
   const files = validateReleasePackage(await unzipAsync(zipBytes), bytes => crypto.createHash('sha256').update(makeBuffer(BufferClass, bytes)).digest('hex'), bytes => makeBuffer(BufferClass, bytes).toString('utf8'), expectedVersion);
-  return installPackageFiles(files, path.resolve(targetRoot), { fs, path, Buffer: BufferClass });
+  const root = path.resolve(targetRoot);
+  const manifestPath = path.join(root, 'CSXS', 'manifest.xml');
+  const installedManifest = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, 'utf8') : null;
+  const count = installPackageFiles(files, root, { fs, path, Buffer: BufferClass });
+  return { count, manifestChanged: manifestNeedsRestart(installedManifest, makeBuffer(BufferClass, files['CSXS/manifest.xml']).toString('utf8')) };
 };
 
 export const uint8ToBase64 = bytes => {

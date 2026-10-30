@@ -46,11 +46,11 @@ $msg_choice_uxp = "  1) New TypeR (UXP), recommended (faster, built on Adobe's n
 $msg_choice_legacy = "  2) Legacy, CEP (works with more Photoshop versions; older and slower, but more thoroughly tested)`n     Photoshop CC 2015 (version 16.0) or later"
 $msg_choice_prompt = "Your choice [1/2] (Enter = 1)"
 $msg_both     = "The other version of TypeR is installed too: do not open both panels at the same time (each shortcut would run twice)."
-$msg_uxp_need_cc = "Creative Cloud is required to install the new TypeR (UXP): install it, then run this script again."
 $msg_uxp_download = "Downloading the new TypeR (UXP)..."
 $msg_uxp_installing = "Installing the new TypeR (UXP)..."
 $msg_uxp_complete = "TypeR is installed: in Photoshop, open it from the menu [Plugins] > [TypeR]. If TypeR was already installed, restart Photoshop."
-$msg_uxp_failed = "The installation failed. Double-click TypeR-UXP.ccx to install it through Creative Cloud."
+$msg_uxp_complete_manual = "TypeR is installed: restart Photoshop if it is open, then open TypeR from the menu [Plugins] > [TypeR]."
+$msg_uxp_failed = "The installation failed. Close Photoshop and run this script again."
 
 if ($Lang -eq "fr") {
     $msg_install  = "L'extension Photoshop TypeR v$ExtVersion sera installée."
@@ -66,11 +66,11 @@ if ($Lang -eq "fr") {
     $msg_choice_legacy = "  2) Legacy, CEP (compatible avec plus de versions de Photoshop ; plus ancienne et plus lente, mais mieux éprouvée)`n     Photoshop CC 2015 (version 16.0) ou plus récent"
     $msg_choice_prompt = "Votre choix [1/2] (Entrée = 1)"
     $msg_both     = "L'autre version de TypeR est aussi installée : n'ouvrez pas les deux panneaux en même temps (chaque raccourci s'exécuterait deux fois)."
-    $msg_uxp_need_cc = "Creative Cloud est nécessaire pour installer le nouveau TypeR (UXP) : installez-le, puis relancez ce script."
     $msg_uxp_download = "Téléchargement du nouveau TypeR (UXP)..."
     $msg_uxp_installing = "Installation du nouveau TypeR (UXP)..."
     $msg_uxp_complete = "TypeR est installé : dans Photoshop, ouvrez-le depuis le menu [Plug-ins] > [TypeR]. Si TypeR était déjà installé, redémarrez Photoshop."
-    $msg_uxp_failed = "L'installation a échoué. Double-cliquez sur TypeR-UXP.ccx pour l'installer avec Creative Cloud."
+    $msg_uxp_complete_manual = "TypeR est installé : redémarrez Photoshop s'il est ouvert, puis ouvrez TypeR depuis le menu [Plug-ins] > [TypeR]."
+    $msg_uxp_failed = "L'installation a échoué. Fermez Photoshop et relancez ce script."
 }
 elseif ($Lang -eq "es") {
     $msg_install  = "La extensión de Photoshop TypeR v$ExtVersion se instalará."
@@ -86,11 +86,11 @@ elseif ($Lang -eq "es") {
     $msg_choice_legacy = "  2) Legacy, CEP (compatible con más versiones de Photoshop; más antigua y lenta, pero más probada)`n     Photoshop CC 2015 (versión 16.0) o posterior"
     $msg_choice_prompt = "Tu elección [1/2] (Enter = 1)"
     $msg_both     = "La otra versión de TypeR también está instalada: no abras ambos paneles a la vez (cada atajo se ejecutaría dos veces)."
-    $msg_uxp_need_cc = "Se necesita Creative Cloud para instalar el nuevo TypeR (UXP): instálalo y vuelve a ejecutar este script."
     $msg_uxp_download = "Descargando el nuevo TypeR (UXP)..."
     $msg_uxp_installing = "Instalando el nuevo TypeR (UXP)..."
     $msg_uxp_complete = "TypeR está instalado: en Photoshop, ábrelo desde el menú [Plugins] > [TypeR]. Si TypeR ya estaba instalado, reinicia Photoshop."
-    $msg_uxp_failed = "La instalación falló. Haz doble clic en TypeR-UXP.ccx para instalarlo con Creative Cloud."
+    $msg_uxp_complete_manual = "TypeR está instalado: reinicia Photoshop si está abierto y abre TypeR desde el menú [Plugins] > [TypeR]."
+    $msg_uxp_failed = "La instalación falló. Cierra Photoshop y vuelve a ejecutar este script."
 }
 elseif ($Lang -eq "pt") {
     $msg_install  = "A extensão do Photoshop TypeR v$ExtVersion será instalada."
@@ -106,11 +106,11 @@ elseif ($Lang -eq "pt") {
     $msg_choice_legacy = "  2) Legacy, CEP (compatível com mais versões do Photoshop; mais antiga e lenta, mas mais testada)`n     Photoshop CC 2015 (versão 16.0) ou mais recente"
     $msg_choice_prompt = "Sua escolha [1/2] (Enter = 1)"
     $msg_both     = "A outra versão do TypeR também está instalada: não abra os dois painéis ao mesmo tempo (cada atalho seria executado duas vezes)."
-    $msg_uxp_need_cc = "O Creative Cloud é necessário para instalar o novo TypeR (UXP): instale-o e execute este script novamente."
     $msg_uxp_download = "Baixando o novo TypeR (UXP)..."
     $msg_uxp_installing = "Instalando o novo TypeR (UXP)..."
     $msg_uxp_complete = "O TypeR está instalado: no Photoshop, abra-o pelo menu [Plug-ins] > [TypeR]. Se o TypeR já estava instalado, reinicie o Photoshop."
-    $msg_uxp_failed = "A instalação falhou. Clique duas vezes em TypeR-UXP.ccx para instalá-lo com o Creative Cloud."
+    $msg_uxp_complete_manual = "O TypeR está instalado: reinicie o Photoshop se estiver aberto e abra o TypeR pelo menu [Plug-ins] > [TypeR]."
+    $msg_uxp_failed = "A instalação falhou. Feche o Photoshop e execute este script novamente."
 }
 
 if ($Interactive) { Clear-Host }
@@ -148,18 +148,109 @@ if (-not $Edition) {
     }
 }
 $CepTarget = if ($env:TYPER_INSTALL_TARGET) { $env:TYPER_INSTALL_TARGET } else { Join-Path $env:APPDATA 'Adobe\CEP\extensions\typertools' }
-$UxpPlugins = Join-Path $env:APPDATA 'Adobe\UXP\Plugins\External'
+$UxpRoot = if ($env:TYPER_UXP_ROOT) { $env:TYPER_UXP_ROOT } else { Join-Path $env:APPDATA 'Adobe\UXP' }
+$UxpPlugins = Join-Path $UxpRoot 'Plugins\External'
+$UxpRegistry = Join-Path $UxpRoot 'PluginsInfo\v1\PS.json'
+
+# PS.json with the plugin added, other plugins kept; an unreadable PS.json is
+# an error. Written by hand: ConvertTo-Json of Windows PowerShell 5.1 can turn
+# an array property into {"value":[...],"Count":n}.
+function Get-TypeRRegistryJson($Manifest, [string]$Folder, [string]$RegistryPath) {
+    $Text = if (Test-Path -LiteralPath $RegistryPath -PathType Leaf) { [IO.File]::ReadAllText($RegistryPath) } else { '' }
+    $Registry = if ($Text.Trim()) { $Text | ConvertFrom-Json } else { $null }
+    if ($Text.Trim() -and ($null -eq $Registry -or $Registry -isnot [PSCustomObject])) { throw 'Invalid PS.json' }
+    $Members = @()
+    $Plugins = @()
+    if ($Registry) {
+        foreach ($Property in $Registry.PSObject.Properties) {
+            if ($Property.Name -eq 'plugins') {
+                if ($null -ne $Property.Value -and $Property.Value -isnot [array]) { throw 'Invalid PS.json' }
+                foreach ($Plugin in @($Property.Value)) {
+                    if ($null -ne $Plugin -and $Plugin.pluginId -ne $Manifest.id) { $Plugins += (ConvertTo-Json $Plugin -Depth 20 -Compress) }
+                }
+            } else {
+                $Members += ((ConvertTo-Json ([string]$Property.Name) -Compress) + ':' + (ConvertTo-Json $Property.Value -Depth 20 -Compress))
+            }
+        }
+    }
+    $Entry = [ordered]@{
+        hostMinVersion = [string]$Manifest.host.minVersion
+        name = [string]$Manifest.name
+        path = '$localPlugins/External/' + $Folder
+        pluginId = [string]$Manifest.id
+        status = 'enabled'
+        type = 'uxp'
+        versionString = [string]$Manifest.version
+    }
+    $Plugins += (ConvertTo-Json ([PSCustomObject]$Entry) -Compress)
+    $Members += ('"plugins":[' + ($Plugins -join ',') + ']')
+    return '{' + ($Members -join ',') + '}'
+}
+
+# Without Creative Cloud's plugin installer, or when it fails: the package is
+# extracted where it would have put it and registered in PS.json, which
+# Photoshop reads at its start
+function Install-TypeRPluginManually([string]$PackagePath) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $Archive = [IO.Compression.ZipFile]::OpenRead($PackagePath)
+    try {
+        $Entry = $Archive.GetEntry('manifest.json')
+        if (-not $Entry) { throw 'Not a TypeR package' }
+        $Reader = New-Object IO.StreamReader($Entry.Open(), [Text.Encoding]::UTF8)
+        try { $Manifest = $Reader.ReadToEnd() | ConvertFrom-Json } finally { $Reader.Dispose() }
+    } finally {
+        $Archive.Dispose()
+    }
+    if ($Manifest.id -ne 'com.scanr.typer' -or [string]$Manifest.version -notmatch '^[0-9A-Za-z][0-9A-Za-z.+-]*$') { throw 'Not a TypeR package' }
+    $Folder = $Manifest.id + '_' + $Manifest.version
+    $RegistryJson = Get-TypeRRegistryJson $Manifest $Folder $UxpRegistry
+    $Target = Join-Path $UxpPlugins $Folder
+    $Staging = $Target + '.installing'
+    if (Test-Path -LiteralPath $Staging) { Remove-Item -LiteralPath $Staging -Recurse -Force }
+    New-Item -ItemType Directory -Path $UxpPlugins -Force | Out-Null
+    try {
+        [IO.Compression.ZipFile]::ExtractToDirectory($PackagePath, $Staging)
+        if (Test-Path -LiteralPath $Target) { Remove-Item -LiteralPath $Target -Recurse -Force }
+        Move-Item -LiteralPath $Staging -Destination $Target
+    } finally {
+        if (Test-Path -LiteralPath $Staging) { Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+    New-Item -ItemType Directory -Path (Split-Path -Parent $UxpRegistry) -Force | Out-Null
+    # Without a byte order mark, and renamed over the old file so that it is
+    # never left half written
+    $Temporary = $UxpRegistry + '.tmp'
+    [IO.File]::WriteAllText($Temporary, $RegistryJson, (New-Object Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $Temporary -Destination $UxpRegistry -Force
+}
+
+# A Legacy panel still installed is called "TypeR (old)" in Photoshop from its
+# next start (app_src/legacyPanelName.js). Never fails the installation.
+function Rename-TypeRLegacyPanel {
+    $File = Join-Path $CepTarget 'CSXS\manifest.xml'
+    if (-not (Test-Path -LiteralPath $File -PathType Leaf)) { return }
+    try {
+        $Text = [IO.File]::ReadAllText($File)
+        $Next = $Text.Replace('<Menu>TypeR</Menu>', '<Menu>TypeR (old)</Menu>')
+        if ($Next -cne $Text) {
+            $Temporary = $File + '.tmp'
+            [IO.File]::WriteAllText($Temporary, $Next, (New-Object Text.UTF8Encoding($false)))
+            Move-Item -LiteralPath $Temporary -Destination $File -Force
+        }
+    } catch {
+        Write-Warning $_.Exception.Message
+    }
+}
 
 # --- 5. Version UXP : le paquet .ccx (à côté de ce script, sinon la dernière
-# version publiée), installé par l'installeur de plugins de Creative Cloud ---
+# version publiée), installé par l'installeur de plugins de Creative Cloud,
+# ou à la main sans lui ---
 if ($Edition -eq 'uxp') {
     $CommonFiles = if ($env:CommonProgramW6432) { $env:CommonProgramW6432 } else { $env:CommonProgramFiles }
-    $Upia = Join-Path $CommonFiles 'Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe'
+    $Upia = if ($CommonFiles) { Join-Path $CommonFiles 'Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe' } else { $null }
     $Source = if ($Package) { [IO.Path]::GetFullPath($Package) } else { Join-Path $PSScriptRoot 'TypeR-UXP.ccx' }
     $Work = Join-Path ([IO.Path]::GetTempPath()) ('TypeR-UXP-' + [Guid]::NewGuid().ToString('N') + '.ccx')
-    $Installed = $false
+    $CompleteMessage = $null
     try {
-        if (-not (Test-Path -LiteralPath $Upia -PathType Leaf)) { throw $msg_uxp_need_cc }
         if (Test-Path -LiteralPath $Source -PathType Leaf) {
             Copy-Item -LiteralPath $Source -Destination $Work
         } else {
@@ -168,23 +259,33 @@ if ($Edition -eq 'uxp') {
             Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx' -OutFile $Work
         }
         Write-Host $msg_uxp_installing
-        & $Upia --install $Work
-        $Installed = $LASTEXITCODE -eq 0
-        if (-not $Installed) { Write-Host $msg_uxp_failed -ForegroundColor Red }
+        # The installer's exit code does not tell: a failure can still exit with 0
+        if ($Upia -and $env:TYPER_INSTALL_NO_UPIA -ne '1' -and (Test-Path -LiteralPath $Upia -PathType Leaf)) {
+            $UpiaOutput = & $Upia --install $Work 2>&1 | Out-String
+            $UpiaStatus = $LASTEXITCODE
+            Write-Host $UpiaOutput
+            if ($UpiaStatus -eq 0 -and $UpiaOutput -notmatch 'fail') { $CompleteMessage = $msg_uxp_complete }
+        }
+        if (-not $CompleteMessage) {
+            Install-TypeRPluginManually $Work
+            $CompleteMessage = $msg_uxp_complete_manual
+        }
     } catch {
         Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-Host $msg_uxp_failed -ForegroundColor Red
     } finally {
         Remove-Item -LiteralPath $Work -Force -ErrorAction SilentlyContinue
     }
     Write-Host ""
-    if ($Installed) {
-        Write-Host $msg_uxp_complete -ForegroundColor Cyan
+    if ($CompleteMessage) {
+        Rename-TypeRLegacyPanel
+        Write-Host $CompleteMessage -ForegroundColor Cyan
         if (Test-Path -LiteralPath (Join-Path $CepTarget 'CSXS')) { Write-Host $msg_both -ForegroundColor Yellow }
         Write-Host ""
         Write-TypeRCredits
     }
     if ($Interactive) { Read-Host -Prompt $msg_pause }
-    if ($Installed) { exit 0 } else { exit 1 }
+    if ($CompleteMessage) { exit 0 } else { exit 1 }
 }
 
 # --- 6. Version Legacy (CEP) ---

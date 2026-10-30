@@ -39,11 +39,11 @@ MSG_CHOICE_LEGACY_EN="  2) Legacy, CEP (works with more Photoshop versions; olde
      Photoshop CC 2015 (version 16.0) or later; Photoshop 2026 on Apple Silicon must run under Rosetta"
 MSG_CHOICE_PROMPT_EN="Your choice [1/2] (Enter = 1): "
 MSG_BOTH_INSTALLED_EN="The other version of TypeR is installed too: do not open both panels at the same time (each shortcut would run twice)."
-MSG_UXP_NEED_CC_EN="Creative Cloud is required to install the new TypeR (UXP): install it, then run this script again."
 MSG_UXP_DOWNLOAD_EN="Downloading the new TypeR (UXP)..."
 MSG_UXP_INSTALLING_EN="Installing the new TypeR (UXP)..."
 MSG_UXP_COMPLETE_EN="TypeR is installed: in Photoshop, open it from the menu [Plugins] > [TypeR]. If TypeR was already installed, restart Photoshop."
-MSG_UXP_FAILED_EN="The installation failed. Double-click TypeR-UXP.ccx to install it through Creative Cloud."
+MSG_UXP_COMPLETE_MANUAL_EN="TypeR is installed: restart Photoshop if it is open, then open TypeR from the menu [Plugins] > [TypeR]."
+MSG_UXP_FAILED_EN="The installation failed. Close Photoshop and run this script again."
 
 # —————————————————————————————————————————————————————————————
 # Messages en français
@@ -64,11 +64,11 @@ MSG_CHOICE_LEGACY_FR="  2) Legacy, CEP (compatible avec plus de versions de Phot
      Photoshop CC 2015 (version 16.0) ou plus récent ; sur Mac Apple Silicon, Photoshop 2026 doit tourner sous Rosetta"
 MSG_CHOICE_PROMPT_FR="Votre choix [1/2] (Entrée = 1) : "
 MSG_BOTH_INSTALLED_FR="L'autre version de TypeR est aussi installée : n'ouvrez pas les deux panneaux en même temps (chaque raccourci s'exécuterait deux fois)."
-MSG_UXP_NEED_CC_FR="Creative Cloud est nécessaire pour installer le nouveau TypeR (UXP) : installez-le, puis relancez ce script."
 MSG_UXP_DOWNLOAD_FR="Téléchargement du nouveau TypeR (UXP)..."
 MSG_UXP_INSTALLING_FR="Installation du nouveau TypeR (UXP)..."
 MSG_UXP_COMPLETE_FR="TypeR est installé : dans Photoshop, ouvrez-le depuis le menu [Plug-ins] > [TypeR]. Si TypeR était déjà installé, redémarrez Photoshop."
-MSG_UXP_FAILED_FR="L'installation a échoué. Double-cliquez sur TypeR-UXP.ccx pour l'installer avec Creative Cloud."
+MSG_UXP_COMPLETE_MANUAL_FR="TypeR est installé : redémarrez Photoshop s'il est ouvert, puis ouvrez TypeR depuis le menu [Plug-ins] > [TypeR]."
+MSG_UXP_FAILED_FR="L'installation a échoué. Fermez Photoshop et relancez ce script."
 
 # —————————————————————————————————————————————————————————————
 # Messages en espagnol
@@ -89,11 +89,11 @@ MSG_CHOICE_LEGACY_ES="  2) Legacy, CEP (compatible con más versiones de Photosh
      Photoshop CC 2015 (versión 16.0) o posterior; en Mac Apple Silicon, Photoshop 2026 debe ejecutarse con Rosetta"
 MSG_CHOICE_PROMPT_ES="Tu elección [1/2] (Enter = 1): "
 MSG_BOTH_INSTALLED_ES="La otra versión de TypeR también está instalada: no abras ambos paneles a la vez (cada atajo se ejecutaría dos veces)."
-MSG_UXP_NEED_CC_ES="Se necesita Creative Cloud para instalar el nuevo TypeR (UXP): instálalo y vuelve a ejecutar este script."
 MSG_UXP_DOWNLOAD_ES="Descargando el nuevo TypeR (UXP)..."
 MSG_UXP_INSTALLING_ES="Instalando el nuevo TypeR (UXP)..."
 MSG_UXP_COMPLETE_ES="TypeR está instalado: en Photoshop, ábrelo desde el menú [Plugins] > [TypeR]. Si TypeR ya estaba instalado, reinicia Photoshop."
-MSG_UXP_FAILED_ES="La instalación falló. Haz doble clic en TypeR-UXP.ccx para instalarlo con Creative Cloud."
+MSG_UXP_COMPLETE_MANUAL_ES="TypeR está instalado: reinicia Photoshop si está abierto y abre TypeR desde el menú [Plugins] > [TypeR]."
+MSG_UXP_FAILED_ES="La instalación falló. Cierra Photoshop y vuelve a ejecutar este script."
 
 # —————————————————————————————————————————————————————————————
 # Messages en portugais
@@ -114,11 +114,11 @@ MSG_CHOICE_LEGACY_PT="  2) Legacy, CEP (compatível com mais versões do Photosh
      Photoshop CC 2015 (versão 16.0) ou mais recente; em Mac Apple Silicon, o Photoshop 2026 deve rodar com Rosetta"
 MSG_CHOICE_PROMPT_PT="Sua escolha [1/2] (Enter = 1): "
 MSG_BOTH_INSTALLED_PT="A outra versão do TypeR também está instalada: não abra os dois painéis ao mesmo tempo (cada atalho seria executado duas vezes)."
-MSG_UXP_NEED_CC_PT="O Creative Cloud é necessário para instalar o novo TypeR (UXP): instale-o e execute este script novamente."
 MSG_UXP_DOWNLOAD_PT="Baixando o novo TypeR (UXP)..."
 MSG_UXP_INSTALLING_PT="Instalando o novo TypeR (UXP)..."
 MSG_UXP_COMPLETE_PT="O TypeR está instalado: no Photoshop, abra-o pelo menu [Plug-ins] > [TypeR]. Se o TypeR já estava instalado, reinicie o Photoshop."
-MSG_UXP_FAILED_PT="A instalação falhou. Clique duas vezes em TypeR-UXP.ccx para instalá-lo com o Creative Cloud."
+MSG_UXP_COMPLETE_MANUAL_PT="O TypeR está instalado: reinicie o Photoshop se estiver aberto e abra o TypeR pelo menu [Plug-ins] > [TypeR]."
+MSG_UXP_FAILED_PT="A instalação falhou. Feche o Photoshop e execute este script novamente."
 
 # —————————————————————————————————————————————————————————————
 # Affectation des messages en fonction de la langue
@@ -130,7 +130,7 @@ case "$LANGUAGE" in
   *) LANGUAGE_SUFFIX=EN ;;
 esac
 for name in INSTALL CLOSE_PHOTOSHOP PRESS_KEY INSTALL_COMPLETE OPEN_PHOTOSHOP PRESS_ENTER CREDITS TYPERTOOLS DISCORD \
-  CHOOSE CHOICE_UXP CHOICE_LEGACY CHOICE_PROMPT BOTH_INSTALLED UXP_NEED_CC UXP_DOWNLOAD UXP_INSTALLING UXP_COMPLETE UXP_FAILED; do
+  CHOOSE CHOICE_UXP CHOICE_LEGACY CHOICE_PROMPT BOTH_INSTALLED UXP_DOWNLOAD UXP_INSTALLING UXP_COMPLETE UXP_COMPLETE_MANUAL UXP_FAILED; do
   localized="MSG_${name}_${LANGUAGE_SUFFIX}"
   printf -v "MSG_$name" '%s' "${!localized}"
 done
@@ -171,15 +171,83 @@ if [ -z "$EDITION" ]; then
 fi
 
 CEP_DESTDIR="${TYPER_INSTALL_TARGET:-${HOME}/Library/Application Support/Adobe/CEP/extensions/typertools}"
-UXP_PLUGINS="${HOME}/Library/Application Support/Adobe/UXP/Plugins/External"
+UXP_ROOT="${TYPER_UXP_ROOT:-${HOME}/Library/Application Support/Adobe/UXP}"
+UXP_PLUGINS="$UXP_ROOT/Plugins/External"
+UXP_REGISTRY="$UXP_ROOT/PluginsInfo/v1/PS.json"
 
 # —————————————————————————————————————————————————————————————
 # Version UXP : le paquet .ccx (à côté de ce script, sinon la dernière
-# version publiée), installé par l'installeur de plugins de Creative Cloud
+# version publiée), installé par l'installeur de plugins de Creative Cloud.
+# Sans lui, ou s'il échoue, le paquet est extrait là où il l'aurait mis et
+# inscrit dans PS.json, que Photoshop lit à son démarrage (dans une sous-coque
+# pour que set -e ne coupe pas le repli)
 # —————————————————————————————————————————————————————————————
+# uxp_json folder <manifest> : the plugin's folder name, for a TypeR package only
+# uxp_json register <manifest> <PS.json> <output> : PS.json with the plugin
+# added, other plugins kept; an unreadable PS.json is an error
+uxp_json() {
+  osascript -l JavaScript - "$@" <<'JXA'
+ObjC.import("Foundation");
+function read(path) {
+  const text = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, null);
+  return text.isNil() ? "" : text.js;
+}
+function run(argv) {
+  const manifest = JSON.parse(read(argv[1]));
+  if (manifest.id !== "com.scanr.typer" || !/^[0-9A-Za-z][0-9A-Za-z.+-]*$/.test(String(manifest.version || ""))) throw new Error("Not a TypeR package");
+  const folder = manifest.id + "_" + manifest.version;
+  if (argv[0] === "folder") return folder;
+  const text = read(argv[2]).trim();
+  const registry = text ? JSON.parse(text) : {};
+  if (!registry || typeof registry !== "object" || Array.isArray(registry)) throw new Error("Invalid PS.json");
+  if (registry.plugins !== undefined && !Array.isArray(registry.plugins)) throw new Error("Invalid PS.json");
+  const plugins = (registry.plugins || []).filter((plugin) => !plugin || plugin.pluginId !== manifest.id);
+  plugins.push({
+    hostMinVersion: manifest.host.minVersion,
+    name: manifest.name,
+    path: "$localPlugins/External/" + folder,
+    pluginId: manifest.id,
+    status: "enabled",
+    type: "uxp",
+    versionString: manifest.version,
+  });
+  registry.plugins = plugins;
+  if (!$(JSON.stringify(registry)).writeToFileAtomicallyEncodingError(argv[3], true, $.NSUTF8StringEncoding, null)) throw new Error("Cannot write " + argv[3]);
+  return folder;
+}
+JXA
+}
+
+install_uxp_manually() (
+  set -e
+  package="$1"
+  unzip -p "$package" manifest.json > "$WORK/manifest.json"
+  folder="$(uxp_json folder "$WORK/manifest.json")"
+  uxp_json register "$WORK/manifest.json" "$UXP_REGISTRY" "$WORK/PS.json" >/dev/null
+  staging="$UXP_PLUGINS/$folder.installing"
+  rm -rf "$staging"
+  mkdir -p "$staging"
+  if ! unzip -q -o "$package" -d "$staging"; then rm -rf "$staging"; exit 1; fi
+  rm -rf "${UXP_PLUGINS:?}/$folder"
+  mv "$staging" "$UXP_PLUGINS/$folder"
+  mkdir -p "$(dirname "$UXP_REGISTRY")"
+  cp "$WORK/PS.json" "$UXP_REGISTRY.tmp"
+  mv "$UXP_REGISTRY.tmp" "$UXP_REGISTRY"
+)
+
+# A Legacy panel still installed is called "TypeR (old)" in Photoshop from its
+# next start (app_src/legacyPanelName.js). Never fails the installation.
+rename_legacy_panel() {
+  local manifest="$CEP_DESTDIR/CSXS/manifest.xml"
+  [ -f "$manifest" ] || return 0
+  if ! { sed 's#<Menu>TypeR</Menu>#<Menu>TypeR (old)</Menu>#' "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"; }; then
+    rm -f "$manifest.tmp"
+  fi
+  return 0
+}
+
 if [ "$EDITION" = uxp ]; then
   UPIA="/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent"
-  [ -x "$UPIA" ] || { printf '%s\n' "$MSG_UXP_NEED_CC" >&2; exit 1; }
   PACKAGE="${UXP_PACKAGE:-$SCRIPT_DIR/TypeR-UXP.ccx}"
   WORK="$(mktemp -d)"
   trap 'rm -rf "$WORK"' EXIT
@@ -192,11 +260,23 @@ if [ "$EDITION" = uxp ]; then
     curl -fL --retry 2 -o "$WORK/TypeR-UXP.ccx" "https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx"
   fi
   printf '%s\n' "$MSG_UXP_INSTALLING"
-  if ! "$UPIA" --install "$WORK/TypeR-UXP.ccx"; then
-    printf '%s\n' "$MSG_UXP_FAILED" >&2
-    exit 1
+  # The installer's exit code does not tell: a failure can still exit with 0
+  COMPLETE_MESSAGE=""
+  if [ -x "$UPIA" ] && [ "${TYPER_INSTALL_NO_UPIA:-}" != 1 ]; then
+    if UPIA_OUTPUT="$("$UPIA" --install "$WORK/TypeR-UXP.ccx" 2>&1)"; then UPIA_STATUS=0; else UPIA_STATUS=$?; fi
+    printf '%s\n' "$UPIA_OUTPUT"
+    if [ "$UPIA_STATUS" -eq 0 ] && ! printf '%s' "$UPIA_OUTPUT" | grep -qi 'fail'; then COMPLETE_MESSAGE="$MSG_UXP_COMPLETE"; fi
   fi
-  printf '\n%s\n' "$MSG_UXP_COMPLETE"
+  if [ -z "$COMPLETE_MESSAGE" ]; then
+    if install_uxp_manually "$WORK/TypeR-UXP.ccx"; then
+      COMPLETE_MESSAGE="$MSG_UXP_COMPLETE_MANUAL"
+    else
+      printf '%s\n' "$MSG_UXP_FAILED" >&2
+      exit 1
+    fi
+  fi
+  rename_legacy_panel
+  printf '\n%s\n' "$COMPLETE_MESSAGE"
   if [ -d "$CEP_DESTDIR/CSXS" ]; then printf '%s\n' "$MSG_BOTH_INSTALLED"; fi
   exit 0
 fi

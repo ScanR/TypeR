@@ -2003,17 +2003,13 @@ const ContextProvider = React.memo(function ContextProvider(props) {
         downloadAndInstallUpdate(
           data.downloadUrl,
           null,
-          (needsManualStep) => {
-            if (needsManualStep) {
-              // inPlaceOnly prevents this, but keep the modal as safety net
-              dispatch({ type: "setModal", modal: "update", data });
-              return;
-            }
+          ({ reloading }) => {
             if (data.testMode) {
               clearUpdateTestConfig();
-            } else {
+            } else if (!reloading) {
               writeToStorage({ lastInstalledUpdateVersion: data.version });
             }
+            if (reloading) return;
             nativeAlert(
               (locale.updateAutoInstalled || "TypeR {version} has been installed. Restart Photoshop to apply it.").replace("{version}", data.version),
               locale.successTitle,

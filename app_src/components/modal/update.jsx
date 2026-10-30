@@ -1,6 +1,6 @@
 import { useModalClose } from "../../modalClose";
 import React from 'react';
-import { FiX, FiDownload, FiRefreshCw, FiCheckCircle } from 'react-icons/fi';
+import { FiX, FiDownload, FiRefreshCw } from 'react-icons/fi';
 
 import { locale, openUrl, downloadAndInstallUpdate, nativeAlert, writeToStorage, clearUpdateTestConfig } from '../../utils';
 import { useContext } from '../../context';
@@ -33,7 +33,6 @@ const UpdateModal = React.memo(function UpdateModal() {
   const { version, releases, downloadUrl, testMode } = context.state.modalData;
   const [isUpdating, setIsUpdating] = React.useState(false);
   const [updateStatus, setUpdateStatus] = React.useState('');
-  const [updateReady, setUpdateReady] = React.useState(false);
   const sanitizedReleases = React.useMemo(
     () => (releases || []).map((release) => ({ ...release, safeBody: sanitizeReleaseHtml(release.body) })),
     [releases]
@@ -71,26 +70,22 @@ const UpdateModal = React.memo(function UpdateModal() {
         setUpdateStatus(status);
       },
       // onComplete
-      (needsManualStep) => {
+      ({ reloading }) => {
+        if (testMode) {
+          clearUpdateTestConfig();
+        } else if (!reloading) {
+          writeToStorage({ lastInstalledUpdateVersion: version });
+        }
+        // The panel is about to reload with the new version
+        if (reloading) return;
         setIsUpdating(false);
         setUpdateStatus('');
-        if (needsManualStep) {
-          // The unattended installer has been launched; the user only has to
-          // close Photoshop whenever convenient
-          setUpdateReady(true);
-        } else {
-          if (testMode) {
-            clearUpdateTestConfig();
-          } else {
-            writeToStorage({ lastInstalledUpdateVersion: version });
-          }
-          nativeAlert(
-            locale.updateSuccess || 'Update installed successfully! Please restart Photoshop to apply changes.',
-            locale.successTitle,
-            false
-          );
-          context.dispatch({ type: "setModal", modal: null });
-        }
+        nativeAlert(
+          locale.updateSuccess || 'Update installed successfully! Please restart Photoshop to apply changes.',
+          locale.successTitle,
+          false
+        );
+        context.dispatch({ type: "setModal", modal: null });
       },
       // onError
       (error) => {
@@ -105,54 +100,6 @@ const UpdateModal = React.memo(function UpdateModal() {
       { expectedVersion: version }
     );
   };
-  
-  // Show success screen when update is ready
-  if (updateReady) {
-    return (
-      <React.Fragment>
-        <div className="app-modal-header hostBrdBotContrast">
-          <div className="app-modal-title">{locale.updateTitle}</div>
-          <button 
-            className="topcoat-icon-button--large--quiet" 
-            title={locale.close} 
-            onClick={close}
-          >
-            <FiX size={18} />
-          </button>
-        </div>
-        <div className="app-modal-body">
-          <div className="app-modal-body-inner article-format" style={{ textAlign: 'center' }}>
-            <FiCheckCircle size={48} style={{ color: '#4CAF50', marginBottom: '1rem' }} />
-            <h3 style={{ marginTop: 0 }}>{locale.updateDownloadComplete || 'Download Complete!'}</h3>
-            <p>{locale.updateInstallerLaunched || 'The installer has been launched in a separate window.'}</p>
-            <div style={{
-              backgroundColor: 'rgba(0,0,0,0.2)',
-              padding: '1rem',
-              borderRadius: '4px',
-              marginTop: '1rem',
-              textAlign: 'left'
-            }}>
-              <p style={{ margin: '0 0 0.5rem 0', fontWeight: 'bold' }}>
-                {locale.updateNextSteps || 'Next steps:'}
-              </p>
-              <ol style={{ margin: 0, paddingLeft: '1.2rem' }}>
-                <li>{locale.updateStep1 || 'Close Photoshop'}</li>
-                <li>{locale.updateAutoStep2 || 'The update installs itself and Photoshop reopens automatically'}</li>
-              </ol>
-            </div>
-            <p style={{ marginTop: '1rem', fontSize: '0.9em', opacity: 0.7 }}>
-              {(locale.updateFallbackHint || 'If nothing happens, run {file} from the TypeR_Update folder in your Downloads.').replace('{file}', 'install_update.cmd (Windows) / install_update.command (Mac)')}
-            </p>
-          </div>
-        </div>
-        <div className="app-modal-footer hostBrdTopContrast">
-          <button className="topcoat-button--large--cta" onClick={close}>
-            {locale.close}
-          </button>
-        </div>
-      </React.Fragment>
-    );
-  }
   
   return (
     <React.Fragment>

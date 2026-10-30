@@ -1,9 +1,9 @@
 // Moving Legacy (CEP) users to the UXP plugin. Versions up to 2.5.0 update
 // themselves to the Legacy 3.x package only, so the Legacy panel offers the
 // switch once it is updated: when Photoshop can run the UXP plugin (2025,
-// 26.0 or later), Creative Cloud's plugin installer is present and TypeR UXP
-// is not installed yet. The UXP plugin imports the Legacy styles, profiles
-// and settings on its first start (uxp-src/host/files.js).
+// 26.0 or later) and TypeR UXP is not installed yet. The UXP plugin imports
+// the Legacy styles, profiles and settings on its first start
+// (uxp-src/host/files.js).
 //
 // The pure helpers are tested in node; the installer runs through the CEP
 // panel's Node.js (--enable-nodejs), never in the UXP panel.
@@ -13,9 +13,11 @@ import { findNewerReleases, pickUpdateDownloadUrl } from "./updateLogic";
 import { makeBuffer } from "./nodeCompat";
 import { fetchBody } from "./network";
 import { isLoopbackHttpUrl } from "./updateTestMode";
+import { UXP_PLUGIN_ID, installPluginFiles, isPluginFolder } from "./uxpManualInstall";
+import { legacyManifestWithName } from "./legacyPanelName";
 
+export { UXP_PLUGIN_ID };
 export const UXP_MIN_PHOTOSHOP_MAJOR = 26;
-export const UXP_PLUGIN_ID = "com.scanr.typer";
 export const UXP_PACKAGE_URL = "https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx";
 export const UXP_RELEASE_PAGE = "https://github.com/ScanR/TypeR/releases/latest";
 // "Later" asks again a week later
@@ -43,18 +45,21 @@ export const uxpPluginsFolder = (platform, home, env = {}) => (
     : home + "/Library/Application Support/Adobe/UXP/Plugins/External"
 );
 
-export const hasTypeRPlugin = (folderNames) => (folderNames || []).some(
-  (name) => typeof name === "string" && name.indexOf(UXP_PLUGIN_ID + "_") === 0
+// The file Photoshop reads its third-party UXP plugins from
+export const uxpRegistryPath = (platform, home, env = {}) => (
+  platform === "win"
+    ? (env.APPDATA || home + "\\AppData\\Roaming") + "\\Adobe\\UXP\\PluginsInfo\\v1\\PS.json"
+    : home + "/Library/Application Support/Adobe/UXP/PluginsInfo/v1/PS.json"
 );
 
+export const hasTypeRPlugin = (folderNames) => (folderNames || []).some(isPluginFolder);
+
 // "ok", or why the switch is not offered: "uxp" (already the UXP panel),
-// "photoshop" (too old), "installed" (TypeR UXP is there), "installer" (no
-// Creative Cloud plugin installer)
-export const uxpMigrationEligibility = ({ isUxpPanel, appVersion, uxpInstalled, installerAvailable }) => {
+// "photoshop" (too old), "installed" (TypeR UXP is there)
+export const uxpMigrationEligibility = ({ isUxpPanel, appVersion, uxpInstalled }) => {
   if (isUxpPanel) return "uxp";
   if (photoshopMajor(appVersion) < UXP_MIN_PHOTOSHOP_MAJOR) return "photoshop";
   if (uxpInstalled) return "installed";
-  if (!installerAvailable) return "installer";
   return "ok";
 };
 
@@ -78,8 +83,8 @@ export const pickUxpPackageUrl = (releases) => {
   return newest ? pickUpdateDownloadUrl(newest, ".ccx") : null;
 };
 
-// Only a TypeR plugin package goes to Creative Cloud's installer (a failed
-// download can be an HTML error page)
+// Only a TypeR plugin package gets installed (a failed download can be an HTML
+// error page)
 export const validateUxpPackage = (bytes) => {
   if (!bytes || bytes.length < 100 || bytes.length > 80 * 1024 * 1024) throw codedError("package", "Invalid package size");
   let manifest;
@@ -163,28 +168,83 @@ export const readUxpEnvironment = (node) => {
 // Hands the package to Creative Cloud's plugin installer, which adds the
 // plugin to the running Photoshop. The package goes to the temporary folder:
 // macOS asks Creative Cloud for access to Desktop or Downloads otherwise.
-export const runUxpInstaller = (node, bytes) => new Promise((resolve, reject) => {
-  if (!node || !node.childProcess) {
-    reject(codedError("node", "Node.js is unavailable"));
-    return;
-  }
-  const platform = nodePlatform(node);
+// Its exit code does not tell: a failure can still exit with 0.
+const runCreativeCloudInstaller = (node, bytes) => new Promise((resolve) => {
   const file = node.path.join(node.os.tmpdir(), "TypeR-UXP-" + Date.now() + ".ccx");
   try {
     node.fs.writeFileSync(file, makeBuffer(node.Buffer, bytes));
   } catch (error) {
-    reject(codedError("installer", "Cannot write the package"));
+    resolve(false);
     return;
   }
-  node.childProcess.execFile(upiaPath(platform, node.env), ["--install", file], { timeout: INSTALLER_TIMEOUT_MS, windowsHide: true }, (error, stdout) => {
+  node.childProcess.execFile(upiaPath(nodePlatform(node), node.env), ["--install", file], { timeout: INSTALLER_TIMEOUT_MS, windowsHide: true }, (error, stdout) => {
     try {
       node.fs.unlinkSync(file);
     } catch (cleanup) {}
-    const installed = readUxpEnvironment(node).uxpInstalled;
-    if (installed && (!error || /success/i.test(String(stdout || "")))) resolve(true);
-    else reject(codedError("installer", String((error && error.message) || stdout || "Installer failed")));
+    const output = String(stdout || "");
+    resolve(!/fail/i.test(output) && (!error || /success/i.test(output)));
   });
 });
+
+// File access for installPluginFiles(), through the panel's Node.js
+const nodeInstallIo = (node) => {
+  const { fs, path } = node;
+  const platform = nodePlatform(node);
+  const home = node.os.homedir();
+  const registry = uxpRegistryPath(platform, home, node.env);
+  const ensureFolder = (folder) => {
+    if (fs.existsSync(folder)) return;
+    ensureFolder(path.dirname(folder));
+    fs.mkdirSync(folder);
+  };
+  const removeTree = (target) => {
+    let stat;
+    try {
+      stat = fs.lstatSync(target);
+    } catch (error) {
+      return;
+    }
+    if (stat.isDirectory()) {
+      fs.readdirSync(target).forEach((name) => removeTree(path.join(target, name)));
+      fs.rmdirSync(target);
+    } else {
+      fs.unlinkSync(target);
+    }
+  };
+  return {
+    pluginsFolder: uxpPluginsFolder(platform, home, node.env),
+    join: path.join,
+    removeTree,
+    rename: (from, to) => fs.renameSync(from, to),
+    writeFile: (file, data) => {
+      ensureFolder(path.dirname(file));
+      fs.writeFileSync(file, makeBuffer(node.Buffer, data));
+    },
+    readRegistry: () => (fs.existsSync(registry) ? fs.readFileSync(registry, "utf8") : ""),
+    writeRegistry: (text) => {
+      ensureFolder(path.dirname(registry));
+      const temporary = registry + ".tmp-" + Date.now();
+      fs.writeFileSync(temporary, text, "utf8");
+      fs.renameSync(temporary, registry);
+    },
+  };
+};
+
+// Creative Cloud's plugin installer when it is there and works, otherwise the
+// package is installed by hand. Resolves with how: "creativeCloud" (Photoshop
+// loads the plugin at once) or "manual" (at its next start).
+export const runUxpInstaller = async (node, bytes, options = {}) => {
+  if (!node || !node.childProcess) throw codedError("node", "Node.js is unavailable");
+  if (!options.forceManual && readUxpEnvironment(node).installerAvailable && await runCreativeCloudInstaller(node, bytes)) {
+    return "creativeCloud";
+  }
+  try {
+    await installPluginFiles(bytes, nodeInstallIo(node));
+    return "manual";
+  } catch (error) {
+    throw codedError("installer", String((error && error.message) || error));
+  }
+};
 
 // The state of this panel and computer, read once (the UXP panel stops at
 // "uxp"). The test mode forces the offer.

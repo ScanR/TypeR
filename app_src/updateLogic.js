@@ -93,6 +93,17 @@ const mapZipEntryToTargetPath = (entryPath, rootPrefix) => {
   return null;
 };
 
+// Whether an update needs Photoshop to restart: it reads the manifest at its
+// start. The version and the Legacy panel's name change without that mattering.
+const manifestForComparison = (text) => String(text)
+  .replace(/\r\n/g, "\n")
+  .replace(/ExtensionBundleVersion="[^"]*"/, "")
+  .replace(/(<Extension\s+Id="typer"\s+Version=")[^"]*"/, "$1")
+  .replace(/<Menu>[^<]*<\/Menu>/, "");
+const manifestNeedsRestart = (installed, updated) => (
+  typeof installed !== "string" || manifestForComparison(installed) !== manifestForComparison(updated)
+);
+
 const shouldRunUpdateCheck = (lastCheckAt, now, interval = UPDATE_CHECK_INTERVAL) => {
   const last = Number(lastCheckAt) || 0;
   if (last <= 0) return true;
@@ -111,5 +122,6 @@ export {
   findNewerReleases,
   findZipRootPrefix,
   mapZipEntryToTargetPath,
+  manifestNeedsRestart,
   shouldRunUpdateCheck,
 };

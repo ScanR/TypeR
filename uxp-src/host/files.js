@@ -79,6 +79,16 @@ function getStorageRoot() {
   return joinPath(os.homedir(), "Library", "Application Support", "TypeR", "UXP");
 }
 
+// Where Creative Cloud installs third-party plugins, and the file Photoshop
+// reads them from
+async function getPluginInstallPaths() {
+  await resolveFolders();
+  const root = isWindows()
+    ? joinPath(roamingAppData || profileRoamingAppData(), "Adobe", "UXP")
+    : joinPath(os.homedir(), "Library", "Application Support", "Adobe", "UXP");
+  return { pluginsFolder: joinPath(root, "Plugins", "External"), registry: joinPath(root, "PluginsInfo", "v1", "PS.json") };
+}
+
 // Where install scripts put the CEP extension: its storage is imported once
 async function getCepStorageRoots() {
   const home = os.homedir();
@@ -229,6 +239,10 @@ async function removeTree(path) {
   }
   await entry.delete();
   return true;
+}
+
+async function rename(from, to) {
+  await fs.rename(toUrl(from), toUrl(to));
 }
 
 async function listFolder(path) {
@@ -394,6 +408,8 @@ module.exports = {
   resolveFolders,
   roamingAppDataOf,
   getCepStorageRoots,
+  getPluginInstallPaths,
+  rename,
   entryForPath,
   exists,
   ensureFolder,

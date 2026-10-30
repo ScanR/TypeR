@@ -31,6 +31,7 @@ assert.deepStrictEqual(
     currentVersion: "2.9.9",
     autoInstall: true,
     forceUxpMigration: false,
+    forceManualPluginInstall: false,
   }
 );
 assert.strictEqual(parseUpdateTestConfig("not json"), null);

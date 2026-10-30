@@ -1,6 +1,7 @@
 // Local test of the switch from the Legacy panel to TypeR UXP
 // (app_src/uxpMigration.js), without publishing a release:
-//   npm run test:uxp-migration [-- path/to/TypeR-UXP.ccx [port]]
+//   npm run test:uxp-migration [-- [--manual] path/to/TypeR-UXP.ccx [port]]
+// --manual installs as if Creative Cloud's plugin installer were absent.
 // It serves a release list holding only the .ccx (so no Legacy update is
 // offered) and writes the update test file into the installed Legacy
 // extension with forceUxpMigration: the next time the Legacy panel opens, it
@@ -13,8 +14,10 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const version = require("../package.json").version;
-const packagePath = path.resolve(process.argv[2] || path.join(root, "Releases", "TypeR-UXP.ccx"));
-const port = Number(process.argv[3] || 17832);
+const manual = process.argv.includes("--manual");
+const args = process.argv.slice(2).filter((arg) => arg !== "--manual");
+const packagePath = path.resolve(args[0] || path.join(root, "Releases", "TypeR-UXP.ccx"));
+const port = Number(args[1] || 17832);
 const baseUrl = "http://127.0.0.1:" + port;
 const extensionRoot = process.platform === "win32"
   ? path.join(process.env.APPDATA || "", "Adobe", "CEP", "extensions", "typertools")
@@ -57,6 +60,7 @@ server.listen(port, "127.0.0.1", () => {
     releasesUrl: baseUrl + "/releases",
     currentVersion: version,
     forceUxpMigration: true,
+    forceManualPluginInstall: manual,
   }, null, 2));
   console.log("Serving " + packagePath + " at " + baseUrl);
   console.log("Test file: " + testFile);

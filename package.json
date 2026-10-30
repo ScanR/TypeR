@@ -14,6 +14,7 @@
     "test:update:prepare": "node scripts/prepareUpdateTest.js",
     "test:update:server": "node scripts/updateTestServer.js",
     "test:uxp-migration": "node scripts/uxpMigrationTestServer.js",
+    "test:uxp-update": "node scripts/uxpUpdateTestServer.js",
     "test:build": "node scripts/testBuildArtifacts.js",
     "verify": "npm test && npm run build && npm run test:build",
     "release": "npm run verify && npm run package:uxp && node scripts/buildRelease.js --with-uxp",

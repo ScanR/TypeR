@@ -121,8 +121,9 @@ Legacy panel once it is updated (`app_src/uxpMigration.js`, `components/modal/ux
   shown only to existing users with update checks on. "Later" asks again a week later, "Don't ask
   again" stops it, and Settings > General > Updates keeps a button.
 - The panel downloads `TypeR-UXP.ccx` from the latest release, checks that it is a TypeR plugin, and
-  hands it to the plugin installer through the panel's Node.js (`child_process.execFile`, no
-  ExtendScript). Photoshop loads a first installation at once.
+  hands it to Creative Cloud's plugin installer through the panel's Node.js (`child_process.execFile`,
+  no ExtendScript). Photoshop loads a first installation at once. Without that installer, the panel
+  installs the package by hand (see below) and asks to restart Photoshop.
 - TypeR UXP imports the Legacy styles, profiles and settings on its first start. The Legacy version
   stays installed; the panel offers to close it.
 - Without Creative Cloud's plugin installer (Photoshop installed without the Creative Cloud app),
@@ -135,6 +136,71 @@ Test it without publishing anything: `npm run package:uxp`, then `npm run test:u
 a local release holding the `.ccx` and writes `.typer-update-test.json` (`forceUxpMigration`) into
 the installed Legacy extension. The Legacy panel then offers the switch whatever the Photoshop version
 or the installed plugins. Ctrl+C removes the test file.
+
+## Updating without a restart
+
+Creative Cloud's plugin installer (UPIA) leaves a running plugin alone: after `--install` of a newer
+version, the old code keeps running until Photoshop's next start. After `--remove` then `--install`,
+Photoshop stops the old code and runs the new one within a second. Installing, removing and installing
+again also works, but leaves two entries in `PS.json`.
+
+The removal stops the plugin itself, so `services.installUpdatePackage` writes a script and starts it in
+the background (`app_src/uxpUpdateScript.js`), from `TypeR/UXP/update`, which is outside the plugin:
+
+- The plugin is removed and the new version installed. Photoshop swaps them and the call never returns.
+- The removal fails, as on a hand-made install: the script runs `--install` alone and reports it. The
+  panel asks to restart Photoshop.
+- The installer fails after the removal: the script tries twice more, then copies the files prepared in
+  `update/fallback` and a `PS.json` with the new version, which Photoshop loads at its next start.
+- The script does not start within 20 s, or fails while the plugin runs: the panel installs by hand.
+
+The next start of the plugin deletes the folder. The Windows script holds no user path, because cmd.exe
+reads a batch file in the console's code page: it finds its folder through `%~dp0` and the rest through
+`%APPDATA%`. A new permission in the manifest may still need a restart.
+
+The Legacy panel replaces its files in place, loads the new `host.jsx` with `$.evalFile` and reloads
+(`utils.downloadAndInstallUpdate`). Only a changed `CSXS/manifest.xml`, other than its version and panel
+name, makes it ask for a restart.
+
+Test it without publishing anything: `npm run build:uxp`, then `npm run test:uxp-update` serves the
+built plugin as the next version. The panel updates itself the next time it loads, and its new version
+reports to the server once it runs. `npm run test:update:prepare` and `npm run test:update:server` do
+the same for the Legacy panel on Windows. This was checked on macOS with Photoshop 2026, with both panels
+open: Windows remains to be run, and the script's stand-in test (`scripts/testUxpUpdateScript.js`) only
+runs on macOS and Linux.
+
+## Installing without Creative Cloud
+
+The installers, the panel's updates and the switch from Legacy all use Creative Cloud's plugin
+installer (UPIA) when it is there and works. Its exit code does not tell: a failure can still exit
+with 0, so its output is read too. Otherwise, they install the package by hand
+(`app_src/uxpManualInstall.js`, `install_mac.sh`, `install.ps1`):
+
+1. Extract the `.ccx`, a plain zip, to `Plugins/External/com.scanr.typer_<version>`, through a
+   `.installing` staging folder.
+2. Add the plugin to `PluginsInfo/v1/PS.json`, keeping the other plugins. Photoshop ignores a folder
+   that is not registered there. An unreadable file stops the installation rather than being replaced.
+
+Both are in `~/Library/Application Support/Adobe/UXP` on macOS and `%APPDATA%\Adobe\UXP` on Windows, so
+no administrator rights are needed. Photoshop reads `PS.json` at its start: the plugin appears after a
+restart, and a registration added while Photoshop runs is kept. After an update installed this way,
+the previous version's folder stays until Photoshop runs the new one
+(`services.removeStalePluginFolders`). UPIA's `--remove` fails on such an install (status -406), while
+its `--install` of the same version replaces it.
+
+This was checked on macOS with Photoshop 2026, with UPIA set aside rather than uninstalled. On Windows,
+only `install.ps1`'s logic ran, under PowerShell 7 on macOS: the `$localPlugins` path format in PS.json
+is the one seen on macOS and remains to be confirmed there.
+
+Open question: with a hand-made install and the panel open, Photoshop 2026 under Rosetta sometimes stays
+in `exit()` after quitting (windows closed, UXP terminated, process still there), which delays its next
+launch. It was seen in some quits and not in others, and its cause is not established: the same
+quit was not compared on a Creative Cloud install.
+
+Test it with Creative Cloud installed: `TYPER_INSTALL_NO_UPIA=1 ./install_uxp_mac.sh`
+(`$env:TYPER_INSTALL_NO_UPIA='1'` on Windows; `TYPER_UXP_ROOT` installs to another folder), or
+`npm run test:uxp-migration -- --manual` for the Legacy panel's switch. `forceManualPluginInstall` in
+the update test file does the same for the panels.
 
 ## Building
 

@@ -8,7 +8,8 @@
 - Import the styles, profiles and settings of an installed CEP TypeR on first start, and keep the plugin's data outside Photoshop's version-specific folders.
 - Keep the global shortcuts through a small keyboard reader, which also reports mouse buttons 4 and 5 on macOS.
 - Read bubble and selection shapes from the selection mask, leave no history state for reads, and fix size changes on layers with floating-point colors, size changes on rich text and FontScanR on documents with a background layer.
-- Install updates from the panel through Creative Cloud's plugin installer.
+- Install updates from the panel through Creative Cloud's plugin installer, or by hand when it is missing or fails. Through the installer, the panel reloads with the new version without restarting Photoshop.
+- The UXP plugin no longer needs Creative Cloud: without its plugin installer, the installers, the panel's updates and the switch from Legacy extract the package and register it in Photoshop themselves, and Photoshop loads it at its next start.
 - The installers start by asking whether to install the new TypeR (UXP) or the Legacy (CEP) version, and the release archive contains the UXP plugin, so it installs offline.
 - The Legacy panel offers the switch to the new TypeR (UXP) when Photoshop can run it (2025 or later, with the Creative Cloud app): one click installs it, and it imports the styles, profiles and settings.
 

@@ -2,9 +2,14 @@
 // who is offered the switch, the package checks, the installer call and the
 // local test mode.
 const assert = require("assert");
+const childProcess = require("child_process");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const { strToU8, zipSync } = require("fflate");
 const load = require("./helpers/loadAppModule")();
 const migration = load("app_src/uxpMigration.js");
+const manual = load("app_src/uxpManualInstall.js");
 const { parseUpdateTestConfig } = load("app_src/updateTestMode.js");
 
 const ccx = (manifest) => zipSync({ "manifest.json": strToU8(JSON.stringify(manifest)), "index.html": strToU8("<html>" + "x".repeat(200) + "</html>") });
@@ -18,12 +23,12 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   assert.strictEqual(migration.photoshopMajor(undefined), 0);
 
   // Eligibility
-  const ok = { isUxpPanel: false, appVersion: "26.0.0", uxpInstalled: false, installerAvailable: true };
+  const ok = { isUxpPanel: false, appVersion: "26.0.0", uxpInstalled: false };
   assert.strictEqual(migration.uxpMigrationEligibility(ok), "ok");
   assert.strictEqual(migration.uxpMigrationEligibility({ ...ok, isUxpPanel: true }), "uxp");
   assert.strictEqual(migration.uxpMigrationEligibility({ ...ok, appVersion: "25.12.0" }), "photoshop", "Photoshop 2024 stays on Legacy");
   assert.strictEqual(migration.uxpMigrationEligibility({ ...ok, uxpInstalled: true }), "installed");
-  assert.strictEqual(migration.uxpMigrationEligibility({ ...ok, installerAvailable: false }), "installer", "no Creative Cloud, no offer");
+  assert.strictEqual(migration.uxpMigrationEligibility({ ...ok, installerAvailable: false }), "ok", "no Creative Cloud: installed by hand");
 
   // When the offer opens by itself
   const now = 1000000;
@@ -121,7 +126,7 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   };
   const good = fakeNode({ installs: true, stdout: "Installation Successful for extension with file path = /tmp/x.ccx" });
   assert.deepStrictEqual(migration.readUxpEnvironment(good.node), { installerAvailable: true, uxpInstalled: false });
-  assert.strictEqual(await migration.runUxpInstaller(good.node, typerPackage), true);
+  assert.strictEqual(await migration.runUxpInstaller(good.node, typerPackage), "creativeCloud");
   assert.strictEqual(good.calls.length, 1);
   assert.strictEqual(good.calls[0].file, migration.upiaPath("mac"));
   assert.strictEqual(good.calls[0].args[0], "--install");
@@ -132,6 +137,127 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   await assert.rejects(migration.runUxpInstaller(failed.node, typerPackage), (error) => error.code === "installer");
   await assert.rejects(migration.runUxpInstaller(null, typerPackage), (error) => error.code === "node");
   assert.deepStrictEqual(migration.readUxpEnvironment(null), { installerAvailable: false, uxpInstalled: false });
+
+  // Installation by hand, on real files
+  const fullPackage = zipSync({
+    "manifest.json": strToU8(JSON.stringify({ id: "com.scanr.typer", name: "TypeR", version: "3.1.0", host: { app: "PS", minVersion: "26.0.0" } })),
+    "index.html": strToU8("<html></html>"),
+    "web/index.js": strToU8("// panel"),
+  });
+  const otherPlugin = { pluginId: "com.other.plugin", name: "Other", path: "$localPlugins/External/com.other.plugin_1.0.0", status: "enabled", type: "uxp", versionString: "1.0.0" };
+
+  assert.deepStrictEqual(JSON.parse(manual.registerPlugin("", { id: "com.scanr.typer", name: "TypeR", version: "3.1.0", host: { minVersion: "26.0.0" } })), {
+    plugins: [{ hostMinVersion: "26.0.0", name: "TypeR", path: "$localPlugins/External/com.scanr.typer_3.1.0", pluginId: "com.scanr.typer", status: "enabled", type: "uxp", versionString: "3.1.0" }],
+  }, "the entry Creative Cloud's installer writes");
+  const registered = JSON.parse(manual.registerPlugin(JSON.stringify({ extra: 1, plugins: [otherPlugin, { pluginId: "com.scanr.typer", path: "$localPlugins/External/com.scanr.typer_3.0.0" }] }), { id: "com.scanr.typer", name: "TypeR", version: "3.1.0", host: { minVersion: "26.0.0" } }));
+  assert.strictEqual(registered.extra, 1);
+  assert.deepStrictEqual(registered.plugins.map((plugin) => plugin.pluginId), ["com.other.plugin", "com.scanr.typer"], "other plugins are kept, the old entry replaced");
+  assert.strictEqual(registered.plugins[1].versionString, "3.1.0");
+  assert.throws(() => manual.registerPlugin("{not json", { id: "com.scanr.typer" }), "an unreadable registry is never replaced");
+  assert.throws(() => manual.registerPlugin('{"plugins":{}}', { id: "com.scanr.typer" }));
+  assert.throws(() => manual.readPluginPackage(zipSync({ "index.html": strToU8("x") })), /manifest/);
+  assert.throws(() => manual.readPluginPackage(ccx({ id: "com.other.plugin", version: "1.0.0" })), /identity/);
+  assert.throws(() => manual.readPluginPackage(ccx({ id: "com.scanr.typer", version: "../../evil" })), /version/);
+  assert.throws(() => manual.readPluginPackage(zipSync({
+    "manifest.json": strToU8(JSON.stringify({ id: "com.scanr.typer", version: "3.1.0" })),
+    "../../evil.js": strToU8("x"),
+  })), /Unsafe/, "nothing lands outside the plugin's folder");
+
+  const folders = ["com.scanr.typer_3.0.0", "com.scanr.typer_3.1.0", "com.scanr.typer_3.1.0.installing", "com.other.plugin_1.0.0"];
+  const registryFor = (version) => manual.registerPlugin("", { id: "com.scanr.typer", name: "TypeR", version, host: { minVersion: "26.0.0" } });
+  assert.deepStrictEqual(manual.stalePluginFolders(folders, registryFor("3.1.0"), "com.scanr.typer_3.1.0"), ["com.scanr.typer_3.0.0", "com.scanr.typer_3.1.0.installing"]);
+  assert.deepStrictEqual(manual.stalePluginFolders(folders, registryFor("3.1.0"), "com.scanr.typer_3.0.0"), [], "the running version stays until Photoshop restarts");
+  assert.strictEqual(migration.hasTypeRPlugin(["com.scanr.typer_3.1.0.installing"]), false, "an interrupted installation is not an installation");
+
+  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "typer-manual-install-"));
+  const realNode = ({ output, exitError, home, hasInstaller }) => {
+    const calls = [];
+    const upia = migration.upiaPath("mac");
+    return {
+      calls,
+      node: {
+        fs: { ...fs, existsSync: (file) => (file === upia ? !!hasInstaller : fs.existsSync(file)) },
+        path,
+        Buffer,
+        os: { platform: () => "darwin", homedir: () => home, tmpdir: () => os.tmpdir() },
+        env: {},
+        childProcess: {
+          execFile: (file, args, options, callback) => {
+            calls.push(args);
+            setTimeout(() => callback(exitError || null, output || "", ""), 0);
+          },
+        },
+      },
+    };
+  };
+  const installedFolder = (home) => path.join(migration.uxpPluginsFolder("mac", home), "com.scanr.typer_3.1.0");
+
+  // No Creative Cloud: the plugin folder and its registration
+  const bare = path.join(sandbox, "bare");
+  const bareNode = realNode({ home: bare });
+  assert.strictEqual(await migration.runUxpInstaller(bareNode.node, fullPackage), "manual");
+  assert.strictEqual(bareNode.calls.length, 0);
+  assert.strictEqual(fs.readFileSync(path.join(installedFolder(bare), "web", "index.js"), "utf8"), "// panel");
+  assert.strictEqual(JSON.parse(fs.readFileSync(migration.uxpRegistryPath("mac", bare), "utf8")).plugins[0].versionString, "3.1.0");
+  assert.deepStrictEqual(fs.readdirSync(migration.uxpPluginsFolder("mac", bare)), ["com.scanr.typer_3.1.0"], "no staging folder left");
+  fs.writeFileSync(path.join(installedFolder(bare), "stale.js"), "old");
+  assert.strictEqual(await migration.runUxpInstaller(bareNode.node, fullPackage), "manual");
+  assert.ok(!fs.existsSync(path.join(installedFolder(bare), "stale.js")), "a reinstallation replaces the folder");
+
+  // An unreadable registry stops the installation and is left as it is
+  const broken = path.join(sandbox, "broken");
+  fs.mkdirSync(path.dirname(migration.uxpRegistryPath("mac", broken)), { recursive: true });
+  fs.writeFileSync(migration.uxpRegistryPath("mac", broken), "{not json");
+  await assert.rejects(migration.runUxpInstaller(realNode({ home: broken }).node, fullPackage), (error) => error.code === "installer");
+  assert.strictEqual(fs.readFileSync(migration.uxpRegistryPath("mac", broken), "utf8"), "{not json");
+  assert.ok(!fs.existsSync(installedFolder(broken)));
+
+  // Creative Cloud's installer reports a failure with exit code 0: installed by hand
+  const failing = path.join(sandbox, "failing");
+  const failingNode = realNode({ home: failing, hasInstaller: true, output: "Failed to install, status = -410!" });
+  assert.strictEqual(await migration.runUxpInstaller(failingNode.node, fullPackage), "manual");
+  assert.strictEqual(failingNode.calls.length, 1);
+  assert.ok(fs.existsSync(installedFolder(failing)));
+
+  // The test mode skips Creative Cloud's installer
+  const forcedHome = path.join(sandbox, "forced");
+  const forcedNode = realNode({ home: forcedHome, hasInstaller: true, output: "Installation Successful" });
+  assert.strictEqual(await migration.runUxpInstaller(forcedNode.node, fullPackage, { forceManual: true }), "manual");
+  assert.strictEqual(forcedNode.calls.length, 0);
+  assert.strictEqual(parseUpdateTestConfig({ enabled: true, releasesUrl: "http://127.0.0.1:1/r", currentVersion: "3.0.0", forceManualPluginInstall: true }).forceManualPluginInstall, true);
+
+  // The install script, on its own sandbox: same files and same registration
+  if (process.platform === "darwin") {
+    const packageFile = path.join(sandbox, "TypeR-UXP.ccx");
+    fs.writeFileSync(packageFile, fullPackage);
+    const scriptRoot = path.join(sandbox, "script", "UXP");
+    const runScript = (args) => childProcess.spawnSync("bash", [path.resolve(__dirname, "../install_mac.sh"), "--uxp", ...args], {
+      encoding: "utf8",
+      env: { ...process.env, TYPER_UXP_ROOT: scriptRoot, TYPER_INSTALL_NO_UPIA: "1", TYPER_INSTALL_TARGET: path.join(sandbox, "no-cep"), TYPER_INSTALL_SOURCE: path.resolve(__dirname, "..") },
+    });
+    fs.mkdirSync(path.join(scriptRoot, "PluginsInfo", "v1"), { recursive: true });
+    fs.writeFileSync(path.join(scriptRoot, "PluginsInfo", "v1", "PS.json"), JSON.stringify({ plugins: [otherPlugin] }));
+    const installedByScript = runScript([packageFile]);
+    assert.strictEqual(installedByScript.status, 0, installedByScript.stderr + installedByScript.stdout);
+    assert.strictEqual(fs.readFileSync(path.join(scriptRoot, "Plugins", "External", "com.scanr.typer_3.1.0", "web", "index.js"), "utf8"), "// panel");
+    const scriptRegistry = JSON.parse(fs.readFileSync(path.join(scriptRoot, "PluginsInfo", "v1", "PS.json"), "utf8"));
+    assert.deepStrictEqual(scriptRegistry.plugins[0], otherPlugin, "other plugins are kept");
+    assert.deepStrictEqual(scriptRegistry, JSON.parse(manual.registerPlugin(JSON.stringify({ plugins: [otherPlugin] }), { id: "com.scanr.typer", name: "TypeR", version: "3.1.0", host: { minVersion: "26.0.0" } })), "same registration as the panels");
+    // A Legacy panel still installed gets its new name; none is created
+    assert.strictEqual(fs.existsSync(path.join(sandbox, "no-cep", "CSXS")), false);
+    const scriptManifest = path.join(sandbox, "no-cep", "CSXS", "manifest.xml");
+    fs.mkdirSync(path.dirname(scriptManifest), { recursive: true });
+    fs.writeFileSync(scriptManifest, packagedManifest);
+    const renamedByScript = runScript([packageFile]);
+    assert.strictEqual(renamedByScript.status, 0, renamedByScript.stderr + renamedByScript.stdout);
+    assert.strictEqual(fs.readFileSync(scriptManifest, "utf8"), oldManifest, "same renaming as the panels");
+    assert.deepStrictEqual(fs.readdirSync(path.dirname(scriptManifest)), ["manifest.xml"]);
+    fs.writeFileSync(packageFile, ccx({ id: "com.other.plugin", version: "1.0.0" }));
+    fs.writeFileSync(scriptManifest, packagedManifest);
+    assert.notStrictEqual(runScript([packageFile]).status, 0, "only a TypeR package");
+    assert.strictEqual(fs.readFileSync(scriptManifest, "utf8"), packagedManifest, "a failed installation renames nothing");
+  }
+  fs.rmSync(sandbox, { recursive: true, force: true });
 
   // Outside a CEP panel there is nothing to switch
   assert.strictEqual(migration.readUxpMigrationState(null).forced, false);

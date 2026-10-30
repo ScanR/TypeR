@@ -16,6 +16,7 @@ const {
   INSTALL_FOLDERS,
   parseVersion,
   compareVersions,
+  manifestNeedsRestart,
   pickUpdateDownloadUrl,
   findNewerReleases,
   findZipRootPrefix,
@@ -33,6 +34,15 @@ assert.strictEqual(compareVersions("3.0.0", "3.0.0-rc.1"), 1);
 assert.strictEqual(compareVersions("3.0.0-rc.10", "3.0.0-rc.2"), 1);
 assert.strictEqual(compareVersions("3.0.0+build.1", "3.0.0"), 0);
 assert.strictEqual(compareVersions("2.10.0", "2.9.9"), 1, "numeric compare, not lexicographic");
+
+// --- manifestNeedsRestart ---
+const manifestOf = (version, extra = "", menu = "TypeR") => '<ExtensionManifest ExtensionBundleVersion="' + version + '"><Extension Id="typer" Version="' + version + '" /><Host Name="PHXS" Version="[16.0,99.9]" />' + extra + "<Menu>" + menu + "</Menu></ExtensionManifest>";
+assert.strictEqual(manifestNeedsRestart(manifestOf("3.0.0"), manifestOf("3.0.1")), false, "A new version alone reloads");
+assert.strictEqual(manifestNeedsRestart(manifestOf("3.0.0", "", "TypeR (old)"), manifestOf("3.0.1")), false, "Nor does the Legacy panel's name matter");
+assert.strictEqual(manifestNeedsRestart(manifestOf("3.0.0").replace(/></g, ">\r\n<").replace(/\r\n/g, "\n"), manifestOf("3.0.0").replace(/></g, ">\n<").replace(/\n/g, "\r\n")), false, "Nor line endings");
+assert.strictEqual(manifestNeedsRestart(manifestOf("3.0.0"), manifestOf("3.0.1", "<Parameter>--new</Parameter>")), true);
+assert.strictEqual(manifestNeedsRestart(manifestOf("3.0.0"), manifestOf("3.0.1").replace("[16.0,99.9]", "[17.0,99.9]")), true, "The host versions matter");
+assert.strictEqual(manifestNeedsRestart(null, manifestOf("3.0.1")), true);
 
 // --- pickUpdateDownloadUrl ---
 const builtAsset = { name: "TypeR-3.1.0.zip", browser_download_url: "https://example.com/TypeR-3.1.0.zip" };
