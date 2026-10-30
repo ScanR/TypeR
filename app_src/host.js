@@ -914,6 +914,7 @@ function _createMagicWandSelection(tolerance) {
     var bounds = _getCurrentTextLayerBounds();
     var x = Math.max(bounds.left - 5, 0);
     var y = Math.max(bounds.yMid, 0);
+    _checkWandPointOnCanvas(x, y);
     var desc = new ActionDescriptor();
     var ref = new ActionReference();
     ref.putProperty(charID.Channel, charID.FrameSelect);
@@ -1360,14 +1361,28 @@ function _getDocumentResolution() {
   return 72;
 }
 
+// Photoshop 27.11 on Windows crashes on a wand click past the right or
+// bottom edge of the canvas (macOS only throws "the selected area is empty"):
+// such a click throws here instead of reaching Photoshop. Two tests: the
+// minified build drops the parentheses of `(a && b) || (c && d)`, which
+// ExtendScript then reads as `((a && b) || c) && d`.
+function _checkWandPointOnCanvas(x, y) {
+  var size = _getDocumentPixelSize();
+  if (size.width > 0 && x >= size.width) throw new Error("wand point off canvas");
+  if (size.height > 0 && y >= size.height) throw new Error("wand point off canvas");
+}
+
 function _magicWandAt(x, y, tolerance) {
+  var wandX = Math.max(x, 0);
+  var wandY = Math.max(y, 0);
+  _checkWandPointOnCanvas(wandX, wandY);
   var desc = new ActionDescriptor();
   var ref = new ActionReference();
   ref.putProperty(charID.Channel, charID.FrameSelect);
   desc.putReference(charID.Null, ref);
   var pos = new ActionDescriptor();
-  pos.putUnitDouble(charID.Horizontal, charID.PixelUnit, Math.max(x, 0));
-  pos.putUnitDouble(charID.Vertical, charID.PixelUnit, Math.max(y, 0));
+  pos.putUnitDouble(charID.Horizontal, charID.PixelUnit, wandX);
+  pos.putUnitDouble(charID.Vertical, charID.PixelUnit, wandY);
   desc.putObject(charID.To, stringIDToTypeID("paint"), pos);
   desc.putInteger(stringIDToTypeID("tolerance"), tolerance || _BUBBLE_WAND_TOLERANCE);
   desc.putBoolean(stringIDToTypeID("contiguous"), true);

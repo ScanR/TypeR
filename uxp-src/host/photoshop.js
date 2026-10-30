@@ -749,6 +749,7 @@ function _createMagicWandSelection(tolerance) {
     const bounds = _getCurrentTextLayerBounds();
     const x = Math.max(bounds.left - 5, 0);
     const y = Math.max(bounds.yMid, 0);
+    _checkWandPointOnCanvas(x, y);
     play({
       _obj: "set",
       _target: [SELECTION],
@@ -1131,11 +1132,22 @@ function _bubbleDocumentResolution() {
   return 72;
 }
 
+// Photoshop 27.11 on Windows crashes on a wand click past the right or
+// bottom edge of the canvas (see host.js)
+function _checkWandPointOnCanvas(x, y) {
+  const size = _bubbleDocumentSize();
+  if (size.width > 0 && x >= size.width) throw new Error("wand point off canvas");
+  if (size.height > 0 && y >= size.height) throw new Error("wand point off canvas");
+}
+
 function _magicWandAt(x, y, tolerance) {
+  const wandX = Math.max(x, 0);
+  const wandY = Math.max(y, 0);
+  _checkWandPointOnCanvas(wandX, wandY);
   play({
     _obj: "set",
     _target: [SELECTION],
-    to: { _obj: "paint", horizontal: px(Math.max(x, 0)), vertical: px(Math.max(y, 0)) },
+    to: { _obj: "paint", horizontal: px(wandX), vertical: px(wandY) },
     tolerance: tolerance || _BUBBLE_WAND_TOLERANCE,
     contiguous: true,
     merged: true,
