@@ -10,6 +10,16 @@ import {locale, nativeAlert, getStyleObject, rgbToHex, getUserFonts, scanPsdFont
 import {useContext} from '../../context';
 import {buildFontGroups} from '../../fontScan';
 import {buildFolderTree, flattenFolderTree} from '../../folderUtils';
+import useFontFinderMatches from '../../useFontFinderMatches';
+import {FontFinderBanner, FontFinderSuggestion, FontWebSearchButton} from './fontFinderSuggestion';
+
+const getPostScriptNames = fonts => {
+    const set = new Set();
+    (fonts || []).forEach(font => {
+        if (font.postScriptName) set.add(font.postScriptName);
+    });
+    return set;
+};
 
 const FontScanRModal = React.memo(function FontScanRModal() {
     const context = useContext((state) => ({
@@ -34,13 +44,14 @@ const FontScanRModal = React.memo(function FontScanRModal() {
 
     const folderTree = React.useMemo(() => buildFolderTree(context.state.folders), [context.state.folders]);
     const flatFolders = React.useMemo(() => flattenFolderTree(folderTree), [folderTree]);
-    const installedFonts = React.useMemo(() => {
-        const set = new Set();
-        getUserFonts().forEach(font => {
-            if (font.postScriptName) set.add(font.postScriptName);
-        });
-        return set;
-    }, []);
+    const [installedFonts, setInstalledFonts] = React.useState(() => getPostScriptNames(getUserFonts()));
+    // Missing fonts are looked up on Font FindeR once the scan is done
+    const missingTargets = step === 'results'
+        ? groups
+            .filter(group => !installedFonts.has(group.fontPostScriptName))
+            .map(group => ({key: group.key, postScriptName: group.fontPostScriptName, fontName: group.fontName}))
+        : [];
+    const fontFinder = useFontFinderMatches(missingTargets, fonts => setInstalledFonts(getPostScriptNames(fonts)));
 
     React.useEffect(() => () => {
         cancelledRef.current = true;
@@ -236,6 +247,13 @@ const FontScanRModal = React.memo(function FontScanRModal() {
                                             <FiRefreshCw size={13} />
                                         </button>
                                     </div>
+                                    {fontFinder.foundKeys.length > 1 && (
+                                        <FontFinderBanner
+                                            count={fontFinder.foundKeys.length}
+                                            busy={fontFinder.busy}
+                                            onInstallAll={() => fontFinder.install(fontFinder.foundKeys)}
+                                        />
+                                    )}
                                     <div className="fsr-list hostBrdContrast">
                                         {groups.map(group => (
                                             <FontGroupRow
@@ -244,6 +262,10 @@ const FontScanRModal = React.memo(function FontScanRModal() {
                                                 selected={selectedKeys.includes(group.key)}
                                                 name={names[group.key] || ''}
                                                 installed={installedFonts.has(group.fontPostScriptName)}
+                                                finderEntry={fontFinder.entries[group.key]}
+                                                finderBusy={fontFinder.busy}
+                                                webSearch={!installedFonts.has(group.fontPostScriptName) && fontFinder.isUnmatched(group.key)}
+                                                onInstallFont={fontFinder.install}
                                                 onToggle={toggleGroup}
                                                 onRename={renameGroup}
                                             />
@@ -373,13 +395,23 @@ const FontGroupRow = React.memo(function FontGroupRow(props) {
                             {group.stroke.size}px
                         </span>
                     )}
-                    {!props.installed && (
+                    {!props.installed && (!props.finderEntry || props.finderEntry.state !== 'installed') && (
                         <span className="fsr-chip fsr-chip-warn" title={locale.fontScanNotInstalledHint}>
                             <FiAlertTriangle size={10} /> {locale.fontScanNotInstalled}
                         </span>
                     )}
+                    {!props.installed && (
+                        <FontFinderSuggestion
+                            entry={props.finderEntry}
+                            busy={props.finderBusy}
+                            onInstall={() => props.onInstallFont([group.key])}
+                        />
+                    )}
                 </div>
             </div>
+            {props.webSearch && (
+                <FontWebSearchButton fontName={group.fontName} postScriptName={group.fontPostScriptName} />
+            )}
         </div>
     );
 });
@@ -388,6 +420,10 @@ FontGroupRow.propTypes = {
     selected: PropTypes.bool.isRequired,
     name: PropTypes.string.isRequired,
     installed: PropTypes.bool.isRequired,
+    finderEntry: PropTypes.object,
+    finderBusy: PropTypes.bool,
+    webSearch: PropTypes.bool,
+    onInstallFont: PropTypes.func.isRequired,
     onToggle: PropTypes.func.isRequired,
     onRename: PropTypes.func.isRequired
 };

@@ -1,0 +1,199 @@
+// Font FindeR suggestions for missing fonts (FontScanR, style import)
+.ffs-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: 10px;
+    line-height: 1;
+    padding: 3px 7px;
+    border: 0;
+    border-radius: 8px;
+    background: rgba(#fff, .1);
+    color: inherit;
+    white-space: nowrap;
+    .light-theme & {
+        background: rgba(#000, .08);
+    }
+    B {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 600;
+    }
+    svg {
+        flex: 0 0 auto;
+    }
+    &.m-searching,
+    &.m-installing {
+        opacity: .6;
+    }
+    &.m-installed {
+        background: rgba(73, 169, 112, .2);
+        color: #63c188;
+        .light-theme & {
+            color: #2e7d4f;
+        }
+    }
+}
+.ffs-install {
+    cursor: pointer;
+    background: rgba(40, 142, 223, .24);
+    color: #6db8f2;
+    box-shadow: inset 0 0 0 1px rgba(40, 142, 223, .45);
+    &:hover:not(:disabled) {
+        background: rgba(40, 142, 223, .38);
+        color: #9ccff7;
+    }
+    &:disabled {
+        opacity: .5;
+        cursor: default;
+    }
+    &.m-similar {
+        background: rgba(40, 142, 223, .1);
+        box-shadow: none;
+        outline: 1px dashed rgba(40, 142, 223, .5);
+        outline-offset: -1px;
+    }
+    &.m-failed {
+        box-shadow: inset 0 0 0 1px rgba(#e05a4f, .7);
+    }
+    .light-theme & {
+        color: #1d6fb0;
+        &:hover:not(:disabled) {
+            color: #155485;
+        }
+    }
+}
+.ffs-label {
+    opacity: .85;
+}
+.ffs-spin {
+    animation: ffs-spin 1s linear infinite;
+}
+@keyframes ffs-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.ffs-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: rgba(40, 142, 223, .14);
+    box-shadow: inset 0 0 0 1px rgba(40, 142, 223, .35);
+    font-size: 12px;
+    .font-finder-logo {
+        color: #6db8f2;
+        .light-theme & {
+            color: #1d6fb0;
+        }
+    }
+}
+.ffs-banner-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.ffs-banner-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+// Missing fonts after a style import (over the settings)
+.missing-fonts-dialog {
+    width: 340px;
+    .ffs-banner {
+        text-align: left;
+    }
+}
+.missing-fonts-list {
+    max-height: 260px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+    text-align: left;
+}
+.missing-fonts-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: rgba(#000, .16);
+    .light-theme & {
+        background: rgba(#000, .05);
+    }
+    & + & {
+        margin-top: 4px;
+    }
+}
+.missing-fonts-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.missing-fonts-name {
+    font-size: 12px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.missing-fonts-styles {
+    margin-top: 2px;
+    font-size: 10px;
+    opacity: .6;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.missing-fonts-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    &:empty {
+        display: none;
+    }
+}
+.missing-fonts-none {
+    font-size: 10px;
+    opacity: .55;
+}
+
+// Google search for a font Font FindeR does not have, at the right of its row
+.ffs-web-search {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    margin-left: 6px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: rgba(#fff, .1);
+    color: inherit;
+    cursor: pointer;
+    opacity: .8;
+    &:hover {
+        background: rgba(#fff, .2);
+        opacity: 1;
+    }
+    .light-theme & {
+        background: rgba(#000, .08);
+        &:hover {
+            background: rgba(#000, .16);
+        }
+    }
+}

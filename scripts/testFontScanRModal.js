@@ -33,6 +33,8 @@ const load = require('./helpers/loadAppModule')({
     getUserFonts: () => [], scanPsdFonts: (file, callback) => scans.push({ file, callback }),
   },
   '../../context': { useContext: () => context },
+  '../../useFontFinderMatches': () => ({ available: false, entries: {}, busy: false, install() {}, foundKeys: [], isUnmatched: () => false }),
+  './fontFinderSuggestion': { FontFinderBanner: () => null, FontFinderSuggestion: () => null, FontWebSearchButton: () => null },
 });
 const Modal = load('app_src/components/modal/fontScanR.jsx').default;
 const render = () => { cursor = 0; return Modal(); };
