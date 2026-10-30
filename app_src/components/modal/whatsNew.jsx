@@ -421,7 +421,7 @@ const getChapters = () => [
   {
     id: "workflow",
     Icon: FiColumns,
-    minutes: 0.75,
+    minutes: 0.5,
     title: locale.whatsNewWorkflowTitle || "Organize your work",
     intro: locale.whatsNewWorkflowIntro || "Several chapters, teams or projects at once, without mixing anything.",
     steps: [
@@ -455,10 +455,27 @@ const getChapters = () => [
   {
     id: "fonts",
     Icon: FiSearch,
-    minutes: 0.25,
-    title: locale.whatsNewFontsTitle || "Font FindeR",
-    intro: locale.whatsNewFontsIntro || "Find the right font faster, without leaving Photoshop.",
+    minutes: 0.5,
+    title: locale.whatsNewFontsTitle || "Your fonts",
+    intro:
+      locale.whatsNewFontsIntro ||
+      "Turn the fonts of existing PSD files into styles and get the ones you are missing, without leaving Photoshop.",
     steps: [
+      {
+        id: "fontScan",
+        coachIn: "fontScanR",
+        text:
+          locale.whatsNewFontsStep1 ||
+          "FontScanR: open the settings with the gear at the bottom of the panel, then the Data tab, and click Open next to FontScanR.",
+        coach:
+          locale.whatsNewFontsCoachScan ||
+          "FontScanR: pick .psd files. It lists every font they use, with its size, color and stroke, and turns the ones you tick into styles. A font you do not have is looked up on Font FindeR: install it right from the list.",
+        visit: ".fsr-body",
+        spot: () => [tour("font-scan-open"), unlessActive("data"), tour("settings")],
+        result:
+          locale.whatsNewFontsResult1 ||
+          "Missing fonts are looked up on Font FindeR, in FontScanR and when you import a style folder: one click installs a match, or all of them at once.",
+      },
       {
         id: "fontFinder",
         coachIn: "settings",

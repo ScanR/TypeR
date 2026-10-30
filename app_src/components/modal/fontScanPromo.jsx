@@ -21,7 +21,7 @@ const FontScanPromo = React.memo(function FontScanPromo() {
                 </b>
                 <span>{locale.fontScanPromo}</span>
             </div>
-            <button type="button" className="topcoat-button--large fsr-promo-btn" onClick={openFontScanR}>
+            <button type="button" className="topcoat-button--large fsr-promo-btn" data-tour="font-scan-open" onClick={openFontScanR}>
                 <MdOutlineDocumentScanner size={16} /> {locale.fontScanOpen}
             </button>
         </div>

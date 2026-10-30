@@ -245,6 +245,7 @@ const session = createLoader({
     "app_src/components/previewBlock/previewBlock.jsx",
     "app_src/components/stylesBlock/stylesBlock.jsx",
     "app_src/components/modal/editStyle.jsx",
+    "app_src/components/modal/fontScanPromo.jsx",
   ].map(read).join("\n");
   const footer = read("app_src/components/footer/footer.jsx");
   const settings = read("app_src/components/modal/settings.jsx");
@@ -277,7 +278,7 @@ const session = createLoader({
   const modal = read("app_src/components/modal/modal.jsx");
   assert(/whatsNewSession\.coach\.modal === modalType/.test(modal), "The tip shows only in the window of its step");
   (chapters.match(/coachIn: "(\w+)"/g) || []).forEach((entry) => {
-    assert(/^(settings|editStyle)$/.test(entry.slice(10, -1)), "Tips go to a window the panel opens");
+    assert(/^(settings|editStyle|fontScanR)$/.test(entry.slice(10, -1)), "Tips go to a window the panel opens");
   });
 
   // The guide is dragged by its header and moves away from the ring, but a
@@ -497,6 +498,48 @@ const session = createLoader({
   for (let number = 1; number <= 10; number++) {
     assert(new RegExp('fill="#ffffff">' + number + "</text>").test(svg), "Spot " + number + " is numbered on the page");
   }
+}
+
+// --- FontScanR: opening it is enough ---------------------------------------------
+
+{
+  // The window opens without any PSD picked, and the guide is not mounted
+  // while it is open: the ring's loop passes the step, and it stays done once
+  // the user comes back without importing anything
+  const tourSource = readTour();
+  const start = tourSource.indexOf('id: "fontScan"');
+  const step = tourSource.slice(start, tourSource.indexOf('id: "fontFinder"'));
+  assert(/visit: "\.fsr-body"/.test(step) && !/\b(check|event|line|paste):/.test(step), "FontScanR passes on opening its window, nothing else");
+  assert(/className="app-modal-body-inner fsr-body"/.test(read("app_src/components/modal/fontScanR.jsx")), "The window shows from its first screen");
+
+  const run = { active: true, done: {} };
+  const spotlight = createLoader({
+    "./whatsNewGuide": { avoidRing: () => {} },
+    "./whatsNewSession": { whatsNewSession: run },
+  })("app_src/whatsNewSpotlight.js");
+  const frames = [];
+  let windowOpen = false;
+  const flush = () => frames.splice(0).forEach((callback) => callback());
+  global.window = { requestAnimationFrame: (callback) => { frames.push(callback); return 1; } };
+  global.document = {
+    querySelector: (selector) => (windowOpen && selector === ".fsr-body"
+      ? { getBoundingClientRect: () => ({ width: 300, height: 400 }) }
+      : null),
+  };
+  spotlight.setTourSpot({ key: "fontScan", candidates: [{ selector: '[data-tour="settings"]' }], visit: ".fsr-body", stepId: "fontScan" });
+  flush();
+  assert(!run.done.fontScan, "The step waits for the window");
+  spotlight.setTourSpotListener(null);
+  windowOpen = true;
+  flush();
+  assert.strictEqual(run.done.fontScan, true, "Opening FontScanR passes the step while the guide is away");
+  windowOpen = false;
+  flush();
+  assert.strictEqual(run.done.fontScan, true, "Coming back without a PSD keeps it done");
+  run.active = false;
+  flush();
+  delete global.window;
+  delete global.document;
 }
 
 console.log("What's new tour tests passed");

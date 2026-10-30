@@ -137,7 +137,7 @@ const tick = () => {
       // Once per new target: scroll it into its list (script, settings)
       if (scrolledTo !== target && target.scrollIntoView) {
         scrolledTo = target;
-        const container = target.closest(".text-lines, .tab-bar-list, .shortcut-list, .folders-list, .settings-tabs");
+        const container = target.closest(".text-lines, .tab-bar-list, .shortcut-list, .folders-list, .settings-tabs, .settings-content");
         if (container) target.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
     }
