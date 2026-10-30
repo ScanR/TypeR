@@ -160,6 +160,65 @@ const createFontPreviewRegistry = (fonts, textStyles, revision = 0, namespace = 
   };
 };
 
+// @font-face rule previewing one entry of the installed font list: local()
+// matches the PostScript or full name, which pins the exact weight instead of
+// letting the engine pick a face of the family.
+const getInstalledFontFaceRule = (font, alias) => {
+  if (!font || !alias) return "";
+  const localNames = [
+    font.postScriptName,
+    font.name,
+    font.family && font.style ? `${font.family} ${font.style}` : "",
+  ].filter((name, index, names) => name && names.indexOf(name) === index);
+  if (!localNames.length) return "";
+  return `@font-face{font-family:${quoteFontFamily(alias)};src:${localNames
+    .map((name) => `local(${quoteFontFamily(name)})`)
+    .join(",")};}`;
+};
+
+const normalizeFontSearch = (value) =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+
+// Filters font picker options by every word of the query. Ranked: names
+// starting with the query, then names with a word starting with it, then the
+// rest; the list order is kept inside each group. "animeace" also finds
+// "Anime Ace" since spaces and punctuation are ignored as a fallback.
+const filterFontOptions = (options, query) => {
+  const list = options || [];
+  const normalizedQuery = normalizeFontSearch(query).trim();
+  if (!normalizedQuery) return list;
+  const tokens = normalizedQuery.split(/\s+/);
+  const compactQuery = normalizedQuery.replace(/[^a-z0-9]+/g, "");
+  const groups = [[], [], []];
+  list.forEach((option) => {
+    const label = normalizeFontSearch(option.label);
+    const compactLabel = label.replace(/[^a-z0-9]+/g, "");
+    const matches = tokens.every((token) => label.includes(token)) ||
+      (compactQuery && compactLabel.includes(compactQuery));
+    if (!matches) return;
+    if (label.startsWith(normalizedQuery) || (compactQuery && compactLabel.startsWith(compactQuery))) groups[0].push(option);
+    else if ((" " + label.replace(/[^a-z0-9]+/g, " ")).includes(" " + tokens[0])) groups[1].push(option);
+    else groups[2].push(option);
+  });
+  return groups[0].concat(groups[1], groups[2]);
+};
+
+const REGULAR_STYLE_RANK = ["regular", "normal", "book", "roman", "medium", "plain", "text"];
+
+// Face showing a family in the family list: its regular weight when there is
+// one, else the first face Photoshop lists.
+const pickFamilyPreviewFont = (familyFonts) => {
+  const list = familyFonts || [];
+  for (let i = 0; i < REGULAR_STYLE_RANK.length; i++) {
+    const font = list.find((entry) => normalizeFontStyle(entry.style) === REGULAR_STYLE_RANK[i]);
+    if (font) return font;
+  }
+  return list[0];
+};
+
 const getFontPreviewFamily = (textStyle = {}, registry = {}) => {
   const families = [];
   const alias = registry.aliases?.[getTextStyleFontKey(textStyle)];
@@ -176,7 +235,10 @@ const getFontPreviewFamily = (textStyle = {}, registry = {}) => {
 
 export {
   createFontPreviewRegistry,
+  filterFontOptions,
   findInstalledFont,
   getFontPreviewFamily,
+  getInstalledFontFaceRule,
   getTextStyleFontKey,
+  pickFamilyPreviewFont,
 };

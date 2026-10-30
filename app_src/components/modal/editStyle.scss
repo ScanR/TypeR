@@ -21,6 +21,9 @@
     INPUT[type=number] {
         padding-right: 0;
     }
+    .style-edit-font-family {
+        flex: 1 1 auto;
+    }
     .style-edit-font-style {
         width: calc(50% - 37px);
         margin-left: 8px;

@@ -37,6 +37,7 @@
 - Add a shortcut to assign that turns the selected style's stroke on or off, keeping its size and color. A style with an active stroke shows a frame of that color in the list.
 - Fix the + and - size buttons on text layers resized with Ctrl+T: + made the text smaller, and now both change the displayed size by one step and keep the line breaks.
 - Add contextual alternates and the single-line composer to the style editor, and turn on standard and contextual ligatures for new styles.
+- Preview fonts in the style editor: the font and weight lists show each entry in its own font, and the font list has a search field (word order, spaces and accents are optional).
 - Keep every script tab and the active tab when multi-tab mode is hidden.
 - Recognize complete page headings, including `Page 12 :`, `Page 12 : title`, `Page 12 - title`, `[Page 12]` and Markdown headings. Mentions of a page inside dialogue remain dialogue.
 - Serialize PSD navigation and record the opened page only after Photoshop confirms success.

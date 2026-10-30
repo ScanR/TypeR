@@ -29,6 +29,8 @@ import {
   stepStyleSize,
 } from "../../styleSizePresets";
 import FontScanPromo from "./fontScanPromo";
+import FontPicker from "./fontPicker";
+import { pickFamilyPreviewFont } from "../../fontPreview";
 import UnsavedChangesDialog from "./unsavedChangesDialog";
 
 const BUBBLE_TYPES = ["shout", "narration"];
@@ -431,14 +433,36 @@ const StyleDetails = React.memo(function StyleDetails(props) {
   const [family, setFamily] = React.useState(currentFont.family || "");
   const [colorPickerOpen, setColorPickerOpen] = React.useState(false);
 
-  const families = React.useMemo(
-    () => Array.from(new Set(fonts.map((font) => font.family))),
-    [fonts]
-  );
-  const familyFonts = React.useMemo(
-    () => fonts.filter((font) => font.family === family),
-    [family, fonts]
-  );
+  const fontsByFamily = React.useMemo(() => {
+    const groups = new Map();
+    fonts.forEach((font) => {
+      if (!groups.has(font.family)) groups.set(font.family, []);
+      groups.get(font.family).push(font);
+    });
+    return groups;
+  }, [fonts]);
+  const familyFonts = fontsByFamily.get(family) || [];
+  const familyOptions = React.useMemo(() => {
+    const options = Array.from(fontsByFamily, ([familyName, members]) => ({
+      value: familyName,
+      label: familyName,
+      font: pickFamilyPreviewFont(members),
+      meta: members.length > 1 ? String(members.length) : "",
+    }));
+    if (currentFont.notFound) options.unshift({ value: currentFont.family, label: currentFont.family });
+    return options;
+  }, [fontsByFamily, currentFont.notFound, currentFont.family]);
+  const styleOptions = React.useMemo(() => {
+    const seen = new Set();
+    const options = [];
+    if (currentFont.notFound) options.push({ value: currentFont.style, label: currentFont.style });
+    familyFonts.forEach((font) => {
+      if (seen.has(font.style)) return;
+      seen.add(font.style);
+      options.push({ value: font.style, label: font.style, font });
+    });
+    return options;
+  }, [familyFonts, currentFont.notFound, currentFont.style]);
   const unit = props.textProps.typeUnit.substr(0, 3);
 
   React.useEffect(() => setFamily(currentFont.family), [currentFont.family]);
@@ -624,30 +648,21 @@ const StyleDetails = React.memo(function StyleDetails(props) {
   return (
     <div className="style-edit-props">
       <div className="style-edit-props-row">
-        <select value={family} onChange={(e) => changeFamily(e.target.value)} className="topcoat-textarea">
-          {currentFont.notFound && (
-            <option key={currentFont.family} value={currentFont.family}>
-              {currentFont.family}
-            </option>
-          )}
-          {families.map((familyName) => (
-            <option key={familyName} value={familyName}>
-              {familyName}
-            </option>
-          ))}
-        </select>
-        <select value={textStyle.fontStyleName} onChange={(e) => changeFontStyle(e.target.value)} className="topcoat-textarea style-edit-font-style">
-          {currentFont.notFound && (
-            <option key={currentFont.style} value={currentFont.style}>
-              {currentFont.style}
-            </option>
-          )}
-          {familyFonts.map((font) => (
-            <option key={font.style} value={font.style}>
-              {font.style}
-            </option>
-          ))}
-        </select>
+        <FontPicker
+          className="style-edit-font-family"
+          options={familyOptions}
+          value={family}
+          onChange={changeFamily}
+          minPopoverWidth={300}
+          searchable
+        />
+        <FontPicker
+          className="style-edit-font-style"
+          options={styleOptions}
+          value={textStyle.fontStyleName}
+          onChange={changeFontStyle}
+          minPopoverWidth={180}
+        />
       </div>
       <div className="style-edit-size-section">
         <div className="style-edit-size-heading">

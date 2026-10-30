@@ -21,8 +21,11 @@ mod._compile(code, filePath);
 
 const {
   createFontPreviewRegistry,
+  filterFontOptions,
   findInstalledFont,
   getFontPreviewFamily,
+  getInstalledFontFaceRule,
+  pickFamilyPreviewFont,
 } = mod.exports;
 
 const textStyle = {
@@ -97,5 +100,29 @@ assert.strictEqual(
   getFontPreviewFamily(wildjessTextStyle, wildjessRegistry),
   '"TypeRPreview_preview_0_0", "Wildjess", "Tahoma"'
 );
+
+// Font picker: every face previews its exact weight
+assert.strictEqual(
+  getInstalledFontFaceRule(wildjessBoldItalic, "TypeRPicker_0"),
+  '@font-face{font-family:"TypeRPicker_0";src:local("Wildjess-BoldItalic"),local("Wildjess BoldItalic"),local("Wildjess Bold Italic");}'
+);
+assert.strictEqual(getInstalledFontFaceRule(null, "TypeRPicker_1"), "");
+assert.strictEqual(getInstalledFontFaceRule({ postScriptName: 'Bad"Name' }, "A"), '@font-face{font-family:"A";src:local("Bad\\"Name");}');
+
+assert.strictEqual(pickFamilyPreviewFont([wildjessBoldItalic, wildjessRegular]), wildjessRegular);
+assert.strictEqual(pickFamilyPreviewFont([wildjessBoldItalic]), wildjessBoldItalic);
+assert.strictEqual(pickFamilyPreviewFont([]), undefined);
+
+const pickerOptions = ["Grace Hand", "Wild Words", "CC Wild Words", "Anime Ace 2.0 BB", "Comic Neue", "Écriture Manga", "BadaBoom BB"]
+  .map((label) => ({ value: label, label }));
+const labels = (query) => filterFontOptions(pickerOptions, query).map((option) => option.label);
+assert.strictEqual(filterFontOptions(pickerOptions, "  "), pickerOptions);
+assert.deepStrictEqual(labels("wild"), ["Wild Words", "CC Wild Words"], "prefix matches come first");
+assert.deepStrictEqual(labels("words wild").sort(), ["CC Wild Words", "Wild Words"], "word order is free");
+assert.deepStrictEqual(labels("animeace"), ["Anime Ace 2.0 BB"], "spaces are optional");
+assert.deepStrictEqual(labels("ecriture"), ["Écriture Manga"], "accents are optional");
+assert.deepStrictEqual(labels("ace"), ["Anime Ace 2.0 BB", "Grace Hand"], "word starts rank before inner matches");
+assert.deepStrictEqual(labels("neue"), ["Comic Neue"]);
+assert.deepStrictEqual(labels("zzz"), []);
 
 console.log("font preview refresh tests passed");
