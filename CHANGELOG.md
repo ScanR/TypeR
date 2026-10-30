@@ -15,7 +15,7 @@
 ### Smart paste
 
 - Paste fits the translation to the bubble's real outline: the style size is kept when the text fits and shrinks
-  down to a minimum size otherwise (70% by default), the lines follow the bubble's silhouette, the ink is centred
+  as little as possible otherwise, down to a minimum size (85% by default), the lines follow the bubble's silhouette, the ink is centred
   inside the outline, and one French or English hyphen is allowed only as a last resort.
 - Black bubbles get white text without a stroke. A style can be marked as the Shout or Narration style of its
   folder; spiky bubbles and rectangles then use it, unless the script line has its own prefix style.

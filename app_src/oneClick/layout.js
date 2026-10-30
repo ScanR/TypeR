@@ -4,8 +4,9 @@
 // from MD TYPER's production/layout.js, with the author's permission.
 //
 // Size policy (TypeR): the style size is a ceiling. The search first tries
-// the exact style size, then shrinks down to minScale of it, then (when
-// enabled) allows one hyphen in a long word. "fixed" keeps one exact size.
+// the exact style size, then the largest size that fits down to minScale of
+// it, then (when enabled) allows one hyphen in a long word. "fixed" keeps one
+// exact size.
 
 import { compileGraph, composeText, probesForGraph } from "./textGraph";
 import { measureEdges } from "./measureSpec";
@@ -204,9 +205,11 @@ const verifyNativeChoice = async (graph, model, choice, exact, measure) => {
   return { verified: null, cache };
 };
 
-// One search pass between sizes.min and sizes.max (pixels)
-const searchPass = async (graph, plan, data, sizes, cache, probes, estimated, measure) => {
+// One search pass between sizes.min and sizes.max (pixels); fine scans the
+// block centre in small steps instead of 5% ones
+const searchPass = async (graph, plan, data, sizes, cache, probes, estimated, measure, fine) => {
   const model = solverModel(graph, plan, cache, probes, sizes, data);
+  if (fine) model.opts.fineCentres = true;
   const solved = solve({ id: 1, models: [model] }).plans[0];
   let exact = new Map();
   cache.forEach((value, key) => { if (!estimated[key]) exact.set(key, value); });
@@ -274,14 +277,52 @@ export const planText = async (plan, payload, context) => {
     const estimated = estimateLineMetrics(graph, probes, spaces, cache);
     const stylePx = (graph.baseSize * dpi) / 72;
     const maxPx = policy.maxPx > 0 ? policy.maxPx : stylePx;
-    for (let t = 0; t < tiers.length; t++) {
-      const sizes = tiers[t] === "exact" ? { min: maxPx, max: maxPx } : { min: maxPx * (policy.minScale || 0.7), max: maxPx };
-      const mark = now();
-      const pass = await searchPass(graph, plan, payload, sizes, new Map(cache), probes, estimated, measure);
-      timing.solve += now() - mark;
-      if (pass.best) return { graph, pass, tier: tiers[t] };
+    // Native measurements outlive a pass: later sizes reuse them
+    const known = new Map();
+    const fitAt = async (size) => {
+      const sizes = { min: size, max: size };
+      let pass = null;
+      // The coarse block centres first, then the fine scan of the same band
+      for (let fine = 0; fine < 2 && !(pass && pass.best); fine++) {
+        const seeded = new Map(cache);
+        const guessed = {};
+        known.forEach((value, key) => seeded.set(key, value));
+        Object.keys(estimated).forEach((key) => { if (!known.has(key)) guessed[key] = true; });
+        const mark = now();
+        pass = await searchPass(graph, plan, payload, sizes, seeded, probes, guessed, measure, fine === 1);
+        timing.solve += now() - mark;
+        pass.exact.forEach((value, key) => known.set(key, value));
+      }
+      return pass.best ? pass : null;
+    };
+    const exact = await fitAt(maxPx);
+    if (exact) return { graph, pass: exact, tier: "exact" };
+    if (!tiers.includes("range")) return null;
+    // The largest size that fits: step down 2% at a time, then halve the
+    // last step down to half a percent. Shrinking the least keeps the sizes
+    // of a page consistent, so a better silhouette never buys a smaller size.
+    const minPx = maxPx * (policy.minScale || 0.85);
+    const step = maxPx * 0.02;
+    const tolerance = Math.max(0.1, maxPx * 0.005);
+    let failed = maxPx;
+    let fitted = null;
+    let fittedSize = 0;
+    for (let size = maxPx - step; !fitted; size -= step) {
+      const at = Math.max(size, minPx);
+      fitted = await fitAt(at);
+      if (fitted) fittedSize = at;
+      else if (at <= minPx) return null;
+      else failed = at;
     }
-    return null;
+    while (failed - fittedSize > tolerance) {
+      const middle = (failed + fittedSize) / 2;
+      const pass = await fitAt(middle);
+      if (pass) {
+        fitted = pass;
+        fittedSize = middle;
+      } else failed = middle;
+    }
+    return { graph, pass: fitted, tier: "range" };
   };
   const tiers = policy.fixed ? ["exact"] : ["exact", "range"];
   let found = await tryGraph(false, tiers);

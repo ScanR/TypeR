@@ -8,8 +8,9 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
 
 - **Smart paste** (on by default; Settings > Behavior). Paste, the Paste shortcut and multi-bubble batches:
   - read the selection's outline (work path, 2 px tolerance) and keep the bubble's body, without its tail;
-  - keep the style size when the text fits, shrink it down to the minimum size (70% by default), then allow one
-    hyphen in a long word (French or English, or off);
+  - keep the style size when the text fits, otherwise shrink it as little as possible (the largest size that fits,
+    to half a percent), down to the minimum size (85% by default), then allow one hyphen in a long word (French or
+    English, or off);
   - break the lines to follow the bubble's silhouette and centre the ink optically, all lines inside the outline;
   - write white text without a stroke in a black bubble;
   - use the style marked *Shout* or *Narration* (style editor, "Bubble type") of the current folder for a spiky

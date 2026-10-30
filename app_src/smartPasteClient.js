@@ -104,7 +104,7 @@ export const buildSmartPasteRequest = (state, trigger, options = {}) => {
       settings: {
         autoClean: !!state.smartPasteAutoClean,
         distribute: state.smartPasteDistribute !== false,
-        minScale: state.smartPasteMinScale > 0 ? state.smartPasteMinScale : 0.7,
+        minScale: state.smartPasteMinScale > 0 ? state.smartPasteMinScale : 0.85,
         hyphenation: resolveHyphenationLanguage(state.smartPasteHyphenation || "auto", uiLanguage(state)),
         direction: state.direction,
         padding: state.internalPadding || 0,

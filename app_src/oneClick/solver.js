@@ -728,6 +728,16 @@ function _jointCenterLines(lines, top, bottom, center, poly, size, axis, pad, ex
   }
   return { lines: lines, top: top, bottom: bottom };
 }
+// The five block centres miss a fit whose vertical window is narrower than
+// their 5% step. A retry scans the same +-10% band in steps of a tenth of the
+// text size (one pixel at least), nearest the middle first.
+function _jointFineCentres(size, selection) {
+  var height = Math.max(1, selection.height),
+    step = Math.max(1, size * 0.1) / height,
+    out = [0];
+  for (var k = 1; k * step <= 0.1 + 0.000001; k++) out.push(-k * step, k * step);
+  return out;
+}
 // Beam search keeps multiple break histories at each source position. Leading
 // and glyph bands belong to each native measured line, not to a generic oval.
 function _jointSearch(variant, poly, selection, opts) {
@@ -795,8 +805,9 @@ function _jointSearch(variant, poly, selection, opts) {
       // Horizontal displacement and the split penalty cannot disappear
       // during optical centering. Skip only a provably inferior axis.
       if (best && _jointRank(best) >= shapeUpper276) continue;
-      for (var py = 0; py < positions.length; py++) {
-        var center = cy + positions[py] * selection.height;
+      var centres = opts.fineCentres ? _jointFineCentres(size, selection) : positions;
+      for (var py = 0; py < centres.length; py++) {
+        var center = cy + centres[py] * selection.height;
         // Try plausible line counts, hence first-baseline positions.
         for (
           var rows = Math.max(1, minLines[0]);
