@@ -2192,7 +2192,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                       : theme.label || (locale.settingsThemeUntitled || "Custom theme");
                   const editable = isImage || theme.custom;
                   return (
-                    <div className="settings-theme-cell" key={theme.id}>
+                    <div className={"settings-theme-cell" + (editable ? " m-editable" : "")} key={theme.id}>
                       <button
                         type="button"
                         className={"settings-theme-choice" + (isActive ? " m-active" : "")}
@@ -2260,7 +2260,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                     title={locale.settingsThemeNew || "New theme"}
                   >
                     <span className="settings-theme-preview m-add">
-                      <FiPlus size={20} />
+                      <FiPlus size={14} />
                     </span>
                     <span className="settings-theme-name">{locale.settingsThemeNew || "New theme"}</span>
                   </button>
@@ -2274,7 +2274,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                       title={locale.settingsThemeImage || "Custom image"}
                     >
                       <span className="settings-theme-preview m-add">
-                        <FiImage size={20} />
+                        <FiImage size={14} />
                       </span>
                       <span className="settings-theme-name">{locale.settingsThemeImage || "Custom image"}</span>
                     </button>

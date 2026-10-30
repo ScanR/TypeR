@@ -1963,8 +1963,8 @@
 
 .settings-theme-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-    gap: 5px;
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    gap: 4px;
 }
 
 // Theme cards render a miniature UI with the preset's own palette,
@@ -1972,10 +1972,10 @@
 .settings-theme-choice {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     min-width: 0;
-    min-height: 34px;
-    padding: 3px 6px 3px 4px;
+    min-height: 28px;
+    padding: 2px 5px 2px 3px;
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 4px;
     background: rgba(255, 255, 255, 0.05);
@@ -2018,10 +2018,10 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    flex: 0 0 26px;
+    flex: 0 0 22px;
     gap: 2px;
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 22px;
     padding: 3px 4px;
     overflow: hidden;
     border-radius: 3px;
@@ -2089,7 +2089,8 @@
 }
 
 // Each card carries its own "customize" and "delete" buttons, which cannot
-// live inside the card button itself
+// live inside the card button itself. They only take room from the name while
+// the card is hovered, cards are too narrow to reserve it permanently.
 .settings-theme-cell {
     position: relative;
     display: flex;
@@ -2097,16 +2098,27 @@
 
     .settings-theme-choice {
         flex: 1 1 auto;
+    }
+
+    &.m-editable:hover .settings-theme-choice,
+    &.m-editable:focus-within .settings-theme-choice {
         padding-right: 38px;
+    }
+
+    &:hover .settings-theme-tools,
+    &:focus-within .settings-theme-tools {
+        opacity: 1;
     }
 }
 
 .settings-theme-tools {
     position: absolute;
-    top: 2px;
+    top: 50%;
     right: 2px;
     display: flex;
     gap: 2px;
+    opacity: 0;
+    transform: translateY(-50%);
 }
 
 .settings-theme-tool {
@@ -2503,10 +2515,6 @@
 
 // Small panel widths: stack the mockup canvas above the inspector
 @media (max-width: 420px) {
-    .settings-theme-grid {
-        grid-template-columns: 1fr;
-    }
-
     .settings-theme-editor-body {
         flex-direction: column;
     }
