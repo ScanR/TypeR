@@ -61,6 +61,26 @@ export const resolveStyleSizeForPage = (style, pageWidth) => {
   return style;
 };
 
+// A line made only of punctuation, as the hosts do
+export const isPunctuationOnlyText = (text) => typeof text === "string" && /^[!?.,;:'"()\[\]~\-\u00A1\u00AB\u00BB\u00BF\u060C\u061B\u061F\u2013\u2014\u2018\u2019\u201C\u201D\u2026\u203C\u203D\u2047\u2048\u2049\u3001\u3002\u301C\uFF01\uFF1F\uFF5E]+$/.test(text.replace(/[\s\u00A0\u202F]+/g, ""));
+
+export const scaleStyleForPunctuationOnlyText = (style, text) => {
+  if (!style) return style;
+  const scale = parseFloat(style.punctuationOnlyScale);
+  if (!(scale > 1) || !isPunctuationOnlyText(text)) return style;
+  const scaled = clone(style);
+  const ranges = scaled.textProps && scaled.textProps.layerText && scaled.textProps.layerText.textStyleRange;
+  if (!ranges) return scaled;
+  ranges.forEach((range) => {
+    const textStyle = range && range.textStyle;
+    if (!textStyle) return;
+    ["size", "impliedFontSize", "leading", "impliedLeading"].forEach((field) => {
+      if (typeof textStyle[field] === "number") textStyle[field] *= scale;
+    });
+  });
+  return scaled;
+};
+
 const overrideSize = (style, size) => {
   const ranges = style.textProps.layerText.textStyleRange;
   for (let i = 0; i < ranges.length; i++) {
@@ -136,8 +156,12 @@ export const prepareSmartPaste = async (request, adapter) => {
     const line = lines[i];
     const picked = styleForKind(line, chamber.kind, request.roleStyles);
     if (!validStyle(picked.style)) throw new SmartPasteError("style", "The style has no text settings");
-    const style = resolveStyleSizeForPage(clone(picked.style), page.width);
-    if (settings.keepSize && input.activeTextSize > 0) overrideSize(style, input.activeTextSize);
+    const pageStyle = resolveStyleSizeForPage(clone(picked.style), page.width);
+    const keepsActiveSize = settings.keepSize && input.activeTextSize > 0;
+    const style = keepsActiveSize ? pageStyle : scaleStyleForPunctuationOnlyText(pageStyle, line.text);
+    if (keepsActiveSize) overrideSize(style, input.activeTextSize);
+    // Enlarged punctuation may shrink back as far as the style's own size can
+    const enlargedBy = style === pageStyle ? 1 : parseFloat(style.punctuationOnlyScale);
     const payload = {
       text: line.text,
       richTextRuns: line.richTextRuns || null,
@@ -153,7 +177,7 @@ export const prepareSmartPaste = async (request, adapter) => {
         useAtlas: !!adapter.useAtlas,
         resolveRunStyle: adapter.resolveRunStyle,
         breakPoints,
-        sizePolicy: { minScale: settings.minScale > 0 ? settings.minScale : 0.7, fixed: !!settings.keepSize },
+        sizePolicy: { minScale: (settings.minScale > 0 ? settings.minScale : 0.85) / enlargedBy, fixed: !!settings.keepSize },
       });
     } catch (error) {
       // A later chamber that does not fit: paste the chambers before it

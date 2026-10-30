@@ -104,13 +104,15 @@ const solverModel = (graph, plan, cache, probes, sizes, data) => {
     deadline: Date.now() + 2500,
   };
   if (opts.max < opts.min) opts.max = opts.min;
+  // No lone punctuation line under words, but "?!" on its own has no words
+  const loneLineFlag = /^[\s.,!?;:]+$/.test(graph.source) ? 0 : 4;
   const variants = graph.variants.map((variant) => ({
     nodes: variant.nodes,
     insertion: variant.insertion,
     edges: variant.edges.map((edge) => ({
       from: edge.from,
       to: edge.to,
-      flags: (/^(\.{2,}|…+|-)$/.test(edge.text) ? 1 : 0) + (/(\.{2,}|…+|-)$/.test(edge.text) ? 2 : 0) + (/^[\s.,!?;:]+$/.test(edge.text) ? 4 : 0),
+      flags: (/^(\.{2,}|…+|-)$/.test(edge.text) ? 1 : 0) + (/(\.{2,}|…+|-)$/.test(edge.text) ? 2 : 0) + (/^[\s.,!?;:]+$/.test(edge.text) ? loneLineFlag : 0),
       leading: edge.leading,
       metric: cache.get(edge.key),
     })),

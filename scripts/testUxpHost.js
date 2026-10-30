@@ -268,8 +268,8 @@ const loadKeysHelper = () => {
 
 const hostSource = fs.readFileSync(path.join(root, "app_src/host.js"), "utf8");
 const HOST_HELPERS = [
-  "_clone", "_normalizeTextKey", "_getHostDefaultStyle", "_getHostDefaultStroke", "_ensureStyle", "_overrideStyleTextSize",
-  "_resolveStylePointText", "_getAdaptiveSelectionOpenRadius", "_calculateSelectionDimensions", "_clampAdjustAmount",
+  "_clone", "_normalizeTextKey", "_getHostDefaultStyle", "_getHostDefaultStroke", "_ensureStyle", "_overrideStyleTextSize", "_setLayerStroke",
+  "_isPunctuationOnlyText", "_scaleStyleForPunctuationOnlyText", "_punctuationOnlyBoxDimensions", "_resolveStylePointText", "_getAdaptiveSelectionOpenRadius", "_calculateSelectionDimensions", "_clampAdjustAmount",
   "_getAdjustedSelectionBoundsFallback", "_buildBoundsShapeRows", "_normalizeShapeSampleCount", "_selectionBoundsKey",
   "_buildPathShapeRows", "_polygonScanlineSpan",
   // auto-centre, double bubble, size +/- and TextShapeR live size
@@ -316,6 +316,42 @@ assert.strictEqual(strokeCalls.length, 1, "An enabled stroke must reach Photosho
 });
 const sized = () => ({ textProps: { layerText: { textStyleRange: [{ textStyle: { size: 10, impliedFontSize: 10 } }, { textStyle: { size: 12 } }] } } });
 assert.deepStrictEqual(port._overrideStyleTextSize(sized(), 30), host._overrideStyleTextSize(sized(), 30));
+const PUNCTUATION_ONLY = ["?!", "!!", "...", "…", " ?!", "« !! »", "(?)", "¿¡", "؟", "！？", "?\r!"];
+const NOT_PUNCTUATION_ONLY = ["", "  ", "\r", "Non!", "?!a", "1!", "♪", null, undefined];
+PUNCTUATION_ONLY.forEach((text) => {
+  assert.strictEqual(host._isPunctuationOnlyText(text), true, JSON.stringify(text));
+  assert.strictEqual(port._isPunctuationOnlyText(text), true, JSON.stringify(text));
+});
+NOT_PUNCTUATION_ONLY.forEach((text) => {
+  assert.strictEqual(host._isPunctuationOnlyText(text), false, JSON.stringify(text));
+  assert.strictEqual(port._isPunctuationOnlyText(text), false, JSON.stringify(text));
+});
+const scalable = (scale) => ({
+  punctuationOnlyScale: scale,
+  textProps: { layerText: { textStyleRange: [{ textStyle: { size: 10, impliedFontSize: 10, leading: 12, impliedLeading: 12, autoLeading: false } }, { textStyle: { size: 12 } }] } },
+});
+[[2, "?!"], [3, "!!"], [2, "Non!"], [1, "?!"], [undefined, "?!"]].forEach(([scale, text]) => {
+  assert.deepStrictEqual(port._scaleStyleForPunctuationOnlyText(scalable(scale), text), host._scaleStyleForPunctuationOnlyText(scalable(scale), text));
+});
+const tripled = host._scaleStyleForPunctuationOnlyText(scalable(3), "?!").textProps.layerText.textStyleRange[0].textStyle;
+assert.deepStrictEqual(tripled, { size: 30, impliedFontSize: 30, leading: 36, impliedLeading: 36, autoLeading: false });
+const unscaledStyle = scalable(2);
+assert.strictEqual(host._scaleStyleForPunctuationOnlyText(unscaledStyle, "Non!"), unscaledStyle, "Other text keeps the style as is");
+assert.strictEqual(unscaledStyle.textProps.layerText.textStyleRange[0].textStyle.size, 10);
+host._scaleStyleForPunctuationOnlyText(unscaledStyle, "?!");
+assert.strictEqual(unscaledStyle.textProps.layerText.textStyleRange[0].textStyle.size, 10, "Scaling must not compound over several layers");
+assert.strictEqual(port._scaleStyleForPunctuationOnlyText(null, "?!"), null);
+const selectionBox = { width: 60, height: 40 };
+[
+  [{ text: "?!", style: { punctuationOnlyScale: 3 } }, { width: 180, height: 120 }],
+  [{ text: "Non", style: { punctuationOnlyScale: 3 } }, selectionBox],
+  [{ text: "?!", style: {} }, selectionBox],
+  [{ text: "?!", style: null }, selectionBox],
+  [{ text: "?!", style: { punctuationOnlyScale: 3 }, textSizeOverride: 30 }, selectionBox],
+].forEach(([data, expected]) => {
+  assert.deepStrictEqual(host._punctuationOnlyBoxDimensions(selectionBox, data), expected);
+  assert.deepStrictEqual(port._punctuationOnlyBoxDimensions(selectionBox, data), expected);
+});
 
 const boundsOf = (left, top, right, bottom) => ({ left, top, right, bottom, width: right - left, height: bottom - top, xMid: (left + right) / 2, yMid: (top + bottom) / 2 });
 const shapes = [boundsOf(0, 0, 300, 500), boundsOf(10, 20, 110, 180), boundsOf(5, 5, 25, 85), boundsOf(0, 0, 6, 80), boundsOf(0, 0, 2, 2)];

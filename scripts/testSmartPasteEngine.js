@@ -195,6 +195,22 @@ const linesInside = (session) => {
   }, { ...adapterFor({ ...ovalInput, activeTextSize: 30 }) });
   assert.ok(Math.abs(kept.sessions[0].text.size - 30) < 1e-6, "keep size uses the active layer size");
 
+  // Punctuation only: the style's scale applies, and only to such a line
+  const shouting = { ...style("regular", 24), punctuationOnlyScale: 3 };
+  const pasteIn = (input, text, settings = {}) => prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line(text, shouting)], roleStyles: {}, settings: { hyphenation: "off", ...settings },
+  }, adapterFor(input));
+  assert.ok(Math.abs((await pasteIn(ovalInput, "?!")).sessions[0].text.size - 72) < 1e-6, "tripled in a large bubble");
+  assert.ok(Math.abs((await pasteIn(ovalInput, "Bonjour.")).sessions[0].text.size - 24) < 1e-6, "text keeps the style size");
+  const fistBubble = ellipseNodes(300, 300, 34, 34);
+  const fistInput = { source: "wand", click: { x: 300, y: 300 }, selectionBounds: boundsOf(geometry.flatten(fistBubble)), rawPath: pathOf([fistBubble]), fill: white };
+  const fittedPunctuation = (await pasteIn(fistInput, "?!!", { minScale: 0.85 })).sessions[0].text;
+  assert.ok(fittedPunctuation.size < 72 && fittedPunctuation.size >= 24 * 0.85 - 1e-6, "a small bubble shrinks it, not below the style's minimum: " + fittedPunctuation.size);
+  const keptPunctuation = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("!!", shouting)], roleStyles: {}, settings: { keepSize: true },
+  }, adapterFor({ ...ovalInput, activeTextSize: 30 }));
+  assert.ok(Math.abs(keptPunctuation.sessions[0].text.size - 30) < 1e-6, "keep size wins over the scale");
+
   // Black bubble: white text, no stroke
   const dark = await prepareSmartPaste({
     trigger: { source: "wand" }, lines: [line("Silence.")], roleStyles: {}, settings: {},

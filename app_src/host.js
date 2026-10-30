@@ -366,6 +366,38 @@ function _overrideStyleTextSize(style, size) {
   return style;
 }
 
+function _isPunctuationOnlyText(text) {
+  return typeof text === "string" && /^[!?.,;:'"()\[\]~\-\u00A1\u00AB\u00BB\u00BF\u060C\u061B\u061F\u2013\u2014\u2018\u2019\u201C\u201D\u2026\u203C\u203D\u2047\u2048\u2049\u3001\u3002\u301C\uFF01\uFF1F\uFF5E]+$/.test(text.replace(/[\s\u00A0\u202F]+/g, ""));
+}
+
+// Style option: a line made only of punctuation ("?!", "!!") is set larger.
+// Returns a copy, since one style can serve several selected layers
+function _scaleStyleForPunctuationOnlyText(style, text) {
+  if (!style) return style;
+  var scale = parseFloat(style.punctuationOnlyScale);
+  if (!(scale > 1) || !_isPunctuationOnlyText(text)) return style;
+  var scaled = _clone(style);
+  var ranges = scaled.textProps && scaled.textProps.layerText && scaled.textProps.layerText.textStyleRange;
+  if (!ranges) return scaled;
+  var fields = ["size", "impliedFontSize", "leading", "impliedLeading"];
+  for (var i = 0; i < ranges.length; i++) {
+    var textStyle = ranges[i] && ranges[i].textStyle;
+    if (!textStyle) continue;
+    for (var j = 0; j < fields.length; j++) {
+      if (typeof textStyle[fields[j]] === "number") textStyle[fields[j]] *= scale;
+    }
+  }
+  return scaled;
+}
+
+// The enlarged text must not wrap or lose a mark in a box sized for the selection
+function _punctuationOnlyBoxDimensions(dimensions, data) {
+  if (data.textSizeOverride > 0 || !data.style) return dimensions;
+  var scale = parseFloat(data.style.punctuationOnlyScale);
+  if (!(scale > 1) || !_isPunctuationOnlyText(data.text)) return dimensions;
+  return { width: dimensions.width * scale, height: dimensions.height * scale };
+}
+
 function _resolveStyleSizeForDocument(style) {
   if (!style || style.autoSizeByPageWidth !== true || !documents.length) return style;
   var presets = style.sizePresets;
@@ -2208,7 +2240,7 @@ function _applyRichTextRanges(textParams, textRuns, textLength) {
 }
 
 function _createAndSetLayerText(data, width, height) {
-  var style = _resolveStyleSizeForDocument(_ensureStyle(data.style));
+  var style = _scaleStyleForPunctuationOnlyText(_resolveStyleSizeForDocument(_ensureStyle(data.style)), data.text);
   if (data.textSizeOverride > 0) {
     _overrideStyleTextSize(style, data.textSizeOverride);
   }
@@ -2370,9 +2402,10 @@ function _setActiveLayerText() {
     return;
   }
   var dataText = payload.text;
-  var dataStyle = payload.style
+  var baseStyle = payload.style
     ? _resolveStyleSizeForDocument(_clone(payload.style))
     : payload.style;
+  var dataStyle = baseStyle;
   var dataRuns = payload.richTextRuns;
   var targetTextLength = 0;
 
@@ -2395,6 +2428,8 @@ function _setActiveLayerText() {
     var targetPoint = _resolveStylePointText(dataStyle, isPoint);
     if (isPoint) _changeToBoxText();
     var oldTextParams = jamText.getLayerText();
+    // A style-only apply has no text of its own: each layer keeps its text
+    dataStyle = _scaleStyleForPunctuationOnlyText(baseStyle, dataText || oldTextParams.layerText.textKey);
     if (payload.preserveActiveTextSize && dataStyle && oldTextParams.layerText.textStyleRange &&
         oldTextParams.layerText.textStyleRange[0] && oldTextParams.layerText.textStyleRange[0].textStyle) {
       _overrideStyleTextSize(dataStyle, oldTextParams.layerText.textStyleRange[0].textStyle.size);
@@ -2736,7 +2771,7 @@ function _createTextLayerInSelection() {
     state.result = selection.error;
     return;
   }
-  var dimensions = _calculateSelectionDimensions(selection, state.padding);
+  var dimensions = _punctuationOnlyBoxDimensions(_calculateSelectionDimensions(selection, state.padding), state.data);
   _createAndSetLayerText(state.data, dimensions.width, dimensions.height);
   var bounds = _getCurrentTextLayerBounds();
   if (state.point) {
@@ -4692,6 +4727,7 @@ function _createTextLayersInStoredSelections() {
 
       // Create the text layer.
       var data = { text: text, style: style, direction: state.data.direction, richTextRuns: textRuns, textSizeOverride: textSizeOverride };
+      dimensions = _punctuationOnlyBoxDimensions(dimensions, data);
       _createAndSetLayerText(data, dimensions.width, dimensions.height);
 
       var bounds = _getCurrentTextLayerBounds();

@@ -198,6 +198,8 @@ for (const bad of ["FR", "de", 1, null, true, { mode: "fr" }, "toString"]) {
   assert(!("bubbleType" in serializeStyle({ id: "a", name: "A" })));
   assert.strictEqual(validateImportData({ folders: [], styles: [style] }).styles[0].bubbleType, "shout");
   assert.throws(() => validateImportData({ folders: [], styles: [{ ...style, bubbleType: 3 }] }));
+  assert.strictEqual(serializeStyle({ ...style, punctuationOnlyScale: 3 }).punctuationOnlyScale, 3, "the punctuation scale survives export");
+  assert.throws(() => validateImportData({ folders: [], styles: [{ ...style, punctuationOnlyScale: "big" }] }));
 
   const { reducer, initial } = loadContext({});
   let state = reducer(initial, { type: "saveStyle", data: { ...style, textProps: { layerText: {} } } });

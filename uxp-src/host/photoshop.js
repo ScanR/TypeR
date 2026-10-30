@@ -282,6 +282,38 @@ function _getDocumentPixelSize() {
   return { width: toPixels(doc.width), height: toPixels(height.height) };
 }
 
+function _isPunctuationOnlyText(text) {
+  return typeof text === "string" && /^[!?.,;:'"()\[\]~\-\u00A1\u00AB\u00BB\u00BF\u060C\u061B\u061F\u2013\u2014\u2018\u2019\u201C\u201D\u2026\u203C\u203D\u2047\u2048\u2049\u3001\u3002\u301C\uFF01\uFF1F\uFF5E]+$/.test(text.replace(/[\s\u00A0\u202F]+/g, ""));
+}
+
+// Style option: a line made only of punctuation ("?!", "!!") is set larger.
+// Returns a copy, since one style can serve several selected layers
+function _scaleStyleForPunctuationOnlyText(style, text) {
+  if (!style) return style;
+  const scale = parseFloat(style.punctuationOnlyScale);
+  if (!(scale > 1) || !_isPunctuationOnlyText(text)) return style;
+  const scaled = _clone(style);
+  const ranges = scaled.textProps && scaled.textProps.layerText && scaled.textProps.layerText.textStyleRange;
+  if (!ranges) return scaled;
+  const fields = ["size", "impliedFontSize", "leading", "impliedLeading"];
+  for (let i = 0; i < ranges.length; i++) {
+    const textStyle = ranges[i] && ranges[i].textStyle;
+    if (!textStyle) continue;
+    for (let j = 0; j < fields.length; j++) {
+      if (typeof textStyle[fields[j]] === "number") textStyle[fields[j]] *= scale;
+    }
+  }
+  return scaled;
+}
+
+// The enlarged text must not wrap or lose a mark in a box sized for the selection
+function _punctuationOnlyBoxDimensions(dimensions, data) {
+  if (data.textSizeOverride > 0 || !data.style) return dimensions;
+  const scale = parseFloat(data.style.punctuationOnlyScale);
+  if (!(scale > 1) || !_isPunctuationOnlyText(data.text)) return dimensions;
+  return { width: dimensions.width * scale, height: dimensions.height * scale };
+}
+
 function _resolveStyleSizeForDocument(style) {
   if (!style || style.autoSizeByPageWidth !== true || !hasDocument()) return style;
   const presets = style.sizePresets;
@@ -1814,7 +1846,7 @@ function _makeTextLayer(textProps) {
 }
 
 function _createAndSetLayerText(data, width, height) {
-  const style = _resolveStyleSizeForDocument(_ensureStyle(data.style));
+  const style = _scaleStyleForPunctuationOnlyText(_resolveStyleSizeForDocument(_ensureStyle(data.style)), data.text);
   if (data.textSizeOverride > 0) {
     _overrideStyleTextSize(style, data.textSizeOverride);
   }
@@ -1934,9 +1966,10 @@ function _setActiveLayerText(payload) {
   if (!hasDocument()) return "doc";
   if (!_layerIsTextLayer()) return "layer";
   const dataText = payload.text;
-  const dataStyle = payload.style
+  const baseStyle = payload.style
     ? _resolveStyleSizeForDocument(_clone(payload.style))
     : payload.style;
+  let dataStyle = baseStyle;
   const dataRuns = payload.richTextRuns;
   let targetTextLength = 0;
 
@@ -1958,6 +1991,8 @@ function _setActiveLayerText(payload) {
     const targetPoint = _resolveStylePointText(dataStyle, isPoint);
     if (isPoint) _changeToBoxText();
     const oldTextParams = _getLayerText();
+    // A style-only apply has no text of its own: each layer keeps its text
+    dataStyle = _scaleStyleForPunctuationOnlyText(baseStyle, dataText || oldTextParams.layerText.textKey);
     if (payload.preserveActiveTextSize && dataStyle && oldTextParams.layerText.textStyleRange &&
         oldTextParams.layerText.textStyleRange[0] && oldTextParams.layerText.textStyleRange[0].textStyle) {
       _overrideStyleTextSize(dataStyle, oldTextParams.layerText.textStyleRange[0].textStyle.size);
@@ -2249,7 +2284,7 @@ function _createTextLayerInSelection(state) {
 
   const selection = _checkSelection({ adaptiveOpen: true });
   if (selection.error) return selection.error;
-  const dimensions = _calculateSelectionDimensions(selection, state.padding);
+  const dimensions = _punctuationOnlyBoxDimensions(_calculateSelectionDimensions(selection, state.padding), state.data);
   _createAndSetLayerText(state.data, dimensions.width, dimensions.height);
   let bounds = _getCurrentTextLayerBounds();
   if (state.point) {
@@ -3649,12 +3684,13 @@ function _createTextLayersInStoredSelections(state) {
 
       if (!text) continue;
 
-      const dimensions = _calculateSelectionDimensions(selection, state.padding);
+      let dimensions = _calculateSelectionDimensions(selection, state.padding);
       if (!dimensions || isNaN(dimensions.width) || isNaN(dimensions.height) || dimensions.width <= 0 || dimensions.height <= 0) {
         return "invalidSelection";
       }
 
       const data = { text, style, direction: state.data.direction, richTextRuns: textRuns, textSizeOverride };
+      dimensions = _punctuationOnlyBoxDimensions(dimensions, data);
       _createAndSetLayerText(data, dimensions.width, dimensions.height);
 
       let bounds = _getCurrentTextLayerBounds();
@@ -3896,6 +3932,7 @@ module.exports = {
     _getCurrentTextLayerBounds, _getCurrentSelectionBounds, _getActiveHistoryIndex,
     // pure helpers, compared with host.js by scripts/testUxpHost.js
     _getHostDefaultStyle, _getHostDefaultStroke, _ensureStyle, _overrideStyleTextSize, _resolveStylePointText,
+    _isPunctuationOnlyText, _scaleStyleForPunctuationOnlyText, _punctuationOnlyBoxDimensions,
     _getAdaptiveSelectionOpenRadius, _calculateSelectionDimensions, _clampAdjustAmount,
     _getAdjustedSelectionBoundsFallback, _buildBoundsShapeRows, _normalizeShapeSampleCount, _buildMaskShapeRows,
     _selectionBoundsKey, _normalizeTextKey,

@@ -51,6 +51,7 @@ export const validateImportData = (data) => {
       if (style.prefixes !== undefined) check(Array.isArray(style.prefixes) && style.prefixes.every(value => typeof value === 'string'));
       if (style.sizePresets !== undefined) check(Array.isArray(style.sizePresets) && style.sizePresets.every(value => Number.isFinite(Number(value)) && Number(value) > 0));
       if (style.bubbleType !== undefined) check(typeof style.bubbleType === 'string');
+      if (style.punctuationOnlyScale !== undefined) check(Number.isFinite(style.punctuationOnlyScale) && style.punctuationOnlyScale > 0);
     });
   }
   if (data.tabs) {
@@ -93,7 +94,7 @@ export const repairFolderHierarchy = (input) => {
 
 export const serializeStyle = (style) => {
   const result = {};
-  ['id', 'name', 'folder', 'edited', 'textType', 'textProps', 'prefixes', 'prefixColor', 'prefixesDisabled', 'stroke', 'sizePresets', 'autoSizeByPageWidth', 'sizePresetDefaultIndex', 'sizePresetMinWidths', 'bubbleType'].forEach(key => {
+  ['id', 'name', 'folder', 'edited', 'textType', 'textProps', 'prefixes', 'prefixColor', 'prefixesDisabled', 'stroke', 'sizePresets', 'autoSizeByPageWidth', 'sizePresetDefaultIndex', 'sizePresetMinWidths', 'punctuationOnlyScale', 'bubbleType'].forEach(key => {
     if (style[key] !== undefined) result[key] = style[key];
   });
   return result;

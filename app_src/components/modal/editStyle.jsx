@@ -34,6 +34,7 @@ import { pickFamilyPreviewFont } from "../../fontPreview";
 import UnsavedChangesDialog from "./unsavedChangesDialog";
 
 const BUBBLE_TYPES = ["shout", "narration"];
+const PUNCTUATION_ONLY_SCALES = [2, 3];
 
 const EditStyleModal = React.memo(function EditStyleModal() {
   const context = useContext((state) => ({
@@ -61,6 +62,9 @@ const EditStyleModal = React.memo(function EditStyleModal() {
   const [autoSizeByPageWidth, setAutoSizeByPageWidth] = React.useState(initialWidthConfig.autoSizeByPageWidth);
   const [sizePresetDefaultIndex, setSizePresetDefaultIndex] = React.useState(initialWidthConfig.sizePresetDefaultIndex);
   const [sizePresetMinWidths, setSizePresetMinWidths] = React.useState(initialWidthConfig.sizePresetMinWidths);
+  const [punctuationOnlyScale, setPunctuationOnlyScale] = React.useState(
+    PUNCTUATION_ONLY_SCALES.includes(currentData.punctuationOnlyScale) ? currentData.punctuationOnlyScale : 1
+  );
   const [prefixes, setPrefixes] = React.useState(currentData.prefixes?.join("\n") || "");
   const [prefixColor, setPrefixColor] = React.useState(currentData.prefixColor || config.defaultPrefixColor);
   const [colorPickerOpen, setColorPickerOpen] = React.useState(false);
@@ -204,6 +208,7 @@ const EditStyleModal = React.memo(function EditStyleModal() {
       autoSizeByPageWidth,
       sizePresetDefaultIndex,
       sizePresetMinWidths,
+      punctuationOnlyScale,
       prefixes,
       prefixColor,
       stroke: fixedStroke,
@@ -336,6 +341,11 @@ const EditStyleModal = React.memo(function EditStyleModal() {
                 sizePresetMinWidths={sizePresetMinWidths}
                 setSizePresetMinWidths={(widths) => {
                   setSizePresetMinWidths(widths);
+                  setEdited(true);
+                }}
+                punctuationOnlyScale={punctuationOnlyScale}
+                setPunctuationOnlyScale={(scale) => {
+                  setPunctuationOnlyScale(scale);
                   setEdited(true);
                 }}
                 styleSizeStep={context.state.styleSizeStep}
@@ -769,6 +779,23 @@ const StyleDetails = React.memo(function StyleDetails(props) {
             </div>
           )}
         </div>
+        <div className="style-edit-auto-size style-edit-punctuation-scale hostBrdTopContrast">
+          <label className="style-edit-auto-size-default">
+            <span>{locale.editStylePunctuationOnlyLabel || "Punctuation only"}</span>
+            <select
+              value={props.punctuationOnlyScale}
+              onChange={(e) => props.setPunctuationOnlyScale(parseInt(e.target.value, 10))}
+              className="topcoat-textarea"
+            >
+              <option value={1}>{locale.editStylePunctuationOnlyNormal || "Normal size"}</option>
+              <option value={2}>×2</option>
+              <option value={3}>×3</option>
+            </select>
+          </label>
+          <div className="style-edit-auto-size-descr">
+            {locale.editStylePunctuationOnlyDescr || "Makes the text bigger when the line contains nothing but punctuation, like ?! or !!."}
+          </div>
+        </div>
       </div>
       <div className="style-edit-props-row">
         <div className="style-edit-props-col m-leading">
@@ -1057,6 +1084,8 @@ StyleDetails.propTypes = {
   setSizePresetDefaultIndex: PropTypes.func.isRequired,
   sizePresetMinWidths: PropTypes.array.isRequired,
   setSizePresetMinWidths: PropTypes.func.isRequired,
+  punctuationOnlyScale: PropTypes.number.isRequired,
+  setPunctuationOnlyScale: PropTypes.func.isRequired,
   styleSizeStep: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   middleEast: PropTypes.bool,
 };

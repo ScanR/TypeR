@@ -734,6 +734,7 @@ const StyleItem = React.memo(function StyleItem(props) {
         if (!nextTextStyle) return;
         nextTextStyle.size = activeTextStyle.size;
         styleWithActiveSize.autoSizeByPageWidth = false;
+        delete styleWithActiveSize.punctuationOnlyScale;
         setActiveLayerText("", styleWithActiveSize, direction);
       });
     } else {
