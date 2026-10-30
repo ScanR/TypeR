@@ -4,14 +4,14 @@
 // marker and a translator note the user sees TypeR skip.
 
 import React from "react";
-import { FiAlignLeft, FiDownload, FiFileText, FiLayers, FiSliders } from "react-icons/fi";
+import { FiAlignLeft, FiDownload, FiFileText, FiFolderPlus, FiLayers, FiSliders } from "react-icons/fi";
 import { MdCenterFocusWeak, MdOutlineFormatColorText } from "react-icons/md";
 
 import { locale, scrollToLine } from "../../utils";
 import {
   basicsShoutPrefix, basicsShoutStyle, currentFolderStyles, findNamedStyle, hasBasicsShoutTag, whatsNewSession as session,
 } from "../../whatsNewSession";
-import TourModal, { Bars, byId, fill, styleItem, stylePencil, tour, unlessActive } from "./tour";
+import TourModal, { Bars, byId, fill, styleItem, stylePencil, tabOf, tour, unlessActive } from "./tour";
 
 /* ============================ illustrations ============================ */
 
@@ -83,6 +83,21 @@ const AlignArt = () => (
   </svg>
 );
 
+// A page marker of the script opens the PSD file of that page
+const PagesArt = () => (
+  <svg viewBox="0 0 220 96" className="whats-new-svg">
+    <rect className="whats-new-card" x="14" y="18" width="84" height="60" rx="6" />
+    <text className="whats-new-tag m-accent" x="42" y="34">Page 2</text>
+    <rect className="whats-new-bar" x="26" y="44" width="60" height="4.5" rx="2.25" />
+    <rect className="whats-new-bar" x="26" y="56" width="46" height="4.5" rx="2.25" />
+    <path className="whats-new-arrow" d="M104 48h14m-5-5l5 5-5 5" />
+    <rect className="whats-new-card" x="136" y="16" width="46" height="62" rx="4" />
+    <rect className="whats-new-card m-accent" x="146" y="22" width="46" height="62" rx="4" />
+    <text className="whats-new-tag m-accent" x="169" y="50">002</text>
+    <text className="whats-new-tag" x="169" y="64">.psd</text>
+  </svg>
+);
+
 // The styles and settings saved to a file
 const BackupArt = () => (
   <svg viewBox="0 0 220 96" className="whats-new-svg">
@@ -101,6 +116,7 @@ const ART = {
   paste: <PasteArt />,
   shout: <ShoutArt />,
   retouch: <AlignArt />,
+  pages: <PagesArt />,
   backup: <BackupArt />,
 };
 
@@ -386,6 +402,30 @@ const getChapters = () => [
         result:
           locale.walkthroughRetouchResult2 ||
           "The layer took the Shout style and kept its text. Ctrl+click on ➜ also keeps its current size.",
+      },
+    ],
+  },
+  {
+    // After the paste exercises: linked files replace the practice page
+    id: "pages",
+    Icon: FiFolderPlus,
+    minutes: 0.5,
+    title: locale.walkthroughPagesTitle || "Follow your pages",
+    intro:
+      locale.walkthroughPagesIntro ||
+      "Link the PSD files of a chapter to your script: as you go through the lines, TypeR opens the page they belong to.",
+    steps: [
+      {
+        id: "linkPages",
+        text:
+          locale.walkthroughPagesStep1 ||
+          "Click the folder icon (Import pages) at the bottom of the panel, then select the PSD files of a chapter. None at hand? Click Skip.",
+        check: (env) => env.onPracticeTab && (env.state.images || []).length > 0,
+        spot: (env) => (env.onPracticeTab ? [tour("import-pages")] : [tabOf(session.practiceTabId)]),
+        fallback: [{ type: "importPages" }],
+        result:
+          locale.walkthroughPagesResult1 ||
+          "TypeR opened the file of page 1. Each “Page 12” line of a script now opens the file with that number in its name. The same button unlinks the files.",
       },
     ],
   },

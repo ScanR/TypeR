@@ -207,6 +207,7 @@ const AppFooter = React.memo(function AppFooter() {
         <button
           type="button"
           className={"footer-icon-button" + (synced ? " is-active" : "")}
+          data-tour="import-pages"
           title={repoLabel}
           aria-label={repoLabel}
           onClick={openRepository}
@@ -224,7 +225,7 @@ const AppFooter = React.memo(function AppFooter() {
         <ModeMeasure ref={measureRef} modes={modes} />
       </React.Fragment>
       )}
-      <HiddenFileInput ref={fileInputRef} />
+      <HiddenFileInput ref={fileInputRef} data-tour="import-pages-input" />
       <Notice />
       <FeatureTip />
     </React.Fragment>

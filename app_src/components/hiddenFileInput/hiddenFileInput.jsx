@@ -3,7 +3,7 @@ import { useContext } from "../../context";
 
 const allowed = ".psd,.png,.jpg,.jpeg";
 
-export default React.forwardRef(function HiddenFileInput(_, ref) {
+export default React.forwardRef(function HiddenFileInput(props, ref) {
   const context = useContext(() => ({}));
 
   const onChange = (e) => {
@@ -33,6 +33,7 @@ export default React.forwardRef(function HiddenFileInput(_, ref) {
   return (
     <input
       ref={ref}
+      {...props}
       type="file"
       accept={allowed}
       multiple

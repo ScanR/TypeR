@@ -212,8 +212,16 @@ const COURSE = "walkthrough";
   assert(ids.length >= 13, "The chapters list their steps");
   assert.strictEqual(new Set(ids).size, ids.length, "Step ids are unique: progress is stored by id");
   const minutes = (chapters.match(/^\s{4}minutes: ([\d.]+),/gm) || []).map((line) => parseFloat(line.split(":")[1]));
-  assert.strictEqual(minutes.length, 7, "Every chapter announces its duration");
-  assert.strictEqual(minutes.reduce((sum, value) => sum + value, 0), 6.5, "The walkthrough takes about 6 and a half minutes");
+  assert.strictEqual(minutes.length, 8, "Every chapter announces its duration");
+  assert.strictEqual(minutes.reduce((sum, value) => sum + value, 0), 7, "The walkthrough takes about 7 minutes");
+
+  // Linked files replace the practice page: the paste exercises come first,
+  // no run starts with the files of an earlier one, and auto close never
+  // saves the practice page
+  const order = (id) => chapters.indexOf('id: "' + id + '"');
+  ["paste", "shout", "retouch"].forEach((id) => assert(order(id) < order("pages"), "Pages come after chapter " + id));
+  assert(/check: \(env\) => env\.onPracticeTab && \(env\.state\.images/.test(chapters), "Linking files on the practice tab passes the step");
+  assert(/type: "clearPastedLines" \}\);[\s\S]{0,120}type: "setImages", images: \[\]/.test(engine), "A practice tab picked up again drops its files");
 
   // The guide never does the gesture: it only sets up the practice page and
   // script; the paste and align buttons are fallbacks for a hidden control

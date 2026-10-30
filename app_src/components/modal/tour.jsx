@@ -490,6 +490,8 @@ const TourModal = React.memo(function TourModal({ course }) {
       session.leftPracticeTab = false;
       dispatch({ type: "switchTab", id: existing.id });
       dispatch({ type: "clearPastedLines" });
+      // PSD files linked in that run would replace the practice page
+      dispatch({ type: "setImages", images: [] });
       rerender();
       return;
     }
@@ -512,6 +514,10 @@ const TourModal = React.memo(function TourModal({ course }) {
     if (action.type === "openPage") return openPracticePage();
     if (action.type === "loadScript") return loadPracticeScript();
     // Fallbacks, only when the real control is hidden in the layout
+    if (action.type === "importPages") {
+      const input = document.querySelector('[data-tour="import-pages-input"]');
+      return input ? input.click() : undefined;
+    }
     if (action.type === "paste") return pasteInSelection({ state: getState(), getState, dispatch });
     if (action.type === "editStyle") return currentStyle ? dispatch({ type: "setModal", modal: "editStyle", data: currentStyle }) : undefined;
     if (action.type === "align") {
@@ -551,6 +557,7 @@ const TourModal = React.memo(function TourModal({ course }) {
     if (action.type === "paste") return locale.whatsNewPasteButton || "Paste in the selection";
     if (action.type === "editStyle") return locale.whatsNewEditCurrentStyle || "Edit the current style";
     if (action.type === "align") return locale.alignLayer || "Align";
+    if (action.type === "importPages") return locale.footerOpenRepo || "Import pages";
     return "";
   };
 
