@@ -25,6 +25,12 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
 - **Paste on click** (off by default; footer toggle, shortcut without a default key). A Magic Wand click, a
   rectangle or a lasso pastes the current line at once. Restored or loaded selections, and the selections
   TypeR makes itself, never paste.
+  A second Magic Wand click in a bubble that just got one line (the next line waiting) splits it: the paste is
+  undone (`restoreHistoryState`) and both lines are pasted with `forceSplit`, which cuts the bubble at the chord
+  that removes the most of its outline's dents (`forcedCut`), even when the neck finder saw a single bubble.
+  For the double bubbles an outline alone cannot tell from a single one: clipped by the panel frame, offset boxes.
+  Detection favours single bubbles: a wrong split costs more than a miss, which this gesture fixes. To change a threshold in `findCut`, rerun the outline benches and have a typesetter label every cut it adds or removes.
+  The first line stays in the chamber clicked first.
 - **Undo sync**. Undoing a TypeR paste in Photoshop puts the script line back; a redo moves it forward again.
 
 ## Architecture

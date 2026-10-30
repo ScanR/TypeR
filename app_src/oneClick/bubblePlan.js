@@ -17,7 +17,7 @@
 // cleanup polygon and the text colour.
 
 import {
-  area, bodyBounds, box, clipToSide, contains, findCut, flatten, planCleanup, polygonContour, shapeKind, simplify, fillTone,
+  area, bodyBounds, box, clipToSide, contains, findCut, flatten, forcedCut, planCleanup, polygonContour, shapeKind, simplify, fillTone,
 } from "./geometry";
 
 const PATH_COMPONENT_LIMIT = 512;
@@ -289,7 +289,9 @@ export const buildBubblePlan = (input, options = {}) => {
   const fullBounds = box(polygon);
   if (fullBounds.width >= input.width * 0.98 && fullBounds.height >= input.height * 0.98) throw new Error("Page selection");
   let kind = shapeKind(polygon);
-  const cut = findCut(contours, click, input.selectionBounds, false);
+  let cut = findCut(contours, click, input.selectionBounds, false);
+  // The user says the bubble is double: split it at its likeliest neck
+  if (options.forceSplit && !(cut && cut.neck)) cut = forcedCut(contours, click, input.selectionBounds) || cut;
   if (cut && cut.ambiguous) throw new Error("Click farther inside one chamber");
   let chamber = polygon;
   if (cut && cut.neck) {

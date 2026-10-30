@@ -18,8 +18,11 @@ import { resolveTypeRFontVariant } from "./fontVariantResolver.jsxinc";
 
 const isUxp = () => !!(typeof window !== "undefined" && window.typerUXP);
 
-const evalHost = (script, timeout = 60000) => new Promise((resolve) => {
-  csInterface.evalScript(script, trackHostAction((result) => resolve(result), timeout, true));
+
+// The smart paste's own selections (polygons, deselections) never look like
+// a click, so its steps leave paste on click open (touchesSelection off)
+const evalHost = (script, timeout = 60000, touchesSelection = false) => new Promise((resolve) => {
+  csInterface.evalScript(script, trackHostAction((result) => resolve(result), timeout, touchesSelection));
 });
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -85,14 +88,24 @@ export const buildSmartPasteRequest = (state, trigger, options = {}) => {
   const picked = nextPasteLines(from, wanted);
   if (!picked.length) return null;
   const rules = refontRulesFor(state);
+  // The first line takes the selected style. The next ones take their script
+  // prefix, a "//" continuation the style of the line before it, any other
+  // line the selected style: the style a line was pasted with earlier (an
+  // undone paste, a page done again) never comes back.
+  let previous = null;
   const lines = picked.map((entry, i) => {
-    const source = i === 0 && !options.style ? state.currentStyle : (i === 0 && options.style) || entry.line.usedStyle || entry.line.style || state.currentStyle;
+    const continued = i > 0 && /^\/\//.test(entry.line.stylePrefix || "");
+    const source = i === 0
+      ? options.style || state.currentStyle
+      : (continued ? previous.source : entry.line.style || state.currentStyle);
+    const styleLocked = continued ? previous.styleLocked : !!entry.line.style;
+    previous = { source, styleLocked };
     const parsed = applyRefont(buildRichTextPayload(entry.line.text), rules);
     return {
       text: parsed.text,
       richTextRuns: parsed.richTextRuns || null,
       style: getScaledStyle(source, state.textScale),
-      styleLocked: !!entry.line.style,
+      styleLocked,
     };
   });
   return {
@@ -170,6 +183,7 @@ export const runSmartPaste = async (request) => {
       layerIds: done.layerIds,
       history: done.history,
       cleanupSkipped: prepared.cleanupSkipped,
+      selectionBounds: prepared.selectionBounds,
       sessions: prepared.sessions.map((session) => ({ kind: session.plan.kind, role: session.role, styleId: session.styleId, size: session.text.size, tier: session.text.tier })),
     };
   } catch (error) {
@@ -232,9 +246,27 @@ export const recentSelectionTrigger = (maxAge = 4000) => (
 
 let busy = false;
 let lastFinishedAt = 0;
+let fallbacksRunning = 0;
+let lastFallbackAt = 0;
 
 // Selection events Photoshop sends for TypeR's own work arrive late in CEP
-export const isSmartPasteSettling = () => busy || Date.now() - lastFinishedAt < 600;
+const SETTLE_TIME = 600;
+export const isSmartPasteSettling = () => busy || Date.now() - lastFinishedAt < SETTLE_TIME;
+export const isSmartPasteBusy = () => busy;
+export const smartPasteFinishedAt = () => lastFinishedAt;
+// The classic paste's auto-centre probes with the Magic Wand: its selection
+// events look like clicks
+export const isClassicFallbackSettling = () => fallbacksRunning > 0 || Date.now() - lastFallbackAt < SETTLE_TIME;
+
+const runFallback = async (run) => {
+  fallbacksRunning++;
+  try {
+    return await run();
+  } finally {
+    fallbacksRunning--;
+    lastFallbackAt = Date.now();
+  }
+};
 
 const notice = (dispatch, text, kind = "info") => {
   if (text) dispatch({ type: "showNotice", text, kind });
@@ -245,6 +277,14 @@ const notice = (dispatch, text, kind = "info") => {
 const stopsWithoutFallback = (code) => code === "doc" || code === "noSelection" || code === "timeout";
 
 const reasonText = (code) => locale["smartPasteReason_" + code] || locale.smartPasteReason_error || code;
+
+// Select again the click (or rectangle) a selection event reported
+export const replaySelection = async (trigger, dispatch) => {
+  const replayed = safeJsonParse(await evalHost("replaySelectionTrigger(" + JSON.stringify(trigger) + ")", 15000), { error: "error" });
+  if (!replayed.error) return true;
+  notice(dispatch, reasonText(replayed.error), "warning");
+  return false;
+};
 
 const classicPaste = (state, dispatch, options, textColor) => new Promise((resolve) => {
   const line = state.currentLine || { text: "" };
@@ -259,6 +299,92 @@ const classicPaste = (state, dispatch, options, textColor) => new Promise((resol
   });
 });
 
+// Moves the script line past the pasted lines and records the paste
+const commitSmartResult = (getState, dispatch, state, built, result) => {
+  const consumed = built.lineIndexes.slice(0, result.consumed);
+  const entries = consumed.map((lineIndex, i) => ({
+    lineIndex,
+    styleId: (result.sessions && result.sessions[i] && result.sessions[i].styleId) || (state.currentStyle && state.currentStyle.id),
+  }));
+  const nextLineIndex = lineAfter(getState(), consumed[consumed.length - 1]);
+  dispatch({ type: "commitLineBatch", entries, nextLineIndex });
+  if (result.history && result.history.before != null && result.history.after != null) {
+    pasteHistory.register({ ...result.history, lineBefore: consumed[0], lineAfter: nextLineIndex });
+  }
+  if (result.cleanupSkipped && built.request.settings.autoClean) notice(dispatch, locale.smartPasteCleanSkipped, "warning");
+};
+
+/* ================= second click: split ================= */
+
+// A Magic Wand paste that filled a bubble with one line while the next line
+// was waiting. Clicking the same bubble again right after says it is a double
+// bubble TypeR did not see: the paste is undone and both lines are pasted, one
+// per chamber, split at the bubble's likeliest neck.
+let lastSingle = null;
+// Selection steps allowed between the paste and the second click (the click
+// itself, a deselection)
+const SPLIT_CLICK_STATES = 3;
+
+export const hasSplitCandidate = () => !!lastSingle;
+
+const sameBounds = (a, b) => !!(a && b && ["left", "top", "right", "bottom"].every((side) => Math.abs(a[side] - b[side]) <= 2));
+
+export const rememberSinglePaste = (built, result, trigger) => {
+  lastSingle = null;
+  if (!trigger || trigger.source !== "wand" || !result || !result.ok || result.consumed !== 1 || built.lineIndexes.length < 2) return;
+  if (!result.history || result.history.before == null || result.history.after == null || !result.selectionBounds) return;
+  lastSingle = { ...result.history, selectionBounds: result.selectionBounds, trigger, lineIndex: built.lineIndexes[0] };
+};
+
+// The paste a second click asks to split, or null
+export const splitCandidate = (record, snapshot, bounds) => {
+  if (!record || !snapshot || snapshot.documentId !== record.documentId || !Array.isArray(snapshot.states)) return null;
+  const after = snapshot.states.indexOf(record.after);
+  const current = snapshot.states.indexOf(snapshot.current);
+  if (after < 0 || current !== snapshot.states.length - 1 || current - after < 1 || current - after > SPLIT_CLICK_STATES) return null;
+  return sameBounds(bounds, record.selectionBounds) ? record : null;
+};
+
+// Null when the click is not a second click; true or false otherwise
+const splitAgain = async (getState, dispatch, trigger) => {
+  const record = lastSingle;
+  lastSingle = null;
+  if (!record || !trigger || trigger.source !== "wand") return null;
+  const snapshot = await getHistorySnapshot();
+  const probe = safeJsonParse(await evalHost("smartPasteSelectionProbe()", 15000), {});
+  if (!splitCandidate(record, snapshot, probe.bounds)) return null;
+  // Back before the one-line paste: its selection is the bubble again
+  const restored = safeJsonParse(await evalHost("restoreHistoryState(" + JSON.stringify({ documentId: record.documentId, state: record.before }) + ")", 15000), { error: "error" });
+  if (restored.error) return null;
+  applyHistorySnapshot(await getHistorySnapshot(), getState, dispatch);
+  const state = getState();
+  // The first line stays in the chamber clicked first
+  for (const click of [record.trigger, trigger]) {
+    const built = buildSmartPasteRequest(state, click, { lineIndex: record.lineIndex });
+    if (!built || built.lineIndexes.length < 2) break;
+    built.request.settings.forceSplit = true;
+    const result = await runSmartPaste(built.request);
+    if (result && result.ok && result.consumed >= 2) {
+      commitSmartResult(getState, dispatch, state, built, result);
+      return true;
+    }
+    if (result && result.ok) {
+      // One chamber only: undo it and try from the other click
+      const again = await getHistorySnapshot();
+      if (!again || again.current !== result.history.after) break;
+      await evalHost("restoreHistoryState(" + JSON.stringify({ documentId: record.documentId, state: result.history.before }) + ")", 15000);
+    } else if (result && stopsWithoutFallback(result.code)) {
+      break;
+    }
+  }
+  // No neck: paste the line alone again, as before the second click
+  notice(dispatch, locale.smartPasteSplitFailed, "warning");
+  const built = buildSmartPasteRequest(getState(), record.trigger, { lineIndex: record.lineIndex });
+  const result = built ? await runSmartPaste(built.request) : null;
+  if (result && result.ok && result.consumed > 0) commitSmartResult(getState, dispatch, getState(), built, result);
+  return false;
+};
+
 // getState() returns the latest panel state (the line may move while a
 // paste waits for Photoshop)
 export const smartPasteInSelection = async (getState, dispatch, options = {}) => {
@@ -266,22 +392,15 @@ export const smartPasteInSelection = async (getState, dispatch, options = {}) =>
   busy = true;
   try {
     if (!isUxp()) await syncPasteHistory(getState, dispatch);
+    const split = await splitAgain(getState, dispatch, options.trigger);
+    if (split !== null) return split;
     const state = getState();
     const built = buildSmartPasteRequest(state, options.trigger, options);
     if (!built) return false;
     const result = await runSmartPaste(built.request);
     if (result && result.ok && result.consumed > 0) {
-      const consumed = built.lineIndexes.slice(0, result.consumed);
-      const entries = consumed.map((lineIndex, i) => ({
-        lineIndex,
-        styleId: (result.sessions && result.sessions[i] && result.sessions[i].styleId) || (state.currentStyle && state.currentStyle.id),
-      }));
-      const nextLineIndex = lineAfter(getState(), consumed[consumed.length - 1]);
-      dispatch({ type: "commitLineBatch", entries, nextLineIndex });
-      if (result.history && result.history.before != null && result.history.after != null) {
-        pasteHistory.register({ ...result.history, lineBefore: consumed[0], lineAfter: nextLineIndex });
-      }
-      if (result.cleanupSkipped && built.request.settings.autoClean) notice(dispatch, locale.smartPasteCleanSkipped, "warning");
+      commitSmartResult(getState, dispatch, state, built, result);
+      rememberSinglePaste(built, result, options.trigger);
       return true;
     }
     // Classic paste, recorded too so an Undo still moves the line back
@@ -293,7 +412,7 @@ export const smartPasteInSelection = async (getState, dispatch, options = {}) =>
     notice(dispatch, String(locale.smartPasteFallback || "{reason}").replace("{reason}", reasonText(code)), "warning");
     const before = await getHistorySnapshot();
     const lineBefore = getState().currentLineIndex;
-    const ok = await classicPaste(getState(), dispatch, options, result && result.textColor);
+    const ok = await runFallback(() => classicPaste(getState(), dispatch, options, result && result.textColor));
     if (ok && before) {
       const after = await getHistorySnapshot();
       if (after && after.current !== before.current) {
@@ -318,6 +437,7 @@ export const smartPasteStoredSelections = async (getState, dispatch, options = {
   const selections = (getState().storedSelections || []).slice();
   if (busy || !canSmartPasteStoredSelections(selections)) return false;
   busy = true;
+  lastSingle = null;
   let pasted = 0;
   const completed = [];
   const initialTabId = getState().currentTabId;
@@ -330,7 +450,7 @@ export const smartPasteStoredSelections = async (getState, dispatch, options = {
       const line = state.lines && state.lines[lineIndex];
       if (!line || line.ignore) continue;
       const trigger = { ...selection.trigger, documentKey: selection.documentKey || selection.trigger.documentKey };
-      const replayed = safeJsonParse(await evalHost("replaySelectionTrigger(" + JSON.stringify(trigger) + ")", 15000), { error: "error" });
+      const replayed = safeJsonParse(await evalHost("replaySelectionTrigger(" + JSON.stringify(trigger) + ")", 15000, true), { error: "error" });
       if (replayed.error) {
         notice(dispatch, reasonText(replayed.error), "warning");
         break;

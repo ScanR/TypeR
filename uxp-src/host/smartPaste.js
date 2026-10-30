@@ -435,6 +435,7 @@ async function smartPaste(request) {
       layerIds: done.layerIds,
       history: done.history,
       cleanupSkipped: prepared.cleanupSkipped,
+      selectionBounds: prepared.selectionBounds,
       sessions: prepared.sessions.map((session) => ({ kind: session.plan.kind, role: session.role, styleId: session.styleId, size: session.text.size, tier: session.text.tier, hyphenated: session.text.hyphenated })),
     });
   } catch (error) {
@@ -486,6 +487,23 @@ async function smartPasteCommit(prepared) {
   }
 }
 
+// Go back to a history state (see host.js)
+async function restoreHistoryState(data) {
+  if (!hasDocument()) return JSON.stringify({ error: "doc" });
+  const doc = ps.app.activeDocument;
+  if (!data || String(doc.id) !== String(data.documentId)) return JSON.stringify({ error: "doc" });
+  try {
+    const target = Array.from(doc.historyStates || []).find((state) => String(state.id) === String(data.state));
+    if (!target) return JSON.stringify({ error: "history" });
+    await modal("TypeR", () => {
+      doc.activeHistoryState = target;
+    });
+    return JSON.stringify({ ok: true });
+  } catch (error) {
+    return JSON.stringify({ error: "history" });
+  }
+}
+
 // Select again what a stored multi-bubble selection remembers (see host.js)
 async function replaySelectionTrigger(trigger) {
   if (!hasDocument()) return JSON.stringify({ error: "doc" });
@@ -532,6 +550,6 @@ function smartPasteSelectionProbe() {
 }
 
 module.exports = {
-  methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot, replaySelectionTrigger, smartPasteSelectionProbe },
+  methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot, restoreHistoryState, replaySelectionTrigger, smartPasteSelectionProbe },
   _internals: { captureSelection, measureRequests, commitSessions, inkFits },
 };

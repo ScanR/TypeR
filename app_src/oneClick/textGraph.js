@@ -7,6 +7,7 @@
 // The payload is TypeR's own: { text, style: { textProps, stroke },
 // richTextRuns: [{ text, bold, italic, textStyle }], direction }.
 
+
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 // Interned measuring keys: long serialized styles become short ids

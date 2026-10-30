@@ -111,6 +111,25 @@ const baseState = () => ({
   });
   assert.strictEqual(client.buildSmartPasteRequest({ ...state, smartPasteDistribute: false }, null).lineIndexes.length, 1);
   assert.strictEqual(client.buildSmartPasteRequest({ ...state, smartPasteHyphenation: "off" }, null).request.settings.hyphenation, "off");
+  // A style recorded by an earlier paste never beats the selected style
+  const repasted = client.buildSmartPasteRequest({
+    ...state,
+    currentLineIndex: 0,
+    lines: [
+      line(0, "Un", { usedStyle: narration }),
+      line(1, "Deux", { usedStyle: otherShout }),
+      line(2, "// Suite", { stylePrefix: "//", style: otherShout, usedStyle: otherShout, last: true }),
+    ],
+  }, null).request.lines;
+  assert.deepStrictEqual(repasted.map((entry) => entry.style.id), ["r", "r", "r"], "the selected style, also for the connected lines");
+  assert.deepStrictEqual(repasted.map((entry) => entry.styleLocked), [false, false, false]);
+  const continued = client.buildSmartPasteRequest({
+    ...state,
+    currentLineIndex: 0,
+    lines: [line(0, "Un"), line(1, "Deux", { style: shout }), line(2, "// Suite", { stylePrefix: "//", style: narration, last: true })],
+  }, null).request.lines;
+  assert.deepStrictEqual(continued.map((entry) => entry.style.id), ["r", "s", "s"], "a // line follows the line before it");
+  assert.deepStrictEqual(continued.map((entry) => entry.styleLocked), [false, true, true]);
   const refont = client.buildSmartPasteRequest({ ...state, lines: [line(0, "Il dit «non»")], currentLineIndex: 0 }, null).request.lines[0];
   assert.strictEqual(refont.text, "Il dit non");
   assert.strictEqual(refont.richTextRuns[1].textStyle.fontPostScriptName, "Fontn", "refont takes the rule style's font");
@@ -168,6 +187,68 @@ const baseState = () => ({
   assert.strictEqual(await client.smartPasteInSelection(getState, dispatch, {}), false);
   assert.strictEqual(classicCalls.length, 0);
   assert.ok(!dispatched.some((action) => action.type === "nextLine"));
+
+  // A second click in a bubble that got one line splits it: the paste is
+  // undone and both lines are pasted with a forced split, from the first click
+  const bubble = { left: 10, top: 20, right: 210, bottom: 320 };
+  const record = { documentId: 3, before: 30, after: 31, selectionBounds: bubble, trigger: { source: "wand" }, lineIndex: 1 };
+  assert.strictEqual(client.splitCandidate(record, { documentId: 3, current: 32, states: [30, 31, 32] }, { ...bubble, right: 211 }), record);
+  assert.strictEqual(client.splitCandidate(record, { documentId: 3, current: 32, states: [30, 31, 32] }, { ...bubble, left: 40 }), null, "another bubble");
+  assert.strictEqual(client.splitCandidate(record, { documentId: 3, current: 31, states: [30, 31] }, bubble), null, "no new click");
+  assert.strictEqual(client.splitCandidate(record, { documentId: 3, current: 36, states: [30, 31, 32, 33, 34, 35, 36] }, bubble), null, "other work since");
+  assert.strictEqual(client.splitCandidate(record, { documentId: 4, current: 32, states: [30, 31, 32] }, bubble), null, "another document");
+
+  const runSecondClick = async (forcedReplies) => {
+    dispatched.length = 0;
+    evalCalls.length = 0;
+    current = baseState();
+    let history = { documentId: 3, current: 31, states: [30, 31] };
+    let forced = 0;
+    hostReplies = {
+      smartPaste: (script) => {
+        const sent = JSON.parse(script.slice("smartPaste(".length, -1));
+        if (!sent.settings.forceSplit) {
+          history = { documentId: 3, current: 31, states: [30, 31] };
+          return JSON.stringify({ ok: true, consumed: 1, history: { documentId: 3, before: 30, after: 31 }, selectionBounds: bubble, sessions: [{ styleId: "r" }] });
+        }
+        const reply = forcedReplies[forced++];
+        if (reply.ok) history = { documentId: 3, current: reply.history.after, states: [30, reply.history.after] };
+        return JSON.stringify(reply);
+      },
+      getHistorySnapshot: () => JSON.stringify(history),
+      smartPasteSelectionProbe: JSON.stringify({ documentId: 3, tool: "magicWandTool", bounds: bubble }),
+      restoreHistoryState: (script) => {
+        history = { ...history, current: JSON.parse(script.slice("restoreHistoryState(".length, -1)).state };
+        return JSON.stringify({ ok: true });
+      },
+    };
+    assert.strictEqual(await client.smartPasteInSelection(getState, dispatch, { trigger: { source: "wand", x: 50, y: 60 } }), true);
+    assert.ok(client.hasSplitCandidate());
+    current = { ...current, currentLineIndex: 3 };
+    history = { documentId: 3, current: 32, states: [30, 31, 32] };
+    dispatched.length = 0;
+    return client.smartPasteInSelection(getState, dispatch, { trigger: { source: "wand", x: 150, y: 250 } });
+  };
+  const two = { ok: true, consumed: 2, history: { documentId: 3, before: 30, after: 33 }, selectionBounds: bubble, sessions: [{ styleId: "r" }, { styleId: "s" }] };
+  assert.strictEqual(await runSecondClick([two]), true);
+  const restore = evalCalls.find((call) => call.startsWith("restoreHistoryState("));
+  assert.deepStrictEqual(JSON.parse(restore.slice("restoreHistoryState(".length, -1)), { documentId: 3, state: 30 }, "back before the one-line paste");
+  const forcedCall = JSON.parse(evalCalls.filter((call) => call.startsWith("smartPaste(")).pop().slice("smartPaste(".length, -1));
+  assert.strictEqual(forcedCall.settings.forceSplit, true);
+  assert.deepStrictEqual(forcedCall.trigger, { source: "wand", x: 50, y: 60 }, "the first click keeps the first line");
+  assert.strictEqual(forcedCall.lines[0].text, "Première ligne");
+  assert.deepStrictEqual(dispatched.find((action) => action.type === "setCurrentLineIndex"), { type: "setCurrentLineIndex", index: 1 });
+  assert.deepStrictEqual(dispatched.find((action) => action.type === "commitLineBatch").entries.map((entry) => entry.lineIndex), [1, 3]);
+  assert.ok(!client.hasSplitCandidate(), "one split per paste");
+
+  // No neck from either click: the line is pasted alone again, with a notice
+  const one = (after) => ({ ok: true, consumed: 1, history: { documentId: 3, before: 30, after }, selectionBounds: bubble, sessions: [{ styleId: "r" }] });
+  utilsStub.locale.smartPasteSplitFailed = "No neck found";
+  assert.strictEqual(await runSecondClick([one(33), one(34)]), false);
+  const forcedTriggers = evalCalls.filter((call) => call.startsWith("smartPaste(")).map((call) => JSON.parse(call.slice("smartPaste(".length, -1)));
+  assert.deepStrictEqual(forcedTriggers.map((sent) => [!!sent.settings.forceSplit, sent.trigger.x]), [[false, 50], [true, 50], [true, 150], [false, 50]]);
+  assert.ok(dispatched.some((action) => action.type === "showNotice" && action.text === "No neck found"));
+  assert.deepStrictEqual(dispatched.filter((action) => action.type === "commitLineBatch").map((action) => action.entries.map((entry) => entry.lineIndex)), [[1]]);
 
   // Multi-bubble: every remembered selection is replayed then pasted
   assert.strictEqual(client.canSmartPasteStoredSelections([{ trigger: { source: "wand" } }, { trigger: { source: "rectangle" } }]), true);
@@ -258,6 +339,71 @@ const baseState = () => ({
   assert.strictEqual(gate.shouldPasteOnClick(ready, wand, 100), false, "TypeR's own selections are ignored");
   assert.strictEqual(gate.shouldPasteOnClick(ready, wand, 1000, true), false, "a closed or collapsed panel never pastes");
   assert.strictEqual(gate.shouldPasteOnClick({ ...ready, currentLine: { text: "", ignore: true } }, wand, 1000), false);
+
+  // Smart paste clicks made during a paste wait their turn
+  const smart = { ...ready, smartPaste: true };
+  assert.strictEqual(gate.canQueueClick(smart, wand, 1000), true);
+  assert.strictEqual(gate.canQueueClick(smart, { source: "rectangle", left: 0, top: 0, right: 9, bottom: 9 }, 1000), true);
+  assert.strictEqual(gate.canQueueClick(smart, { source: "lasso" }, 1000), false, "a lasso cannot be selected again");
+  assert.strictEqual(gate.canQueueClick(ready, wand, 1000), false, "the classic paste keeps its probe guard");
+  assert.strictEqual(gate.canQueueClick(smart, wand, 100), false, "the classic paste's wand probes are not clicks");
+  assert.strictEqual(gate.canQueueClick(smart, wand, 1000, true), false);
+
+  assert.strictEqual(gate.matchesReplay({ source: "wand", x: 10.4, y: 20 }, { source: "wand", x: 10, y: 20 }), true);
+  assert.strictEqual(gate.matchesReplay({ source: "wand", x: 40, y: 20 }, { source: "wand", x: 10, y: 20 }), false);
+  assert.strictEqual(gate.matchesReplay({ source: "wand", x: 41.67, y: 83.33 }, { source: "wand", x: 10, y: 20, unit: "distanceUnit" }), true, "a click in points replays in pixels");
+  assert.strictEqual(gate.matchesReplay({ source: "wand", x: 41.67, y: 20 }, { source: "wand", x: 10, y: 20, unit: "distanceUnit" }), false);
+
+  const order = [];
+  const replayed = [];
+  let release = null;
+  let busyNow = false;
+  const queue = gate.createClickQueue({
+    canPaste: () => true,
+    paste: (trigger) => {
+      order.push(trigger.x);
+      busyNow = true;
+      return new Promise((resolve) => { release = () => { busyNow = false; resolve(true); }; });
+    },
+    replay: async (trigger) => { replayed.push(trigger.x); return true; },
+    isBusy: () => false,
+  });
+  queue.push({ source: "wand", x: 10, y: 10 });
+  queue.push({ source: "wand", x: 20, y: 20 });
+  queue.push({ source: "wand", x: 30, y: 30 });
+  assert.deepStrictEqual(order, [10], "one paste at a time");
+  assert.strictEqual(queue.isDraining(), true);
+  for (let i = 0; i < 3; i++) {
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  assert.deepStrictEqual(order, [10, 20, 30], "every quick click pastes, in order");
+  assert.deepStrictEqual(replayed, [20, 30], "the clicks that waited are selected again");
+  assert.strictEqual(queue.isOwnReplay({ source: "wand", x: 20, y: 20 }), true, "a replay is not a new click");
+  assert.strictEqual(queue.isOwnReplay({ source: "wand", x: 20, y: 20 }), false, "each replay is expected once");
+  assert.strictEqual(queue.isOwnReplay({ source: "wand", x: 50, y: 50 }), false);
+  assert.strictEqual(busyNow, false);
+  assert.strictEqual(queue.isDraining(), false);
+
+  // A paste started elsewhere (the Paste button): the click waits, then
+  // selects its bubble again; a failed replay drops the rest
+  let externalBusy = true;
+  const later = [];
+  const blocked = gate.createClickQueue({
+    canPaste: () => true,
+    paste: async (trigger) => { later.push(trigger.x); },
+    replay: async (trigger) => trigger.x !== 5,
+    isBusy: () => externalBusy,
+  });
+  blocked.push({ source: "wand", x: 4, y: 4 });
+  blocked.push({ source: "wand", x: 5, y: 5 });
+  blocked.push({ source: "wand", x: 6, y: 6 });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.deepStrictEqual(later, []);
+  externalBusy = false;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.deepStrictEqual(later, [4]);
+  assert.strictEqual(blocked.isDraining(), false);
 
   console.log("smart paste panel client tests passed");
 })().catch((error) => {

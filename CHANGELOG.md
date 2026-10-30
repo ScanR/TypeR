@@ -31,6 +31,7 @@
 
 - A Magic Wand click, a rectangle or a lasso can paste the current line at once (footer toggle and shortcut).
 - Undoing a TypeR paste in Photoshop puts the script line back (live in UXP, checked lazily in Legacy).
+- Clicking a bubble again right after it got one line splits it: TypeR undoes that paste and pastes the line and the next one, one per chamber, for double bubbles it did not detect (bubbles clipped by the panel frame, offset boxes).
 
 ### Workspace and typesetting
 

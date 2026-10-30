@@ -60,7 +60,7 @@ export const deriveDoubleSibling = (input, plan, subpaths, options = {}) => {
   try {
     const seed = oppositeSeed(plan);
     if (!seed || !withinBounds(input.selectionBounds, seed)) return null;
-    const sibling = buildBubblePlan(input, { autoClean: options.autoClean, subpaths, click: seed });
+    const sibling = buildBubblePlan(input, { autoClean: options.autoClean, forceSplit: options.forceSplit, subpaths, click: seed });
     return verifiedPair(plan, sibling) ? sibling : null;
   } catch (uncertain) {
     return null;
@@ -255,9 +255,10 @@ export const deriveTriplePlans = (input, plan, subpaths, options = {}) => {
 };
 
 // Chambers for up to `lines` script lines, in line order: [plan] when the
-// bubble is single or the split is uncertain
+// bubble is single or the split is uncertain. A forced split (the user's
+// second click) makes two chambers only.
 export const chambersFor = (input, plan, subpaths, lines, options = {}) => {
-  if (lines >= 3) {
+  if (lines >= 3 && !options.forceSplit) {
     const triple = deriveTriplePlans(input, plan, subpaths, options);
     if (triple) return triple;
   }

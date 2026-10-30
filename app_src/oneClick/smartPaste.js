@@ -12,7 +12,9 @@
 //   lines: [{ text, richTextRuns, style, styleLocked }],   // N, N+1, N+2
 //   roleStyles: { shout: style | null, narration: style | null },
 //   settings: { autoClean, distribute, minScale, hyphenation ("fr"|"en"|"off"),
-//               direction, padding, keepSize, pointText },
+//               direction, padding, keepSize, pointText, forceSplit },
+//   forceSplit: split the bubble at its likeliest neck even when it does not
+//   look double (the user clicked it again after a one-line paste)
 // }
 
 import { buildPlan, subpathsFromDescriptor } from "./bubblePlan";
@@ -142,13 +144,13 @@ export const prepareSmartPaste = async (request, adapter) => {
     }
     subpaths = input.source === "rectangle" ? null : subpathsFromDescriptor(input.rawPath, input.resolution);
     try {
-      plan = buildPlan(input, { autoClean: !!settings.autoClean, subpaths });
+      plan = buildPlan(input, { autoClean: !!settings.autoClean, forceSplit: !!settings.forceSplit, subpaths });
     } catch (error) {
       throw new SmartPasteError("shape", error && error.message);
     }
   }
   const wanted = settings.distribute === false ? 1 : Math.min(3, lines.length);
-  const chambers = wanted > 1 && plan.source === "wand" && plan.connected && subpaths ? chambersFor(input, plan, subpaths, wanted, { autoClean: !!settings.autoClean }) : [plan];
+  const chambers = wanted > 1 && plan.source === "wand" && plan.connected && subpaths ? chambersFor(input, plan, subpaths, wanted, { autoClean: !!settings.autoClean, forceSplit: !!settings.forceSplit }) : [plan];
   const breakPoints = breakPointsFor(settings.hyphenation || "off");
   const sessions = [];
   for (let i = 0; i < chambers.length; i++) {

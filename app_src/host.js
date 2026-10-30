@@ -5382,6 +5382,27 @@ function getHistorySnapshot() {
   }
 }
 
+// Go back to a history state (a paste the user wants redone in two chambers)
+function restoreHistoryState(data) {
+  if (!app.documents.length) return jamJSON.stringify({ error: "doc" });
+  var doc = app.activeDocument;
+  if (!data || String(doc.id) !== String(data.documentId)) return jamJSON.stringify({ error: "doc" });
+  try {
+    var count = doc.historyStates.length;
+    for (var i = 1; i <= count; i++) {
+      var reference = new ActionReference();
+      reference.putIndex(stringIDToTypeID("historyState"), i);
+      if (String(_smartHistoryKey(executeActionGet(reference))) === String(data.state)) {
+        doc.activeHistoryState = doc.historyStates[i - 1];
+        return jamJSON.stringify({ ok: true });
+      }
+    }
+  } catch (restoreError) {
+    return jamJSON.stringify({ error: "history" });
+  }
+  return jamJSON.stringify({ error: "history" });
+}
+
 // Select again what a stored multi-bubble selection remembers: the Magic
 // Wand click (with its options) or the rectangle
 function replaySelectionTrigger(trigger) {

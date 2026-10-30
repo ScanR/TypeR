@@ -355,10 +355,9 @@ export const bodyBounds = (poly, b = box(poly)) => {
 // null (no neck), { ambiguous: true, ambiguousNeck } (click on the neck) or
 // { points, neck: [a, b], score }.
 const NECK_WIDTH_RATIO = 0.75;
-// Both ends of a real neck sit deep inside the outline's convex hull. The
-// notches of a hand-drawn rectangle, a shout or a cloud are shallow, or deep
-// on one side only (TypeR, measured on real pages: singles <= 0.15 of the
-// chord, connected bubbles >= 0.25).
+// Both ends of a neck sit deep inside the outline's convex hull. The notches
+// of a hand-drawn rectangle, a shout or a cloud are shallow, or deep on one
+// side only (TypeR, measured on real pages: singles <= 0.15 of the chord).
 const NECK_PINCH_RATIO = 0.2;
 const hullDistance = (hull, point) => {
   let best = Infinity;
@@ -371,6 +370,60 @@ const hullDistance = (hull, point) => {
     best = Math.min(best, Math.hypot(point[0] - u[0] - ex * t, point[1] - u[1] - ey * t));
   }
   return best;
+};
+// Two round lobes make a connected bubble even when the neck is shallow or
+// wide: overlapping ovals pinch by only 0.1 of the chord, up to 0.87 of the
+// chamber width. The neck counts only when every check below holds, because
+// the gates above reject it:
+// - both chambers, without their tail, are almost convex, perfectly so when
+//   the seam is very long;
+// - neither chamber fills the box around it like a rectangle;
+// - the neck is the outline's main pinch. A cloud's scallops or a jagged box
+//   have many dents as deep as the neck; a double bubble has at most the
+//   dents at the base of its tail.
+// TypeR, measured on 60 real pages: 1,506 wand selections and every double
+// bubble among them.
+const LOBE_PINCH_RATIO = 0.09;
+const LOBE_WIDTH_RATIO = 0.9;
+const LOBE_SCORE = 1.3;
+const LOBE_OTHER_DENTS = 4;
+// The chamber without its tail: sharp convex tips (under 45 degrees) removed
+const withoutTips = (poly) => {
+  const out = poly.slice();
+  const sign = signedArea(out) > 0 ? 1 : -1;
+  for (let i = 0; out.length > 3 && i < out.length;) {
+    const p = out[(i + out.length - 1) % out.length];
+    const v = out[i];
+    const n = out[(i + 1) % out.length];
+    const ux = p[0] - v[0];
+    const uy = p[1] - v[1];
+    const wx = n[0] - v[0];
+    const wy = n[1] - v[1];
+    const convex = (v[0] - p[0]) * (n[1] - v[1]) - (v[1] - p[1]) * (n[0] - v[0]);
+    const cos = (ux * wx + uy * wy) / (Math.hypot(ux, uy) * Math.hypot(wx, wy) || 1);
+    if (convex * sign > 0 && cos > Math.SQRT1_2) {
+      out.splice(i, 1);
+      i = Math.max(0, i - 1);
+    } else {
+      i++;
+    }
+  }
+  return out;
+};
+const roundLobe = (chamber, a, dx, dy, length, solidity) => {
+  const half = withoutTips(chamber);
+  const partArea = area(half);
+  if (partArea / area(convexHull(half)) < solidity) return false;
+  let low = Infinity;
+  let high = -Infinity;
+  let far = 0;
+  for (let k = 0; k < half.length; k++) {
+    const t = ((half[k][0] - a[0]) * dx + (half[k][1] - a[1]) * dy) / length;
+    if (t < low) low = t;
+    if (t > high) high = t;
+    far = Math.max(far, Math.abs(dx * (half[k][1] - a[1]) - dy * (half[k][0] - a[0])) / length);
+  }
+  return partArea / ((high - low) * far) <= 0.9;
 };
 
 export const findCut = (contours, click, bounds, openRecovery) => {
@@ -392,7 +445,12 @@ export const findCut = (contours, click, bounds, openRecovery) => {
       polygonArea = size;
     }
   }
-  if (!polygon || polygon.length > 256 || polygonArea < 400) return null;
+  if (!polygon || polygonArea < 400) return null;
+  // Too rough an outline for the pair search below: the routes that smooth it
+  if (polygon.length > 256) {
+    const rough = openRecovery ? null : dentNeck(contours, click) || cornerNeck(contours, click);
+    return rough ? cutAt(rough, click, bounds, minDim) : null;
+  }
   const sign = signedArea(polygon) > 0 ? 1 : -1;
   const reflex = [];
   const rootArea = Math.sqrt(polygonArea);
@@ -400,6 +458,7 @@ export const findCut = (contours, click, bounds, openRecovery) => {
   const distances = [];
   const hull = convexHull(polygon);
   let best = null;
+  let lobes = null;
   for (let i = 0; i < polygon.length; i++) {
     const prev = polygon[(i + polygon.length - 1) % polygon.length];
     const v = polygon[i];
@@ -407,6 +466,21 @@ export const findCut = (contours, click, bounds, openRecovery) => {
     const cross = (v[0] - prev[0]) * (next[1] - v[1]) - (v[1] - prev[1]) * (next[0] - v[0]);
     if (cross * sign < -0.01) reflex.push(i);
   }
+  const depth = reflex.map((index) => hullDistance(hull, polygon[index]));
+  // No more than LOBE_OTHER_DENTS other dents half as deep as the neck
+  const mainPinch = (x, y, length) => {
+    const floor = Math.min(depth[x], depth[y]) * 0.5;
+    const a = polygon[reflex[x]];
+    const b = polygon[reflex[y]];
+    let dents = 0;
+    for (let k = 0; k < reflex.length; k++) {
+      const p = polygon[reflex[k]];
+      if (k === x || k === y || depth[k] < floor ||
+          Math.hypot(p[0] - a[0], p[1] - a[1]) < length * 0.1 || Math.hypot(p[0] - b[0], p[1] - b[1]) < length * 0.1) continue;
+      if (++dents > LOBE_OTHER_DENTS) return false;
+    }
+    return true;
+  };
   for (let x = 0; x < reflex.length; x++) {
     for (let y = x + 1; y < reflex.length; y++) {
       const originalA = polygon[reflex[x]];
@@ -414,8 +488,11 @@ export const findCut = (contours, click, bounds, openRecovery) => {
       const dx = originalB[0] - originalA[0];
       const dy = originalB[1] - originalA[1];
       const length = Math.sqrt(dx * dx + dy * dy);
-      if (length < 3 || length > rootArea * 0.72) continue;
-      if (Math.min(hullDistance(hull, originalA), hullDistance(hull, originalB)) < NECK_PINCH_RATIO * length) continue;
+      if (length < 3 || length > rootArea * 0.86) continue;
+      const pinch = Math.min(depth[x], depth[y]) / length;
+      if (pinch < LOBE_PINCH_RATIO) continue;
+      const deep = pinch >= NECK_PINCH_RATIO && length <= rootArea * 0.72;
+      const solidity = length > rootArea * 0.76 ? 0.97 : 0.9;
       // Tiny parallel offsets disambiguate a neck meeting a straight edge
       for (let offsetIndex = 0; offsetIndex < 3; offsetIndex++) {
         const shift = offsets[offsetIndex];
@@ -473,19 +550,29 @@ export const findCut = (contours, click, bounds, openRecovery) => {
           }
           return high - low;
         };
-        if (length > NECK_WIDTH_RATIO * Math.min(along(halves[0]), along(halves[1]))) continue;
+        const widest = Math.min(along(halves[0]), along(halves[1]));
         const score = length / Math.sqrt(small);
+        if (score > LOBE_SCORE || length > LOBE_WIDTH_RATIO * widest) continue;
         // A broad seam is admitted only between two compact chambers
-        if (score > 0.95 || length > rootArea * 0.65) {
-          if (score > 1.18 || small < polygonArea * 0.25) continue;
-          if (!chamberBody(halves[0], areaOne) || !chamberBody(halves[1], areaTwo)) continue;
+        const broad = score > 0.95 || length > rootArea * 0.65;
+        if (broad && (!chamberBody(halves[0], areaOne) || !chamberBody(halves[1], areaTwo))) continue;
+        if (deep && length <= NECK_WIDTH_RATIO * widest && (!broad || (score <= 1.18 && small >= polygonArea * 0.25))) {
+          if (!best || score < best.score) best = { a, b, score };
+        } else if (small >= polygonArea * 0.2 && (!lobes || score < lobes.score) && mainPinch(x, y, length) &&
+            roundLobe(halves[0], a, dx, dy, length, solidity) && roundLobe(halves[1], a, dx, dy, length, solidity)) {
+          lobes = { a, b, score };
         }
-        if (best && score >= best.score) continue;
-        best = { a, b, score };
       }
     }
   }
-  if (!best) return null;
+  // Round lobes only when no neck passes the stricter gates, then dents
+  if (!best) best = lobes;
+  if (!best && !openRecovery) best = dentNeck(contours, click) || cornerNeck(contours, click);
+  return best ? cutAt(best, click, bounds, minDim) : null;
+};
+
+// The click's side of a neck, as findCut returns it
+const cutAt = (best, click, bounds, minDim) => {
   const dx = best.b[0] - best.a[0];
   const dy = best.b[1] - best.a[1];
   const side = dx * (click.y - best.a[1]) - dy * (click.x - best.a[0]);
@@ -498,6 +585,271 @@ export const findCut = (contours, click, bounds, openRecovery) => {
     [bounds.left - pad, bounds.bottom + pad],
   ];
   return { points: clipToSide(frame, best.a, best.b, side > 0 ? 1 : -1), neck: [best.a, best.b], score: best.score };
+};
+
+const hullDeficit = (poly) => area(convexHull(poly)) - area(poly);
+
+// Dent cut: the chord that removes the most of the outline's dents (the area
+// between the outline and its convex hull). Dents shallower than `smooth` of
+// the bubble's size are smoothed out and tails cut off first. A chord runs between two concave corners or, with
+// `frame`, from one corner to the nearest point of a side (a bubble clipped
+// by the panel frame). Each chamber keeps `minPart` of the bubble and, with
+// `minSolidity`, is that convex. Returns { a, b, removed, explained, score }:
+// the dent area removed per bubble area, and per dent area.
+const dentCut = (contours, click, options) => {
+  let source = null;
+  for (let n = 0; n < contours.length; n++) {
+    const flat = flatten(contours[n]);
+    if (containsSlow(flat, click) && (!source || area(flat) > area(source))) source = flat;
+  }
+  if (!source || area(source) < 400) return null;
+  const polygon = withoutTips(simplify(source, Math.max(0.7, Math.sqrt(area(source)) * options.smooth)));
+  const polygonArea = area(polygon);
+  if (polygon.length < 4 || polygon.length > 256 || polygonArea < 400) return null;
+  const dents = hullDeficit(polygon);
+  if (!(dents > 0)) return null;
+  const sign = signedArea(polygon) > 0 ? 1 : -1;
+  const count = polygon.length;
+  const concave = [];
+  for (let i = 0; i < count; i++) {
+    const prev = polygon[(i + count - 1) % count];
+    const v = polygon[i];
+    const next = polygon[(i + 1) % count];
+    if (((v[0] - prev[0]) * (next[1] - v[1]) - (v[1] - prev[1]) * (next[0] - v[0])) * sign < -0.01) concave.push(i);
+  }
+  let best = null;
+  const consider = (a, b, corners) => {
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (length < 3 || !contains(polygon, { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 })) return;
+    const halves = clipBothSides(polygon, a, b);
+    const areaOne = area(halves[0]);
+    const areaTwo = area(halves[1]);
+    if (Math.abs(areaOne + areaTwo - polygonArea) > polygonArea * 0.01 || Math.min(areaOne, areaTwo) < polygonArea * options.minPart) return;
+    const hullOne = area(convexHull(halves[0]));
+    const hullTwo = area(convexHull(halves[1]));
+    if (options.minSolidity && Math.min(areaOne / hullOne, areaTwo / hullTwo) < options.minSolidity) return;
+    const left = hullOne - areaOne + hullTwo - areaTwo;
+    // A chord ending on a straight side counts a little less
+    const removed = (dents - left) / polygonArea * (corners ? 1 : 0.8);
+    if (!(removed > 0)) return;
+    if (!best || removed > best.removed + 1e-4 || (Math.abs(removed - best.removed) <= 1e-4 && length < best.length)) {
+      best = { a, b, removed, explained: (dents - left) / dents, length, score: length / Math.sqrt(Math.min(areaOne, areaTwo)) };
+    }
+  };
+  for (let x = 0; x < concave.length; x++) {
+    const a = polygon[concave[x]];
+    for (let y = x + 1; y < concave.length; y++) consider(a, polygon[concave[y]], true);
+    if (!options.frame) continue;
+    for (let k = 0; k < count; k++) {
+      if (k === concave[x] || (k + 1) % count === concave[x]) continue;
+      const u = polygon[k];
+      const v = polygon[(k + 1) % count];
+      const ex = v[0] - u[0];
+      const ey = v[1] - u[1];
+      const t = Math.max(0, Math.min(1, ((a[0] - u[0]) * ex + (a[1] - u[1]) * ey) / (ex * ex + ey * ey || 1)));
+      consider(a, [u[0] + ex * t, u[1] + ey * t], false);
+    }
+  }
+  return best;
+};
+
+// The last automatic route: a cut between two corners that removes most of
+// a large dent area, in two passes. The fine pass smooths the outline by 2%
+// of its size and wants 3% removed with 75% explained. The strong pass
+// smooths it by 5%, so the waves of a hand-drawn line or of a tail's base are
+// no dents, and wants 3.5% removed with 70% explained, both chambers then
+// perfectly convex (a box pinched at its waist keeps curved sides). Both end
+// on real corners (`sharpEnds`); what fails here takes the second click.
+const DENT_PASSES = [
+  { smooth: 0.02, minSolidity: 0.9, removed: 0.03, explained: 0.75 },
+  { smooth: 0.05, minSolidity: 0.98, removed: 0.035, explained: 0.7 },
+];
+const dentNeck = (contours, click) => {
+  for (let i = 0; i < DENT_PASSES.length; i++) {
+    const pass = DENT_PASSES[i];
+    const cut = dentCut(contours, click, { smooth: pass.smooth, frame: false, minPart: 0.15, minSolidity: pass.minSolidity });
+    if (cut && cut.removed >= pass.removed && cut.explained >= pass.explained && sharpEnds(contours, click, cut)) return cut;
+  }
+  return null;
+};
+
+// The largest flattened outline holding the click
+const outlineAt = (contours, click) => {
+  let source = null;
+  for (let n = 0; n < contours.length; n++) {
+    const flat = flatten(contours[n]);
+    if (containsSlow(flat, click) && (!source || area(flat) > area(source))) source = flat;
+  }
+  return source;
+};
+
+// Corners of an outline, whatever its point density: the turn of the outline
+// over a window of 3.5% of its size, at evenly spaced points. Reflex corners
+// are listed from 8 degrees with their angle, sharp convex tips from 70.
+const CORNER_WINDOW = 0.035;
+const CORNER_MIN_REFLEX = (8 * Math.PI) / 180;
+const CORNER_MIN_TIP = (70 * Math.PI) / 180;
+const outlineCorners = (source) => {
+  const root = Math.sqrt(area(source));
+  const step = Math.max(0.75, root * 0.004);
+  const points = [];
+  let carry = 0;
+  for (let i = 0; i < source.length; i++) {
+    const a = source[i];
+    const b = source[(i + 1) % source.length];
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    let t = carry;
+    for (; t < length; t += step) points.push([a[0] + ((b[0] - a[0]) * t) / length, a[1] + ((b[1] - a[1]) * t) / length]);
+    carry = t - length;
+  }
+  const count = points.length;
+  const reach = Math.max(3, Math.round((CORNER_WINDOW * root) / step));
+  if (count < reach * 4) return { root, step, count, points, reflex: [], tips: [] };
+  const sign = signedArea(points) > 0 ? 1 : -1;
+  const turns = [];
+  for (let i = 0; i < count; i++) {
+    const p = points[(i + count - reach) % count];
+    const v = points[i];
+    const n = points[(i + reach) % count];
+    let turn = Math.atan2(n[1] - v[1], n[0] - v[0]) - Math.atan2(v[1] - p[1], v[0] - p[0]);
+    while (turn > Math.PI) turn -= 2 * Math.PI;
+    while (turn < -Math.PI) turn += 2 * Math.PI;
+    turns.push(turn * sign);
+  }
+  // Keeps the local extremes, one per window
+  const peaks = (direction, floor) => {
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const value = turns[i] * direction;
+      if (value < floor) continue;
+      let top = true;
+      for (let k = 1; k <= reach && top; k++) {
+        if (turns[(i + k) % count] * direction > value || turns[(i + count - k) % count] * direction > value) top = false;
+      }
+      if (!top) continue;
+      const last = out[out.length - 1];
+      if (last && i - last.index <= reach) continue;
+      out.push({ index: i, point: points[i], angle: (value * 180) / Math.PI });
+    }
+    return out;
+  };
+  return { root, step, count, points, reflex: peaks(-1, CORNER_MIN_REFLEX), tips: peaks(1, CORNER_MIN_TIP) };
+};
+
+// A dent cut must end on real corners, both fairly sharp, or one very sharp on
+// a short chord: a chord between two soft waves of a hand-drawn single bubble,
+// or from a tail's base across a bubble, does not. Set from a typesetter's
+// labels on 1,800 scanned pages.
+const DENT_CORNER_BOTH = 30;
+const DENT_CORNER_ONE = 60;
+const DENT_CORNER_ONE_LENGTH = 0.85;
+const sharpEnds = (contours, click, cut) => {
+  const source = outlineAt(contours, click);
+  if (!source) return false;
+  const corners = outlineCorners(source);
+  const angleAt = (point) => {
+    let angle = 0;
+    for (let i = 0; i < corners.reflex.length; i++) {
+      const c = corners.reflex[i];
+      if (Math.hypot(c.point[0] - point[0], c.point[1] - point[1]) < corners.root * 0.04) angle = Math.max(angle, c.angle);
+    }
+    return angle;
+  };
+  const one = angleAt(cut.a);
+  const two = angleAt(cut.b);
+  return Math.min(one, two) >= DENT_CORNER_BOTH ||
+    (Math.max(one, two) >= DENT_CORNER_ONE && cut.length <= corners.root * DENT_CORNER_ONE_LENGTH);
+};
+
+// The outline without its tails: the arc from one base of a tail to the other,
+// around a sharp tip, becomes a straight line
+const CORNER_TAIL_SPAN = 0.35;
+const withoutTails = (corners) => {
+  const { root, step, count, points, reflex, tips } = corners;
+  const reach = (CORNER_TAIL_SPAN * root) / step;
+  const dropped = [];
+  for (let t = 0; t < tips.length; t++) {
+    let before = null;
+    let after = null;
+    for (let k = 0; k < reflex.length; k++) {
+      const ahead = (reflex[k].index - tips[t].index + count) % count;
+      const behind = count - ahead;
+      if (ahead <= reach && (after === null || ahead < after)) after = ahead;
+      if (behind <= reach && (before === null || behind < before)) before = behind;
+    }
+    if (before === null || after === null) continue;
+    for (let k = 1 - before; k < after; k++) dropped[(tips[t].index + k + count) % count] = true;
+  }
+  return points.filter((point, index) => !dropped[index]);
+};
+
+// The fourth route: two overlapping ovals meet at two sharp reflex corners. A
+// hand-drawn single bubble can have such corners too, shallower and farther
+// apart, so sharpness alone is not enough. The chord between two corners counts
+// when (set from a typesetter's labels on 1,000 scanned pages: 7 doubles reach
+// 1.6% removed and 0.91 long, 44 single bubbles stay at 1.3% or 1.1 long):
+// - both turn by CORNER_NECK degrees at least, and neither sits by a tip left;
+// - it is no longer than the bubble's size (the root of its area);
+// - it removes CORNER_REMOVED of the bubble in dents, CORNER_EXPLAINED of them;
+// - each chamber, round and not a rectangle, holds CORNER_MIN_PART of the bubble;
+// - no more than CORNER_OTHERS other corners are nearly as sharp.
+const CORNER_NECK = 45;
+const CORNER_REMOVED = 0.015;
+const CORNER_EXPLAINED = 0.45;
+const CORNER_SOLIDITY = 0.96;
+const CORNER_MIN_PART = 0.15;
+const CORNER_OTHERS = 2;
+const cornerNeck = (contours, click) => {
+  const source = outlineAt(contours, click);
+  if (!source || area(source) < 400) return null;
+  const outline = withoutTails(outlineCorners(source));
+  if (outline.length < 8) return null;
+  const outlineArea = area(outline);
+  const dents = hullDeficit(outline);
+  const { root, step, count, reflex, tips } = outlineCorners(outline);
+  const apart = (x, y) => {
+    const d = Math.abs(x - y);
+    return Math.min(d, count - d);
+  };
+  const usable = reflex.map((c) => c.angle >= CORNER_NECK && !tips.some((tip) => apart(tip.index, c.index) * step <= CORNER_TAIL_SPAN * root));
+  let best = null;
+  for (let x = 0; x < reflex.length; x++) {
+    for (let y = x + 1; y < reflex.length; y++) {
+      if (!usable[x] || !usable[y]) continue;
+      const a = reflex[x].point;
+      const b = reflex[y].point;
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const length = Math.hypot(dx, dy);
+      // The chord spans the bubble, it does not bridge a single small notch
+      if (length < root * 0.12 || length > root || apart(reflex[x].index, reflex[y].index) * step < length * 1.2) continue;
+      if (!contains(outline, { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 })) continue;
+      const halves = clipBothSides(outline, a, b);
+      const areaOne = area(halves[0]);
+      const areaTwo = area(halves[1]);
+      if (Math.abs(areaOne + areaTwo - outlineArea) > outlineArea * 0.02 || Math.min(areaOne, areaTwo) < outlineArea * CORNER_MIN_PART) continue;
+      const gone = dents - hullDeficit(halves[0]) - hullDeficit(halves[1]);
+      if (gone / outlineArea < CORNER_REMOVED || gone / dents < CORNER_EXPLAINED) continue;
+      if (!roundLobe(halves[0], a, dx, dy, length, CORNER_SOLIDITY) || !roundLobe(halves[1], a, dx, dy, length, CORNER_SOLIDITY)) continue;
+      const sharpest = Math.min(reflex[x].angle, reflex[y].angle);
+      let others = 0;
+      for (let k = 0; k < reflex.length; k++) {
+        if (k !== x && k !== y && reflex[k].angle >= sharpest * 0.7) others++;
+      }
+      if (others > CORNER_OTHERS) continue;
+      if (!best || sharpest > best.sharpest) best = { a, b, sharpest, score: length / Math.sqrt(Math.min(areaOne, areaTwo)) };
+    }
+  }
+  return best;
+};
+
+// The neck of a bubble the user says is double (a second click in a bubble
+// that got one line), whatever the gates above think: the dent cut, chords
+// to the frame allowed, each chamber a fifth of the bubble at least. Null
+// when no chord removes any dent.
+export const forcedCut = (contours, click, bounds) => {
+  const best = dentCut(contours, click, { smooth: 0.02, frame: true, minPart: 0.2 });
+  return best ? cutAt(best, click, bounds, Math.min(bounds.right - bounds.left, bounds.bottom - bounds.top)) : null;
 };
 
 export const convexHull = (points) => {
@@ -516,43 +868,70 @@ export const convexHull = (points) => {
   return lower.slice(0, -1).concat(upper.slice(0, -1));
 };
 
-// A wavy caption still has four long sides
-const isWarpedCaption = (poly, polyArea, hullArea, boxArea, dim) => {
-  if (polyArea / hullArea < 0.91 || polyArea / boxArea < 0.82) return false;
-  const hull = simplify(convexHull(poly), dim * 0.02);
+// A caption has four straight sides, barely bent at most: its outline (tail
+// removed) stays this close to the largest quadrilateral fitting its hull, and
+// that quadrilateral has real corners and no short side. A bubble cut by the
+// panel frame fails on its round side.
+const CAPTION_BEND = 0.045;
+const CAPTION_MIN_SIDE = 0.5;
+const CAPTION_MIN_ANGLE = Math.PI * 0.29;
+const CAPTION_MAX_ANGLE = Math.PI * 0.71;
+const hasFourStraightSides = (poly, dim) => {
+  const body = withoutTips(simplify(poly, dim * 0.01));
+  const hull = simplify(convexHull(body), dim * 0.015);
+  if (hull.length < 4 || hull.length > 24) return false;
+  let quad = null;
   let largest = 0;
-  if (hull.length <= 24) {
-    for (let a = 0; a < hull.length - 3; a++) {
-      for (let b = a + 1; b < hull.length - 2; b++) {
-        for (let c = b + 1; c < hull.length - 1; c++) {
-          for (let d = c + 1; d < hull.length; d++) {
-            largest = Math.max(largest, area([hull[a], hull[b], hull[c], hull[d]]));
+  for (let a = 0; a < hull.length - 3; a++) {
+    for (let b = a + 1; b < hull.length - 2; b++) {
+      for (let c = b + 1; c < hull.length - 1; c++) {
+        for (let d = c + 1; d < hull.length; d++) {
+          const candidate = [hull[a], hull[b], hull[c], hull[d]];
+          const size = area(candidate);
+          if (size > largest) {
+            largest = size;
+            quad = candidate;
           }
         }
       }
     }
-    if (largest / area(hull) > 0.86) return true;
   }
-  const coarse = simplify(poly, dim * 0.025);
-  if (coarse.length > 14) return false;
-  let corners = 0;
-  for (let i = 0; i < coarse.length; i++) {
-    const a = coarse[(i + coarse.length - 1) % coarse.length];
-    const b = coarse[i];
-    const c = coarse[(i + 1) % coarse.length];
-    const ux = b[0] - a[0];
-    const uy = b[1] - a[1];
-    const vx = c[0] - b[0];
-    const vy = c[1] - b[1];
-    const angle = Math.abs(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy));
-    if (angle > Math.PI * 0.28 && angle < Math.PI * 0.75 &&
-        Math.sqrt((ux * ux + uy * uy) * (vx * vx + vy * vy)) > dim * dim * 0.04) corners++;
+  if (!quad) return false;
+  const sides = quad.map((a, i) => {
+    const b = quad[(i + 1) % 4];
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    return { a, length, dx: (b[0] - a[0]) / (length || 1), dy: (b[1] - a[1]) / (length || 1) };
+  });
+  for (let i = 0; i < 4; i++) {
+    const side = sides[i];
+    const next = sides[(i + 1) % 4];
+    if (side.length < dim * CAPTION_MIN_SIDE) return false;
+    const angle = Math.abs(Math.atan2(side.dx * next.dy - side.dy * next.dx, side.dx * next.dx + side.dy * next.dy));
+    if (angle < CAPTION_MIN_ANGLE || angle > CAPTION_MAX_ANGLE) return false;
   }
-  return corners === 4;
+  const tolerance = dim * CAPTION_BEND;
+  const step = dim * 0.05;
+  for (let i = 0; i < body.length; i++) {
+    const from = body[i];
+    const to = body[(i + 1) % body.length];
+    const count = Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]) / step) || 1;
+    for (let k = 0; k < count; k++) {
+      const x = from[0] + ((to[0] - from[0]) * k) / count;
+      const y = from[1] + ((to[1] - from[1]) * k) / count;
+      let nearest = Infinity;
+      for (let j = 0; j < 4; j++) {
+        const side = sides[j];
+        const along = Math.max(0, Math.min(side.length, (x - side.a[0]) * side.dx + (y - side.a[1]) * side.dy));
+        nearest = Math.min(nearest, Math.hypot(x - side.a[0] - side.dx * along, y - side.a[1] - side.dy * along));
+      }
+      if (nearest > tolerance) return false;
+    }
+  }
+  return true;
 };
 
 // Classify an outline: "shout" (repeated sharp peaks and deep valleys),
-// "narration" (four square corners or a wavy caption), "regular" (smooth) or
+// "narration" (four straight or barely bent sides), "regular" (smooth) or
 // "unknown". Only reads the outline.
 export const shapeKind = (points) => {
   if (!points || points.length < 3 || points.length > 4096) return "unknown";
@@ -614,8 +993,7 @@ export const shapeKind = (points) => {
     if (turn < -Math.PI * 0.17) concave++;
   }
   if (sharp >= 5 && negativeTurn > Math.PI * 1.5 && polyArea / hullArea < 0.91) return "shout";
-  if ((sharp >= 4 && polyArea / boxArea > 0.93 && polyArea / hullArea > 0.965) ||
-      isWarpedCaption(points, polyArea, hullArea, boxArea, dim)) return "narration";
+  if (polyArea / hullArea >= 0.91 && polyArea / boxArea >= 0.82 && hasFourStraightSides(points, dim)) return "narration";
   // A long capsule fills its box but has no square corners: still speech
   if (sharp <= 2 && concave <= 3 && polyArea / hullArea > 0.84 && polyArea / boxArea > 0.57) return "regular";
   return "unknown";
