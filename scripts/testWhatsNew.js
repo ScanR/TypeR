@@ -369,7 +369,7 @@ const session = createLoader({
   // A value seen turned off drops the start value, even though the check fails
   assert(/const held = heldOver\(step, env\);\s*passed = step\.check\(env\) && !held;/.test(tour), "Turning a setting off and on again passes its step");
   // Toggles already on are shown for a moment, then pass by themselves
-  ["enableClick", "enableShapeR", "autoCenter"].forEach((id) => {
+  ["enableClick", "enableShapeR"].forEach((id) => {
     const block = tour.slice(tour.indexOf('id: "' + id + '"'), tour.indexOf('id: "' + id + '"') + 900).split("result")[0];
     assert(/preset: true/.test(block) && !/fresh: /.test(block), id + " passes by itself when already on");
   });

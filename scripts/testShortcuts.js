@@ -299,6 +299,7 @@ assert.deepStrictEqual(utilityCalls.shift(), ["alignDouble", true, 6]);
 ["off", "single", "multi"].forEach((mode, index, modes) => {
   getCommand("cycleAutoCenter").handler({ ...baseContext, state: { ...baseContext.state, autoCenterMode: mode } });
   assert.deepStrictEqual(dispatches.shift(), { type: "setAutoCenterMode", value: modes[(index + 1) % modes.length] });
+  assert.strictEqual(dispatches.shift().type, "showNotice", "The key tells the new mode: only Settings shows it");
 });
 assert.strictEqual(commandModule.exports.nextAutoCenterMode(undefined), "off", "An unknown mode restarts the cycle");
 getCommand("applyMultiple").handler(baseContext);

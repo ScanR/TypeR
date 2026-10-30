@@ -564,6 +564,14 @@
     & > .field-descr {
         margin-top: 6px;
     }
+
+    // A setting that does not apply now: its description stays readable
+    & > .field.m-disabled {
+        .field-label,
+        .field-input {
+            opacity: 0.5;
+        }
+    }
 }
 
 .settings-group-title {
@@ -1405,9 +1413,6 @@
         &.m-on {
             background: #34c759;
         }
-        &.m-on.m-multi {
-            background: #0a84ff;
-        }
     }
 
     .light-theme & {
@@ -1895,9 +1900,6 @@
         background: #34c759;
     }
 
-    &.m-on.m-multi i {
-        background: #0a84ff;
-    }
 }
 
 // Compact on/off switch

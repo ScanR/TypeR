@@ -26,7 +26,7 @@ import { MdDragIndicator } from "react-icons/md";
 
 import { useContext } from "../../context";
 import { useModalClose } from "../../modalClose";
-import { pasteInSelection, nextAutoCenterMode, shortcutKeyLabels } from "../../shortcutCommands";
+import { pasteInSelection, shortcutKeyLabels } from "../../shortcutCommands";
 import { alignTextLayerToSelection, locale, openFile, scrollToLine } from "../../utils";
 import {
   buildPracticeScript,
@@ -151,7 +151,6 @@ const TourModal = React.memo(function TourModal({ course }) {
     inlineTextShapeR: state.inlineTextShapeR,
     textShapeRAppliedThisSession: state.textShapeRAppliedThisSession,
     textShapeRLearnedThisSession: state.textShapeRLearnedThisSession,
-    autoCenterMode: state.autoCenterMode,
     currentTabId: state.currentTabId,
     tabs: state.tabs,
     lines: state.lines,
@@ -515,9 +514,6 @@ const TourModal = React.memo(function TourModal({ course }) {
     // Fallbacks, only when the real control is hidden in the layout
     if (action.type === "paste") return pasteInSelection({ state: getState(), getState, dispatch });
     if (action.type === "editStyle") return currentStyle ? dispatch({ type: "setModal", modal: "editStyle", data: currentStyle }) : undefined;
-    if (action.type === "autoCenter") {
-      return dispatch({ type: "setAutoCenterMode", value: nextAutoCenterMode(state.autoCenterMode || "off") });
-    }
     if (action.type === "align") {
       const current = getState();
       return alignTextLayerToSelection(current.resizeTextBoxOnCenter, current.internalPadding || 0, undefined, current.direction);
@@ -555,12 +551,6 @@ const TourModal = React.memo(function TourModal({ course }) {
     if (action.type === "paste") return locale.whatsNewPasteButton || "Paste in the selection";
     if (action.type === "editStyle") return locale.whatsNewEditCurrentStyle || "Edit the current style";
     if (action.type === "align") return locale.alignLayer || "Align";
-    if (action.type === "autoCenter") {
-      const mode = state.autoCenterMode || "off";
-      return (locale.autoCenterModeLabel || "Auto-center") + " · " + (mode === "multi"
-        ? locale.autoCenterModeMulti || "MULTI"
-        : mode === "off" ? locale.multiBubbleModeOff || "OFF" : locale.multiBubbleModeOn || "ON");
-    }
     return "";
   };
 

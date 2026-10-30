@@ -437,18 +437,6 @@ const getChapters = () => [
         result: locale.whatsNewWorkflowResult1 || "Double-click a tab to rename it. The + button opens a new one.",
       },
       {
-        id: "autoCenter",
-        text:
-          locale.whatsNewWorkflowStep2 ||
-          "Auto-center: click it at the bottom of the panel. Center re-centers each text in its bubble after the paste; Multi handles double bubbles.",
-        check: (env) => (env.state.autoCenterMode || "off") !== "off",
-        preset: true,
-        spot: () => [tour("mode-autoCenter")],
-        keys: ["cycleAutoCenter"],
-        fallback: [{ type: "autoCenter" }],
-        result: locale.whatsNewWorkflowResult2 || "Click again to go back to Off if you prefer to place texts yourself.",
-      },
-      {
         id: "presets",
         coachIn: "editStyle",
         text:

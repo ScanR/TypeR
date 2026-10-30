@@ -5,7 +5,7 @@ const load = require("./helpers/loadAppModule")();
 const layout = load("app_src/uiLayout.js");
 
 const modeKeys = Object.keys(layout.FOOTER_MODE_KEYS).map((id) => layout.FOOTER_MODE_KEYS[id]);
-assert.deepStrictEqual(Object.keys(layout.FOOTER_MODE_KEYS), ["textShapeR", "multiBubble", "autoCenter", "pasteOnClick", "autoClean"]);
+assert.deepStrictEqual(Object.keys(layout.FOOTER_MODE_KEYS), ["textShapeR", "multiBubble", "pasteOnClick", "autoClean"]);
 
 // Defaults: everything shown
 const defaults = layout.normalizeUiLayout(null);
@@ -13,9 +13,9 @@ modeKeys.forEach((key) => assert.strictEqual(defaults.visible[key], true, key + 
 assert.strictEqual("footerModeToggles" in defaults.visible, false, "the old switch is not kept");
 
 // One toggle hidden, the others stay
-const one = layout.normalizeUiLayout({ visible: { footerModeAutoCenter: false } });
-assert.strictEqual(one.visible.footerModeAutoCenter, false);
-assert.strictEqual(layout.isFooterModeVisible(one, "autoCenter"), false);
+const one = layout.normalizeUiLayout({ visible: { footerModePasteOnClick: false } });
+assert.strictEqual(one.visible.footerModePasteOnClick, false);
+assert.strictEqual(layout.isFooterModeVisible(one, "pasteOnClick"), false);
 assert.strictEqual(layout.isFooterModeVisible(one, "multiBubble"), true);
 assert.strictEqual(layout.isFooterModeVisible(one, "unknown"), true, "a toggle without a key is always shown");
 assert.strictEqual(layout.isFooterModeVisible(null, "autoCenter"), true);

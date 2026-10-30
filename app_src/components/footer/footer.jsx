@@ -2,27 +2,24 @@ import "./footer.scss";
 
 import React from "react";
 import { FiFolderMinus, FiFolderPlus, FiHelpCircle, FiSettings } from "react-icons/fi";
-import { MdAdsClick, MdCenterFocusWeak, MdCleaningServices, MdFilterNone, MdOutlineAutoAwesome } from "react-icons/md";
+import { MdAdsClick, MdCleaningServices, MdFilterNone, MdOutlineAutoAwesome } from "react-icons/md";
 import { locale } from "../../utils";
 import { useContext } from "../../context";
 import HiddenFileInput from "../hiddenFileInput/hiddenFileInput";
 import Notice from "../notice/notice";
 import FeatureTip from "../featureTip";
-import { nextAutoCenterMode } from "../../shortcutCommands";
 import { isFooterModeVisible } from "../../uiLayout";
 
 // Shared with Settings > Appearance, which lists the toggles one by one
 export const FOOTER_MODE_ICONS = {
   textShapeR: MdOutlineAutoAwesome,
   multiBubble: MdFilterNone,
-  autoCenter: MdCenterFocusWeak,
   pasteOnClick: MdAdsClick,
   autoClean: MdCleaningServices,
 };
 export const footerModeLabel = (id) => ({
   textShapeR: locale.textShapeRTitle || "TextShapeR",
   multiBubble: "Multi-bubble",
-  autoCenter: locale.autoCenterModeLabel || "Auto-center",
   pasteOnClick: locale.footerPasteOnClick || "Click paste",
   autoClean: locale.footerAutoClean || "Auto clean",
 })[id];
@@ -31,8 +28,8 @@ export const footerModeLabel = (id) => ({
 // narrow panel an icon replaces the label. The tooltip always spells out the
 // state, so the hint text is never read as one.
 const ModeToggle = ({ mode, compact }) => {
-  const { on, multi, label, status, hint, Icon, onClick } = mode;
-  const state = status || (on ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF"));
+  const { on, label, hint, Icon, onClick } = mode;
+  const state = on ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF");
   return (
     <button
       type="button"
@@ -43,9 +40,8 @@ const ModeToggle = ({ mode, compact }) => {
       title={label + " (" + state + ") – " + hint}
       onClick={onClick}
     >
-      <span className={"footer-mode-dot" + (on ? " is-on" : "") + (multi ? " is-multi" : "")} />
+      <span className={"footer-mode-dot" + (on ? " is-on" : "")} />
       {compact ? <Icon size={13} className="footer-mode-icon" /> : <span className="footer-mode-label">{label}</span>}
-      {!compact && status && <span className="footer-mode-status">{status}</span>}
     </button>
   );
 };
@@ -59,7 +55,6 @@ const ModeMeasure = React.forwardRef(function ModeMeasure({ modes }, ref) {
         <span key={mode.id} className="footer-mode">
           <span className="footer-mode-dot" />
           <span className="footer-mode-label">{mode.label}</span>
-          {mode.status && <span className="footer-mode-status">{mode.status}</span>}
         </span>
       ))}
     </div>
@@ -101,7 +96,6 @@ const AppFooter = React.memo(function AppFooter() {
     images: state.images,
     multiBubbleMode: state.multiBubbleMode,
     inlineTextShapeR: state.inlineTextShapeR,
-    autoCenterMode: state.autoCenterMode,
     smartPaste: state.smartPaste,
     pasteOnClick: state.pasteOnClick,
     smartPasteAutoClean: state.smartPasteAutoClean,
@@ -141,10 +135,6 @@ const AppFooter = React.memo(function AppFooter() {
     context.dispatch({ type: "setInlineTextShapeR", value: !context.state.inlineTextShapeR });
   };
 
-  // Off -> centre -> multi centre -> off, one click per step
-  const cycleAutoCenter = () => {
-    context.dispatch({ type: "setAutoCenterMode", value: nextAutoCenterMode(context.state.autoCenterMode) });
-  };
   const togglePasteOnClick = () => {
     context.dispatch({ type: "setPasteOnClick", value: !context.state.pasteOnClick });
   };
@@ -153,7 +143,6 @@ const AppFooter = React.memo(function AppFooter() {
     context.dispatch({ type: "setSmartPasteAutoClean", value: !context.state.smartPasteAutoClean });
   };
 
-  const autoCenterMode = context.state.autoCenterMode || "off";
   const synced = context.state.images.length > 0;
   const repoLabel = synced ? locale.footerDesyncRepo : locale.footerOpenRepo;
 
@@ -175,16 +164,6 @@ const AppFooter = React.memo(function AppFooter() {
       hint: locale.multiBubbleModeHint || "Allows capturing multiple selections to insert multiple texts at once",
       Icon: FOOTER_MODE_ICONS.multiBubble,
       onClick: toggleMultiBubble,
-    },
-    {
-      id: "autoCenter",
-      on: autoCenterMode !== "off",
-      multi: autoCenterMode === "multi",
-      label: footerModeLabel("autoCenter"),
-      status: autoCenterMode === "multi" ? (locale.autoCenterModeMulti || "MULTI") : null,
-      hint: locale.autoCenterModeHint || "Centers each text in its bubble after the paste. Click to switch: off, center, multi center (double bubbles).",
-      Icon: FOOTER_MODE_ICONS.autoCenter,
-      onClick: cycleAutoCenter,
     },
     {
       id: "pasteOnClick",

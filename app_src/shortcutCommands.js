@@ -342,10 +342,13 @@ const shortcutCommands = [
     label: "shortcut_cycleAutoCenter",
     defaultKeys: [],
     repeatDelay: 300,
-    handler: (ctx) => ctx.dispatch({
-      type: "setAutoCenterMode",
-      value: nextAutoCenterMode(ctx.state.autoCenterMode),
-    }),
+    // Only Settings shows the mode: the notice tells what the key changed
+    handler: (ctx) => {
+      const value = nextAutoCenterMode(ctx.state.autoCenterMode);
+      ctx.dispatch({ type: "setAutoCenterMode", value });
+      const modeLabel = { off: locale.settingsAutoCenterOff, single: locale.settingsAutoCenterSingle, multi: locale.settingsAutoCenterMulti }[value];
+      ctx.dispatch({ type: "showNotice", text: locale.settingsAutoCenterLabel + ": " + modeLabel, kind: "info" });
+    },
   },
   {
     id: "removeLastSelection",

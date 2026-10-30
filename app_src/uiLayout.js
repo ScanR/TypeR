@@ -5,7 +5,6 @@
 export const FOOTER_MODE_KEYS = {
   textShapeR: "footerModeTextShapeR",
   multiBubble: "footerModeMultiBubble",
-  autoCenter: "footerModeAutoCenter",
   pasteOnClick: "footerModePasteOnClick",
   autoClean: "footerModeAutoClean",
 };
@@ -26,7 +25,6 @@ export const defaultUiLayout = {
     footerRepo: true,
     footerModeTextShapeR: true,
     footerModeMultiBubble: true,
-    footerModeAutoCenter: true,
     footerModePasteOnClick: true,
     footerModeAutoClean: true,
   },

@@ -1629,17 +1629,19 @@ const SettingsModal = React.memo(function SettingsModal() {
             </div>
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupCentering || "Centering"}</div>
-              <div className="field">
-                <div className="field-label">{locale.settingsAutoCenterLabel || "Center after paste"}</div>
+              <div className={"field" + (smartPaste ? " m-disabled" : "")}>
+                <div className="field-label">{locale.settingsAutoCenterLabel || "Center after classic paste"}</div>
                 <div className="field-input">
-                  <select value={autoCenterMode} onChange={changeAutoCenterMode} className="topcoat-textarea">
+                  <select value={autoCenterMode} onChange={changeAutoCenterMode} className="topcoat-textarea" disabled={smartPaste}>
                     <option value="off">{locale.settingsAutoCenterOff || "Off"}</option>
                     <option value="single">{locale.settingsAutoCenterSingle || "Center in the bubble"}</option>
                     <option value="multi">{locale.settingsAutoCenterMulti || "Multi center (detects double bubbles)"}</option>
                   </select>
                 </div>
                 <div className="field-descr">
-                  {locale.settingsAutoCenterHint || "Each pasted text is re-centered in the bubble detected around it. Multi center also recognizes double bubbles and splits them between their texts: a text already in the bubble moves to its part unless its layer is locked. Also switchable from the footer."}
+                  {smartPaste
+                    ? locale.settingsAutoCenterSmartPasteNote || "Smart paste places the text itself: this setting only applies when it falls back to the classic paste."
+                    : locale.settingsAutoCenterHint || "With the classic paste, each text is re-centered in the bubble detected around it. Multi center also recognizes double bubbles and splits them between their texts: a text already in the bubble moves to its part unless its layer is locked."}
                 </div>
               </div>
               <div className="settings-checkbox-grid">
@@ -1975,7 +1977,6 @@ const SettingsModal = React.memo(function SettingsModal() {
         const modeStates = {
           textShapeR: { on: inlineTextShapeR },
           multiBubble: { on: multiBubbleMode },
-          autoCenter: { on: autoCenterMode !== "off", multi: autoCenterMode === "multi" },
           pasteOnClick: { on: pasteOnClick },
           autoClean: { on: smartPasteAutoClean },
         };
@@ -2154,11 +2155,11 @@ const SettingsModal = React.memo(function SettingsModal() {
               : null,
             extra: (
               <span
-                className={"settings-layout-mode-state" + (state.on ? " m-on" : "") + (state.multi ? " m-multi" : "")}
+                className={"settings-layout-mode-state" + (state.on ? " m-on" : "")}
                 title={locale.settingsLayoutModeState || "Current state of the mode"}
               >
                 <i />
-                {state.multi ? (locale.autoCenterModeMulti || "MULTI") : state.on ? onText : offText}
+                {state.on ? onText : offText}
               </span>
             ),
           });
@@ -2365,7 +2366,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                         "mk-fmode",
                         (
                           <React.Fragment>
-                            <i className={"mk-fdot" + (modeStates[id].on ? " m-on" : "") + (modeStates[id].multi ? " m-multi" : "")} />
+                            <i className={"mk-fdot" + (modeStates[id].on ? " m-on" : "")} />
                             {mockIcon(FOOTER_MODE_KEYS[id])}
                           </React.Fragment>
                         ),
