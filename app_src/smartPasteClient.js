@@ -13,6 +13,7 @@ import { prepareSmartPaste } from "./oneClick/smartPaste";
 import { captureSource, fillFromHistograms, triggerClick } from "./oneClick/bubblePlan";
 import { applyRefont, refontTextStyle } from "./oneClick/refont";
 import { resolveHyphenationLanguage } from "./oneClick/hyphenation";
+import { getInterfaceLanguage } from "./interfaceLanguage";
 import { createPasteHistory, lineAfterHistoryMove } from "./oneClick/pasteHistory";
 import { resolveTypeRFontVariant } from "./fontVariantResolver.jsxinc";
 
@@ -29,14 +30,7 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 
 /* ======================= request ======================= */
 
-const uiLanguage = (state) => {
-  if (state.language && state.language !== "auto") return state.language;
-  try {
-    return JSON.parse(window.__adobe_cep__.getHostEnvironment()).appUILocale || "";
-  } catch (error) {
-    return (typeof navigator !== "undefined" && navigator.language) || "";
-  }
-};
+const uiLanguage = getInterfaceLanguage;
 
 // The style marked for each bubble kind in the current style's folder
 export const roleStylesFor = (state) => {

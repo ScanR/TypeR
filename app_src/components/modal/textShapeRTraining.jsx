@@ -5,6 +5,7 @@ import { FaFileImport, FaFileExport } from "react-icons/fa";
 import { locale, scanTextShapeRTraining } from "../../utils";
 import { useContext } from "../../context";
 import { recordTextShapeRFeedback, retrainTextShapeRRanker, setTextShapeRTuning } from "../../textShapeR";
+import { loadTextShapeREngine } from "../../textShapeREngineLoader";
 import { makeTrainingPage, normalizeTrainingFiles, selectedTrainingEntries, trainTextShapeREntries } from "../../textShapeRTraining";
 
 const PAGE_SIZE = 15;
@@ -30,6 +31,8 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
   const fileInput = React.useRef(null);
   const busy = stage === "scanning" || stage === "training" || stage === "cancelling";
   React.useEffect(() => () => { mounted.current = false; cancelled.current = true; }, []);
+  // Lessons are read through the same word break rules as the panel
+  React.useEffect(() => { loadTextShapeREngine(); }, []);
 
   const samples = (context.state.textShapeRTuning && context.state.textShapeRTuning.samples) || 0;
   const selected = selectedTrainingEntries(pages);

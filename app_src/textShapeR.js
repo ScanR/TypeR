@@ -1,4 +1,5 @@
 import defaultTextShapeRTuning from "./textShapeRDefaultTuning.json";
+import { getInterfaceHint, getLanguageBreakPoints, registerTextShapeRPatterns, resolveTextLanguage, setTextShapeRInterfaceLanguage } from "./textShapeRLanguage.js";
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const VOWELS = "aeiouyAEIOUY\u00e0\u00e2\u00e4\u00e9\u00e8\u00ea\u00eb\u00ee\u00ef\u00f4\u00f6\u00f9\u00fb\u00fc\u00c0\u00c2\u00c4\u00c9\u00c8\u00ca\u00cb\u00ce\u00cf\u00d4\u00d6\u00d9\u00db\u00dc";
@@ -77,11 +78,54 @@ const PROFILE_PRESETS = {
 // ("Jean- Paul") always read as compounds. Standalone dashes
 // ("il - enfin - vint", "—") never match: a letter must sit right before
 // the hyphen and the space only after it.
-const DEHYPHENATE_PATTERN = /([A-Za-zÀ-ÖØ-öø-ÿ]+)- ([A-Za-zÀ-ÖØ-öø-ÿ]+)/g;
-const UPPERCASE_LETTER = /[A-ZÀ-ÖØ-Þ]/;
+const DEHYPHENATE_PATTERN = /([A-Za-zÀ-ÖØ-öø-ÿĀ-ſЀ-ӿ'’]+)- ([A-Za-zÀ-ÖØ-öø-ÿĀ-ſЀ-ӿ]+)/g;
+const UPPERCASE_LETTER = /[A-ZÀ-ÖØ-ÞА-ЯЁЇІЄҐ]/;
 // Accepts every syllable-boundary score, including the weak vowel-vowel
 // ones (7); rejects unknown clusters (10) and consonant+vowel onsets (16)
 const CESURE_MAX_PENALTY = 8;
+// A split that is really a compound keeps its hyphen when dehyphenating. These
+// post-verbal and demonstrative endings only read as a cesure on the few
+// everyday words listed below ("Dis- moi", "Celui- ci", but "bel- le", "mer- ci")
+const COMPOUND_ENDINGS = new Set([
+  "je", "tu", "il", "elle", "on", "nous", "vous", "ils", "elles", "moi", "toi", "lui", "leur", "leurs",
+  "le", "la", "les", "y", "en", "t", "ci", "là", "même", "mêmes", "être",
+]);
+const CESURE_WORDS_WITH_COMPOUND_ENDING = new Set([
+  "belle", "belles", "telle", "telles", "celle", "celles", "quelle", "quelles", "nulle", "nulles", "fille", "filles",
+  "ville", "villes", "mille", "table", "tables", "salle", "salles", "balle", "balles", "folle", "folles", "seule", "seules",
+  "école", "écoles", "parole", "paroles", "voila", "voilà", "voici", "merci", "bien", "biens", "rien", "riens", "lien",
+  "liens", "mien", "miens", "tien", "tiens", "sien", "siens", "chien", "chiens", "lion", "lions", "pion", "pions",
+  "avion", "avions", "action", "vertu", "têtu", "émoi", "cela", "celui", "ailleurs", "avril", "ceux",
+]);
+// "ce" ends far too many plain words ("for- ce", "pla- ce"): compound only after être
+const COMPOUND_CE_BEFORE = /^(?:[a-zà-ÿ]+['’])?(?:est|était|étaient|sera|seront|serait|seraient|fut|furent|soit|sont)$/i;
+const KNOWN_COMPOUNDS = new Set([
+  "là-bas", "là-haut", "là-dedans", "là-dessus", "là-dessous", "ci-dessus", "ci-dessous", "au-delà", "au-dessus", "au-dessous",
+  "par-dessus", "par-dessous", "par-delà", "jusque-là", "peut-être", "week-end", "week-ends", "rendez-vous", "vis-à-vis",
+  "c'est-à-dire", "entre-temps", "grand-père", "grand-mère", "grands-parents", "grand-frère", "grands-frères", "grande-sœur",
+  "beau-père", "belle-mère", "belle-sœur", "beau-frère", "états-unis", "casse-croûte", "porte-bonheur", "porte-monnaie",
+  "dis-donc", "dites-donc", "tout-puissant", "toute-puissante", "chef-d'œuvre", "arc-en-ciel", "après-midi", "avant-hier",
+  "aujourd'hui-même", "sous-sol", "demi-heure", "demi-frère", "demi-sœur", "mi-temps", "tête-à-tête", "face-à-face",
+]);
+// English compounds whose first word no cesure could leave behind
+const ENGLISH_COMPOUND_START = /^(?:self|well|half|all|ex|non)$/;
+const isRealCompound = (before, after, language) => {
+  // "Jean- Paul" is a compound, but all-caps text says nothing through its case
+  if (UPPERCASE_LETTER.test(after[0]) && before !== before.toUpperCase()) return true;
+  const left = before.toLowerCase();
+  const right = after.toLowerCase();
+  // Stutter ("B- bon", "N- non"): the fragment repeats the start of the word
+  if (left.length <= 3 && right.startsWith(left)) return true;
+  if (language !== "fr") {
+    if (language === "en" && ENGLISH_COMPOUND_START.test(left)) return true;
+    // Where the language's own rules cannot break the word, the hyphen is real
+    return !getLanguageBreakPoints(language, left + right).includes(left.length);
+  }
+  if (KNOWN_COMPOUNDS.has(`${left}-${right}`.replace(/’/g, "'"))) return true;
+  if (right === "ce") return COMPOUND_CE_BEFORE.test(before);
+  return COMPOUND_ENDINGS.has(right) && !CESURE_WORDS_WITH_COMPOUND_ENDING.has(left + right);
+};
+
 // Second ranking pass: the previous generation of the scorer. Its best shapes
 // stay in the list as alternatives to the current scorer's (see mergeRankings)
 let classicRanking = false;
@@ -116,7 +160,9 @@ const DANGLING_CLAUSE_PENALTY = 45;
 const LONE_TINY_WORD_PENALTY = 60;
 const DANGLING_LINE_COST = 0.5;
 // A cesure is a last resort: it only outranks clean shapes when none is usable.
+// Breaking at a hyphen the word already has costs far less
 const NEEDLESS_CESURE_PENALTY = 200;
+const COMPOUND_BREAK_COST = 0.3;
 // The list always offers one good cesure and the classic scorer's favourites
 const CESURE_SLOT = 4;
 
@@ -613,12 +659,26 @@ const setTextShapeRTuning = (next) => {
 };
 
 const dehyphenate = (text) => {
-  if (!dehyphenationEnabled || text.indexOf("- ") === -1) return text;
+  if (text.indexOf("- ") === -1) return text;
+  const language = resolveTextLanguage(text);
   return text.replace(DEHYPHENATE_PATTERN, (match, before, after) => {
-    if (UPPERCASE_LETTER.test(after[0])) return before + "-" + after;
+    // A compound split by an earlier shape is one word again, whatever the option
+    if (isRealCompound(before, after, language)) return before + "-" + after;
+    if (!dehyphenationEnabled) return match;
+    if (language !== "fr") return before + after;
     const penalty = getSyllableSplitPenalty(before + after, before.length);
     return penalty < CESURE_MAX_PENALTY ? before + after : before + "-" + after;
   });
+};
+
+// The text behind a shape: a hyphen ending a shaped line is either a cesure or
+// a compound, never a word of its own, whatever the dehyphenation option
+const joinShapedText = (text) => {
+  const source = String(text || "").replace(/\s+/g, " ").trim();
+  const language = resolveTextLanguage(source);
+  return source.replace(DEHYPHENATE_PATTERN, (match, before, after) => (
+    isRealCompound(before, after, language) ? `${before}-${after}` : before + after
+  ));
 };
 
 const normalizeText = (text) => dehyphenate(String(text || "").replace(/\s+/g, " ").trim());
@@ -810,13 +870,71 @@ const mergePunctuationWords = (words) => {
 
 const hyphenSplitCache = new Map();
 
-const getHyphenSplits = (word) => {
-  const cached = hyphenSplitCache.get(word);
+const getHyphenSplits = (word, language) => {
+  const key = `${classicRanking ? "classic" : "current"}:${language}:${word}`;
+  const cached = hyphenSplitCache.get(key);
   if (cached) return cached;
-  const splits = computeHyphenSplits(word);
+  const splits = classicRanking && language === "fr" ? computeHyphenSplits(word) : computeLetteringSplits(word, language);
   if (hyphenSplitCache.size >= 512) hyphenSplitCache.clear();
-  hyphenSplitCache.set(word, splits);
+  hyphenSplitCache.set(key, splits);
   return splits;
+};
+
+// Short words of 6-7 letters ("com-ment", "par-don"), words behind an elision
+// ("d'ac-cord", "aujour-d'hui") and the hyphen a compound already has
+// ("Dis-/moi") are all cut by real letterers. The word's own language says
+// where; for French the syllable rules complete the patterns, which alone miss
+// about one real cut in six
+const LETTERING_MIN_WORD = 6;
+const CLASSIC_MIN_CESURE_WORD = 8;
+const LETTERING_MIN_FRAGMENT = 2;
+const LETTERING_MIN_REST = 3;
+const LETTERING_MAX_SPLITS = 3;
+const computeLetteringSplits = (word, language) => {
+  const { body, punctuation } = splitTrailingPunctuation(word);
+  if (!body || hasMarkdownSyntax(body) || /\s/.test(body)) return [];
+  if (/[A-Za-zÀ-ÖØ-öø-ÿĀ-ſЀ-ӿ'’]-[A-Za-zÀ-ÖØ-öø-ÿĀ-ſЀ-ӿ]/.test(body)) {
+    const compound = [];
+    for (let index = 1; index < body.length - 1; index++) {
+      if (body[index] !== "-" || body[index + 1] === "-") continue;
+      compound.push({ index: index + 1, prefix: body.slice(0, index + 1), suffix: body.slice(index + 1) + punctuation, compound: true });
+    }
+    return compound;
+  }
+  if (!language || body.length < LETTERING_MIN_WORD) return [];
+  // Only languages that elide cut around an apostrophe: "don't" stays whole
+  if (/['’]/.test(body) && language !== "fr" && language !== "it") return [];
+  const patternPoints = getLanguageBreakPoints(language, body.replace(/’/g, "'"));
+  const syllablePoints = language === "fr" && !/['’]/.test(body)
+    ? computeSyllableSplits(body, punctuation, 0, 3).map((split) => split.index)
+    : [];
+  const points = new Set(patternPoints.concat(syllablePoints));
+  return Array.from(points)
+    .filter((index) => index >= LETTERING_MIN_FRAGMENT && body.length - index >= LETTERING_MIN_REST)
+    .map((index) => ({
+      index,
+      // Points both rule sets agree on come first, then the most central ones
+      penalty: (patternPoints.includes(index) && syllablePoints.includes(index) ? 0 : 20) + Math.abs(index - body.length / 2),
+      prefix: `${body.slice(0, index)}-`,
+      suffix: body.slice(index) + punctuation,
+    }))
+    .sort((a, b) => a.penalty - b.penalty || a.index - b.index)
+    .slice(0, LETTERING_MAX_SPLITS);
+};
+
+const computeSyllableSplits = (body, punctuation, indexOffset, minPrefix) => {
+  const positions = [];
+  for (let index = minPrefix; index <= body.length - 3; index++) {
+    const syllablePenalty = getSyllableSplitPenalty(body, index);
+    if (!Number.isFinite(syllablePenalty) || syllablePenalty >= 3) continue;
+    positions.push({
+      index: index + indexOffset,
+      penalty: syllablePenalty * 10 + Math.abs(index - body.length / 2),
+      prefix: `${body.slice(0, index)}-`,
+      suffix: body.slice(index) + punctuation,
+    });
+  }
+  return positions.sort((a, b) => a.penalty - b.penalty || a.index - b.index).slice(0, 3);
 };
 
 const computeHyphenSplits = (word) => {
@@ -2307,15 +2425,19 @@ const addCandidate = (resultMap, seenTargets, tokens, lineCount, curve, shift, b
     id: `shape-${resultMap.size + 1}`,
     text,
     lines: text.split("\n"),
-    score: scoreCandidate(lines, hyphenCount, profile),
-    hyphenCount,
+    // A break at a hyphen the word already has adds no character: it costs a
+    // fraction of a cesure in the score and does not count as one
+    score: scoreCandidate(lines, tokens.compoundBreak ? hyphenCount * COMPOUND_BREAK_COST : hyphenCount, profile),
+    hyphenCount: tokens.compoundBreak ? 0 : hyphenCount,
   });
 };
 
-const generateHyphenTokenSets = (words, baseTokens) => {
+const generateHyphenTokenSets = (words, baseTokens, language) => {
   const sets = [];
   words.forEach((word, wordIndex) => {
-    getHyphenSplits(word).forEach((split) => {
+    getHyphenSplits(word, language).forEach((split) => {
+      // A lone short word is never worth a cesure
+      if (words.length === 1 && !split.compound && stripMarkdownForMeasure(word).length < CLASSIC_MIN_CESURE_WORD) return;
       const tokens = [];
       words.forEach((currentWord, index) => {
         if (index !== wordIndex) {
@@ -2327,6 +2449,7 @@ const generateHyphenTokenSets = (words, baseTokens) => {
         tokens.push({ text: split.prefix, forceBreakAfter: true });
         tokens.push({ text: split.suffix });
       });
+      if (split.compound) tokens.compoundBreak = true;
       sets.push(tokens);
     });
   });
@@ -2341,6 +2464,8 @@ const variantCache = new Map();
 const getVariantCacheKey = (text, options) => JSON.stringify([
   // The toggle changes normalization, so cached entries must not cross it
   dehyphenationEnabled,
+  // Short texts follow the interface language
+  getInterfaceHint(),
   // Feedback tuning changes scoring: cached lists must not survive it
   tuningRevision,
   text,
@@ -2622,7 +2747,7 @@ const rankTextShapeRVariants = (normalized, options) => {
   }
 
   if (options.allowHyphenation !== false) {
-    generateHyphenTokenSets(words, baseTokens).forEach((tokens) => {
+    generateHyphenTokenSets(words, baseTokens, resolveTextLanguage(normalized)).forEach((tokens) => {
       // Hyphen sets hold more tokens than words: cap by the profile range,
       // not by the word-count-capped maxLines (a single long word must still
       // be allowed to split onto two lines). Their granularity cap is
@@ -2658,7 +2783,7 @@ const rankTextShapeRVariants = (normalized, options) => {
   const EXEMPLAR_RECALL_BONUS = 480;
   if (tuning.exemplars && tuning.exemplars.length) {
     tuning.exemplars.forEach((exemplar) => {
-      if (normalizeText(exemplar.lines.join(" ")) !== normalized) return;
+      if (joinShapedText(exemplar.lines.join(" ")) !== joinShapedText(normalized)) return;
       if (!exemplarContextMatches(exemplar, aspect, bubbleSignature)) return;
       const exemplarText = exemplar.lines.join("\n");
       if (resultMap.has(exemplarText)) {
@@ -2852,7 +2977,7 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
     .map((line) => line.trim())
     .filter(Boolean);
   if (!chosenLines.length) return null;
-  const flatText = chosenLines.join(" ");
+  const flatText = joinShapedText(chosenLines.join(" "));
   if (!normalizeText(flatText)) return null;
   // The bundled default is a suggestion preset, not inherited user history.
   // On the first Learn action `currentTuning` is null, so generate the lesson
@@ -2886,7 +3011,13 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
   // frequent césures → cheap) and the knob eases toward that target instead
   // of drifting through fixed multiplicative bumps. Texts where hyphenation
   // was never even an option teach nothing about the habit.
-  const chosenHyphens = chosenLines.slice(0, -1).filter((line) => /[A-Za-zÀ-ÖØ-öø-ÿ]-$/.test(line)).length;
+  // A break at the hyphen of a compound adds nothing to the word: not a cesure
+  const chosenHyphens = chosenLines.slice(0, -1).filter((line, index) => {
+    if (!/[A-Za-zÀ-ÖØ-öø-ÿĀ-ſЀ-ӿ]-$/.test(line)) return false;
+    const before = (line.match(/([A-Za-zÀ-ÖØ-öø-ÿĀ-ſЀ-ӿ'’]+)-$/) || [])[1] || "";
+    const after = (chosenLines[index + 1].match(/^[A-Za-zÀ-ÖØ-öø-ÿĀ-ſЀ-ӿ]+/) || [])[0] || "";
+    return !(after && isRealCompound(before, after, resolveTextLanguage(flatText)));
+  }).length;
   const hyphenWasOption = chosenHyphens > 0 || variants.some((variant) => variant.hyphenCount > 0);
   if (hyphenWasOption) {
     const sampleRate = chosenLines.length > 1 ? chosenHyphens / (chosenLines.length - 1) : 0;
@@ -3011,7 +3142,7 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
     : null;
   const exemplarBubble = getBubbleSignature(normalizeShapeRows(options.shapeProfile).filter((row) => row.width > 0));
   const sameTextAndContext = (exemplar) => (
-    normalizeText(exemplar.lines.join(" ")) === normalizeText(flatText)
+    joinShapedText(exemplar.lines.join(" ")) === flatText
       && exemplarStorageContextMatches(exemplar, exemplarAspect, exemplarBubble)
   );
   const previousExemplar = (next.exemplars || []).find((exemplar) => (
@@ -3051,4 +3182,4 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
   };
 };
 
-export { frenchHyphenPoints, generateTextShapeRVariants, generateManualTextShapeRVariant, estimateManualLineCount, setDehyphenationEnabled, setTextShapeRTuning, sanitizeTuning as sanitizeTextShapeRTuning, recordTextShapeRFeedback, retrainTextShapeRRanker, isTextShapeRLineModelStale, refitTextShapeRLineModel, scheduleTextShapeRLineModelRefit, visibleLength, visibleWidth };
+export { registerTextShapeRPatterns, setTextShapeRInterfaceLanguage, frenchHyphenPoints, generateTextShapeRVariants, generateManualTextShapeRVariant, estimateManualLineCount, setDehyphenationEnabled, setTextShapeRTuning, sanitizeTuning as sanitizeTextShapeRTuning, recordTextShapeRFeedback, retrainTextShapeRRanker, isTextShapeRLineModelStale, refitTextShapeRLineModel, scheduleTextShapeRLineModelRefit, visibleLength, visibleWidth };

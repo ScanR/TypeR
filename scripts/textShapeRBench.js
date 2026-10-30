@@ -34,10 +34,14 @@ const resolveModule = () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tsr-ref-"));
   fs.writeFileSync(path.join(dir, "textShapeR.js"), execSync(`git show ${target}:app_src/textShapeR.js`, { cwd: rootDir, encoding: "utf8", maxBuffer: 1 << 24 }));
   fs.copyFileSync(path.join(rootDir, "app_src/textShapeRDefaultTuning.json"), path.join(dir, "textShapeRDefaultTuning.json"));
+  // Later revisions import their language rules next to the engine
+  fs.copyFileSync(path.join(rootDir, "app_src/textShapeRLanguage.js"), path.join(dir, "textShapeRLanguage.js"));
+  fs.symlinkSync(path.join(rootDir, "app_src/oneClick"), path.join(dir, "oneClick"));
   return path.join(dir, "textShapeR.js");
 };
 const load = require("./helpers/loadAppModule")();
 const engine = load(resolveModule());
+if (engine.registerTextShapeRPatterns) engine.registerTextShapeRPatterns(load("app_src/textShapeRPatterns.js").default);
 const { generateTextShapeRVariants, recordTextShapeRFeedback, setTextShapeRTuning, visibleWidth } = engine;
 // The panel refits the line-break model once idle after a Learn click:
 // model that here by refitting after every lesson (engines without it skip)

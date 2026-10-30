@@ -39,13 +39,17 @@ const {
   isTextShapeRLineModelStale,
   recordTextShapeRFeedback,
   refitTextShapeRLineModel,
+  registerTextShapeRPatterns,
   retrainTextShapeRRanker,
   sanitizeTextShapeRTuning,
   scheduleTextShapeRLineModelRefit,
+  setDehyphenationEnabled,
   setTextShapeRTuning,
   visibleLength,
   visibleWidth,
 } = loadAppModule("app_src/textShapeR.js");
+
+registerTextShapeRPatterns(loadAppModule("app_src/textShapeRPatterns.js").default);
 
 const shippedDefaultTuning = require("../app_src/textShapeRDefaultTuning.json");
 assert.strictEqual(shippedDefaultTuning.samples, 178);
@@ -86,6 +90,48 @@ assert.ok(noHyphen.every((variant) => !/-\n/.test(variant.text)));
 const markdown = generateTextShapeRVariants("A **bold sentence** should keep markdown markers safe", { limit: 10 });
 assert.ok(markdown.every((variant) => !/\*\*bo\nld|sent\nence\*\*/.test(variant.text)));
 assert.ok(markdown.every((variant) => (variant.text.match(/\*\*/g) || []).length === 2));
+
+// A compound split by an earlier shape keeps its hyphen, a cesure is joined
+setDehyphenationEnabled(true);
+[["Dis... Dis- moi...", "Dis... Dis-moi..."], ["Qu'est- ce que", "Qu'est-ce que"], ["Celui- ci", "Celui-ci"],
+  ["peut- être", "peut-être"], ["B- bon", "B-bon"], ["Suis- je", "Suis-je"],
+  ["com- ment", "comment"], ["par- don", "pardon"], ["for- ce", "force"], ["bel- le", "belle"], ["en- tendre", "entendre"]]
+  .forEach(([source, expected]) => {
+    const variants = generateTextShapeRVariants(source, { limit: 12 });
+    assert.ok(variants.length && variants.every((variant) => variant.lines.join(" ").replace(/- /g, "-").replace(/\s+/g, " ").replace(/-/g, "") === expected.replace(/-/g, "")),
+      `${source} must read as ${expected}, got ${variants[0] && variants[0].text}`);
+    if (expected.includes("-")) assert.ok(variants.some((variant) => variant.lines.join(" ").includes(expected)), `${source} must keep its hyphen`);
+    else assert.ok(variants.some((variant) => variant.lines.join(" ").includes(expected)), `${source} must be joined`);
+  });
+setDehyphenationEnabled(false);
+const compoundOff = generateTextShapeRVariants("Dis... Dis-\nmoi...", { limit: 12 });
+assert.ok(compoundOff.some((variant) => variant.lines.includes("Dis-moi...")), "a compound is rejoined even with the option off");
+assert.ok(compoundOff.some((variant) => variant.lines.join("|").includes("Dis-|moi...")), "a compound can break at its own hyphen");
+assert.ok(compoundOff.length >= 3, "a two-word text still offers several shapes");
+
+// Cesures stay available without ever leading when a clean shape exists
+const cesureText = "Je ne comprends pas pourquoi tu refuses toujours de me dire la vérité.";
+const cesureList = generateTextShapeRVariants(cesureText, { limit: 12 });
+assert.strictEqual(cesureList[0].hyphenCount, 0, "a cesure must not lead while a clean shape exists");
+assert.ok(cesureList.slice(0, 6).some((variant) => variant.hyphenCount > 0), "a good cesure stays in the proposals");
+const shortCesure = generateTextShapeRVariants("Bonjour, comment vas-tu ?", { limit: 12 });
+assert.ok(shortCesure.some((variant) => /com-\nment/.test(variant.text)), "short words can be cut as letterers do");
+assert.ok(generateTextShapeRVariants("D'accord, mais alors vite.", { limit: 12 }).some((variant) => /d'ac-\ncord/i.test(variant.text)), "a word behind an elision can be cut");
+
+// Breaks follow the text's own language, whatever the interface says
+const cesuresOf = (text) => generateTextShapeRVariants(text, { limit: 12 })
+  .filter((variant) => variant.hyphenCount)
+  .map((variant) => variant.lines.find((line) => /-$/.test(line)).split(" ").pop());
+const englishCesures = cesuresOf("I remember everything that happened together in the dangerous mountains.");
+assert.ok(englishCesures.length, "English text gets cesures");
+["eve-", "happe-", "toge-", "dange-"].forEach((wrong) => assert.ok(!englishCesures.includes(wrong), `English breaks with French rules: ${wrong}`));
+assert.ok(englishCesures.some((fragment) => /^(?:re-|re-mem-|every-|hap-|to-|to-geth-|dan-|dan-ger-|moun-)$/.test(fragment)), `unexpected English cesures: ${englishCesures}`);
+assert.ok(cesuresOf("Я не понимаю, что происходит здесь, пожалуйста, объясни мне.").length, "Cyrillic text gets cesures");
+assert.ok(!cesuresOf("لا أفهم ما يحدث هنا الآن يا صديقي العزيز والجميل").length, "Arabic is never hyphenated");
+setDehyphenationEnabled(true);
+assert.ok(generateTextShapeRVariants("some- thing is well- known to- gether", { limit: 12 }).some((variant) => variant.lines.join(" ") === "something is well-known together"),
+  "English cesures are joined and English compounds kept");
+setDehyphenationEnabled(false);
 
 const short = generateTextShapeRVariants("Bonjour");
 assert.deepStrictEqual(short.map((variant) => variant.text), ["Bonjour"]);

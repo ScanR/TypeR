@@ -53,6 +53,8 @@
 - Validate a batch before creating layers and restore Photoshop history if a batch fails.
 - Preserve undo history during temporary TextShapeR scans.
 - TextShapeR ranks shapes from about 3,000 hand-lettered bubbles: the first proposal follows how letterers actually break lines, and the previous ranking's favourites stay in the list as alternatives.
+- TextShapeR keeps the hyphen of real compound words ("Dis-moi", "Qu'est-ce") when rejoining split text, can break a line at that hyphen, and offers cesures on short words and after an elision, without letting one lead when a clean shape exists.
+- TextShapeR detects the language of the text and breaks words by its rules (French, English, Spanish, Portuguese, Italian, German, Turkish, Russian and Ukrainian); scripts that do not hyphenate, such as Arabic, are never cut. The interface language only settles texts too short to tell.
 - Fix TextShapeR's learning, which could suddenly degrade the suggestions after many lessons.
 - Refine compact panel settings, the active-size modifier and keyboard workflows.
 - Select styles 1 through 9 in the current folder with the numeric keypad while the panel has focus and no text field or modal is active.

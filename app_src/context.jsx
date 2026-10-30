@@ -16,6 +16,8 @@ import { getStoredSelectionLineIndex } from "./multiBubbleHistory";
 import { collectDescendantIds, getAutomaticTagStyles } from "./folderUtils";
 import { perfMeasure } from "./perfDebug";
 import { TAB_FIELDS, createTab, migrateTabStorage } from "./tabStorage";
+import { getInterfaceLanguage } from "./interfaceLanguage";
+import { loadTextShapeREngine } from "./textShapeREngineLoader";
 import {
   cycleStyleSizePreset,
   normalizeStyleSizePresets,
@@ -1907,7 +1909,7 @@ const ContextProvider = React.memo(function ContextProvider(props) {
     let active = true;
     let cancelRefit = null;
     const timer = setTimeout(() => {
-      import(/* webpackChunkName: "text-shaper-engine" */ "./textShapeR").then((engine) => {
+      loadTextShapeREngine().then((engine) => {
         if (!active || !engine.isTextShapeRLineModelStale(base)) return;
         cancelRefit = engine.scheduleTextShapeRLineModelRefit(base, (model) => {
           if (active) dispatch({ type: "setTextShapeRLineModel", base, ddp: model.ddp, ddpKey: model.ddpKey });
@@ -1923,15 +1925,16 @@ const ContextProvider = React.memo(function ContextProvider(props) {
   React.useEffect(() => {
     if (!state.inlineTextShapeR) return undefined;
     let active = true;
-    import(/* webpackChunkName: "text-shaper-engine" */ "./textShapeR").then((engine) => {
+    loadTextShapeREngine().then((engine) => {
       if (!active) return;
       engine.setDehyphenationEnabled(state.dehyphenateTextShapeR === true);
+      engine.setTextShapeRInterfaceLanguage(getInterfaceLanguage(state));
       engine.setTextShapeRTuning(state.textShapeRTuning);
     });
     return () => {
       active = false;
     };
-  }, [state.inlineTextShapeR, state.dehyphenateTextShapeR, state.textShapeRTuning]);
+  }, [state.inlineTextShapeR, state.dehyphenateTextShapeR, state.textShapeRTuning, state.language]);
   React.useEffect(() => {
     const version = state.stylePrefixRefreshVersion || 0;
     if (!version) return undefined;

@@ -16,16 +16,10 @@ import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPrevi
 import { notePerfRender } from "../../perfDebug";
 import TextShapeRFitPreview from "../textShapeRFitPreview";
 import { createPanelSnapshotQueue } from "./panelSnapshot";
+import { getInterfaceLanguage } from "../../interfaceLanguage";
+import { loadTextShapeREngine } from "../../textShapeREngineLoader";
 
-let textShapeREnginePromise = null;
 const requestPanelSnapshot = createPanelSnapshotQueue((script, callback) => csInterface.evalScript(script, callback));
-const loadTextShapeREngine = () => {
-  if (!textShapeREnginePromise) {
-    textShapeREnginePromise = import(/* webpackChunkName: "text-shaper-engine" */ "../../textShapeR");
-  }
-  return textShapeREnginePromise;
-};
-
 const normalizeLayerText = (text) => String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
 
 const getNextUsableLineIndex = (lines, lineIndex) => {
@@ -131,6 +125,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     loadTextShapeREngine().then((engine) => {
       if (!active) return;
       engine.setDehyphenationEnabled(context.getState().dehyphenateTextShapeR === true);
+      engine.setTextShapeRInterfaceLanguage(getInterfaceLanguage(context.getState()));
       engine.setTextShapeRTuning(context.getState().textShapeRTuning);
       setTextShapeREngine(engine);
     });

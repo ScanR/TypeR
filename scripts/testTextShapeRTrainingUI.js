@@ -41,6 +41,7 @@ const load = require("./helpers/loadAppModule")({
   "./textShapeRTraining.scss": {},
   "../../utils": { locale, scanTextShapeRTraining: (file, callback) => requests.push({ file, callback }) },
   "../../context": { useContext: () => context },
+  "../../textShapeREngineLoader": { loadTextShapeREngine: () => Promise.resolve() },
   "../../textShapeR": {
     setTextShapeRTuning(value) { liveTuning = value; },
     recordTextShapeRFeedback(text, options, tuning) {
