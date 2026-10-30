@@ -32,6 +32,8 @@ export const defaultUiLayout = {
     previewHeight: 130,
     uiScale: 100,
   },
+  // Footer mode toggles: icons at any panel width instead of only when narrow
+  footerModeIcons: false,
 };
 
 const clampNumber = (value, min, max, fallback) => {
@@ -65,7 +67,7 @@ export const normalizeUiLayout = (raw) => {
     previewHeight: clampNumber(layout.sizes?.previewHeight, 80, 300, defaultUiLayout.sizes.previewHeight),
     uiScale: clampNumber(layout.sizes?.uiScale, 70, 150, defaultUiLayout.sizes.uiScale),
   };
-  return { order, visible, sizes };
+  return { order, visible, sizes, footerModeIcons: layout.footerModeIcons === true };
 };
 
 export const isFooterModeVisible = (layout, id) => {

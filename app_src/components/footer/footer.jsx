@@ -25,8 +25,9 @@ export const footerModeLabel = (id) => ({
 })[id];
 
 // One mode toggle: the dot shows the state, the label names the mode. In a
-// narrow panel an icon replaces the label. The tooltip always spells out the
-// state, so the hint text is never read as one.
+// narrow panel, or when Settings > Appearance asks for it, an icon replaces the
+// label. The tooltip always spells out the state, so the hint text is never
+// read as one.
 const ModeToggle = ({ mode, compact }) => {
   const { on, label, hint, Icon, onClick } = mode;
   const state = on ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF");
@@ -117,7 +118,9 @@ const AppFooter = React.memo(function AppFooter() {
   const actionsRef = React.useRef();
   const modesRef = React.useRef();
   const measureRef = React.useRef();
-  const compact = useCompactModes(actionsRef, modesRef, measureRef);
+  const tooNarrow = useCompactModes(actionsRef, modesRef, measureRef);
+  // Settings > Appearance can keep the icons at any panel width
+  const compact = tooNarrow || context.state.uiLayout?.footerModeIcons === true;
 
   const openRepository = () => {
     if (context.state.images.length) {

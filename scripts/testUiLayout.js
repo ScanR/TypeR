@@ -41,4 +41,11 @@ assert.strictEqual(empty.visible.text, true);
 assert.deepStrictEqual(empty.order, ["styles", "preview", "text"]);
 assert.deepStrictEqual(empty.sizes, { previewHeight: 300, uiScale: 70 });
 
+// Footer icons at any width: off by default, only a real true turns them on
+assert.strictEqual(defaults.footerModeIcons, false);
+assert.strictEqual(layout.normalizeUiLayout({ footerModeIcons: true }).footerModeIcons, true);
+assert.strictEqual(layout.normalizeUiLayout({ footerModeIcons: "yes" }).footerModeIcons, false);
+const icons = layout.normalizeUiLayout({ footerModeIcons: true });
+assert.deepStrictEqual(layout.normalizeUiLayout(JSON.parse(JSON.stringify(icons))), icons);
+
 console.log("ui layout tests passed");

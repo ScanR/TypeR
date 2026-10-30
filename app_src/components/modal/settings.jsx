@@ -1,7 +1,7 @@
 import { useModalClose } from "../../modalClose";
 import { serializeStyle, validateImportData, hasStyleImportConflicts } from "../../librarySerialization";
 import React from "react";
-import { FiX, FiSettings, FiEye, FiEyeOff, FiEdit3, FiFileText, FiLayers, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiEdit2, FiPlus, FiImage, FiTrash2, FiDatabase, FiHelpCircle, FiFolderPlus, FiLock, FiMonitor, FiType, FiZoomIn } from "react-icons/fi";
+import { FiX, FiSettings, FiEye, FiEyeOff, FiEdit3, FiFileText, FiLayers, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiEdit2, FiGrid, FiPlus, FiImage, FiTrash2, FiDatabase, FiHelpCircle, FiFolderPlus, FiLock, FiMonitor, FiType, FiZoomIn } from "react-icons/fi";
 import { MdSave, MdTab, MdCenterFocusWeak, MdFormatSize, MdSwapVert, MdOutlineSubject, MdOutlineCallToAction } from "react-icons/md";
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
@@ -722,6 +722,11 @@ const SettingsModal = React.memo(function SettingsModal() {
       ...current,
       visible: { ...current.visible, [key]: current.visible[key] === false },
     }));
+    setEdited(true);
+  };
+
+  const toggleFooterModeIcons = () => {
+    setUiLayoutLocal((current) => normalizeUiLayout({ ...current, footerModeIcons: !current.footerModeIcons }));
     setEdited(true);
   };
 
@@ -2459,6 +2464,14 @@ const SettingsModal = React.memo(function SettingsModal() {
                       </div>
                       <div className="settings-layout-elements">
                         {FOOTER_MODE_IDS.map(renderModeRow)}
+                        <label className="settings-layout-element">
+                          <FiGrid size={13} className="settings-layout-element-icon" />
+                          <span className="settings-layout-element-text">
+                            <span className="settings-layout-element-label">{locale.settingsLayoutModeIcons || "Always show icons"}</span>
+                            <span className="settings-layout-element-note">{locale.settingsLayoutModeIconsNote || "Otherwise, icons replace the names only when the panel is too narrow."}</span>
+                          </span>
+                          <LayoutSwitch checked={uiLayout.footerModeIcons} onChange={toggleFooterModeIcons} />
+                        </label>
                       </div>
                       <div className="settings-layout-inspector-note">
                         {locale.settingsLayoutModeKeepsState || "A hidden toggle keeps its current state, and its shortcut still works."}
