@@ -1,7 +1,7 @@
 import React from "react";
 
 const OFFSET = 8;
-const SHOW_DELAY = 550;
+const SHOW_DELAY = 300;
 
 const getTooltipTarget = (node) => {
   if (!node || node === document || node === window) return null;

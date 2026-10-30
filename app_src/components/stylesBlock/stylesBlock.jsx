@@ -164,7 +164,7 @@ const StylesBlock = React.memo(function StylesBlock() {
         <div className="export-font-tip style-size-tip hostBrdBotContrast" role="status">
           <FiInfo size={14} className="export-font-tip-icon" />
           <span className="export-font-tip-text">
-            {locale.styleSizeStepTip || "Tip: You can change the font size increment in Settings > Behavior > Styles, for example to 0.5 for finer adjustments."}
+            {locale.styleSizeStepTip || "Tip: You can change the font size increment in Settings > Styles > Quick sizes, for example to 0.5 for finer adjustments."}
           </span>
           <button
             type="button"

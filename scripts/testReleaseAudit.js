@@ -76,5 +76,9 @@ for (const result of ['', null, undefined, 'EvalScript error.', 'false', '0', '1
   failed = true;
   assert.strictEqual(await reloadScope.reload(), false);
   assert.strictEqual(reloaded, 1);
+  const entrySource = fs.readFileSync('app_src/index.jsx', 'utf8');
+  const lazyModalStyles = fs.readFileSync('app_src/components/modal/modal.scss', 'utf8');
+  assert.ok(entrySource.includes("import './components/modal/confirmDialog.scss';"), 'The tab bar confirmation is styled before any modal opens');
+  assert.ok(!lazyModalStyles.includes('.settings-confirm-overlay'), 'Confirmation styles stay out of the lazy modal stylesheet');
   console.log('Release audit regressions passed (tabs, page mapping, imports, layout, confirmations, reload)');
 })().catch(error => { console.error(error); process.exitCode = 1; });

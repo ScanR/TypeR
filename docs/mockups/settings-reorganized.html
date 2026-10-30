@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>TypeR · Réglages réorganisés (design actuel)</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0; color: #d9dadb;
+    font: 14px/1.25 -apple-system, "Segoe UI", system-ui, sans-serif;
+    display: flex; gap: 28px; justify-content: center; align-items: flex-start; flex-wrap: wrap;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  /* Photoshop panel + TypeR modal, same geometry as .app-modal-inner */
+  .panel { width: 420px; height: 720px; background: #323232; position: relative; overflow: hidden; border: 1px solid #1d1d1d; border-radius: 4px; flex: 0 0 auto; }
+  .hatch { position: absolute; inset: 0; background: #262626; opacity: .8; }
+  .modal {
+    position: absolute; top: 8px; left: 8px; right: 8px; bottom: 20px; border-radius: 8px;
+    background: #3a3a3a; display: flex; flex-direction: column;
+    box-shadow: 0 12px 32px rgba(0,0,0,.4), 0 2px 8px rgba(0,0,0,.28);
+  }
+  .app-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #2a2a2a; flex: 0 0 auto; }
+  .app-modal-title { font-weight: bold; font-size: 16px; color: #fff; }
+  .icon-quiet { border: 0; background: transparent; color: #d9dadb; width: 30px; height: 30px; border-radius: 4px; display: grid; place-items: center; cursor: pointer; }
+  .icon-quiet:hover { background: rgba(255,255,255,.09); }
+  .app-modal-body { overflow: auto; flex: 1; position: relative; }
+  .app-modal-body::-webkit-scrollbar { width: 8px; }
+  .app-modal-body::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+  .app-modal-body-inner { font-size: 14px; padding: 10px; }
+
+  /* Tabs: same 4-per-row grid as .settings-tabs */
+  .settings-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; padding: 4px; border-radius: 6px; background: rgba(0,0,0,.15); }
+  .settings-tab {
+    flex: 0 0 calc(25% - 3px); min-width: 0; display: flex; align-items: center; justify-content: center; gap: 4px;
+    padding: 6px 2px; border: none; border-radius: 4px; background: transparent; color: #fff; font-size: 11.5px; font-weight: 500;
+    cursor: pointer; opacity: .65; white-space: nowrap;
+  }
+  .settings-tab span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .settings-tab svg { flex: 0 0 auto; }
+  .settings-tab:hover { opacity: .9; background: rgba(255,255,255,.08); }
+  .settings-tab--active { opacity: 1; background: rgba(255,255,255,.14); }
+
+  .settings-content { min-height: 250px; }
+  .settings-group { margin-bottom: 20px; }
+  .settings-group:last-child { margin-bottom: 0; }
+  .settings-group > * + * { margin-top: 10px; }
+  .settings-group > .field-descr { margin-top: 6px; }
+  .settings-group-title {
+    font-size: 13px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; color: #fff;
+    padding-bottom: 4px; opacity: .7; border-bottom: 1px solid rgba(255,255,255,.14);
+  }
+  .field + .field { margin-top: 10px; }
+  .field-label { margin-bottom: 5px; font-size: 14px; }
+  .field-descr { font-style: italic; margin-top: 4px; font-size: 12px; opacity: .7; }
+  .field-input > * { width: 100%; }
+
+  .settings-checkbox-grid { display: flex; flex-direction: column; gap: 6px; }
+  .settings-checkbox-item { background: rgba(0,0,0,.15); padding: 9px 10px; border-radius: 4px; outline: 1px solid transparent; }
+  .settings-checkbox-item:hover { outline: 1px solid rgba(255,255,255,.25); }
+  .settings-checkbox-label { display: flex; align-items: flex-start; gap: 8px; cursor: pointer; font-size: 12px; line-height: 1.3; }
+  .settings-checkbox-label input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+  .settings-checkbox-custom { width: 16px; height: 16px; border: 1px solid #fff; border-radius: 3px; flex-shrink: 0; margin-top: 1px; opacity: .6; position: relative; }
+  .settings-checkbox-custom::after { content: ""; position: absolute; left: 50%; top: 50%; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: translate(-50%,-60%) rotate(45deg); opacity: 0; }
+  input:checked + .settings-checkbox-custom { background: #288edf; border-color: #288edf; opacity: 1; }
+  input:checked + .settings-checkbox-custom::after { opacity: 1; }
+  .settings-checkbox-content { flex: 1; }
+  .settings-checkbox-content > span { display: block; font-weight: 500; margin-bottom: 3px; color: #fff; }
+  .settings-checkbox-hint { font-size: 10px; color: #fff; line-height: 1.35; opacity: .7; }
+  .settings-new-badge { background: rgba(40,142,223,.22); border: 1px solid rgba(40,142,223,.55); border-radius: 3px; color: #bfe4ff; display: inline-block; font-size: 9px; font-weight: 600; line-height: 12px; margin-left: 6px; padding: 0 4px; text-transform: uppercase; vertical-align: 1px; }
+  .settings-help-badge { display: inline-flex; align-items: center; gap: 3px; background: rgba(40,142,223,.18); border: 1px solid rgba(40,142,223,.48); border-radius: 4px; color: #bfe4ff; font-size: 9px; font-weight: 600; line-height: 14px; margin-top: 5px; padding: 1px 6px 1px 5px; cursor: pointer; }
+
+  /* Only new component: options that depend on the checkbox above */
+  .settings-children { margin: -2px 0 0 18px; padding-left: 9px; border-left: 2px solid rgba(255,255,255,.12); display: flex; flex-direction: column; gap: 6px; }
+  .settings-children .field { margin-top: 0; padding: 2px 0; }
+  .settings-children .field-label { font-size: 12px; }
+  .settings-children .field-descr { font-size: 11px; }
+
+  .topcoat-button--large, .topcoat-button--large--cta {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 4px 14px; border-radius: 4px;
+    font-size: 13px; cursor: pointer; border: 1px solid rgba(0,0,0,.28); background: rgba(255,255,255,.09); color: #d9dadb;
+  }
+  .topcoat-button--large:hover { background: rgba(255,255,255,.14); }
+  .topcoat-button--large--cta { background: #288edf; border-color: rgba(0,0,0,.25); color: #fff; font-weight: 500; }
+  .topcoat-button--large--cta:hover { background: #3d9ae7; }
+  .field > button { width: 100%; }
+  .btn-pair { display: flex; gap: 6px; }
+  .btn-pair > button { flex: 1; }
+  .settings-danger-btn { border: 1px solid rgba(192,57,43,.7) !important; background: rgba(192,57,43,.12) !important; color: #ff9184 !important; width: 100%; }
+  .topcoat-textarea, .topcoat-text-input--large, .topcoat-text-input {
+    background: rgba(0,0,0,.22); border: 1px solid rgba(0,0,0,.35); color: #e3e4e4; border-radius: 3px; padding: 5px 8px; min-height: 30px; outline: none; font-size: 13px;
+  }
+  .topcoat-textarea:focus, .topcoat-text-input--large:focus, .topcoat-text-input:focus { border-color: #288edf; box-shadow: 0 0 0 1px rgba(40,142,223,.35); }
+  select.topcoat-textarea { color-scheme: dark; }
+  textarea.topcoat-textarea { resize: vertical; font-size: 12px; }
+  .inline-num { display: flex; align-items: center; gap: 8px; }
+  .inline-num input { width: 80px !important; }
+  .inline-num span { font-size: 12px; opacity: .7; }
+
+  /* Settings actions (sticky save bar) */
+  .settings-actions { position: sticky; bottom: 0; z-index: 5; display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 16px -10px -10px; padding: 8px 10px; background: #3a3a3a; border-top: 1px solid #2a2a2a; }
+  .settings-unsaved { font-size: 11px; font-weight: 500; color: #e2a03f; }
+
+  /* Themes */
+  .settings-theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 5px; }
+  .settings-theme-choice { display: flex; align-items: center; gap: 6px; min-height: 34px; padding: 3px 6px 3px 4px; border: 1px solid rgba(255,255,255,.14); border-radius: 4px; background: rgba(255,255,255,.05); cursor: pointer; text-align: left; font-size: 12px; width: 100%; }
+  .settings-theme-choice.m-active { border-color: var(--a); box-shadow: 0 0 0 1px var(--a); }
+  .settings-theme-preview { width: 26px; height: 26px; flex: 0 0 26px; border-radius: 3px; padding: 3px 4px; display: flex; flex-direction: column; gap: 2px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.28); }
+  .settings-theme-preview i { display: block; height: 3px; border-radius: 1px; }
+  .settings-theme-preview.m-add { border: 1px dashed rgba(255,255,255,.3); box-shadow: none; align-items: center; justify-content: center; padding: 0; }
+  .settings-color-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .settings-color-row input { width: 34px; height: 24px; border: 0; padding: 0; background: none; }
+
+  /* Layout editor (simplified copy of the current canvas + inspector) */
+  .settings-layout { display: flex; gap: 12px; align-items: flex-start; }
+  .lay-wrap { width: 150px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 5px; }
+  .lay-canvas { height: 216px; padding: 4px; gap: 3px; display: flex; flex-direction: column; border-radius: 6px; background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.2); }
+  .lay-block { border-radius: 3px; background: rgba(255,255,255,.1); border: 1px solid transparent; font-size: 9px; padding: 3px 5px; color: rgba(255,255,255,.6); cursor: pointer; }
+  .lay-block.m-selected { border-color: #288edf; }
+  .lay-block.m-text { flex: 1; }
+  .lay-foot { height: 12px; border-radius: 3px; background: rgba(255,255,255,.06); }
+  .lay-scale { display: flex; flex-direction: column; font-size: 10px; opacity: .8; gap: 2px; }
+  .lay-insp { flex: 1; min-width: 0; font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+  .lay-insp-title { font-weight: 600; color: #fff; }
+  .lay-check { display: flex; gap: 6px; align-items: center; font-size: 11px; }
+  input[type=range] { accent-color: #288edf; width: 100%; }
+
+  /* Refont rules */
+  .refont-row { display: grid; grid-template-columns: 34px 10px 34px 1fr 24px; gap: 5px; align-items: center; }
+  .refont-row .topcoat-text-input { width: 34px; text-align: center; padding: 4px; font-family: ui-monospace, Menlo, monospace; }
+  .refont-row select { width: 100%; }
+  .refont-list { display: flex; flex-direction: column; gap: 6px; }
+
+  /* Shortcuts */
+  .shortcut-list { display: flex; flex-direction: column; gap: 6px; }
+  .shortcut-row { display: flex; align-items: center; gap: 8px; padding: 7px 6px 7px 10px; border-radius: 4px; background: rgba(0,0,0,.15); cursor: pointer; }
+  .shortcut-row:hover { outline: 1px solid rgba(255,255,255,.3); }
+  .shortcut-row-label { flex: 1; font-size: 12px; font-weight: 500; min-width: 0; }
+  .shortcut-capture { min-width: 96px; min-height: 26px; padding: 3px 8px; border: 1px dashed rgba(255,255,255,.28); border-radius: 4px; background: rgba(0,0,0,.2); display: flex; gap: 3px; align-items: center; justify-content: center; }
+  .shortcut-key { font-size: 10px; font-weight: 600; line-height: 1; padding: 4px 5px; border-radius: 3px; border: 1px solid rgba(255,255,255,.28); border-bottom-width: 2px; background: rgba(255,255,255,.12); }
+  .shortcut-empty { font-size: 10px; opacity: .5; }
+
+  /* Profiles (same as ProfileSettings) */
+  .profile-active-card { display: flex; align-items: center; gap: 9px; padding: 9px; border-radius: 5px; background: rgba(255,255,255,.07); }
+  .profile-active-label { font-size: 9px; letter-spacing: .35px; text-transform: uppercase; opacity: .62; margin-bottom: 2px; }
+  .profile-list { display: flex; flex-direction: column; gap: 4px; }
+  .profile-list-item { display: flex; align-items: center; justify-content: space-between; min-height: 32px; padding: 5px 9px; border-radius: 4px; background: rgba(255,255,255,.035); font-size: 13px; cursor: pointer; border: 0; width: 100%; text-align: left; }
+  .profile-list-item:hover, .profile-list-item.m-selected { background: rgba(255,255,255,.11); outline: 1px solid rgba(255,255,255,.22); }
+  .profile-inline { display: flex; gap: 6px; }
+  .profile-inline input { flex: 1; min-width: 0; }
+  .tag-ok { font-size: 10px; color: #6fcf7f; }
+
+  .fontfinder { display: flex; flex-direction: column; gap: 8px; }
+  .ff-card { background: rgba(0,0,0,.15); border-radius: 4px; padding: 10px; }
+  .ff-name { font-size: 11px; opacity: .7; }
+  .ff-sample { font-size: 20px; color: #fff; margin-top: 4px; }
+
+  .flash { animation: flash 1.4s ease; }
+  @keyframes flash { 0%, 40% { box-shadow: 0 0 0 2px #e2a03f; } 100% { box-shadow: 0 0 0 2px transparent; } }
+
+  /* ---------- Notes (only in the standalone file) ---------- */
+  .notes { width: 430px; max-width: 100%; color: var(--foreground, #cfcfcf); font-size: 12.5px; line-height: 1.55; }
+  .notes h1 { font-size: 18px; margin: 0 0 4px; }
+  .notes h2 { font-size: 13px; margin: 22px 0 8px; text-transform: uppercase; letter-spacing: .06em; }
+  .notes p { margin: 0 0 8px; color: var(--muted-foreground, #aaa); }
+  .notes ul { margin: 0; padding-left: 18px; }
+  .notes li { margin-bottom: 5px; }
+  .notes table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .notes td { padding: 5px 6px; border-top: 1px solid var(--border, #2c2c2c); vertical-align: top; }
+  .notes td:first-child { color: var(--muted-foreground, #999); width: 48%; }
+  .notes .tree { font: 11.5px/1.65 var(--font-mono, ui-monospace, Menlo, monospace); background: var(--code-background, #1a1a1a); border-radius: var(--radius, 8px); padding: 16px; white-space: pre; overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <div class="hatch"></div>
+  <div class="modal">
+    <div class="app-modal-header">
+      <div class="app-modal-title">Paramètres</div>
+      <button class="icon-quiet" title="Fermer"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="app-modal-body" id="scroller">
+      <div class="app-modal-body-inner">
+        <div class="settings-tabs" id="tabs"></div>
+        <form class="settings-content" onsubmit="event.preventDefault(); edited=false; renderActions()">
+          <div id="content"></div>
+          <div class="settings-actions" id="actions"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<aside class="notes">
+  <h1>Réglages réorganisés</h1>
+  <p>Même design qu'aujourd'hui : onglets 4 × 2, groupes en majuscules, cases à cocher avec description, barre Enregistrer. Seul le rangement change.</p>
+
+  <h2>Arborescence</h2>
+<div class="tree"><b>Général</b>      Langue · Aide · Mises à jour · Maintenance
+<b>Pose</b>         Collage · Centrage · TextShapeR
+<b>Script</b>       Lecture · Pages · Onglets multi-séries · Sens
+<b>Styles</b>       Sélection auto · Tailles rapides · Refont
+<b>Raccourcis</b>   Navigation · Pose · Centrage · Styles · …
+<b>Apparence</b>    Thème · Couleurs · Disposition
+<b>Profils</b>      Profil actif · Nouveau · Sauvegarde · Danger
+<b>Font FindeR</b>  inchangé</div>
+
+  <h2>Règles suivies</h2>
+  <ul>
+    <li>1re ligne d'onglets = le travail (Pose, Script, Styles) ; 2e ligne = le panneau et le compte.</li>
+    <li>« Comportement », « Expérimental », « Automatisations » et « Données » disparaissent : c'étaient des fourre-tout.</li>
+    <li>Un réglage n'apparaît qu'à un endroit, à côté de ceux qui agissent sur la même chose.</li>
+    <li>Les sous-options sont indentées sous leur case et masquées quand elle est décochée. C'est le seul nouvel élément visuel.</li>
+    <li>Dans chaque onglet : le plus utilisé en haut, la maintenance et le danger en bas.</li>
+  </ul>
+
+  <h2>Où est passé… ?</h2>
+  <table>
+    <tr><td>Texte › Type de calque</td><td>Pose › Collage</td></tr>
+    <tr><td>Texte › Ajuster la boîte à la bulle</td><td>Pose › Centrage</td></tr>
+    <tr><td>Texte › Style par défaut</td><td>Styles › Sélection automatique</td></tr>
+    <tr><td>Texte › Marques, balises, markdown</td><td>Script › Lecture du script</td></tr>
+    <tr><td>Texte › Compteur de lignes par page</td><td>Script › Pages</td></tr>
+    <tr><td>Texte › Direction, Moyen-Orient</td><td>Script › Sens du texte</td></tr>
+    <tr><td>Comportement › Smart paste, Coller au clic, Multi-bulle</td><td>Pose › Collage</td></tr>
+    <tr><td>Comportement › Centrage, Marge</td><td>Pose › Centrage</td></tr>
+    <tr><td>Comportement › Refont conditionnel</td><td>Styles</td></tr>
+    <tr><td>Comportement › Styles</td><td>Styles</td></tr>
+    <tr><td>Comportement › Expérimental › TextShapeR</td><td>Pose › TextShapeR</td></tr>
+    <tr><td>Comportement › Expérimental › Multi-onglet</td><td>Script › Onglets multi-séries</td></tr>
+    <tr><td>Comportement › Fermer le PSD auto</td><td>Script › Pages (il agit au changement de page)</td></tr>
+    <tr><td>Données › Import / Export</td><td>Profils › Sauvegarde (ça exporte le profil actif)</td></tr>
+    <tr><td>Données › Réinitialiser le profil</td><td>Profils › Zone de danger</td></tr>
+    <tr><td>Données › Apprentissage TextShapeR</td><td>Pose › TextShapeR</td></tr>
+    <tr><td>Données › Cache, Diagnostic</td><td>Général › Maintenance</td></tr>
+  </table>
+</aside>
+
+<script>
+const P = {
+  settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.18V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-2.82-1.18l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.09 14H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.18-2.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 2.82 1.18l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 20.91 10H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  pose: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  script: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>',
+  styles: '<path d="M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
+  keys: '<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
+  eye: '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  font: '<path d="M4 20 10 4h4l6 16M7 14h10"/>',
+  save: '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  trash: '<path d="M3 6h18M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6M9 6V4h6v2"/>',
+  reset: '<path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+  play: '<circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4z"/>',
+  imp: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  exp: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>',
+  img: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+};
+const ic = (n, s = 16) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${P[n]}</svg>`;
+
+const TABS = [
+  ["general", "Général", "settings"], ["pose", "Pose", "pose"], ["script", "Script", "script"], ["styles", "Styles", "styles"],
+  ["shortcuts", "Raccourcis", "keys"], ["appearance", "Apparence", "eye"], ["profiles", "Profils", "users"], ["fontViewer", "Font FindeR", "font"],
+];
+
+const S = {
+  tips: true, checkUpdates: true, autoUpdate: false, perf: false,
+  layerKind: "", smartPaste: true, distribute: true, autoClean: false, minScale: 75, hyphen: "auto", pasteOnClick: true, multiBubble: false,
+  center: "multi", fitBox: true, padding: 8, shaper: true, dehyphen: true,
+  markdown: true, resetCounter: true, closePsd: false, multiTab: true, direction: "ltr", middleEast: false,
+  defaultStyle: "", folderTags: true, autoScroll: true, quickSizes: true, sizeStep: 0.5,
+  theme: "default", block: "preview",
+};
+let tab = location.hash.slice(1) || "pose";
+let edited = false;
+const styleNames = ["Bulle", "Cri", "Narration", "Pensée", "Citation", "SFX"];
+
+/* ---------- Same building blocks as settings.jsx ---------- */
+const group = (title, body) => `<div class="settings-group"><div class="settings-group-title">${title}</div>${body}</div>`;
+const grid = (...items) => `<div class="settings-checkbox-grid">${items.join("")}</div>`;
+const badge = `<b class="settings-new-badge">Nouveau</b>`;
+function toggle(id, label, hint, children) {
+  const on = !!S[id];
+  return `<div class="settings-checkbox-item" data-id="${id}"><label class="settings-checkbox-label">
+      <input type="checkbox" ${on ? "checked" : ""} onchange="set('${id}', this.checked)"><div class="settings-checkbox-custom"></div>
+      <div class="settings-checkbox-content"><span>${label}</span>${hint ? `<div class="settings-checkbox-hint">${hint}</div>` : ""}</div></label></div>
+    ${children && on ? `<div class="settings-children">${children}</div>` : ""}`;
+}
+function select(id, label, options, descr) {
+  return `<div class="field" data-id="${id}"><div class="field-label">${label}</div><div class="field-input">
+    <select class="topcoat-textarea" onchange="set('${id}', this.value)">${options.map(([v, l]) => `<option value="${v}" ${S[id] === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+    ${descr ? `<div class="field-descr">${descr}</div>` : ""}</div>`;
+}
+function number(id, label, unit, descr, attrs = "") {
+  return `<div class="field" data-id="${id}"><div class="field-label">${label}</div><div class="field-input inline-num">
+    <input type="number" class="topcoat-text-input--large" value="${S[id]}" ${attrs} onchange="set('${id}', this.value, true)"><span>${unit}</span></div>
+    ${descr ? `<div class="field-descr">${descr}</div>` : ""}</div>`;
+}
+function textarea(label, value, descr) {
+  return `<div class="field"><div class="field-label">${label}</div><div class="field-input"><textarea rows="2" class="topcoat-textarea" oninput="dirty()">${value}</textarea></div><div class="field-descr">${descr}</div></div>`;
+}
+const button = (label, icon) => `<button type="button" class="topcoat-button--large">${icon ? ic(icon, 14) : ""}${label}</button>`;
+const pair = (...b) => `<div class="btn-pair">${b.join("")}</div>`;
+const descr = (t) => `<div class="field-descr">${t}</div>`;
+
+/* ---------- Tabs content ---------- */
+const VIEWS = {
+  general: () =>
+    group("Langue", select("language", "Langue de l'interface", [["auto", "Automatique"], ["fr", "Français"], ["en", "English"], ["es", "Español"], ["de", "Deutsch"], ["pt", "Português"], ["ru", "Русский"], ["uk", "Українська"], ["tr", "Türkçe"], ["vi", "Tiếng Việt"], ["ar", "العربية"]])) +
+    group("Aide",
+      grid(toggle("tips", "Afficher les astuces", "Affiche des astuces dans l'interface (bulles multi-bulle, etc.)")) +
+      pair(button("Revoir le guide"), button("Nouveautés 3.0")) +
+      descr("Le guide reprend tout le flux de TypeR ; Nouveautés refait le tour des fonctions de la 3.0.")) +
+    group("Mises à jour",
+      grid(toggle("checkUpdates", "Rechercher automatiquement les mises à jour", "Vérifie au lancement si une nouvelle version existe",
+        grid(toggle("autoUpdate", "Les installer automatiquement", "Téléchargées en silence, actives au prochain redémarrage de Photoshop"))) ) +
+      `<div class="field">${button("Rechercher les mises à jour")}</div>`) +
+    group("Maintenance",
+      `<div class="field">${button("Vider le cache", "trash")}</div>` +
+      descr("Cache accumulé : 12,4 Mo. Ne touche ni aux textes, onglets, réglages, styles, thèmes ou sauvegardes.") +
+      grid(toggle("perf", "Journal de performance", "Mesure les appels Photoshop, les rafraîchissements et la latence des clics. À laisser éteint sauf si le panneau rame.",
+        pair(button("Rapport"), button("Remettre à zéro"))))),
+
+  pose: () =>
+    group("Collage",
+      select("layerKind", "Type de calque de texte inséré", [["", "Texte de paragraphe"], ["1", "Texte ponctuel"]]) +
+      grid(
+        toggle("smartPaste", `Collage intelligent${badge}`, "Adapte le texte à la vraie forme de la bulle : la taille du style est le maximum, le texte passe en blanc sur les bulles noires, les styles cri / narration sont utilisés pour ces bulles.",
+          grid(
+            toggle("distribute", "Répartir sur les bulles reliées", "Les doubles ou triples bulles reçoivent les lignes suivantes, une par partie."),
+            toggle("autoClean", "Nettoyage auto", "Peint un fond blanc ou noir sous le texte pour couvrir le lettrage d'origine (bulles unies uniquement)."),
+          ) +
+          number("minScale", "Taille minimale", "% de la taille du style", "Jusqu'où le texte peut rétrécir pour tenir dans une petite bulle (50-100).", 'min="50" max="100" step="5"') +
+          select("hyphen", "Césure", [["auto", "Automatique (langue de l'interface)"], ["fr", "Français"], ["en", "Anglais"], ["off", "Désactivée"]])),
+        toggle("pasteOnClick", "Coller au clic", "Un clic à la baguette magique ou une sélection rectangle / lasso colle la ligne courante, sans appuyer sur Coller."),
+        toggle("multiBubble", "Mode multi-bulle", `Capture plusieurs sélections pour insérer plusieurs textes d'un coup<br><span class="settings-help-badge">${ic("play", 12)}Comment l'utiliser</span>`),
+      )) +
+    group("Centrage",
+      select("center", "Centrer après la pose", [["off", "Désactivé"], ["single", "Centrer dans la bulle"], ["multi", "Multi-centrage (détecte les doubles bulles)"]],
+        "Chaque texte collé est recentré dans la bulle détectée autour. Le multi-centrage répartit aussi les doubles bulles entre leurs textes. Aussi réglable depuis le pied de page.") +
+      grid(toggle("fitBox", "Ajuster la boîte de texte à la bulle", "Ajuste la boîte à la bulle avant de centrer, sans changer la taille de police.")) +
+      number("padding", "Marge intérieure", "px", "Espace gardé entre le texte et le bord de la bulle (0-100).", 'min="0" max="100"')) +
+    group("TextShapeR",
+      grid(toggle("shaper", `Activer TextShapeR${badge}`, "Propose des formes de texte directement dans le panneau principal. Peut impacter les performances.",
+        grid(toggle("dehyphen", "Recoller les mots coupés par la césure", "Désactive si de vrais mots composés doivent rester séparés.")))) +
+      pair(button("Importer l'apprentissage", "imp"), button("Exporter l'apprentissage", "exp")) +
+      descr("Partage ce que TextShapeR a appris de tes retours sous forme d'un petit .json. L'import remplace l'apprentissage actuel.")),
+
+  script: () =>
+    group("Lecture du script",
+      textarea("Marques de lignes à ignorer", "//\n#", "Une ligne qui commence par une de ces marques est sautée comme une ligne vide. Séparer par un saut de ligne ou « ; ».") +
+      textarea("Balises à supprimer", "[SFX]\n(TL:", "Retirées de la ligne au collage, le reste du texte est gardé.") +
+      grid(toggle("markdown", "Interpréter le markdown (gras / italique)", "Convertit le markdown et le texte enrichi au collage et applique gras / italique dans le calque."))) +
+    group("Pages",
+      grid(
+        toggle("resetCounter", "Renuméroter à chaque marqueur de page", "La numérotation des lignes repart à 1 après chaque « Page N »."),
+        toggle("closePsd", "Fermer le PSD précédent", "En passant à une autre page, le PSD de la page quittée est fermé."),
+      )) +
+    group("Onglets multi-séries",
+      grid(toggle("multiTab", `Multi-onglet${badge}`, "Gère plusieurs séries à la fois avec des onglets au-dessus du bloc de texte, chacun avec son texte et sa synchro PSD."))) +
+    group("Sens du texte",
+      select("direction", "Direction du texte", [["ltr", "Gauche à droite"], ["rtl", "Droite à gauche"]]) +
+      grid(toggle("middleEast", "Mode Moyen-Orient", ""))),
+
+  styles: () =>
+    group("Sélection automatique",
+      select("defaultStyle", "Style par défaut", [["", "Aucun style défini"], ...styleNames.map((s) => [s, s])], "Activé quand une ligne sans tag est sélectionnée.") +
+      grid(
+        toggle("folderTags", "Limiter les tags au dossier courant", "Empêche les tags du script de choisir un style d'un autre dossier."),
+        toggle("autoScroll", "Faire défiler jusqu'au style sélectionné", "La liste des styles suit le style actif."),
+      )) +
+    group("Tailles rapides",
+      grid(toggle("quickSizes", "Afficher les tailles rapides", "Affiche les tailles cliquables sur chaque style.",
+        number("sizeStep", "Pas de modification", "pt", "Incrément utilisé quand on modifie une taille rapide.", 'min="0.01" step="any"')))) +
+    group("Refont conditionnel",
+      descr("Le texte entre deux marques prend la police d'un autre style (la taille est gardée). Ex. : les passages entre * en italique.") +
+      `<div class="refont-list">
+        ${[["*", "*", "Pensée"], ["«", "»", "Citation"]].map(([o, c, s]) => `<div class="refont-row"><input class="topcoat-text-input" value="${o}"><span style="opacity:.6">…</span><input class="topcoat-text-input" value="${c}">
+          <select class="topcoat-textarea">${styleNames.map((n) => `<option ${n === s ? "selected" : ""}>${n}</option>`).join("")}</select>
+          <button type="button" class="icon-quiet" style="width:24px;height:24px">${ic("trash", 13)}</button></div>`).join("")}
+      </div>
+      <button type="button" class="topcoat-button--large" style="min-height:26px;font-size:12px">${ic("plus", 13)}Ajouter une règle</button>`),
+
+  shortcuts: () => {
+    const K = (...k) => k;
+    const groups = [
+      ["Navigation", [["Ligne précédente", K("Ctrl", "Tab")], ["Ligne suivante", K("Ctrl", "Entrée")], ["Page précédente", K()], ["Page suivante", K("Maj", "X")], ["Onglet précédent", K()], ["Onglet suivant", K()]]],
+      ["Pose", [["Ajouter", K("Cmd", "Ctrl")], ["Insérer le texte dans le calque actuel", K("Cmd", "Maj", "V")], ["Coller des lignes consécutives dans les calques sélectionnés", K()], ["Garder la taille du calque sélectionné", K("Alt")]]],
+      ["Centrage", [["Centrer", K("Cmd", "Alt")], ["Centrer double bulle", K()], ["Mode d'auto-centrage", K()]]],
+      ["Styles et taille", [["Appliquer style", K("Cmd", "Maj")], ["Appliquer uniquement le style actif", K()], ["Style précédent", K()], ["Style suivant", K()], ["Augmenter taille du texte", K("Ctrl", "Maj", "+")], ["Diminuer taille du texte", K("Ctrl", "Maj", "-")], ["Preset de taille suivant", K()]]],
+      ["Multi-bulle", [["Activer / désactiver le mode multi-bulle", K("Ctrl", "Alt", "M")], ["Retirer la dernière sélection", K()], ["Vider les sélections", K()]]],
+      ["Modes", [["Activer / désactiver le collage au clic", K()], ["Activer / désactiver TextShapeR", K()], ["Afficher / masquer les calques de nettoyage", K("Ctrl", "H")]]],
+    ];
+    return groups.map(([g, list]) => group(g, `<div class="shortcut-list">${list.map(([l, k]) => `<div class="shortcut-row"><span class="shortcut-row-label">${l}</span>
+        <span class="shortcut-capture">${k.length ? k.map((x) => `<span class="shortcut-key">${x}</span>`).join('<span style="font-size:9px;opacity:.55">+</span>') : `<span class="shortcut-empty">Cliquer pour définir</span>`}</span></div>`).join("")}</div>`)).join("") +
+      group("Réinitialisation", `<div class="field">${button("Réinitialiser les raccourcis", "reset")}</div>` + descr("Si des raccourcis ne répondent plus, les réinitialiser règle souvent le problème."));
+  },
+
+  appearance: () => {
+    const themes = [["default", "Défaut", "#323232", "#288edf", "#ddd"], ["pure", "Sombre pur", "#000", "#288edf", "#ddd"], ["amethyst", "Amethyst Night", "#1b1530", "#9b6bff", "#e5dcff"],
+      ["blackblue", "Black Blue", "#0b0f17", "#3b82f6", "#d6e2ff"], ["blackpink", "Black Pink", "#120b10", "#ff4fa3", "#ffd6ea"], ["obsidian", "Obsidian", "#16181d", "#7c8aa5", "#d8dbe2"]];
+    const blocks = { preview: "Aperçu & actions", text: "Texte", styles: "Styles", footer: "Pied de page" };
+    const els = { preview: ["Bouton créer le calque", "Bouton aligner", "Contrôles de taille", "Flèches de navigation", "Aperçu de ligne / TextShapeR"], text: ["Barre d'onglets"], styles: [], footer: ["Lien Aide", "Lien du dépôt", "Boutons de modes"] };
+    return group("Thème",
+      `<div class="settings-theme-grid">${themes.map(([id, n, bg, a, t]) => `<button type="button" class="settings-theme-choice ${S.theme === id ? "m-active" : ""}" style="--a:${a}" onclick="set('theme','${id}')">
+        <span class="settings-theme-preview" style="background:${bg}"><i style="background:${a};width:60%"></i><i style="background:${t};width:90%;opacity:.7"></i><i style="background:${t};width:60%;opacity:.4"></i></span><span>${n}</span></button>`).join("")}
+        <button type="button" class="settings-theme-choice"><span class="settings-theme-preview m-add">${ic("plus", 14)}</span><span>Nouveau thème</span></button>
+        <button type="button" class="settings-theme-choice"><span class="settings-theme-preview m-add">${ic("img", 14)}</span><span>Image personnalisée</span></button></div>`) +
+      group("Couleurs",
+        `<div class="settings-color-row"><input type="color" value="#4a3b22"><span>Fond des lignes de page</span></div>` + descr("Fond des lignes marquées comme séparateur de page.")) +
+      group("Disposition de l'interface",
+        `<div class="settings-layout"><div class="lay-wrap"><div class="lay-canvas">
+          <div class="lay-block ${S.block === "preview" ? "m-selected" : ""}" style="height:44px" onclick="set('block','preview',true)">Aperçu</div>
+          <div class="lay-block m-text ${S.block === "text" ? "m-selected" : ""}" onclick="set('block','text',true)">Texte</div>
+          <div class="lay-block ${S.block === "styles" ? "m-selected" : ""}" style="height:52px" onclick="set('block','styles',true)">Styles</div>
+          <div class="lay-foot lay-block ${S.block === "footer" ? "m-selected" : ""}" style="padding:0" onclick="set('block','footer',true)"></div></div>
+          <div class="lay-scale"><input type="range" min="70" max="150" step="5" value="100" oninput="dirty()"><span>Échelle : 100 %</span></div></div>
+          <div class="lay-insp"><span class="lay-insp-title">${blocks[S.block]}</span>
+            ${S.block === "preview" || S.block === "styles" ? `<div style="font-size:11px;opacity:.8">Hauteur (px)</div><input type="range" min="70" max="400" value="${S.block === "preview" ? 130 : 220}" oninput="dirty()">` : `<div style="font-size:11px;opacity:.7;font-style:italic">${S.block === "text" ? "Remplit l'espace restant." : ""}</div>`}
+            ${els[S.block].map((e) => `<label class="lay-check"><input type="checkbox" checked onchange="dirty()" style="accent-color:#288edf">${e}</label>`).join("")}</div></div>` +
+        descr("Clique un bloc pour le régler. Glisse les blocs pour les réordonner, ou leur bord pour les redimensionner.") +
+        `<div class="field">${button("Réinitialiser la disposition", "reset")}</div>`);
+  },
+
+  profiles: () =>
+    group("Profils de projet",
+      descr("Chaque profil garde ses propres styles, dossiers, réglages, onglets, travaux sauvegardés et arrière-plan.") +
+      `<div class="profile-active-card">${ic("users", 18)}<div><div class="profile-active-label">Profil actif</div><div style="font-weight:600;color:#fff">Défaut</div></div></div>
+       <div class="profile-list">${["Défaut", "Sakura Scans", "Projet Berserk"].map((p, i) => `<button type="button" class="profile-list-item ${i === 1 ? "m-selected" : ""}"><span>${p}</span>${i === 0 ? '<span class="tag-ok">Actif</span>' : ""}</button>`).join("")}</div>`) +
+    group("Gérer le profil",
+      `<div class="field"><div class="field-label">Nom du profil</div><div class="profile-inline"><input class="topcoat-text-input--large" value="Sakura Scans">${button("Renommer")}</div></div>` +
+      pair(`<button type="button" class="topcoat-button--large--cta">Activer</button>`, button("Supprimer", "trash"))) +
+    group("Nouveau profil",
+      `<div class="profile-inline"><input class="topcoat-text-input--large" placeholder="Nom du projet ou de l'équipe">${button("Créer et activer", "plus")}</div>` +
+      descr("Un nouveau profil démarre avec les réglages par défaut et une bibliothèque de styles vide.")) +
+    group("Sauvegarde du profil actif",
+      pair(button("Importer", "imp"), button("Exporter", "exp")) +
+      descr("Styles et réglages, dans un fichier. L'import accepte aussi des .psd : TypeR détecte les polices (taille, couleur, contour) et en fait des styles.")) +
+    group("Zone de danger",
+      `<div class="field"><button type="button" class="topcoat-button--large settings-danger-btn">Réinitialiser le profil actuel</button></div>` +
+      descr("Supprime les réglages, styles, scripts et travaux sauvegardés du profil actuel, sans toucher aux autres profils.")),
+
+  fontViewer: () =>
+    `<div class="fontfinder"><div style="font-size:12px;opacity:.7;font-style:italic">Font FindeR ne change pas : seul son onglet passe en dernière position.</div>
+      <input class="topcoat-text-input--large" placeholder="Rechercher une famille ou une police">
+      ${["Wild Words", "CC Astro City", "Anime Ace", "Komika Axis"].map((f, i) => `<div class="ff-card"><div class="ff-name">${f}</div><div class="ff-sample" style="font-family:${["Comic Sans MS", "Georgia", "Trebuchet MS", "Impact"][i]}">The cake is a lie.</div></div>`).join("")}</div>`,
+};
+
+/* ---------- Render ---------- */
+function renderTabs() {
+  document.getElementById("tabs").innerHTML = TABS.map(([id, label, icon]) =>
+    `<button type="button" class="settings-tab ${tab === id ? "settings-tab--active" : ""}" title="${label}" onclick="go('${id}')">${ic(icon, 14)}<span>${label}</span></button>`).join("");
+}
+function renderActions() {
+  document.getElementById("actions").style.display = tab === "fontViewer" ? "none" : "";
+  document.getElementById("actions").innerHTML = `${edited ? '<span class="settings-unsaved">Modifications non enregistrées</span>' : ""}
+    <button type="submit" class="${edited ? "topcoat-button--large--cta" : "topcoat-button--large"}">${ic("save", 18)} Enregistrer</button>`;
+}
+function render() {
+  renderTabs();
+  document.getElementById("content").innerHTML = VIEWS[tab]();
+  renderActions();
+}
+function go(id) { tab = id; render(); document.getElementById("scroller").scrollTop = 0; }
+function set(id, v, silent) { S[id] = v; if (!silent || id === "block") render(); if (id !== "block") dirty(); }
+function dirty() { if (!edited) { edited = true; renderActions(); } }
+render();
+
+// Standalone viewing: no host theme variables, so give the page its own backdrop
+if (!getComputedStyle(document.documentElement).getPropertyValue("--background").trim()) {
+  document.body.style.background = "#121212";
+  document.body.style.padding = "24px";
+}
+</script>
+</body>
+</html>

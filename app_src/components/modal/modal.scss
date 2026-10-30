@@ -714,6 +714,28 @@
     }
 }
 
+// Options that only matter while the checkbox above them is checked
+.settings-checkbox-children {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-left: 18px;
+    padding-left: 9px;
+    border-left: 2px solid rgba(255, 255, 255, 0.12);
+
+    > .field {
+        margin-top: 0;
+    }
+
+    .field-label {
+        font-size: 12px;
+    }
+
+    .light-theme & {
+        border-left-color: rgba(0, 0, 0, 0.14);
+    }
+}
+
 .settings-checkbox-label {
     position: relative;
     display: flex;
@@ -1168,7 +1190,7 @@
 
 .settings-layout-canvas-wrap {
     flex: 0 0 auto;
-    width: 150px;
+    width: 160px;
     display: flex;
     flex-direction: column;
     gap: 5px;
@@ -1177,7 +1199,7 @@
 .settings-layout-canvas {
     display: flex;
     flex-direction: column;
-    height: 216px;
+    height: 228px;
     padding: 4px;
     gap: 3px;
     box-sizing: border-box;
@@ -1332,7 +1354,10 @@
     width: 100%;
 
     .mk-pill {
-        height: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 9px;
         flex: 1 1 auto;
         border-radius: 2px;
         background: rgba(255, 255, 255, 0.35);
@@ -1342,25 +1367,29 @@
             background: rgba(40, 142, 223, 0.85);
         }
         &.mk-small {
-            flex: 0 0 18px;
+            flex: 0 0 20px;
         }
     }
 
     .mk-nav {
-        flex: 0 0 6px;
-        height: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 9px;
+        height: 14px;
         border-radius: 2px;
         background: rgba(255, 255, 255, 0.3);
         cursor: pointer;
     }
 
     .mk-widget {
+        display: flex;
+        align-items: center;
+        justify-content: center;
         flex: 1 1 auto;
-        height: 12px;
+        height: 14px;
         border-radius: 2px;
         background: rgba(255, 255, 255, 0.15);
-        border: 1px dashed rgba(255, 255, 255, 0.35);
-        box-sizing: border-box;
         cursor: pointer;
     }
 }
@@ -1474,9 +1503,9 @@
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 3px;
-    height: 13px;
-    padding: 0 4px;
+    gap: 2px;
+    height: 17px;
+    padding: 0 3px;
     box-sizing: border-box;
     border-radius: 3px;
     border: 1px solid transparent;
@@ -1495,15 +1524,18 @@
 
     // Footer icon buttons
     .mk-f {
-        width: 5px;
-        height: 5px;
-        border-radius: 1px;
-        background: rgba(255, 255, 255, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 11px;
+        height: 11px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.2);
         cursor: pointer;
 
-        &.m-on {
-            background: rgba(40, 142, 223, 0.85);
+        &.m-fixed {
             cursor: default;
+            opacity: 0.75;
         }
     }
 
@@ -1511,17 +1543,33 @@
         flex: 1 1 auto;
     }
 
-    .mk-fdots {
+    // One mode toggle: state dot + mode icon
+    .mk-fmode {
         display: flex;
-        gap: 2px;
-        padding: 2px 0;
+        align-items: center;
+        gap: 1px;
+        height: 11px;
+        padding: 0 2px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.12);
         cursor: pointer;
 
-        i {
-            width: 4px;
-            height: 4px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.35);
+        &.m-na:not(.m-off) {
+            opacity: 0.45;
+        }
+    }
+
+    .mk-fdot {
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: #6b6b6b;
+
+        &.m-on {
+            background: #34c759;
+        }
+        &.m-on.m-multi {
+            background: #0a84ff;
         }
     }
 
@@ -1536,48 +1584,196 @@
             border-color: #288edf;
         }
 
-        .mk-f {
-            background: rgba(0, 0, 0, 0.3);
-
-            &.m-on {
-                background: rgba(25, 118, 210, 0.7);
-            }
-        }
-
-        .mk-fdots i {
-            background: rgba(0, 0, 0, 0.3);
+        .mk-f,
+        .mk-fmode {
+            background: rgba(0, 0, 0, 0.12);
         }
     }
 }
 
-// Hover-sync between inspector rows and mockup elements
-.settings-layout-canvas .m-hl {
-    box-shadow: 0 0 0 1px #fff;
+// Mockup elements: hidden ones stay in place, outlined, so they can be
+// clicked back on
+.settings-layout-canvas {
+    .mk-pill,
+    .mk-nav,
+    .mk-widget,
+    .mk-f,
+    .mk-fmode,
+    .settings-layout-mock-tabs {
+        box-sizing: border-box;
+        color: rgba(255, 255, 255, 0.85);
+        transition: opacity 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+
+        svg {
+            flex: 0 0 auto;
+            pointer-events: none;
+        }
+
+        &:hover {
+            filter: brightness(1.4);
+        }
+
+        &.m-off {
+            background: transparent;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+            opacity: 0.5;
+
+            svg,
+            i,
+            span {
+                opacity: 0.5;
+            }
+
+            &:hover {
+                opacity: 0.85;
+                filter: none;
+            }
+        }
+
+        .light-theme & {
+            color: rgba(0, 0, 0, 0.7);
+
+            &.m-off {
+                box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+            }
+        }
+    }
+
+    .mk-f.m-fixed:hover {
+        filter: none;
+    }
+
+    // Hover-sync with the inspector rows
+    .m-hl,
+    .m-hl.m-off {
+        opacity: 1;
+        box-shadow: 0 0 0 1px #fff;
+
+        .light-theme & {
+            box-shadow: 0 0 0 1px #288edf;
+        }
+    }
 }
 
-.settings-layout-canvas .mk-pill:hover,
-.settings-layout-canvas .mk-nav:hover,
-.settings-layout-canvas .mk-widget:hover,
-.settings-layout-canvas .mk-f:hover:not(.m-on),
-.settings-layout-canvas .mk-fdots:hover,
-.settings-layout-canvas .settings-layout-mock-tabs:hover {
-    filter: brightness(1.4);
+// Block picker above the mockup: one button per panel, in panel order
+.settings-layout-picker {
+    display: flex;
+    gap: 3px;
+    padding: 3px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.15);
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.06);
+    }
+}
+
+.settings-layout-pick {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 4px 5px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.75;
+    transition: background 0.12s ease, opacity 0.12s ease;
+
+    svg {
+        flex: 0 0 auto;
+    }
+
+    &:hover {
+        opacity: 1;
+        background: rgba(255, 255, 255, 0.07);
+    }
+
+    &.m-active {
+        opacity: 1;
+        background: rgba(40, 142, 223, 0.28);
+        box-shadow: inset 0 0 0 1px rgba(40, 142, 223, 0.7);
+    }
+
+    &.m-hidden .settings-layout-pick-label {
+        text-decoration: line-through;
+        opacity: 0.6;
+    }
+
+    .light-theme &:hover {
+        background: rgba(0, 0, 0, 0.06);
+    }
+
+    .light-theme &.m-active {
+        background: rgba(40, 142, 223, 0.18);
+    }
+}
+
+.settings-layout-pick-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-layout-pick-badge {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 3px;
+    border-radius: 6px;
+    font-size: 9px;
+    line-height: 1;
+    background: rgba(226, 160, 63, 0.25);
+    color: #f0b55c;
+
+    .light-theme & {
+        color: #9a6418;
+    }
 }
 
 .settings-layout-scale {
     display: flex;
-    flex-direction: column;
-    gap: 1px;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.15);
+
+    input[type="range"] {
+        flex: 1 1 auto;
+        min-width: 60px;
+    }
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.05);
+    }
+}
+
+.settings-layout-scale-label {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
 }
 
 .settings-layout-scale-value {
-    font-size: 10px;
-    text-align: center;
-    opacity: 0.65;
+    flex: 0 0 34px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
 }
 
-// Range sliders (canvas scale + inspector heights)
-.settings-layout input[type="range"] {
+// Range sliders (interface scale + inspector heights)
+.settings-layout input[type="range"],
+.settings-layout-scale input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
     width: 100%;
@@ -1628,7 +1824,12 @@
 .settings-layout-inspector-head {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
+}
+
+.settings-layout-inspector-icon {
+    flex: 0 0 auto;
+    opacity: 0.75;
 }
 
 .settings-layout-inspector-title {
@@ -1648,11 +1849,17 @@
 
 .settings-layout-inspector-tools {
     display: flex;
+    align-items: center;
     gap: 3px;
+
+    .settings-switch {
+        margin-left: 4px;
+    }
 }
 
 .settings-layout-inspector-note {
     font-size: 10px;
+    line-height: 1.35;
     opacity: 0.6;
 }
 
@@ -1711,57 +1918,208 @@
     }
 }
 
+.settings-layout-subtitle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-bottom: -4px;
+    padding: 0 4px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    opacity: 0.65;
+}
+
+.settings-layout-link {
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: #4aa3ec;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+    cursor: pointer;
+
+    &:hover {
+        text-decoration: underline;
+    }
+
+    .light-theme & {
+        color: #1a73c4;
+    }
+}
+
 .settings-layout-elements {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
+
+    &.m-disabled {
+        opacity: 0.55;
+    }
 }
 
 .settings-layout-element {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 4px;
+    gap: 7px;
+    min-height: 24px;
+    padding: 2px 4px;
     font-size: 11px;
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: 4px;
     transition: background 0.12s ease;
 
-    &:hover {
+    &:hover,
+    &.m-hl {
         background: rgba(255, 255, 255, 0.07);
     }
 
-    .light-theme &:hover {
+    .light-theme &:hover,
+    .light-theme &.m-hl {
         background: rgba(0, 0, 0, 0.05);
     }
 
-    input[type="checkbox"] {
-        position: absolute;
-        opacity: 0;
-        pointer-events: none;
-        width: 1px;
-        height: 1px;
-        margin: 0;
-    }
-
-    .settings-checkbox-custom {
-        width: 13px;
-        height: 13px;
-        margin-top: 0;
-
-        &::after {
-            width: 3px;
-            height: 6px;
+    &.m-off {
+        .settings-layout-element-icon,
+        .settings-layout-element-label {
+            opacity: 0.45;
         }
     }
 
-    span {
-        flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+    &.m-locked {
+        cursor: default;
+
+        &:hover {
+            background: transparent;
+        }
+
+        .settings-layout-element-icon,
+        .settings-layout-element-label {
+            opacity: 0.6;
+        }
     }
+}
+
+.settings-layout-element-icon {
+    flex: 0 0 auto;
+    opacity: 0.85;
+}
+
+.settings-layout-element-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-layout-element-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.settings-layout-element-note {
+    font-size: 9px;
+    line-height: 1.25;
+    opacity: 0.55;
+}
+
+.settings-layout-locked {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9px;
+    opacity: 0.55;
+}
+
+// Current state of a mode, same colors as the footer dots
+.settings-layout-mode-state {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9px;
+    font-weight: 600;
+    opacity: 0.7;
+
+    i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #6b6b6b;
+    }
+
+    &.m-on i {
+        background: #34c759;
+    }
+
+    &.m-on.m-multi i {
+        background: #0a84ff;
+    }
+}
+
+// Compact on/off switch
+.settings-switch {
+    position: relative;
+    flex: 0 0 auto;
+    width: 26px;
+    height: 14px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.22);
+    transition: background 0.15s ease;
+
+    input {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    &.m-on {
+        background: #288edf;
+    }
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.22);
+
+        &.m-on {
+            background: #288edf;
+        }
+    }
+}
+
+.settings-switch-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    transition: transform 0.15s ease;
+
+    .m-on > & {
+        transform: translateX(12px);
+    }
+}
+
+[dir="rtl"] .settings-switch.m-on > .settings-switch-thumb {
+    transform: translateX(-12px);
+}
+
+[dir="rtl"] .settings-switch-thumb {
+    left: auto;
+    right: 2px;
 }
 
 .settings-theme-grid {
@@ -2329,54 +2687,6 @@
     .settings-layout-canvas {
         height: 240px;
     }
-}
-
-// In-app confirmation dialog (replaces the OS-native confirm popup)
-.settings-confirm-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.55);
-}
-.settings-confirm-dialog {
-    box-sizing: border-box;
-    width: 280px;
-    max-width: calc(100% - 30px);
-    padding: 18px 16px 14px;
-    border-radius: 8px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
-    text-align: center;
-}
-.settings-confirm-icon {
-    color: #e2a03f;
-    margin-bottom: 6px;
-}
-.settings-confirm-title {
-    font-size: 14px;
-    font-weight: 600;
-    margin-bottom: 6px;
-}
-.settings-confirm-text {
-    font-size: 12px;
-    line-height: 1.45;
-    opacity: 0.8;
-    margin-bottom: 14px;
-}
-.settings-confirm-actions {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    & > button {
-        min-width: 90px;
-    }
-}
-.settings-confirm-danger {
-    background: #c0392b !important;
-    border-color: #a93226 !important;
-    color: #fff;
 }
 
 // Switch from the Legacy panel to TypeR UXP

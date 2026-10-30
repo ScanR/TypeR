@@ -1,12 +1,13 @@
 import { useModalClose } from "../../modalClose";
 import { serializeStyle, validateImportData, hasStyleImportConflicts } from "../../librarySerialization";
 import React from "react";
-import { FiX, FiSettings, FiEye, FiEyeOff, FiToggleLeft, FiDatabase, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiType, FiEdit2, FiPlus, FiImage, FiTrash2, FiUsers } from "react-icons/fi";
-import { MdSave } from "react-icons/md";
+import { FiX, FiSettings, FiEye, FiEyeOff, FiEdit3, FiFileText, FiLayers, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiEdit2, FiPlus, FiImage, FiTrash2, FiDatabase, FiHelpCircle, FiFolderPlus, FiLock, FiMonitor, FiType, FiZoomIn } from "react-icons/fi";
+import { MdSave, MdTab, MdCenterFocusWeak, MdFormatSize, MdSwapVert, MdOutlineSubject, MdOutlineCallToAction } from "react-icons/md";
+import { AiOutlineBorderInner } from "react-icons/ai";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { reloadApp, backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig } from "../../utils";
+import { reloadApp, backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig, getUserFonts } from "../../utils";
 import { readUxpMigrationState } from "../../uxpMigration";
 import { useContext, defaultUiLayout, normalizeUiLayout, normalizeSmartPasteMinScale } from "../../context";
 import { normalizeRefontRules } from "../../oneClick/refont";
@@ -36,25 +37,79 @@ import UnsavedChangesDialog from "./unsavedChangesDialog";
 import FontViewer from "./fontViewer";
 import TextShapeRTraining from "./textShapeRTraining";
 import FontFinderLogo from "./fontFinderLogo";
+import MissingFontsDialog from "./missingFontsDialog";
+import { collectMissingStyleFonts } from "../../fontFinderMatch";
 import { getFontViewerStatus } from "../../fontViewerApi";
 import { shortcutCommands } from "../../shortcutCommands";
 import { isPerfDebugEnabled, setPerfDebugEnabled, reportPerfDebug, resetPerfDebug } from "../../perfDebug";
 import { clearTypeRCache, formatCacheBytes, getTypeRCacheInfo } from "../../cepCache";
+import { DEFAULT_SETTINGS_TAB, readSettingsTab, writeSettingsTab } from "../../settingsTab";
+import { FOOTER_MODE_KEYS } from "../../uiLayout";
+import { FOOTER_MODE_ICONS, footerModeLabel } from "../footer/footer";
 
 // Interactive layout mockup: canvas px per real panel px
 const LAYOUT_CANVAS_SCALE = 0.3;
+const FOOTER_MODE_IDS = Object.keys(FOOTER_MODE_KEYS);
 // Sub-elements shown in the inspector for each selectable mockup region
 const LAYOUT_BLOCK_ELEMENTS = {
   preview: ["previewCreateButton", "previewAlignButton", "previewSizeControls", "previewNav", "previewWidget"],
   text: ["tabBar"],
   styles: [],
-  footer: ["footerHelp", "footerRepo", "footerModeToggles"],
+  footer: ["footerHelp", "footerRepo"].concat(FOOTER_MODE_IDS.map((id) => FOOTER_MODE_KEYS[id])),
 };
+const LAYOUT_ELEMENT_BLOCK = Object.keys(LAYOUT_BLOCK_ELEMENTS).reduce((map, block) => {
+  LAYOUT_BLOCK_ELEMENTS[block].forEach((key) => {
+    map[key] = block;
+  });
+  return map;
+}, {});
+const LAYOUT_BLOCK_ICONS = { preview: FiMonitor, text: MdOutlineSubject, styles: FiLayers, footer: MdOutlineCallToAction };
+const LAYOUT_ELEMENT_ICONS = FOOTER_MODE_IDS.reduce((icons, id) => {
+  icons[FOOTER_MODE_KEYS[id]] = FOOTER_MODE_ICONS[id];
+  return icons;
+}, {
+  tabBar: MdTab,
+  previewCreateButton: AiOutlineBorderInner,
+  previewAlignButton: MdCenterFocusWeak,
+  previewSizeControls: MdFormatSize,
+  previewNav: MdSwapVert,
+  previewWidget: FiType,
+  footerHelp: FiHelpCircle,
+  footerRepo: FiFolderPlus,
+});
+
+// On/off switch of the layout inspector (also clickable through its row label)
+const LayoutSwitch = ({ checked, onChange, title }) => (
+  <span className={"settings-switch" + (checked ? " m-on" : "")} title={title}>
+    <input type="checkbox" checked={checked} onChange={onChange} />
+    <span className="settings-switch-thumb" />
+  </span>
+);
 // Same cap as normalizeRefontRules
 const MAX_REFONT_RULES = 16;
 const REFONT_MARKER_MAX_LENGTH = 8;
 // The smart paste minimum size is edited in percent of the style size
 const minScaleToPercent = (value) => String(Math.round(normalizeSmartPasteMinScale(value) * 100));
+// Shortcuts tab: commands grouped by what they act on. A command missing
+// here still shows, in the last group, so a new one is never hidden.
+const SHORTCUT_GROUPS = [
+  { id: "navigation", labelKey: "settingsShortcutGroupNavigation", fallback: "Navigation", commands: ["previous", "next", "previousPage", "nextPage", "previousTab", "nextTab"] },
+  { id: "insertion", labelKey: "settingsShortcutGroupInsertion", fallback: "Insertion", commands: ["add", "insertText", "applyMultiple", "keepTextSize"] },
+  { id: "centering", labelKey: "settingsGroupCentering", fallback: "Centering", commands: ["center", "centerDouble", "cycleAutoCenter"] },
+  { id: "styles", labelKey: "settingsShortcutGroupStyles", fallback: "Styles and size", commands: ["apply", "applyStyle", "previousStyle", "nextStyle", "increase", "decrease", "nextTextSizePreset", "toggleStyleStroke"] },
+  { id: "multiBubble", labelKey: "settingsShortcutGroupMultiBubble", fallback: "Multi-bubble", commands: ["toggleMultiBubble", "removeLastSelection", "clearSelections"] },
+  { id: "modes", labelKey: "settingsShortcutGroupModes", fallback: "Modes", commands: ["togglePasteOnClick", "toggleTextShapeR", "toggleCleaningLayers"] },
+];
+const groupShortcutCommands = (commands) => {
+  const groups = SHORTCUT_GROUPS.map((group) => ({
+    ...group,
+    commands: group.commands.map((id) => commands.find((command) => command.id === id)).filter(Boolean),
+  }));
+  const grouped = new Set(SHORTCUT_GROUPS.reduce((ids, group) => ids.concat(group.commands), []));
+  const rest = commands.filter((command) => !grouped.has(command.id));
+  groups[groups.length - 1].commands.push(...rest);
+  return groups.filter((group) => group.commands.length);
+};
 
 const SettingsModal = React.memo(function SettingsModal() {
   const context = useContext((state) => ({
@@ -100,8 +155,9 @@ const SettingsModal = React.memo(function SettingsModal() {
     styles: state.styles,
     modalData: state.modalData,
   }));
-  // Other windows (the What's new tour) can open a given tab
-  const [activeTab, setActiveTab] = React.useState(() => (context.state.modalData && context.state.modalData.tab) || "general");
+  // Other windows (the What's new tour) can open a given tab; otherwise the
+  // settings reopen on the last tab the user looked at
+  const [activeTab, setActiveTab] = React.useState(() => (context.state.modalData && context.state.modalData.tab) || readSettingsTab());
   const [perfDebug, setPerfDebug] = React.useState(isPerfDebugEnabled);
   const [pastePointText, setPastePointText] = React.useState(context.state.pastePointText ? "1" : "");
   const [ignoreLinePrefixes, setIgnoreLinePrefixes] = React.useState(
@@ -204,6 +260,7 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [edited, setEdited] = React.useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = React.useState(false);
   const [fontViewerAvailable, setFontViewerAvailable] = React.useState(false);
+  const [missingFontsImport, setMissingFontsImport] = React.useState(null);
 
   // Interface layout editor (appearance tab)
   const [uiLayout, setUiLayoutLocal] = React.useState(() => normalizeUiLayout(context.state.uiLayout));
@@ -232,7 +289,8 @@ const SettingsModal = React.memo(function SettingsModal() {
   }, [context.state.shortcut]);
 
   React.useEffect(() => {
-    if (activeTab === "data") setCacheInfo(getTypeRCacheInfo());
+    writeSettingsTab(activeTab);
+    if (activeTab === "general") setCacheInfo(getTypeRCacheInfo());
   }, [activeTab]);
 
   // Paste on click and auto clean also have a shortcut / footer toggle: follow
@@ -253,16 +311,21 @@ const SettingsModal = React.memo(function SettingsModal() {
     getFontViewerStatus()
       .then((status) => {
         if (active) setFontViewerAvailable(status.enabled === true);
-        if (active && status.enabled !== true) setActiveTab((tab) => (tab === "fontViewer" ? "general" : tab));
+        if (active && status.enabled !== true) setActiveTab((tab) => (tab === "fontViewer" ? DEFAULT_SETTINGS_TAB : tab));
       })
       .catch(() => {
         if (active) setFontViewerAvailable(false);
-        if (active) setActiveTab((tab) => (tab === "fontViewer" ? "general" : tab));
+        if (active) setActiveTab((tab) => (tab === "fontViewer" ? DEFAULT_SETTINGS_TAB : tab));
       });
     return () => {
       active = false;
     };
   }, []);
+
+  const shortcutGroups = React.useMemo(
+    () => groupShortcutCommands(shortcutCommands).map((group) => ({ ...group, label: locale[group.labelKey] || group.fallback })),
+    []
+  );
 
   const shortcutConflicts = React.useMemo(() => {
     const bySignature = {};
@@ -662,6 +725,17 @@ const SettingsModal = React.memo(function SettingsModal() {
     setEdited(true);
   };
 
+  const setUiElements = (keys, value) => {
+    setUiLayoutLocal((current) => {
+      const visible = { ...current.visible };
+      keys.forEach((key) => {
+        visible[key] = value;
+      });
+      return normalizeUiLayout({ ...current, visible });
+    });
+    setEdited(true);
+  };
+
   const moveUiBlock = (id, direction) => {
     setUiLayoutLocal((current) => {
       const index = current.order.indexOf(id);
@@ -1002,6 +1076,7 @@ const SettingsModal = React.memo(function SettingsModal() {
     if (!pathSelect?.data?.length) return false;
     let foldersImported = 0;
     let backedUp = false;
+    const importedStyles = [];
     for (const path of pathSelect.data) {
       const result = await window.cep.fs.readFile(path);
       if (result.err) {
@@ -1041,6 +1116,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                 edited: importedAt,
             }));
             context.dispatch({ type: "importStyleFolder", folder: dataFolder, styles });
+            importedStyles.push(...styles);
             foldersImported++;
           } else if (
             data.folders &&
@@ -1081,6 +1157,7 @@ const SettingsModal = React.memo(function SettingsModal() {
               edited: importedAt,
             }));
             context.dispatch({ type: "importStyleLibrary", folders, styles });
+            importedStyles.push(...styles);
             foldersImported += folders.length;
           } else {
             const currentStyles = context.getState().styles;
@@ -1097,13 +1174,12 @@ const SettingsModal = React.memo(function SettingsModal() {
       }
     }
     if (foldersImported > 0) {
-      nativeAlert(
-        foldersImported > 1
-          ? locale.importFoldersSuccess
-          : locale.importFolderSuccess,
-        locale.successTitle,
-        false
-      );
+      const message = foldersImported > 1 ? locale.importFoldersSuccess : locale.importFolderSuccess;
+      // An empty list means Photoshop's fonts are not known yet: no warning
+      const installedFonts = getUserFonts();
+      const missingFonts = installedFonts.length ? collectMissingStyleFonts(importedStyles, installedFonts) : [];
+      if (missingFonts.length) setMissingFontsImport({ fonts: missingFonts, message });
+      else nativeAlert(message, locale.successTitle, false);
     }
   };
 
@@ -1158,6 +1234,12 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const openWalkthrough = () => {
     context.dispatch({ type: "setModal", modal: "walkthrough", data: { source: "settings" } });
+  };
+
+  const [featureTipsReset, setFeatureTipsReset] = React.useState(false);
+  const resetFeatureTips = () => {
+    context.dispatch({ type: "resetFeatureTips" });
+    setFeatureTipsReset(true);
   };
 
   const openWhatsNew = () => {
@@ -1278,13 +1360,15 @@ const SettingsModal = React.memo(function SettingsModal() {
     );
   };
 
+  // Work tabs first (in the order of the job), then the panel and the data
   const tabs = [
-    { id: "profiles", label: locale.settingsTabProfiles, icon: FiUsers },
     { id: "general", label: locale.settingsTabGeneral || "General", icon: FiSettings },
-    { id: "text", label: locale.settingsTabText || "Text", icon: FiType },
-    { id: "appearance", label: locale.settingsTabAppearance || "Appearance", icon: FiEye },
-    { id: "behavior", label: locale.settingsTabBehavior || "Behavior", icon: FiToggleLeft },
+    { id: "insertion", label: locale.settingsTabInsertion || "Insertion", icon: FiEdit3 },
+    { id: "script", label: locale.settingsTabScript || "Script", icon: FiFileText },
+    { id: "styles", label: locale.settingsTabStyles || "Styles", icon: FiLayers },
     { id: "shortcuts", label: locale.settingsTabShortcuts || "Shortcuts", icon: FaKeyboard },
+    { id: "appearance", label: locale.settingsTabAppearance || "Appearance", icon: FiEye },
+    { id: "data", label: locale.settingsTabData || "Data", icon: FiDatabase },
     {
       id: "fontViewer",
       label: locale.settingsTabFontViewer,
@@ -1292,38 +1376,65 @@ const SettingsModal = React.memo(function SettingsModal() {
       disabled: !fontViewerAvailable,
       disabledTitle: locale.fontViewerUnavailable,
     },
-    { id: "data", label: locale.settingsTabData || "Data", icon: FiDatabase }
   ];
 
-  // Shared markup for a toggle row (checkbox + label + optional hint)
-  const renderToggle = (checked, onChange, label, hint) => (
-    <div className="settings-checkbox-item">
-      <label className="settings-checkbox-label">
-        <input type="checkbox" checked={checked} onChange={onChange} />
-        <div className="settings-checkbox-custom"></div>
-        <div className="settings-checkbox-content">
-          <span>{label}</span>
-          {hint ? <div className="settings-checkbox-hint">{hint}</div> : null}
-        </div>
-      </label>
-    </div>
+  // Shared markup for a toggle row (checkbox + label + optional hint). The
+  // options that only matter while it is checked sit indented under it.
+  const renderToggle = (checked, onChange, label, hint, children) => (
+    <React.Fragment>
+      <div className="settings-checkbox-item">
+        <label className="settings-checkbox-label">
+          <input type="checkbox" checked={checked} onChange={onChange} />
+          <div className="settings-checkbox-custom"></div>
+          <div className="settings-checkbox-content">
+            <span>{label}</span>
+            {hint ? <div className="settings-checkbox-hint">{hint}</div> : null}
+          </div>
+        </label>
+      </div>
+      {checked && children ? <div className="settings-checkbox-children">{children}</div> : null}
+    </React.Fragment>
   );
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case "profiles":
-        return (
-          <ProfileSettings
-            currentLanguage={context.state.language}
-            hasUnsavedChanges={edited}
-          />
-        );
-
       case "general":
         return (
           <div className="fields">
             <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsLanguageLabel}</div>
+              <div className="field">
+                <div className="field-input">
+                  <select value={language} onChange={changeLanguage} className="topcoat-textarea">
+                    {Object.entries(config.languages).map(([code, name]) => (
+                      <option key={code} value={code}>
+                        {code === "auto" ? locale.settingsLanguageAuto : name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupOnboarding || "Getting started"}</div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  showTips,
+                  changeShowTips,
+                  locale.settingsShowTipsLabel || "Show tips",
+                  locale.settingsShowTipsHint || "Display tips in the interface (multi-bubble hints, etc.)"
+                )}
+              </div>
+              <div className="field">
+                <button type="button" className="topcoat-button--large" onClick={resetFeatureTips} disabled={featureTipsReset}>
+                  {featureTipsReset
+                    ? (locale.settingsResetFeatureTipsDone || "Tips will show again")
+                    : (locale.settingsResetFeatureTips || "Show tips again")}
+                </button>
+              </div>
+              <div className="field-descr">
+                {locale.settingsResetFeatureTipsHint || "Brings back the \"Did you know?\" tips you have already seen."}
+              </div>
               <div className="field">
                 <button type="button" className="topcoat-button--large" onClick={openWalkthrough}>
                   {locale.settingsOpenWalkthrough || "Open walkthrough"}
@@ -1340,28 +1451,6 @@ const SettingsModal = React.memo(function SettingsModal() {
               <div className="field-descr">
                 {locale.settingsOpenWhatsNewHint || "Replay the tour of the main 3.0 features."}
               </div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(
-                  showTips,
-                  changeShowTips,
-                  locale.settingsShowTipsLabel || "Show tips",
-                  locale.settingsShowTipsHint || "Display tips in the interface (multi-bubble hints, etc.)"
-                )}
-              </div>
-            </div>
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsLanguageLabel}</div>
-              <div className="field">
-                <div className="field-input">
-                  <select value={language} onChange={changeLanguage} className="topcoat-textarea">
-                    {Object.entries(config.languages).map(([code, name]) => (
-                      <option key={code} value={code}>
-                        {code === "auto" ? locale.settingsLanguageAuto : name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
             </div>
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupAppUpdates || "Updates"}</div>
@@ -1370,13 +1459,13 @@ const SettingsModal = React.memo(function SettingsModal() {
                   checkUpdates,
                   changeCheckUpdates,
                   locale.settingsCheckUpdatesLabel,
-                  locale.settingsCheckUpdatesHint || "Automatically checks for available updates"
-                )}
-                {renderToggle(
-                  autoUpdate,
-                  changeAutoUpdate,
-                  locale.settingsAutoUpdateLabel || "Install updates automatically",
-                  locale.settingsAutoUpdateHint || "New versions are downloaded and installed silently; they take effect the next time Photoshop restarts"
+                  locale.settingsCheckUpdatesHint || "Automatically checks for available updates",
+                  renderToggle(
+                    autoUpdate,
+                    changeAutoUpdate,
+                    locale.settingsAutoUpdateLabel || "Install updates automatically",
+                    locale.settingsAutoUpdateHint || "New versions install silently in the background. TypeR reloads by itself, or at the next Photoshop restart when it cannot"
+                  )
                 )}
               </div>
               <div className="field">
@@ -1402,14 +1491,51 @@ const SettingsModal = React.memo(function SettingsModal() {
               </div>
               )}
             </div>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupMaintenance || "Maintenance"}</div>
+              <div className="field">
+                <button
+                  type="button"
+                  className="topcoat-button--large"
+                  onClick={clearCache}
+                  disabled={!cacheInfo.supported || cacheInfo.bytes === 0}
+                >
+                  <FiTrash2 size={18} /> {locale.settingsClearCache || "Clear cache"}
+                </button>
+              </div>
+              <div className="field-descr">
+                {(locale.settingsCacheAccumulated || "Accumulated cache: {size}")
+                  .replace("{size}", formatCacheBytes(cacheInfo.bytes))}
+              </div>
+              <div className="field-descr">
+                {locale.settingsClearCacheHint || "Deletes TypeR's temporary browser files without touching texts, tabs, settings, styles, themes, or saved states."}
+              </div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  perfDebug,
+                  changePerfDebug,
+                  locale.settingsPerfDebugLabel || "Performance logger",
+                  locale.settingsPerfDebugHint ||
+                    "Measures Photoshop calls, redraws and click latency. Leave it off unless the panel feels slow.",
+                  <div className="field" style={{ display: "flex", gap: 8 }}>
+                    <button type="button" className="topcoat-button--large" onClick={showPerfReport}>
+                      {locale.settingsPerfDebugReport || "Performance report"}
+                    </button>
+                    <button type="button" className="topcoat-button--large" onClick={resetPerfDebug}>
+                      {locale.settingsPerfDebugReset || "Reset counters"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         );
 
-      case "text":
+      case "insertion":
         return (
           <div className="fields">
             <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupTextInsertion || "Text insertion"}</div>
+              <div className="settings-group-title">{locale.settingsGroupPaste || "Paste"}</div>
               <div className="field">
                 <div className="field-label">{locale.settingsTextItemKindLabel}</div>
                 <div className="field-input">
@@ -1419,21 +1545,102 @@ const SettingsModal = React.memo(function SettingsModal() {
                   </select>
                 </div>
               </div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  smartPaste,
+                  changeSmartPaste,
+                  <React.Fragment>
+                    {locale.settingsSmartPasteLabel || "Smart paste"}
+                    <b className="settings-new-badge">{locale.settingsNewBadge || "New"}</b>
+                  </React.Fragment>,
+                  locale.settingsSmartPasteHelp || "Paste fits the text to the real shape of the bubble: the style size is the maximum, text turns white on black bubbles, and styles marked shout or narration are used for those bubbles.",
+                  <React.Fragment>
+                    {renderToggle(
+                      smartPasteDistribute,
+                      changeSmartPasteDistribute,
+                      locale.settingsSmartPasteDistributeLabel || "Split lines across connected bubbles",
+                      locale.settingsSmartPasteDistributeHelp || "Double or triple bubbles receive the next lines, one per part."
+                    )}
+                    {renderToggle(
+                      smartPasteAutoClean,
+                      changeSmartPasteAutoClean,
+                      locale.settingsSmartPasteAutoCleanLabel || "Auto clean",
+                      locale.settingsSmartPasteAutoCleanHelp || "Paints a white or black fill under the text to cover the original lettering (plain white or black bubbles only)."
+                    )}
+                    <div className="field">
+                      <div className="field-label">{locale.settingsSmartPasteMinScaleLabel || "Minimum text size (%)"}</div>
+                      <div className="field-input">
+                        <input
+                          type="number"
+                          min="50"
+                          max="100"
+                          step="5"
+                          value={smartPasteMinScale}
+                          onChange={changeSmartPasteMinScale}
+                          onBlur={resetSmartPasteMinScale}
+                          className="topcoat-text-input--large"
+                        />
+                      </div>
+                      <div className="field-descr">
+                        {locale.settingsSmartPasteMinScaleHelp || "To fit a small bubble, the text may shrink down to this share of the style size (50-100)."}
+                      </div>
+                    </div>
+                    <div className="field">
+                      <div className="field-label">{locale.settingsSmartPasteHyphenationLabel || "Hyphenation"}</div>
+                      <div className="field-input">
+                        <select value={smartPasteHyphenation} onChange={changeSmartPasteHyphenation} className="topcoat-textarea">
+                          <option value="auto">{locale.settingsHyphenationAuto || "Automatic (interface language)"}</option>
+                          <option value="fr">{locale.settingsHyphenationFr || "French"}</option>
+                          <option value="en">{locale.settingsHyphenationEn || "English"}</option>
+                          <option value="off">{locale.settingsHyphenationOff || "Off"}</option>
+                        </select>
+                      </div>
+                    </div>
+                  </React.Fragment>
+                )}
+                {renderToggle(
+                  pasteOnClick,
+                  changePasteOnClick,
+                  locale.settingsPasteOnClickLabel || "Paste on click",
+                  locale.settingsPasteOnClickHelp || "A Magic Wand click or a rectangle/lasso selection pastes the current line right away, without pressing Paste."
+                )}
+                {renderToggle(
+                  multiBubbleMode,
+                  changeMultiBubbleMode,
+                  locale.multiBubbleModeToggle || "Multi-Bubble Mode",
+                  <React.Fragment>
+                    {locale.multiBubbleModeHint || "Allows capturing multiple selections to insert multiple texts at once"}
+                    <button
+                      type="button"
+                      className="settings-help-badge"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        window.cep && window.cep.util && window.cep.util.openURLInDefaultBrowser('https://youtu.be/gmIh-eEj2HY');
+                      }}
+                      title={locale.multiBubbleModeHowToUse || "How to use"}
+                    >
+                      <FiPlayCircle size={12} />
+                      {locale.multiBubbleModeHowToUse || "How to use"}
+                    </button>
+                  </React.Fragment>
+                )}
+              </div>
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupCentering || "Centering"}</div>
               <div className="field">
-                <div className="field-label">{locale.settingsDefaultStyleLabel}</div>
+                <div className="field-label">{locale.settingsAutoCenterLabel || "Center after paste"}</div>
                 <div className="field-input">
-                  <select value={defaultStyleId} onChange={changeDefaultStyle} className="topcoat-textarea">
-                    <option key="none" value="">
-                      {locale.settingsDefaultStyleNone}
-                    </option>
-                    {context.state.styles.map((style) => (
-                      <option key={style.id} value={style.id}>
-                        {style.name}
-                      </option>
-                    ))}
+                  <select value={autoCenterMode} onChange={changeAutoCenterMode} className="topcoat-textarea">
+                    <option value="off">{locale.settingsAutoCenterOff || "Off"}</option>
+                    <option value="single">{locale.settingsAutoCenterSingle || "Center in the bubble"}</option>
+                    <option value="multi">{locale.settingsAutoCenterMulti || "Multi center (detects double bubbles)"}</option>
                   </select>
                 </div>
-                <div className="field-descr">{locale.settingsDefaultStyleDescr}</div>
+                <div className="field-descr">
+                  {locale.settingsAutoCenterHint || "Each pasted text is re-centered in the bubble detected around it. Multi center also recognizes double bubbles and splits them between their texts: a text already in the bubble moves to its part unless its layer is locked. Also switchable from the footer."}
+                </div>
               </div>
               <div className="settings-checkbox-grid">
                 {renderToggle(
@@ -1443,7 +1650,48 @@ const SettingsModal = React.memo(function SettingsModal() {
                   locale.settingsResizeTextBoxOnCenterHint || "Fits the text box to the bubble before centering without changing the font size."
                 )}
               </div>
+              <div className="field">
+                <div className="field-label">{locale.settingsInternalPaddingLabel || "Internal padding (px)"}</div>
+                <div className="field-input">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={internalPadding}
+                    onChange={changeInternalPadding}
+                    className="topcoat-text-input--large"
+                  />
+                </div>
+                <div className="field-descr">{locale.settingsInternalPaddingHint || "Internal space to prevent text from touching bubble edges (0-100 pixels)"}</div>
+              </div>
             </div>
+            <div className="settings-group">
+              <div className="settings-group-title">TextShapeR</div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  inlineTextShapeR,
+                  changeInlineTextShapeR,
+                  <React.Fragment>
+                    {locale.settingsInlineTextShapeRLabel || "TextShapeR"}
+                    <b className="settings-new-badge">{locale.settingsNewBadge || "New"}</b>
+                  </React.Fragment>,
+                  locale.settingsInlineTextShapeRHint || "Shows text shape suggestions directly in the main panel. This may impact performance.",
+                  renderToggle(
+                    dehyphenateTextShapeR,
+                    changeDehyphenateTextShapeR,
+                    locale.settingsDehyphenateLabel || "TextShapeR: join words split by hyphenation",
+                    locale.settingsDehyphenateHint || "When shaping text, joins words split across line breaks. Turn off if real compound words should stay separated."
+                  )
+                )}
+              </div>
+            </div>
+            <TextShapeRTraining onImportLearning={importShapeTuning} onExportLearning={exportShapeTuning} />
+          </div>
+        );
+
+      case "script":
+        return (
+          <div className="fields">
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupTextScript || "Script & tags"}</div>
               <div className="field">
@@ -1467,11 +1715,36 @@ const SettingsModal = React.memo(function SettingsModal() {
                   locale.settingsMarkdownLabel || "Interpret markdown (bold/italic)",
                   locale.settingsMarkdownHint || "Convert markdown and rich text on paste and apply bold/italic in the text block."
                 )}
+              </div>
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupPages || "Pages"}</div>
+              <div className="settings-checkbox-grid">
                 {renderToggle(
                   resetLineCounterOnPage,
                   changeResetLineCounterOnPage,
                   locale.settingsResetLineCounterOnPageLabel || "Reset line counter on page markers",
                   locale.settingsResetLineCounterOnPageHint || "Restarts text line numbering at 1 after each Page N marker."
+                )}
+                {renderToggle(
+                  autoClosePSD,
+                  changeAutoClosePSD,
+                  locale.settingsAutoClosePsdLabel,
+                  locale.settingsAutoClosePsdHint || "Closes the previous page's PSD when you move to another page"
+                )}
+              </div>
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupMultiTab || "Multi-series tabs"}</div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  multiTabEnabled,
+                  changeMultiTabEnabled,
+                  <React.Fragment>
+                    {locale.settingsMultiTabLabel || "Multi-tab"}
+                    <b className="settings-new-badge">{locale.settingsNewBadge || "New"}</b>
+                  </React.Fragment>,
+                  locale.settingsMultiTabHint || "Manage several series at once with tabs above the text block, each with its own text and PSD sync."
                 )}
               </div>
             </div>
@@ -1493,66 +1766,275 @@ const SettingsModal = React.memo(function SettingsModal() {
           </div>
         );
 
+      case "styles":
+        return (
+          <div className="fields">
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupStyleSelection || "Automatic selection"}</div>
+              <div className="field">
+                <div className="field-label">{locale.settingsDefaultStyleLabel}</div>
+                <div className="field-input">
+                  <select value={defaultStyleId} onChange={changeDefaultStyle} className="topcoat-textarea">
+                    <option key="none" value="">
+                      {locale.settingsDefaultStyleNone}
+                    </option>
+                    {context.state.styles.map((style) => (
+                      <option key={style.id} value={style.id}>
+                        {style.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field-descr">{locale.settingsDefaultStyleDescr}</div>
+              </div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  currentFolderTagPriority,
+                  changeCurrentFolderTagPriority,
+                  locale.settingsCurrentFolderTagPriorityLabel,
+                  locale.settingsCurrentFolderTagPriorityHint ||
+                    "Prevents script tags from selecting a style from another folder"
+                )}
+                {renderToggle(
+                  autoScrollStyle,
+                  changeAutoScrollStyle,
+                  locale.settingsAutoScrollStyleLabel,
+                  locale.settingsAutoScrollStyleHint || "Automatically scrolls to selected style"
+                )}
+              </div>
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupQuickSizes || "Quick sizes"}</div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  showQuickStyleSize,
+                  changeShowQuickStyleSize,
+                  locale.settingsQuickStyleSizeLabel || "Show style size presets",
+                  locale.settingsQuickStyleSizeHint || "Display the clickable size presets on each style.",
+                  <div className="field">
+                    <div className="field-label">{locale.settingsQuickStyleSizeStepLabel || "Quick size step"}</div>
+                    <div className="field-input">
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="any"
+                        value={styleSizeStep}
+                        onChange={changeStyleSizeStep}
+                        onBlur={resetStyleSizeStep}
+                        className="topcoat-text-input--large"
+                      />
+                    </div>
+                    <div className="field-descr">
+                      {locale.settingsQuickStyleSizeStepHint || "Sets the increment used when editing size presets."}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsRefontTitle || "Conditional refont"}</div>
+              <div className="field-descr">
+                {locale.settingsRefontHelp || "Text between two markers takes the font of another style (the size is kept). Example: quoted passages in italics."}
+              </div>
+              {refontRules.length > 0 && (
+                <div className="settings-refont-list">
+                  {refontRules.map((rule, index) => {
+                    const styles = context.state.styles || [];
+                    const styleValue = rule.styleId === null || rule.styleId === undefined ? "" : String(rule.styleId);
+                    const hasStyle = styles.some((style) => String(style.id) === styleValue);
+                    return (
+                      <div className="settings-refont-row" key={index}>
+                        <input
+                          type="text"
+                          maxLength={REFONT_MARKER_MAX_LENGTH}
+                          value={rule.open}
+                          onChange={(e) => updateRefontRule(index, { open: e.target.value })}
+                          className={"topcoat-text-input settings-refont-marker" + (rule.open ? "" : " is-invalid")}
+                          title={locale.settingsRefontOpen || "Opening marker"}
+                          aria-label={locale.settingsRefontOpen || "Opening marker"}
+                        />
+                        <span className="settings-refont-between" aria-hidden="true">…</span>
+                        <input
+                          type="text"
+                          maxLength={REFONT_MARKER_MAX_LENGTH}
+                          value={rule.close}
+                          onChange={(e) => updateRefontRule(index, { close: e.target.value })}
+                          className={"topcoat-text-input settings-refont-marker" + (rule.close ? "" : " is-invalid")}
+                          title={locale.settingsRefontClose || "Closing marker"}
+                          aria-label={locale.settingsRefontClose || "Closing marker"}
+                        />
+                        <select
+                          value={hasStyle ? styleValue : ""}
+                          onChange={(e) => changeRefontRuleStyle(index, e.target.value)}
+                          className="topcoat-textarea settings-refont-style"
+                          title={locale.settingsRefontStyle || "Font taken from"}
+                          aria-label={locale.settingsRefontStyle || "Font taken from"}
+                        >
+                          {!hasStyle && <option value="">—</option>}
+                          {styles.map((style) => (
+                            <option key={style.id} value={String(style.id)}>
+                              {style.name}
+                            </option>
+                          ))}
+                        </select>
+                        <label className="settings-checkbox-label settings-refont-keep">
+                          <input
+                            type="checkbox"
+                            checked={rule.keepMarkers === true}
+                            onChange={(e) => updateRefontRule(index, { keepMarkers: e.target.checked })}
+                          />
+                          <div className="settings-checkbox-custom"></div>
+                          <span>{locale.settingsRefontKeepMarkers || "Keep markers"}</span>
+                        </label>
+                        <button
+                          type="button"
+                          className="topcoat-icon-button--quiet settings-refont-remove"
+                          onClick={() => removeRefontRule(index)}
+                          title={locale.settingsRefontRemove || "Remove rule"}
+                          aria-label={locale.settingsRefontRemove || "Remove rule"}
+                        >
+                          <FiTrash2 size={13} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <button
+                type="button"
+                className="topcoat-button settings-refont-add"
+                onClick={addRefontRule}
+                disabled={refontRules.length >= MAX_REFONT_RULES}
+              >
+                <FiPlus size={13} /> {locale.settingsRefontAdd || "Add rule"}
+              </button>
+            </div>
+          </div>
+        );
+
+      case "data":
+        return (
+          <React.Fragment>
+            <ProfileSettings
+              currentLanguage={context.state.language}
+              hasUnsavedChanges={edited}
+            />
+            <div className="fields">
+              <div className="settings-group">
+                <div className="settings-group-title">{locale.settingsGroupImportExport || "Import/Export"}</div>
+                <FontScanPromo />
+                <div className="field">
+                  <button type="button" className="topcoat-button--large" onClick={importSettings}>
+                    <FaFileImport size={18} /> {locale.settingsImport}
+                  </button>
+                </div>
+                <div className="field">
+                  <button type="button" className="topcoat-button--large" data-tour="export-settings" onClick={exportSettings}>
+                    <FaFileExport size={18} /> {locale.settingsExport}
+                  </button>
+                </div>
+              </div>
+              <div className="settings-group">
+                <div className="settings-group-title">{locale.settingsGroupDanger || "Danger zone"}</div>
+                <div className="field">
+                  <button type="button" className="topcoat-button--large settings-danger-btn" onClick={resetStorage}>
+                    {locale.settingsResetProfile}
+                  </button>
+                </div>
+                <div className="field-descr">
+                  {locale.settingsResetProfileHint}
+                </div>
+              </div>
+            </div>
+          </React.Fragment>
+        );
+
       case "appearance": {
         const vis = uiLayout.visible;
+        const isShown = (key) => vis[key] !== false;
         const blockLabels = {
           preview: locale.settingsLayoutBlockPreview || "Preview & actions",
           text: locale.settingsLayoutBlockText || "Text",
           styles: locale.settingsLayoutBlockStyles || "Styles",
           footer: locale.settingsLayoutBlockFooter || "Footer",
         };
-        const elementLabels = {
+        const elementLabels = FOOTER_MODE_IDS.reduce((labels, id) => {
+          labels[FOOTER_MODE_KEYS[id]] = footerModeLabel(id);
+          return labels;
+        }, {
           tabBar: locale.settingsLayoutElTabBar || "Tab bar",
           previewCreateButton: locale.settingsLayoutElCreate || "Create layer button",
           previewAlignButton: locale.settingsLayoutElAlign || "Align button",
           previewSizeControls: locale.settingsLayoutElSize || "Text size controls",
           previewNav: locale.settingsLayoutElNav || "Line navigation arrows",
           previewWidget: locale.settingsLayoutElWidget || "Line preview / TextShapeR",
-          footerHelp: locale.settingsLayoutElFooterHelp || "Footer: Help link",
-          footerRepo: locale.settingsLayoutElFooterRepo || "Footer: Repository link",
-          footerModeToggles: locale.settingsLayoutElFooterModes || "Footer: mode toggles",
+          footerHelp: locale.settingsLayoutElHelp || "Help button",
+          footerRepo: locale.settingsLayoutElRepo || "Import pages button",
+        });
+        // Mode states after "Save", like the toggles in the other tabs
+        const modeStates = {
+          textShapeR: { on: inlineTextShapeR },
+          multiBubble: { on: multiBubbleMode },
+          autoCenter: { on: autoCenterMode !== "off", multi: autoCenterMode === "multi" },
+          pasteOnClick: { on: pasteOnClick },
+          autoClean: { on: smartPasteAutoClean },
         };
-        const previewMockHeight = Math.max(26, Math.round((parseInt(previewHeight, 10) || 130) * LAYOUT_CANVAS_SCALE));
+        const onText = locale.multiBubbleModeOn || "ON";
+        const offText = locale.multiBubbleModeOff || "OFF";
+        const showText = locale.settingsLayoutShow || "Show";
+        const hideText = locale.settingsLayoutHide || "Hide";
+        const modeKeys = FOOTER_MODE_IDS.map((id) => FOOTER_MODE_KEYS[id]);
+        const hiddenCount = (block) => LAYOUT_BLOCK_ELEMENTS[block].filter((key) => !isShown(key)).length;
+        const previewMockHeight = Math.max(30, Math.round((parseInt(previewHeight, 10) || 130) * LAYOUT_CANVAS_SCALE));
         const stylesMockHeight = Math.max(14, Math.round((parseInt(stylesHeight, 10) || 70) * LAYOUT_CANVAS_SCALE));
         const visibleOrder = uiLayout.order.filter((id) => vis[id]);
         const lastVisibleBlock = visibleOrder[visibleOrder.length - 1];
         const hl = (key) => (layoutHoverEl === key ? " m-hl" : "");
         const stopMouse = (e) => e.stopPropagation();
-        const mockElementProps = (key) => ({
-          onMouseDown: stopMouse,
-          onClick: (e) => {
-            e.stopPropagation();
-            toggleUiElement(key);
-          },
-          onMouseEnter: () => setLayoutHoverEl(key),
-          onMouseLeave: () => setLayoutHoverEl(null),
-          title: elementLabels[key],
-        });
+        // A hidden element stays in the mockup, outlined: one click brings it back
+        const mockEl = (key, className, children, extraClass = "") => (
+          <span
+            key={key}
+            className={className + (isShown(key) ? "" : " m-off") + extraClass + hl(key)}
+            onMouseDown={stopMouse}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedLayoutBlock(LAYOUT_ELEMENT_BLOCK[key]);
+              toggleUiElement(key);
+            }}
+            onMouseEnter={() => setLayoutHoverEl(key)}
+            onMouseLeave={() => setLayoutHoverEl(null)}
+            title={elementLabels[key] + " – " + (isShown(key) ? hideText : showText)}
+          >
+            {children}
+          </span>
+        );
+        const mockIcon = (key) => {
+          const Icon = LAYOUT_ELEMENT_ICONS[key];
+          return <Icon size={7} />;
+        };
         const mockContents = {
           preview: (
             <div className="settings-layout-mock-inner">
               <div className="settings-layout-mock-row">
-                {vis.previewCreateButton && <span className={"mk-pill mk-cta" + hl("previewCreateButton")} {...mockElementProps("previewCreateButton")} />}
-                {vis.previewAlignButton && <span className={"mk-pill" + hl("previewAlignButton")} {...mockElementProps("previewAlignButton")} />}
-                {vis.previewSizeControls && <span className={"mk-pill mk-small" + hl("previewSizeControls")} {...mockElementProps("previewSizeControls")} />}
+                {mockEl("previewCreateButton", "mk-pill mk-cta", mockIcon("previewCreateButton"))}
+                {mockEl("previewAlignButton", "mk-pill", mockIcon("previewAlignButton"))}
+                {mockEl("previewSizeControls", "mk-pill mk-small", mockIcon("previewSizeControls"))}
               </div>
-              {(vis.previewNav || vis.previewWidget) && (
-                <div className="settings-layout-mock-row">
-                  {vis.previewNav && <span className={"mk-nav" + hl("previewNav")} {...mockElementProps("previewNav")} />}
-                  {vis.previewWidget && <span className={"mk-widget" + hl("previewWidget")} {...mockElementProps("previewWidget")} />}
-                  {vis.previewNav && <span className={"mk-nav" + hl("previewNav")} {...mockElementProps("previewNav")} />}
-                </div>
-              )}
+              <div className="settings-layout-mock-row">
+                {mockEl("previewNav", "mk-nav", mockIcon("previewNav"))}
+                {mockEl("previewWidget", "mk-widget", mockIcon("previewWidget"))}
+              </div>
             </div>
           ),
           text: (
             <div className="settings-layout-mock-inner m-top">
-              {vis.tabBar && (
-                <div className={"settings-layout-mock-tabs" + hl("tabBar")} {...mockElementProps("tabBar")}>
+              {mockEl("tabBar", "settings-layout-mock-tabs", (
+                <React.Fragment>
                   <span className="m-active-tab" />
                   <span />
-                </div>
-              )}
+                </React.Fragment>
+              ))}
               <div className="settings-layout-mock-lines">
                 <span style={{ width: "82%" }} />
                 <span style={{ width: "58%" }} />
@@ -1604,10 +2086,11 @@ const SettingsModal = React.memo(function SettingsModal() {
               <button
                 type="button"
                 className="settings-layout-mock-eye"
-                title={hidden ? (locale.settingsLayoutShow || "Show") : (locale.settingsLayoutHide || "Hide")}
+                title={hidden ? showText : hideText}
                 onMouseDown={stopMouse}
                 onClick={(e) => {
                   e.stopPropagation();
+                  setSelectedLayoutBlock(id);
                   toggleUiElement(id);
                 }}
               >
@@ -1643,10 +2126,50 @@ const SettingsModal = React.memo(function SettingsModal() {
             />
           </div>
         );
+        const renderElementRow = (key, { extra = null, note = null } = {}) => {
+          const Icon = LAYOUT_ELEMENT_ICONS[key];
+          const shown = isShown(key);
+          return (
+            <label
+              key={key}
+              className={"settings-layout-element" + (shown ? "" : " m-off") + hl(key)}
+              onMouseEnter={() => setLayoutHoverEl(key)}
+              onMouseLeave={() => setLayoutHoverEl(null)}
+            >
+              <Icon size={13} className="settings-layout-element-icon" />
+              <span className="settings-layout-element-text">
+                <span className="settings-layout-element-label">{elementLabels[key]}</span>
+                {note && <span className="settings-layout-element-note">{note}</span>}
+              </span>
+              {extra}
+              <LayoutSwitch checked={shown} onChange={() => toggleUiElement(key)} title={shown ? hideText : showText} />
+            </label>
+          );
+        };
+        const renderModeRow = (id) => {
+          const state = modeStates[id];
+          return renderElementRow(FOOTER_MODE_KEYS[id], {
+            note: id === "autoClean" && !smartPaste
+              ? (locale.settingsLayoutAutoCleanNote || "Only shown while smart paste is on.")
+              : null,
+            extra: (
+              <span
+                className={"settings-layout-mode-state" + (state.on ? " m-on" : "") + (state.multi ? " m-multi" : "")}
+                title={locale.settingsLayoutModeState || "Current state of the mode"}
+              >
+                <i />
+                {state.multi ? (locale.autoCenterModeMulti || "MULTI") : state.on ? onText : offText}
+              </span>
+            ),
+          });
+        };
+        const allModesShown = modeKeys.every(isShown);
         const selectedIsPanel = selectedLayoutBlock !== "footer";
         const selectedVisible = selectedIsPanel ? vis[selectedLayoutBlock] !== false : true;
         const selectedIndex = uiLayout.order.indexOf(selectedLayoutBlock);
         const selectedElements = LAYOUT_BLOCK_ELEMENTS[selectedLayoutBlock] || [];
+        const SelectedIcon = LAYOUT_BLOCK_ICONS[selectedLayoutBlock];
+        const scaleValue = Math.min(150, Math.max(70, parseInt(uiScale, 10) || 100));
         return (
           <div className="fields">
             <div className="settings-group">
@@ -1785,6 +2308,40 @@ const SettingsModal = React.memo(function SettingsModal() {
             </div>
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupInterface || "Interface layout"}</div>
+              <div className="settings-layout-picker">
+                {uiLayout.order.concat(["footer"]).map((id) => {
+                  const Icon = LAYOUT_BLOCK_ICONS[id];
+                  const count = hiddenCount(id);
+                  const blockHidden = id !== "footer" && !vis[id];
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      className={
+                        "settings-layout-pick" +
+                        (selectedLayoutBlock === id ? " m-active" : "") +
+                        (blockHidden ? " m-hidden" : "")
+                      }
+                      title={blockLabels[id]}
+                      onClick={() => setSelectedLayoutBlock(id)}
+                    >
+                      <Icon size={12} />
+                      <span className="settings-layout-pick-label">{blockLabels[id]}</span>
+                      {(blockHidden || count > 0) && (
+                        <span
+                          className="settings-layout-pick-badge"
+                          title={blockHidden
+                            ? (locale.settingsLayoutBlockHidden || "Panel hidden")
+                            : (locale.settingsLayoutHiddenCount || "{count} hidden").replace("{count}", count)}
+                        >
+                          <FiEyeOff size={8} />
+                          {!blockHidden && count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
               <div className="settings-layout">
                 <div className="settings-layout-canvas-wrap">
                   <div
@@ -1797,51 +2354,34 @@ const SettingsModal = React.memo(function SettingsModal() {
                       title={blockLabels.footer}
                       onClick={() => setSelectedLayoutBlock("footer")}
                     >
-                      {vis.footerHelp && <span className={"mk-f" + hl("footerHelp")} {...mockElementProps("footerHelp")} />}
-                      <span className="mk-f m-on" />
-                      {vis.footerRepo && <span className={"mk-f" + hl("footerRepo")} {...mockElementProps("footerRepo")} />}
+                      {mockEl("footerHelp", "mk-f", mockIcon("footerHelp"))}
+                      <span className="mk-f m-fixed" title={locale.settingsLayoutElSettings || "Settings button"}>
+                        <FiSettings size={7} />
+                      </span>
+                      {mockEl("footerRepo", "mk-f", mockIcon("footerRepo"))}
                       <span className="mk-fspacer" />
-                      {vis.footerModeToggles && (
-                        <span className={"mk-fdots" + hl("footerModeToggles")} {...mockElementProps("footerModeToggles")}>
-                          <i />
-                          <i />
-                        </span>
-                      )}
+                      {FOOTER_MODE_IDS.map((id) => mockEl(
+                        FOOTER_MODE_KEYS[id],
+                        "mk-fmode",
+                        (
+                          <React.Fragment>
+                            <i className={"mk-fdot" + (modeStates[id].on ? " m-on" : "") + (modeStates[id].multi ? " m-multi" : "")} />
+                            {mockIcon(FOOTER_MODE_KEYS[id])}
+                          </React.Fragment>
+                        ),
+                        id === "autoClean" && !smartPaste ? " m-na" : ""
+                      ))}
                     </div>
-                  </div>
-                  <div className="settings-layout-scale">
-                    <input
-                      type="range"
-                      min="70"
-                      max="150"
-                      step="5"
-                      title={locale.settingsLayoutUiScale || "Interface scale (%)"}
-                      value={Math.min(150, Math.max(70, parseInt(uiScale, 10) || 100))}
-                      onChange={(e) => {
-                        setUiScale(e.target.value);
-                        setEdited(true);
-                      }}
-                    />
-                    <span className="settings-layout-scale-value">
-                      {(locale.settingsLayoutScaleCaption || "Scale: {scale}%").replace("{scale}", uiScale || "100")}
-                    </span>
                   </div>
                 </div>
                 <div className="settings-layout-inspector">
                   <div className="settings-layout-inspector-head">
+                    <SelectedIcon size={14} className="settings-layout-inspector-icon" />
                     <span className={"settings-layout-inspector-title" + (selectedVisible ? "" : " m-hidden")}>
                       {blockLabels[selectedLayoutBlock]}
                     </span>
                     {selectedIsPanel && (
                       <div className="settings-layout-inspector-tools">
-                        <button
-                          type="button"
-                          className="settings-layout-icon-btn"
-                          title={selectedVisible ? (locale.settingsLayoutHide || "Hide") : (locale.settingsLayoutShow || "Show")}
-                          onClick={() => toggleUiElement(selectedLayoutBlock)}
-                        >
-                          {selectedVisible ? <FiEye size={13} /> : <FiEyeOff size={13} />}
-                        </button>
                         <button
                           type="button"
                           className="settings-layout-icon-btn"
@@ -1860,42 +2400,108 @@ const SettingsModal = React.memo(function SettingsModal() {
                         >
                           <FiChevronDown size={13} />
                         </button>
+                        <LayoutSwitch
+                          checked={selectedVisible}
+                          onChange={() => toggleUiElement(selectedLayoutBlock)}
+                          title={selectedVisible ? hideText : showText}
+                        />
                       </div>
                     )}
                   </div>
-                  {selectedLayoutBlock === "preview" && renderHeightSlider(previewHeight, setPreviewHeight, 80, 300, defaultUiLayout.sizes.previewHeight)}
-                  {selectedLayoutBlock === "styles" && (vis.text
+                  {selectedIsPanel && !selectedVisible && (
+                    <div className="settings-layout-inspector-note">
+                      {locale.settingsLayoutBlockHiddenNote || "This panel is hidden. Turn it back on with the switch above."}
+                    </div>
+                  )}
+                  {selectedVisible && selectedLayoutBlock === "preview" && renderHeightSlider(previewHeight, setPreviewHeight, 80, 300, defaultUiLayout.sizes.previewHeight)}
+                  {selectedVisible && selectedLayoutBlock === "styles" && (vis.text
                     ? renderHeightSlider(stylesHeight, setStylesHeight, 70, 500, 70)
                     : (
                       <div className="settings-layout-inspector-note">
                         {locale.settingsLayoutTextAuto || "Fills the remaining space automatically."}
                       </div>
                     ))}
-                  {selectedLayoutBlock === "text" && (
+                  {selectedVisible && selectedLayoutBlock === "text" && (
                     <div className="settings-layout-inspector-note">
                       {locale.settingsLayoutTextAuto || "Fills the remaining space automatically."}
                     </div>
                   )}
-                  {selectedElements.length > 0 && (
-                    <div className="settings-layout-elements">
-                      {selectedElements.map((key) => (
-                        <label
-                          key={key}
-                          className="settings-layout-element"
-                          onMouseEnter={() => setLayoutHoverEl(key)}
-                          onMouseLeave={() => setLayoutHoverEl(null)}
+                  {selectedLayoutBlock === "footer" ? (
+                    <React.Fragment>
+                      <div className="settings-layout-subtitle">
+                        <span>{locale.settingsLayoutGroupButtons || "Buttons"}</span>
+                      </div>
+                      <div className="settings-layout-elements">
+                        {renderElementRow("footerHelp")}
+                        <div className="settings-layout-element m-locked">
+                          <FiSettings size={13} className="settings-layout-element-icon" />
+                          <span className="settings-layout-element-text">
+                            <span className="settings-layout-element-label">{locale.settingsLayoutElSettings || "Settings button"}</span>
+                          </span>
+                          <span className="settings-layout-locked">
+                            <FiLock size={10} /> {locale.settingsLayoutAlwaysShown || "Always shown"}
+                          </span>
+                        </div>
+                        {renderElementRow("footerRepo")}
+                      </div>
+                      <div className="settings-layout-subtitle">
+                        <span>{locale.settingsLayoutGroupModes || "Mode toggles"}</span>
+                        <button
+                          type="button"
+                          className="settings-layout-link"
+                          onClick={() => setUiElements(modeKeys, !allModesShown)}
                         >
-                          <input type="checkbox" checked={vis[key] !== false} onChange={() => toggleUiElement(key)} />
-                          <div className="settings-checkbox-custom"></div>
-                          <span>{elementLabels[key]}</span>
-                        </label>
-                      ))}
+                          {allModesShown
+                            ? (locale.settingsLayoutHideAll || "Hide all")
+                            : (locale.settingsLayoutShowAll || "Show all")}
+                        </button>
+                      </div>
+                      <div className="settings-layout-elements">
+                        {FOOTER_MODE_IDS.map(renderModeRow)}
+                      </div>
+                      <div className="settings-layout-inspector-note">
+                        {locale.settingsLayoutModeKeepsState || "A hidden toggle keeps its current state, and its shortcut still works."}
+                      </div>
+                    </React.Fragment>
+                  ) : selectedElements.length > 0 && (
+                    <div className={"settings-layout-elements" + (selectedVisible ? "" : " m-disabled")}>
+                      {selectedElements.map((key) => renderElementRow(key))}
                     </div>
                   )}
                 </div>
               </div>
+              <div className="settings-layout-scale">
+                <span className="settings-layout-scale-label">
+                  <FiZoomIn size={13} />
+                  {locale.settingsLayoutScaleLabel || "Interface scale"}
+                </span>
+                <input
+                  type="range"
+                  min="70"
+                  max="150"
+                  step="5"
+                  value={scaleValue}
+                  onChange={(e) => {
+                    setUiScale(e.target.value);
+                    setEdited(true);
+                  }}
+                />
+                <span className="settings-layout-scale-value">{scaleValue}%</span>
+                <button
+                  type="button"
+                  className="settings-layout-icon-btn"
+                  disabled={scaleValue === defaultUiLayout.sizes.uiScale}
+                  title={(locale.settingsLayoutScaleReset || "Back to {scale}%").replace("{scale}", defaultUiLayout.sizes.uiScale)}
+                  onClick={() => {
+                    setUiScale(String(defaultUiLayout.sizes.uiScale));
+                    setEdited(true);
+                  }}
+                >
+                  <FiRotateCcw size={11} />
+                </button>
+              </div>
               <div className="field-descr">
-                {locale.settingsLayoutCanvasHint || "Click a panel in the preview to edit it. Drag panels to reorder them, or drag their edge to resize."}
+                {locale.settingsLayoutCanvasHint || "Click an element in the preview to show or hide it: hidden ones stay outlined. Drag panels to reorder them, or drag their edge to resize."}
               </div>
               <div className="field">
                 <button type="button" className="topcoat-button--large" onClick={resetUiLayout}>
@@ -1907,315 +2513,38 @@ const SettingsModal = React.memo(function SettingsModal() {
         );
       }
 
-      case "behavior":
-        return (
-          <div className="fields">
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsSmartPasteTitle || "Smart paste"}</div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(
-                  smartPaste,
-                  changeSmartPaste,
-                  <React.Fragment>
-                    {locale.settingsSmartPasteLabel || "Smart paste"}
-                    <b className="settings-new-badge">{locale.settingsNewBadge || "New"}</b>
-                  </React.Fragment>,
-                  locale.settingsSmartPasteHelp || "Paste fits the text to the real shape of the bubble: the style size is the maximum, text turns white on black bubbles, and styles marked shout or narration are used for those bubbles."
-                )}
-                {renderToggle(
-                  pasteOnClick,
-                  changePasteOnClick,
-                  locale.settingsPasteOnClickLabel || "Paste on click",
-                  locale.settingsPasteOnClickHelp || "A Magic Wand click or a rectangle/lasso selection pastes the current line right away, without pressing Paste."
-                )}
-                {smartPaste && renderToggle(
-                  smartPasteDistribute,
-                  changeSmartPasteDistribute,
-                  locale.settingsSmartPasteDistributeLabel || "Split lines across connected bubbles",
-                  locale.settingsSmartPasteDistributeHelp || "Double or triple bubbles receive the next lines, one per part."
-                )}
-                {smartPaste && renderToggle(
-                  smartPasteAutoClean,
-                  changeSmartPasteAutoClean,
-                  locale.settingsSmartPasteAutoCleanLabel || "Auto clean",
-                  locale.settingsSmartPasteAutoCleanHelp || "Paints a white or black fill under the text to cover the original lettering (plain white or black bubbles only)."
-                )}
-              </div>
-              {smartPaste && (
-                <div className="field">
-                  <div className="field-label">{locale.settingsSmartPasteMinScaleLabel || "Minimum text size (%)"}</div>
-                  <div className="field-input">
-                    <input
-                      type="number"
-                      min="50"
-                      max="100"
-                      step="5"
-                      value={smartPasteMinScale}
-                      onChange={changeSmartPasteMinScale}
-                      onBlur={resetSmartPasteMinScale}
-                      className="topcoat-text-input--large"
-                    />
-                  </div>
-                  <div className="field-descr">
-                    {locale.settingsSmartPasteMinScaleHelp || "To fit a small bubble, the text may shrink down to this share of the style size (50-100)."}
-                  </div>
-                </div>
-              )}
-              {smartPaste && (
-                <div className="field">
-                  <div className="field-label">{locale.settingsSmartPasteHyphenationLabel || "Hyphenation"}</div>
-                  <div className="field-input">
-                    <select value={smartPasteHyphenation} onChange={changeSmartPasteHyphenation} className="topcoat-textarea">
-                      <option value="auto">{locale.settingsHyphenationAuto || "Automatic (interface language)"}</option>
-                      <option value="fr">{locale.settingsHyphenationFr || "French"}</option>
-                      <option value="en">{locale.settingsHyphenationEn || "English"}</option>
-                      <option value="off">{locale.settingsHyphenationOff || "Off"}</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-              <div className="field settings-refont">
-                <div className="field-label">{locale.settingsRefontTitle || "Conditional refont"}</div>
-                <div className="field-descr">
-                  {locale.settingsRefontHelp || "Text between two markers takes the font of another style (the size is kept). Example: quoted passages in italics."}
-                </div>
-                {refontRules.length > 0 && (
-                  <div className="settings-refont-list">
-                    {refontRules.map((rule, index) => {
-                      const styles = context.state.styles || [];
-                      const styleValue = rule.styleId === null || rule.styleId === undefined ? "" : String(rule.styleId);
-                      const hasStyle = styles.some((style) => String(style.id) === styleValue);
-                      return (
-                        <div className="settings-refont-row" key={index}>
-                          <input
-                            type="text"
-                            maxLength={REFONT_MARKER_MAX_LENGTH}
-                            value={rule.open}
-                            onChange={(e) => updateRefontRule(index, { open: e.target.value })}
-                            className={"topcoat-text-input settings-refont-marker" + (rule.open ? "" : " is-invalid")}
-                            title={locale.settingsRefontOpen || "Opening marker"}
-                            aria-label={locale.settingsRefontOpen || "Opening marker"}
-                          />
-                          <span className="settings-refont-between" aria-hidden="true">…</span>
-                          <input
-                            type="text"
-                            maxLength={REFONT_MARKER_MAX_LENGTH}
-                            value={rule.close}
-                            onChange={(e) => updateRefontRule(index, { close: e.target.value })}
-                            className={"topcoat-text-input settings-refont-marker" + (rule.close ? "" : " is-invalid")}
-                            title={locale.settingsRefontClose || "Closing marker"}
-                            aria-label={locale.settingsRefontClose || "Closing marker"}
-                          />
-                          <select
-                            value={hasStyle ? styleValue : ""}
-                            onChange={(e) => changeRefontRuleStyle(index, e.target.value)}
-                            className="topcoat-textarea settings-refont-style"
-                            title={locale.settingsRefontStyle || "Font taken from"}
-                            aria-label={locale.settingsRefontStyle || "Font taken from"}
-                          >
-                            {!hasStyle && <option value="">—</option>}
-                            {styles.map((style) => (
-                              <option key={style.id} value={String(style.id)}>
-                                {style.name}
-                              </option>
-                            ))}
-                          </select>
-                          <label className="settings-checkbox-label settings-refont-keep">
-                            <input
-                              type="checkbox"
-                              checked={rule.keepMarkers === true}
-                              onChange={(e) => updateRefontRule(index, { keepMarkers: e.target.checked })}
-                            />
-                            <div className="settings-checkbox-custom"></div>
-                            <span>{locale.settingsRefontKeepMarkers || "Keep markers"}</span>
-                          </label>
-                          <button
-                            type="button"
-                            className="topcoat-icon-button--quiet settings-refont-remove"
-                            onClick={() => removeRefontRule(index)}
-                            title={locale.settingsRefontRemove || "Remove rule"}
-                            aria-label={locale.settingsRefontRemove || "Remove rule"}
-                          >
-                            <FiTrash2 size={13} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  className="topcoat-button settings-refont-add"
-                  onClick={addRefontRule}
-                  disabled={refontRules.length >= MAX_REFONT_RULES}
-                >
-                  <FiPlus size={13} /> {locale.settingsRefontAdd || "Add rule"}
-                </button>
-              </div>
-            </div>
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupExperimental || "Experimental"}</div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(
-                  inlineTextShapeR,
-                  changeInlineTextShapeR,
-                  <React.Fragment>
-                    {locale.settingsInlineTextShapeRLabel || "TextShapeR"}
-                    <b className="settings-new-badge">{locale.settingsNewBadge || "New"}</b>
-                  </React.Fragment>,
-                  locale.settingsInlineTextShapeRHint || "Shows text shape suggestions directly in the main panel. This may impact performance."
-                )}
-                {inlineTextShapeR && renderToggle(
-                  dehyphenateTextShapeR,
-                  changeDehyphenateTextShapeR,
-                  locale.settingsDehyphenateLabel || "TextShapeR: join words split by hyphenation",
-                  locale.settingsDehyphenateHint || "When shaping text, joins words split across line breaks. Turn off if real compound words should stay separated."
-                )}
-                {renderToggle(
-                  multiTabEnabled,
-                  changeMultiTabEnabled,
-                  <React.Fragment>
-                    {locale.settingsMultiTabLabel || "Multi-tab"}
-                    <b className="settings-new-badge">{locale.settingsNewBadge || "New"}</b>
-                  </React.Fragment>,
-                  locale.settingsMultiTabHint || "Manage several series at once with tabs above the text block, each with its own text and PSD sync."
-                )}
-              </div>
-            </div>
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupTextPositioning || "Text positioning"}</div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(
-                  multiBubbleMode,
-                  changeMultiBubbleMode,
-                  locale.multiBubbleModeToggle || "Multi-Bubble Mode",
-                  <React.Fragment>
-                    {locale.multiBubbleModeHint || "Allows capturing multiple selections to insert multiple texts at once"}
-                    <button
-                      type="button"
-                      className="settings-help-badge"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        window.cep && window.cep.util && window.cep.util.openURLInDefaultBrowser('https://youtu.be/gmIh-eEj2HY');
-                      }}
-                      title={locale.multiBubbleModeHowToUse || "How to use"}
-                    >
-                      <FiPlayCircle size={12} />
-                      {locale.multiBubbleModeHowToUse || "How to use"}
-                    </button>
-                  </React.Fragment>
-                )}
-              </div>
-              <div className="field">
-                <div className="field-label">{locale.settingsAutoCenterLabel || "Center after paste"}</div>
-                <div className="field-input">
-                  <select value={autoCenterMode} onChange={changeAutoCenterMode} className="topcoat-textarea">
-                    <option value="off">{locale.settingsAutoCenterOff || "Off"}</option>
-                    <option value="single">{locale.settingsAutoCenterSingle || "Center in the bubble"}</option>
-                    <option value="multi">{locale.settingsAutoCenterMulti || "Multi center (detects double bubbles)"}</option>
-                  </select>
-                </div>
-                <div className="field-descr">
-                  {locale.settingsAutoCenterHint || "Each pasted text is re-centered in the bubble detected around it. Multi center also recognizes double bubbles and splits them between their texts: a text already in the bubble moves to its part unless its layer is locked. Also switchable from the footer."}
-                </div>
-              </div>
-              <div className="field">
-                <div className="field-label">{locale.settingsInternalPaddingLabel || "Internal padding (px)"}</div>
-                <div className="field-input">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={internalPadding}
-                    onChange={changeInternalPadding}
-                    className="topcoat-text-input--large"
-                  />
-                </div>
-                <div className="field-descr">{locale.settingsInternalPaddingHint || "Internal space to prevent text from touching bubble edges (0-100 pixels)"}</div>
-              </div>
-            </div>
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupStyles || "Styles"}</div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(
-                  autoScrollStyle,
-                  changeAutoScrollStyle,
-                  locale.settingsAutoScrollStyleLabel,
-                  locale.settingsAutoScrollStyleHint || "Automatically scrolls to selected style"
-                )}
-                {renderToggle(
-                  currentFolderTagPriority,
-                  changeCurrentFolderTagPriority,
-                  locale.settingsCurrentFolderTagPriorityLabel,
-                  locale.settingsCurrentFolderTagPriorityHint ||
-                    "Prevents script tags from selecting a style from another folder"
-                )}
-                {renderToggle(
-                  showQuickStyleSize,
-                  changeShowQuickStyleSize,
-                  locale.settingsQuickStyleSizeLabel || "Show style size presets",
-                  locale.settingsQuickStyleSizeHint || "Display the clickable size presets on each style."
-                )}
-              </div>
-              <div className="field">
-                <div className="field-label">{locale.settingsQuickStyleSizeStepLabel || "Quick size step"}</div>
-                <div className="field-input">
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="any"
-                    value={styleSizeStep}
-                    onChange={changeStyleSizeStep}
-                    onBlur={resetStyleSizeStep}
-                    className="topcoat-text-input--large"
-                  />
-                </div>
-                <div className="field-descr">
-                  {locale.settingsQuickStyleSizeStepHint || "Sets the increment used when editing size presets."}
-                </div>
-              </div>
-            </div>
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupAutomations || "Automations"}</div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(
-                  autoClosePSD,
-                  changeAutoClosePSD,
-                  locale.settingsAutoClosePsdLabel,
-                  locale.settingsAutoClosePsdHint || "Automatically closes PSD files after processing"
-                )}
-              </div>
-            </div>
-          </div>
-        );
-
       case "shortcuts":
         return (
           <div className="fields">
             <div className="settings-group">
-              <div className="settings-group-title">{locale.shortcut}</div>
               <div className="field-descr">
                 {locale.settingsShortcutsHint || "Click a shortcut and press the new key combination."}
               </div>
-              <div className="shortcut-list">
-                {shortcutCommands.map((command) => (
-                  <Shortcut
-                    key={command.id}
-                    value={shortcutDraft[command.id] || []}
-                    index={command.id}
-                    modifierOnly={command.modifierOnly === true}
-                    onChange={changeShortcut}
-                    conflict={shortcutConflicts[command.id]
-                      ? (locale.shortcutConflict || "Also assigned to: {actions}")
-                        .replace("{actions}", shortcutConflicts[command.id])
-                      : shortcutModifierOverlaps[command.id]
-                        ? (locale.shortcutModifierOverlap || "Always combined with: {actions}")
-                          .replace("{actions}", shortcutModifierOverlaps[command.id])
-                        : ""}
-                  />
-                ))}
+            </div>
+            {shortcutGroups.map((group) => (
+              <div className="settings-group" key={group.id}>
+                <div className="settings-group-title">{group.label}</div>
+                <div className="shortcut-list">
+                  {group.commands.map((command) => (
+                    <Shortcut
+                      key={command.id}
+                      value={shortcutDraft[command.id] || []}
+                      index={command.id}
+                      modifierOnly={command.modifierOnly === true}
+                      onChange={changeShortcut}
+                      conflict={shortcutConflicts[command.id]
+                        ? (locale.shortcutConflict || "Also assigned to: {actions}")
+                          .replace("{actions}", shortcutConflicts[command.id])
+                        : shortcutModifierOverlaps[command.id]
+                          ? (locale.shortcutModifierOverlap || "Always combined with: {actions}")
+                            .replace("{actions}", shortcutModifierOverlaps[command.id])
+                          : ""}
+                    />
+                  ))}
+                </div>
               </div>
+            ))}
+            <div className="settings-group">
               <div className="field">
                 <button type="button" className="topcoat-button--large" onClick={resetShortcuts}>
                   <FiRotateCcw size={14} /> {locale.settingsResetShortcuts || "Reset shortcuts"}
@@ -2230,80 +2559,6 @@ const SettingsModal = React.memo(function SettingsModal() {
 
       case "fontViewer":
         return <FontViewer />;
-
-      case "data":
-        return (
-          <div className="fields">
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupImportExport || "Import/Export"}</div>
-              <FontScanPromo />
-              <div className="field">
-                <button className="topcoat-button--large" onClick={importSettings}>
-                  <FaFileImport size={18} /> {locale.settingsImport}
-                </button>
-              </div>
-              <div className="field">
-                <button className="topcoat-button--large" onClick={exportSettings}>
-                  <FaFileExport size={18} /> {locale.settingsExport}
-                </button>
-              </div>
-            </div>
-            <TextShapeRTraining onImportLearning={importShapeTuning} onExportLearning={exportShapeTuning} />
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupDiagnostics || "Diagnostics"}</div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(
-                  perfDebug,
-                  changePerfDebug,
-                  locale.settingsPerfDebugLabel || "Performance logger",
-                  locale.settingsPerfDebugHint ||
-                    "Measures Photoshop calls, redraws and click latency. Leave it off unless the panel feels slow."
-                )}
-              </div>
-              {perfDebug && (
-                <div className="field" style={{ display: "flex", gap: 8 }}>
-                  <button className="topcoat-button--large" onClick={showPerfReport}>
-                    {locale.settingsPerfDebugReport || "Performance report"}
-                  </button>
-                  <button className="topcoat-button--large" onClick={resetPerfDebug}>
-                    {locale.settingsPerfDebugReset || "Reset counters"}
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupCache || "Cache"}</div>
-              <div className="field">
-                <button
-                  type="button"
-                  className="topcoat-button--large"
-                  onClick={clearCache}
-                  disabled={!cacheInfo.supported || cacheInfo.bytes === 0}
-                >
-                  <FiTrash2 size={18} /> {locale.settingsClearCache || "Clear cache"}
-                </button>
-              </div>
-              <div className="field-descr">
-                {(locale.settingsCacheAccumulated || "Accumulated cache: {size}")
-                  .replace("{size}", formatCacheBytes(cacheInfo.bytes))}
-              </div>
-              <div className="field-descr">
-                {locale.settingsClearCacheHint || "Deletes TypeR's temporary browser files without touching texts, tabs, settings, styles, themes, or saved states."}
-              </div>
-            </div>
-            <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupDanger || "Danger zone"}</div>
-              <div className="field">
-                <button type="button" className="topcoat-button--large settings-danger-btn" onClick={resetStorage}>
-                  {locale.settingsResetProfile}
-                </button>
-              </div>
-              <div className="field-descr">
-                {locale.settingsResetProfileHint}
-              </div>
-            </div>
-          </div>
-        );
 
       default:
         return null;
@@ -2410,6 +2665,13 @@ const SettingsModal = React.memo(function SettingsModal() {
               </div>
             </div>
           </div>
+        )}
+        {missingFontsImport && (
+          <MissingFontsDialog
+            fonts={missingFontsImport.fonts}
+            message={missingFontsImport.message}
+            onClose={() => setMissingFontsImport(null)}
+          />
         )}
         {discardConfirmOpen && (
           <UnsavedChangesDialog

@@ -2,6 +2,7 @@ import { locale } from "./utils";
 import StorageNotice from "./components/storageNotice";
 import './index.scss';
 import './rtl.scss';
+import './components/modal/confirmDialog.scss';
 import './lib/CSInterface';
 import './lib/themeManager';
 // Opt-in profiler: stays inert unless enabled in the settings (or via

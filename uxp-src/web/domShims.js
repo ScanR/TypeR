@@ -2,9 +2,9 @@
 import { request } from "./bridge";
 
 // localStorage throws "Storage is not supported" in the UXP WebView. The
-// panel only keeps view preferences there (font viewer layout, perf debug)
-// and the progress of the What's new tour:
-// they are kept in one of TypeR's storage files instead.
+// panel only keeps view preferences there (font viewer layout, perf debug,
+// last settings tab) and the progress of the What's new tour: they are kept
+// in one of TypeR's storage files instead.
 export function installLocalStorage(readMirror, writeMirror) {
   let works = false;
   try {

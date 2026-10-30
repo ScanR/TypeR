@@ -30,6 +30,7 @@ import {
 } from "./styleSizeTip";
 import { normalizeSeenFeatureTips, showFeatureTip } from "./featureTips";
 import { normalizeRefontRules } from "./oneClick/refont";
+import { defaultUiLayout, normalizeUiLayout } from "./uiLayout";
 const storage = readStorage();
 // A successful application is the clearest signal that someone is relying on
 // TextShapeR. Five applied suggestions are enough to introduce the learning
@@ -146,57 +147,6 @@ const loadTabIntoState = (state, tab) => {
   state.usedLineStyles = tab.usedLineStyles || {};
   // Stored selections are bound to the previously opened PSD
   state.storedSelections = [];
-};
-
-const defaultUiLayout = {
-  order: ["preview", "text", "styles"],
-  visible: {
-    preview: true,
-    text: true,
-    styles: true,
-    tabBar: true,
-    previewCreateButton: true,
-    previewAlignButton: true,
-    previewSizeControls: true,
-    previewNav: true,
-    previewWidget: true,
-    footerHelp: true,
-    footerRepo: true,
-    footerModeToggles: true,
-  },
-  sizes: {
-    previewHeight: 130,
-    uiScale: 100,
-  },
-};
-
-const clampNumber = (value, min, max, fallback) => {
-  const num = parseInt(value, 10);
-  if (!Number.isFinite(num)) return fallback;
-  return Math.min(max, Math.max(min, num));
-};
-
-// Merge a stored/partial layout with the defaults so missing or invalid
-// fields (older storage versions, bad imports) never break the UI
-const normalizeUiLayout = (raw) => {
-  const layout = raw && typeof raw === "object" ? raw : {};
-  const visible = { ...defaultUiLayout.visible };
-  if (layout.visible && typeof layout.visible === "object") {
-    for (const key in visible) {
-      if (typeof layout.visible[key] === "boolean") visible[key] = layout.visible[key];
-    }
-  }
-  let order = Array.isArray(layout.order)
-    ? layout.order.filter((id, index, order) => defaultUiLayout.order.includes(id) && order.indexOf(id) === index)
-    : [];
-  order = order.concat(defaultUiLayout.order.filter((id) => !order.includes(id)));
-  // The panel must never end up fully empty
-  if (!visible.preview && !visible.text && !visible.styles) visible.text = true;
-  const sizes = {
-    previewHeight: clampNumber(layout.sizes?.previewHeight, 80, 300, defaultUiLayout.sizes.previewHeight),
-    uiScale: clampNumber(layout.sizes?.uiScale, 70, 150, defaultUiLayout.sizes.uiScale),
-  };
-  return { order, visible, sizes };
 };
 
 const shouldShowTextShapeRLearnTip = (state) => (

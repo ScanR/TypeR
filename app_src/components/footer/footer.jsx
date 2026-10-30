@@ -9,9 +9,27 @@ import HiddenFileInput from "../hiddenFileInput/hiddenFileInput";
 import Notice from "../notice/notice";
 import FeatureTip from "../featureTip";
 import { nextAutoCenterMode } from "../../shortcutCommands";
+import { isFooterModeVisible } from "../../uiLayout";
+
+// Shared with Settings > Appearance, which lists the toggles one by one
+export const FOOTER_MODE_ICONS = {
+  textShapeR: MdOutlineAutoAwesome,
+  multiBubble: MdFilterNone,
+  autoCenter: MdCenterFocusWeak,
+  pasteOnClick: MdAdsClick,
+  autoClean: MdCleaningServices,
+};
+export const footerModeLabel = (id) => ({
+  textShapeR: locale.textShapeRTitle || "TextShapeR",
+  multiBubble: "Multi-bubble",
+  autoCenter: locale.autoCenterModeLabel || "Auto-center",
+  pasteOnClick: locale.footerPasteOnClick || "Click paste",
+  autoClean: locale.footerAutoClean || "Auto clean",
+})[id];
 
 // One mode toggle: the dot shows the state, the label names the mode. In a
-// narrow panel an icon replaces the label and the tooltip names the mode.
+// narrow panel an icon replaces the label. The tooltip always spells out the
+// state, so the hint text is never read as one.
 const ModeToggle = ({ mode, compact }) => {
   const { on, multi, label, status, hint, Icon, onClick } = mode;
   const state = status || (on ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF"));
@@ -22,7 +40,7 @@ const ModeToggle = ({ mode, compact }) => {
       data-tour={"mode-" + mode.id}
       aria-pressed={!!on}
       aria-label={label}
-      title={compact ? label + " (" + state + ") – " + hint : hint}
+      title={label + " (" + state + ") – " + hint}
       onClick={onClick}
     >
       <span className={"footer-mode-dot" + (on ? " is-on" : "") + (multi ? " is-multi" : "")} />
@@ -141,53 +159,55 @@ const AppFooter = React.memo(function AppFooter() {
 
   const uiVisible = context.state.uiLayout?.visible || {};
 
-  const modes = [
+  const allModes = [
     {
       id: "textShapeR",
       on: context.state.inlineTextShapeR,
-      label: locale.textShapeRTitle || "TextShapeR",
+      label: footerModeLabel("textShapeR"),
       hint: locale.inlineTextShapeRModeHint || "Shows or hides TextShapeR suggestions directly in the main panel",
-      Icon: MdOutlineAutoAwesome,
+      Icon: FOOTER_MODE_ICONS.textShapeR,
       onClick: toggleInlineTextShapeR,
     },
     {
       id: "multiBubble",
       on: context.state.multiBubbleMode,
-      label: "Multi-bubble",
+      label: footerModeLabel("multiBubble"),
       hint: locale.multiBubbleModeHint || "Allows capturing multiple selections to insert multiple texts at once",
-      Icon: MdFilterNone,
+      Icon: FOOTER_MODE_ICONS.multiBubble,
       onClick: toggleMultiBubble,
     },
     {
       id: "autoCenter",
       on: autoCenterMode !== "off",
       multi: autoCenterMode === "multi",
-      label: locale.autoCenterModeLabel || "Auto-center",
+      label: footerModeLabel("autoCenter"),
       status: autoCenterMode === "multi" ? (locale.autoCenterModeMulti || "MULTI") : null,
       hint: locale.autoCenterModeHint || "Centers each text in its bubble after the paste. Click to switch: off, center, multi center (double bubbles).",
-      Icon: MdCenterFocusWeak,
+      Icon: FOOTER_MODE_ICONS.autoCenter,
       onClick: cycleAutoCenter,
     },
     {
       id: "pasteOnClick",
       on: context.state.pasteOnClick,
-      label: locale.footerPasteOnClick || "Click paste",
-      hint: locale.footerPasteOnClickTitle || "Paste on click: a Magic Wand click or a rectangle/lasso selection pastes the current line right away.",
-      Icon: MdAdsClick,
+      label: footerModeLabel("pasteOnClick"),
+      hint: locale.footerPasteOnClickTitle || "A Magic Wand click or a rectangle/lasso selection pastes the current line right away.",
+      Icon: FOOTER_MODE_ICONS.pasteOnClick,
       onClick: togglePasteOnClick,
     },
   ];
   // Auto clean belongs to smart paste: hidden while smart paste is off
   if (context.state.smartPaste !== false) {
-    modes.push({
+    allModes.push({
       id: "autoClean",
       on: context.state.smartPasteAutoClean,
-      label: locale.footerAutoClean || "Auto clean",
-      hint: locale.footerAutoCleanTitle || "Auto clean: smart paste paints a white or black fill under the text to cover the original lettering.",
-      Icon: MdCleaningServices,
+      label: footerModeLabel("autoClean"),
+      hint: locale.footerAutoCleanTitle || "Smart paste paints a white or black fill under the text to cover the original lettering.",
+      Icon: FOOTER_MODE_ICONS.autoClean,
       onClick: toggleAutoClean,
     });
   }
+  // Settings > Appearance hides toggles one by one; a hidden mode keeps its state
+  const modes = allModes.filter((mode) => isFooterModeVisible(context.state.uiLayout, mode.id));
 
   return (
     <React.Fragment>
@@ -214,7 +234,7 @@ const AppFooter = React.memo(function AppFooter() {
         )}
       </div>
       {/* Mode toggles: never cut off, they wrap only below the icon width */}
-      {uiVisible.footerModeToggles !== false && (
+      {modes.length > 0 && (
       <React.Fragment>
         <div className={"footer-modes" + (compact ? " is-compact" : "")} ref={modesRef}>
           {modes.map((mode) => <ModeToggle key={mode.id} mode={mode} compact={compact} />)}
