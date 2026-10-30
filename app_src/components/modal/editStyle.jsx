@@ -187,7 +187,8 @@ const EditStyleModal = React.memo(function EditStyleModal() {
     }
     const fixedStroke = {
       ...stroke,
-      enabled: stroke.size > 0 ? true : false,
+      // A stroke switched off with the shortcut stays off until its size or color changes
+      enabled: stroke.size > 0 && stroke.enabled !== false,
     };
     const normalizedSizePresets = normalizeStyleSizePresets({ sizePresets, textProps });
     const data = {

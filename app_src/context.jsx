@@ -9,6 +9,7 @@ import config from "./config";
 import { getNextLineNumberState } from "./lineNumbering";
 import { CUSTOM_IMAGE_THEME_ID, normalizeCustomThemes, normalizeEditorTheme, normalizePageLineColor, setCustomEditorThemes } from "./themePresets";
 import { normalizeBackgroundImage } from "./backgroundImage";
+import { toggleStyleStroke } from "./styleStroke";
 import { applyThemeState } from "./lib/themeManager";
 import { getDefaultShortcuts, migrateShortcutDefaults } from "./shortcutCommands";
 import { getStoredSelectionLineIndex } from "./multiBubbleHistory";
@@ -344,6 +345,7 @@ const initialState = {
   // Live keyboard state (is the keep-size modifier held right now); never
   // persisted, and placed after the storage spread so it always starts false
   keepSizeHeld: false,
+  // Stroke mode: for the pages that need it, so it starts off in each session
   uiLayout: normalizeUiLayout(storage.data?.uiLayout),
   autoCenterMode: normalizeAutoCenterMode(storage.data?.autoCenterMode),
   // Smart paste settings sit after the storage spread so stored values are
@@ -950,6 +952,11 @@ const baseReducer = (state, action) => {
         if (style.id !== action.id) return style;
         return { ...style, prefixesDisabled: !style.prefixesDisabled };
       });
+      break;
+    }
+
+    case "toggleStyleStroke": {
+      newState.styles = state.styles.map((style) => (style.id === action.id ? toggleStyleStroke(style) : style));
       break;
     }
 

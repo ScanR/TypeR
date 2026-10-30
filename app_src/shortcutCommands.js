@@ -15,6 +15,7 @@ import {
 } from "./utils";
 import { buildSelectedLayerPayload, buildStoredSelectionPayload, getScaledStyle } from "./textLayerPayload";
 import { canSmartPasteStoredSelections, smartPasteInSelection, smartPasteStoredSelections } from "./smartPasteClient";
+import { isStyleStrokeOn } from "./styleStroke";
 
 const applyLinesToLayers = (ctx, layers, preferredOrder = [], options = {}) => {
   const selectedIds = layers
@@ -382,6 +383,19 @@ const shortcutCommands = [
       const value = !ctx.state.pasteOnClick;
       ctx.dispatch({ type: "setPasteOnClick", value });
       ctx.dispatch({ type: "showNotice", text: value ? locale.pasteOnClickEnabled : locale.pasteOnClickDisabled, kind: "info" });
+    },
+  },
+  {
+    id: "toggleStyleStroke",
+    label: "shortcut_toggleStyleStroke",
+    defaultKeys: [],
+    repeatDelay: 300,
+    handler: (ctx) => {
+      const style = ctx.state.currentStyle;
+      if (!style) return;
+      const value = !isStyleStrokeOn(style);
+      ctx.dispatch({ type: "toggleStyleStroke", id: style.id });
+      ctx.dispatch({ type: "showNotice", text: value ? locale.styleStrokeEnabled : locale.styleStrokeDisabled, kind: "info" });
     },
   },
   {

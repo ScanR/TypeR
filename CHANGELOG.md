@@ -34,6 +34,7 @@
 
 ### Workspace and typesetting
 
+- Add a shortcut to assign that turns the selected style's stroke on or off, keeping its size and color. A style with an active stroke shows a frame of that color in the list.
 - Fix the + and - size buttons on text layers resized with Ctrl+T: + made the text smaller, and now both change the displayed size by one step and keep the line breaks.
 - Add contextual alternates and the single-line composer to the style editor, and turn on standard and contextual ligatures for new styles.
 - Keep every script tab and the active tab when multi-tab mode is hidden.

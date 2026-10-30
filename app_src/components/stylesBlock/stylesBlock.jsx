@@ -16,6 +16,7 @@ import { collectFontRefs, exportZipWithFonts } from "../../fontFileExport";
 import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPreview";
 import { notePerfRender } from "../../perfDebug";
 import { getStyleTextSize, normalizeStyleSizePresets } from "../../styleSizePresets";
+import { isStyleStrokeOn } from "../../styleStroke";
 
 const FontPreviewContext = React.createContext({ aliases: {}, css: "", revision: 0 });
 const emptyIdSet = new Set();
@@ -837,6 +838,7 @@ const StyleItem = React.memo(function StyleItem(props) {
   return (
     <div
       id={props.style.id}
+      style={isStyleStrokeOn(props.style) ? { boxShadow: "inset 0 0 0 2px " + rgbToHex(props.style.stroke.color) } : undefined}
       className={
         "style-item hostBgdLight" +
         (props.active ? " m-current" : "") +

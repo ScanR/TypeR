@@ -2033,7 +2033,7 @@ function _getLayerStroke(layerIndex) {
  *                          position is forced to "outer".
  */
 function _setLayerStroke(stroke) {
-  if (!stroke || (stroke.size <= 0 && stroke.enabled !== true)) return;
+  if (!stroke || stroke.enabled === false || (stroke.size <= 0 && stroke.enabled !== true)) return;
 
   var d = new ActionDescriptor();
   var r = new ActionReference();

@@ -141,6 +141,7 @@ const HelpModal = React.memo(function HelpModal() {
         nextPage: locale.helpQuickNextPageDescr,
         toggleMultiBubble: locale.helpQuickMultiBubbleDescr,
         cycleAutoCenter: locale.shortcut_cycleAutoCenterDescr,
+        toggleStyleStroke: locale.shortcut_toggleStyleStrokeDescr,
     };
     const shortcutRows = shortcutCommands.map((command) => ({
         id: command.id,

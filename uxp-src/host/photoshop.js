@@ -1631,7 +1631,7 @@ function _getLayerStroke(layerIndex) {
 
 // Apply or update a stroke on the active layer; position is forced to outer
 function _setLayerStroke(stroke) {
-  if (!stroke || (stroke.size <= 0 && stroke.enabled !== true)) return;
+  if (!stroke || stroke.enabled === false || (stroke.size <= 0 && stroke.enabled !== true)) return;
   play({
     _obj: "set",
     _target: [{ _ref: "property", _property: "layerEffects" }, TARGET_LAYER],

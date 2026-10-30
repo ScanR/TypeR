@@ -297,6 +297,16 @@ const port = loadPortModule()._internals;
 
 assert.deepStrictEqual(port._getHostDefaultStyle(), host._getHostDefaultStyle(), "Default style must match host.js");
 assert.deepStrictEqual(port._getHostDefaultStroke(), host._getHostDefaultStroke(), "Default stroke must match host.js");
+// A stroke switched off on its style is skipped by both hosts, and only then
+const strokeOff = { enabled: false, size: 5, opacity: 100, color: { r: 255, g: 255, b: 255 } };
+host._setLayerStroke(strokeOff);
+assert.throws(() => host._setLayerStroke({ ...strokeOff, enabled: true }), /ActionDescriptor/, "host.js must apply an enabled stroke");
+const strokeCalls = [];
+const strokePort = loadPortModule({ action: { batchPlay: (commands) => { strokeCalls.push(commands); return [{}]; } }, app: {}, core: {}, constants: { LayerKind: {} } })._internals;
+strokePort._setLayerStroke(strokeOff);
+assert.strictEqual(strokeCalls.length, 0, "A disabled stroke must not reach Photoshop");
+strokePort._setLayerStroke({ ...strokeOff, enabled: true });
+assert.strictEqual(strokeCalls.length, 1, "An enabled stroke must reach Photoshop");
 ["a\nb\r\nc", "", null, "x\ry"].forEach((text) => assert.strictEqual(port._normalizeTextKey(text), host._normalizeTextKey(text)));
 [undefined, null, {}, { textProps: { layerText: { a: 1 } } }, { stroke: null }].forEach((style) => {
   assert.deepStrictEqual(port._ensureStyle(style), host._ensureStyle(style));

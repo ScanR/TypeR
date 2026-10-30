@@ -167,6 +167,9 @@ const mockRequire = (request) => {
       getScaledStyle: (style) => style,
     };
   }
+  if (request === "./styleStroke") {
+    return { isStyleStrokeOn: (style) => !!(style && style.stroke && style.stroke.enabled) };
+  }
   if (request === "./smartPasteClient") {
     return {
       smartPasteInSelection: (...args) => utilityCalls.push(["smartPaste", ...args]),
@@ -207,6 +210,20 @@ assert.deepStrictEqual(
   "Every earlier insertText default must be migrated"
 );
 assert.deepStrictEqual(migratedShortcuts.shortcuts.nextPage, ["ALT", "P"], "Custom shortcuts must be preserved");
+
+// The stroke shortcut acts on the selected style, and tells which way it went
+const strokeDispatches = [];
+const strokeContext = (stroke) => ({
+  state: { currentStyle: { id: "style-1", stroke } },
+  dispatch: (action) => strokeDispatches.push(action),
+});
+getCommand("toggleStyleStroke").handler(strokeContext({ enabled: true, size: 3 }));
+assert.deepStrictEqual(strokeDispatches[0], { type: "toggleStyleStroke", id: "style-1" });
+assert.strictEqual(strokeDispatches[1].type, "showNotice");
+strokeDispatches.length = 0;
+getCommand("toggleStyleStroke").handler({ state: { currentStyle: null }, dispatch: (action) => strokeDispatches.push(action) });
+assert.strictEqual(strokeDispatches.length, 0, "Without a style the shortcut does nothing");
+assert.deepStrictEqual(commandModule.exports.getDefaultShortcuts().toggleStyleStroke, [], "The stroke shortcut has no default key");
 
 const dispatches = [];
 const baseContext = {
