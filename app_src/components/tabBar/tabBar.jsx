@@ -74,7 +74,10 @@ const TabBar = React.memo(function TabBar() {
     setClosingTab(null);
   };
 
-  const addTab = () => context.dispatch({ type: "addTab" });
+  const addTab = () => {
+    context.dispatch({ type: "addTab" });
+    context.dispatch({ type: "showFeatureTip", id: "renameTab" });
+  };
 
   if (context.state.multiTabEnabled === false) return null;
 

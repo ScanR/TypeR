@@ -7,6 +7,7 @@ import { locale } from "../../utils";
 import { useContext } from "../../context";
 import HiddenFileInput from "../hiddenFileInput/hiddenFileInput";
 import Notice from "../notice/notice";
+import FeatureTip from "../featureTip";
 import { nextAutoCenterMode } from "../../shortcutCommands";
 
 // One mode toggle: the dot shows the state, the label names the mode. In a
@@ -223,6 +224,7 @@ const AppFooter = React.memo(function AppFooter() {
       )}
       <HiddenFileInput ref={fileInputRef} />
       <Notice />
+      <FeatureTip />
     </React.Fragment>
   );
 });

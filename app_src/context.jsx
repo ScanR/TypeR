@@ -28,6 +28,7 @@ import {
   normalizeStyleSizeTipCount,
   recordStyleSizeChange,
 } from "./styleSizeTip";
+import { normalizeSeenFeatureTips, showFeatureTip } from "./featureTips";
 import { normalizeRefontRules } from "./oneClick/refont";
 const storage = readStorage();
 // A successful application is the clearest signal that someone is relying on
@@ -98,7 +99,7 @@ const storeFields = [
   "smartPasteHyphenation",
   "refontRules",
   "showTips",
-  "exportFolderFontTipDismissed",
+  "seenFeatureTips",
   "showQuickStyleSize",
   "inlineTextShapeR",
   "textShapeRPerformanceTipShown",
@@ -310,8 +311,6 @@ const initialState = {
   currentFolderTagPriority: storage.data?.currentFolderTagPriority !== false,
   resizeTextBoxOnCenter: false,
   showTips: storage.data?.showTips !== false,
-  exportFolderFontTipDismissed: storage.data?.exportFolderFontTipDismissed === true,
-  exportFolderFontTipVisible: false,
   showQuickStyleSize: storage.data?.showQuickStyleSize !== false,
   inlineTextShapeR: storage.data?.inlineTextShapeR !== false,
   textShapeRPerformanceTipShown: storage.data?.textShapeRPerformanceTipShown === true,
@@ -345,6 +344,15 @@ const initialState = {
   styleSizeTipLastChangeAt: Math.max(0, Number(storage.data?.styleSizeTipLastChangeAt) || 0),
   styleSizeTipShown: storage.data?.styleSizeTipShown === true,
   styleSizeTipVisible: false,
+  // The export folder tip predates the shared tip system: keep a dismissal
+  // made with the old "Don't show again" button
+  seenFeatureTips: normalizeSeenFeatureTips({
+    ...(storage.data?.exportFolderFontTipDismissed === true ? { exportFolderFonts: true } : null),
+    ...storage.data?.seenFeatureTips,
+  }),
+  activeFeatureTip: null,
+  // Per-session action counts behind tips that wait for a repeated action
+  featureTipCounts: {},
   shortcut: shortcutMigration.shortcuts,
   // Live keyboard state (is the keep-size modifier held right now); never
   // persisted, and placed after the storage spread so it always starts false
@@ -510,6 +518,14 @@ const baseReducer = (state, action) => {
 
     case "setText": {
       newState.text = normalizeLineBreaks(action.text ?? "");
+      // A script with page markers but no linked pages: point to the page sync
+      if (
+        !state.seenFeatureTips?.pageSync &&
+        !newState.images.length &&
+        String(action.text || "").split(/\r?\n/).some((line) => parsePageMarker(line))
+      ) {
+        Object.assign(newState, showFeatureTip(newState, "pageSync"));
+      }
       break;
     }
 
@@ -1170,6 +1186,7 @@ const baseReducer = (state, action) => {
         newState.textShapeRPerformanceTipVisible = false;
         newState.textShapeRLearnTipVisible = false;
         newState.styleSizeTipVisible = false;
+        newState.activeFeatureTip = null;
       } else if (
         newState.inlineTextShapeR &&
         newState.uiLayout?.visible?.preview !== false &&
@@ -1190,14 +1207,19 @@ const baseReducer = (state, action) => {
       break;
     }
 
-    case "showExportFolderFontTip": {
-      newState.exportFolderFontTipVisible = true;
+    case "showFeatureTip": {
+      Object.assign(newState, showFeatureTip(newState, action.id));
       break;
     }
 
-    case "hideExportFolderFontTip": {
-      newState.exportFolderFontTipVisible = false;
-      if (action.dismiss) newState.exportFolderFontTipDismissed = true;
+    case "hideFeatureTip": {
+      if (!action.id || newState.activeFeatureTip === action.id) newState.activeFeatureTip = null;
+      break;
+    }
+
+    case "resetFeatureTips": {
+      newState.seenFeatureTips = {};
+      newState.activeFeatureTip = null;
       break;
     }
 

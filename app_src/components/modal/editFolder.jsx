@@ -105,6 +105,7 @@ const EditFolderModal = React.memo(function EditFolderModal() {
             if (!ok) return;
             context.dispatch({type: 'deleteFolder', id: currentData.id, permanent});
             closeModal();
+            if (!permanent) context.dispatch({type: 'showFeatureTip', id: 'deleteFolderWithStyles'});
         });
     };
 

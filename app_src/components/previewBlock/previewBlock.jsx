@@ -962,9 +962,14 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   }, [context.state.multiBubbleMode, context.state.storedSelections, clearAllTipShown, showClearAllTipFunc]);
 
   const createLayer = React.useCallback((event) => {
+    const keepSize = isShortcutActiveForEvent(event, context.state.shortcut.keepTextSize);
     pasteInSelection(context, batchOrderRef.current, {
-      preserveActiveTextSize: isShortcutActiveForEvent(event, context.state.shortcut.keepTextSize),
+      preserveActiveTextSize: keepSize,
     });
+    if (!keepSize && (context.state.shortcut.keepTextSize || []).length) {
+      context.dispatch({ type: "showFeatureTip", id: "keepSizePaste" });
+    }
+    context.dispatch({ type: "showFeatureTip", id: "pasteMultipleLayers" });
   }, [context]);
 
   const insertStyledText = (event) => {
@@ -988,10 +993,11 @@ const PreviewBlock = React.memo(function PreviewBlock() {
   }, [line.rawIndex]);
 
   const handleAlignLayer = React.useCallback(() => {
-    alignTextLayerToSelection(context.state.resizeTextBoxOnCenter, context.state.internalPadding || 0, () => {
+    alignTextLayerToSelection(context.state.resizeTextBoxOnCenter, context.state.internalPadding || 0, (ok) => {
       if (context.state.multiBubbleMode && (context.state.storedSelections || []).length > 0) {
         resetStoredSelections(true);
       }
+      if (ok) context.dispatch({ type: "showFeatureTip", id: "alignWithoutSelection" });
     }, context.state.direction);
   }, [context.state, resetStoredSelections]);
 
@@ -1032,6 +1038,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
 
   const applyTextShapeRVariant = React.useCallback((variant, advance = false) => {
     if (!variant || applyingTextShapeRId) return;
+    if (!advance) context.dispatch({ type: "showFeatureTip", id: "textShapeRShiftApply" });
     // In batch mode, only apply once the loaded layer really is the queued
     // one — a fast click during the layer switch must not hit the wrong layer
     if (batchRunRef.current) {

@@ -49,21 +49,6 @@
     line-height: 1.35;
     opacity: 0.85;
   }
-  .export-font-tip-dismiss {
-    flex: 0 0 auto;
-    background: none;
-    border: none;
-    padding: 2px 4px;
-    font-size: 11px;
-    color: inherit;
-    opacity: 0.7;
-    text-decoration: underline;
-    cursor: pointer;
-    white-space: nowrap;
-    &:hover {
-      opacity: 1;
-    }
-  }
   .export-font-tip-close {
     flex: 0 0 auto;
     display: flex;

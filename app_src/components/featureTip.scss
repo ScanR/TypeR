@@ -1,0 +1,96 @@
+// Same spot and look as the notice toast (notice.scss): anchored just above
+// the footer, whose block is the containing block. The outer strip ignores
+// the mouse so only the toast is clickable.
+.feature-tip {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(100% + 6px);
+  z-index: 12;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.feature-tip__toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 6px 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: 3px solid #288edf;
+  border-radius: 5px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: auto;
+  animation: feature-tip-in 0.16s ease-out;
+
+  .light-theme & {
+    border-color: rgba(0, 0, 0, 0.14);
+    border-left-color: #1976d2;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  }
+
+  body[data-editor-theme]:not([data-editor-theme="system"]) & {
+    border-color: var(--editor-border);
+    border-left-color: var(--editor-accent);
+    color: var(--editor-text);
+  }
+}
+
+.feature-tip__icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #64b5f6;
+
+  .light-theme & {
+    color: #1976d2;
+  }
+
+  body[data-editor-theme]:not([data-editor-theme="system"]) & {
+    color: var(--editor-accent);
+  }
+}
+
+.feature-tip__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+
+  strong {
+    font-weight: 600;
+  }
+}
+
+.feature-tip__close {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 1px;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+
+  &:hover {
+    opacity: 1;
+  }
+}
+
+@keyframes feature-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

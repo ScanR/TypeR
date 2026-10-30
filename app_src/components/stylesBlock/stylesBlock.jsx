@@ -27,8 +27,6 @@ const StylesBlock = React.memo(function StylesBlock() {
     styles: state.styles,
     folders: state.folders,
     currentStyle: state.currentStyle,
-    exportFolderFontTipVisible: state.exportFolderFontTipVisible,
-    exportFolderFontTipDismissed: state.exportFolderFontTipDismissed,
     showTips: state.showTips,
     openFolders: state.openFolders,
     currentStyleId: state.currentStyleId,
@@ -159,36 +157,9 @@ const StylesBlock = React.memo(function StylesBlock() {
   );
   const unsortedFolder = React.useMemo(() => ({ name: locale.noFolderTitle }), []);
   const hasContent = context.state.folders.length || context.state.styles.length;
-  const showExportFontTip =
-    context.state.exportFolderFontTipVisible &&
-    !context.state.exportFolderFontTipDismissed &&
-    context.state.showTips !== false;
   return (
     <FontPreviewContext.Provider value={fontPreviewRegistry}>
       <style type="text/css">{fontPreviewRegistry.css}</style>
-      {showExportFontTip && (
-        <div className="export-font-tip hostBrdBotContrast">
-          <FiInfo size={14} className="export-font-tip-icon" />
-          <span className="export-font-tip-text">
-            {locale.exportFolderFontTip || "Tip: hold Ctrl while clicking Export folder to also bundle the fonts' .ttf/.otf files in a .zip."}
-          </span>
-          <button
-            type="button"
-            className="export-font-tip-dismiss"
-            onClick={() => context.dispatch({ type: "hideExportFolderFontTip", dismiss: true })}
-          >
-            {locale.dontShowAgain || "Don't show again"}
-          </button>
-          <button
-            type="button"
-            className="export-font-tip-close"
-            title={locale.close}
-            onClick={() => context.dispatch({ type: "hideExportFolderFontTip" })}
-          >
-            <FiX size={14} />
-          </button>
-        </div>
-      )}
       {context.state.showTips !== false && context.state.styleSizeTipVisible && (
         <div className="export-font-tip style-size-tip hostBrdBotContrast" role="status">
           <FiInfo size={14} className="export-font-tip-icon" />
@@ -546,7 +517,7 @@ const FolderItem = React.memo(function FolderItem(props) {
     const written = await window.cep.fs.writeFile(pathSelect.data, JSON.stringify(exportedFolder));
     if (!written || written.err) { nativeAlert(locale.saveError, locale.errorTitle, true); return; }
     // Plain export done: surface the Ctrl+Click zip shortcut once in a while
-    props.dispatch({ type: "showExportFolderFontTip" });
+    props.dispatch({ type: "showFeatureTip", id: "exportFolderFonts" });
   }, [props.data, props.stylesByFolder, props.dispatch]);
 
   const duplicateFolder = React.useCallback((e) => {
@@ -715,6 +686,7 @@ const StyleItem = React.memo(function StyleItem(props) {
   // StyleItem now handles its own select/open dispatch instead of receiving closures as props
   const selectStyle = React.useCallback(() => {
     dispatch({ type: "setCurrentStyleId", id: props.style.id });
+    dispatch({ type: "showFeatureTip", id: "numpadStyles" });
   }, [dispatch, props.style.id]);
 
   const openStyle = React.useCallback((e) => {
@@ -739,8 +711,9 @@ const StyleItem = React.memo(function StyleItem(props) {
       });
     } else {
       setActiveLayerText("", props.style, direction);
+      dispatch({ type: "showFeatureTip", id: "applyStyleKeepSize" });
     }
-  }, [props.direction, props.style]);
+  }, [dispatch, props.direction, props.style]);
 
   const togglePrefixes = React.useCallback((e) => {
     e.stopPropagation();

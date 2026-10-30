@@ -235,6 +235,12 @@ const EditStyleModal = React.memo(function EditStyleModal() {
       return;
     }
     closeModal();
+    // Tips wait for the modal to close, so they come after it
+    if (String(prefixes || "").trim()) {
+      context.dispatch({ type: "showFeatureTip", id: "styleContinuation" });
+    } else if (currentData.create) {
+      context.dispatch({ type: "showFeatureTip", id: "styleContextMenu" });
+    }
   };
 
   const deleteStyle = (e) => {
