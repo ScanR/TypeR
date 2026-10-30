@@ -6,7 +6,8 @@ const files = [];
 function walk(relative) {
   const absolute = path.join(root, relative);
   if (fs.lstatSync(absolute).isSymbolicLink()) throw new Error('Symlinks are not allowed: ' + relative);
-  if (fs.statSync(absolute).isDirectory()) fs.readdirSync(absolute).sort().forEach(name => walk(relative + '/' + name));
+  // Finder writes .DS_Store files in the folders it shows: never part of a release
+  if (fs.statSync(absolute).isDirectory()) fs.readdirSync(absolute).filter(name => name !== '.DS_Store').sort().forEach(name => walk(relative + '/' + name));
   else if (relative !== 'app/package.sha256') files.push(relative);
 }
 ['app', 'CSXS', 'icons', 'locale'].forEach(walk);

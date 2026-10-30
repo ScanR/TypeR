@@ -309,7 +309,8 @@ while IFS= read -r filename; do
   relative="${filename#"$SRCDIR/"}"
   [ "$relative" = app/package.sha256 ] && continue
   awk -v name="$relative" '$2 == name { found=1 } END { exit !found }' "$SRCDIR/app/package.sha256" || { echo "Unlisted file: $relative" >&2; exit 1; }
-done < <(find "$SRCDIR/app" "$SRCDIR/CSXS" "$SRCDIR/icons" "$SRCDIR/locale" -type f -print)
+# Finder writes .DS_Store files in the folders it shows.
+done < <(find "$SRCDIR/app" "$SRCDIR/CSXS" "$SRCDIR/icons" "$SRCDIR/locale" -type f ! -name .DS_Store -print)
 if [ "${TYPER_INSTALL_VALIDATE_ONLY:-}" = 1 ]; then exit 0; fi
 
 DESTDIR="$CEP_DESTDIR"

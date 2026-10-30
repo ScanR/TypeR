@@ -7,7 +7,8 @@ const root = path.resolve(__dirname, '..');
 const files = {};
 function walk(relative) {
   const absolute = path.join(root, relative);
-  if (fs.statSync(absolute).isDirectory()) fs.readdirSync(absolute).forEach(name => walk(relative + '/' + name));
+  // Finder writes .DS_Store files in the folders it shows: never part of a release
+  if (fs.statSync(absolute).isDirectory()) fs.readdirSync(absolute).filter(name => name !== '.DS_Store').forEach(name => walk(relative + '/' + name));
   else files[relative] = fs.readFileSync(absolute);
 }
 ['app', 'CSXS', 'icons', 'locale'].forEach(walk);

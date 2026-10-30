@@ -48,6 +48,8 @@ try {
   });
   const installer = process.platform === 'win32' ? ['powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve(__dirname, '../install.ps1'), '-Silent']] : ['bash', [path.resolve(__dirname, '../install_mac.sh'), '--silent']];
   const runInstaller = () => spawnSync(installer[0], installer[1], { encoding: 'utf8', env: { ...process.env, TYPER_INSTALL_SOURCE: source, TYPER_INSTALL_TARGET: target, TYPER_INSTALL_SKIP_DEBUG: '1' } });
+  // Finder writes this file in a folder as soon as it is opened
+  if (process.platform !== 'win32') fs.writeFileSync(path.join(source, 'locale/.DS_Store'), 'Finder');
   const good = runInstaller(); assert.strictEqual(good.status, 0, good.stderr + good.stdout);
   assert.strictEqual(fs.readFileSync(path.join(target, 'storage'), 'utf8'), 'user settings');
   assert(!fs.existsSync(path.join(target, 'app/old-hashed-chunk.js')), 'offline installer replaces all owned folders');

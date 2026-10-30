@@ -7,7 +7,8 @@ const files = {};
 function walk(relative) {
   const absolute = path.join(root, relative);
   if (fs.lstatSync(absolute).isSymbolicLink()) throw new Error('Symlink in release: ' + relative);
-  if (fs.statSync(absolute).isDirectory()) fs.readdirSync(absolute).sort().forEach(name => walk(relative + '/' + name));
+  // Finder writes .DS_Store files in the folders it shows: never part of a release
+  if (fs.statSync(absolute).isDirectory()) fs.readdirSync(absolute).filter(name => name !== '.DS_Store').sort().forEach(name => walk(relative + '/' + name));
   else files[relative] = fs.readFileSync(absolute);
 }
 ['app', 'CSXS', 'icons', 'locale', 'install.ps1', 'install_mac.sh', 'fix_mac_rosetta.sh', 'install_win.cmd', 'install_uxp_mac.sh', 'install_uxp_win.cmd', 'update_typer_win.cmd', 'update_typer_mac.sh', 'README.md', 'LICENSE.md', 'CHANGELOG.md'].forEach(walk);
