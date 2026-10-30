@@ -1,6 +1,6 @@
 const assert = require('assert');
 const load = require('./helpers/loadAppModule')();
-const { validateImportData, serializeStyle, repairFolderHierarchy, selectExportStyles } = load('app_src/librarySerialization.js');
+const { validateImportData, serializeStyle, repairFolderHierarchy, selectExportStyles, buildFolderExport } = load('app_src/librarySerialization.js');
 const style = { id: 's', name: 'Dialogue', folder: null, textProps: {}, prefixes: ['REG:'], prefixesDisabled: true, sizePresets: [12, 16, 20], autoSizeByPageWidth: true, sizePresetDefaultIndex: 1, sizePresetMinWidths: [100, null, 2000] };
 assert.deepStrictEqual(JSON.parse(JSON.stringify(serializeStyle(style))), style);
 assert.deepStrictEqual(selectExportStyles([style], [null]), [style]);
@@ -20,7 +20,29 @@ const scanFolder = scanned.folders.find(folder => folder.name === 'Scan');
 assert(scanFolder && scanFolder.id);
 assert.deepStrictEqual(scanned.styles.slice(-2).map(s => [s.name, s.folder, !!s.id]), [['A', scanFolder.id, true], ['B', scanFolder.id, true]]);
 assert.strictEqual(reducer(initial, { type: 'importStyleFolder', folder: { name: 'Scan' }, styles: [{ name: 'A', prefixes: 'bad' }] }), initial);
-const { collectDescendantIds } = load('app_src/folderUtils.js');
+const { collectDescendantIds, buildFolderTree } = load('app_src/folderUtils.js');
+// A folder export carries its whole subtree and nothing around it
+const seriesFolders = [{ id: 'series', name: 'Series', order: 3 }, { id: 'vol', name: 'Vol', parentId: 'series', order: 1 }, { id: 'sfx', name: 'SFX', parentId: 'vol', order: 0 }, { id: 'other', name: 'Other', order: 0 }];
+const seriesStyles = ['series', 'vol', 'sfx', 'other'].map((folder) => ({ id: 's-' + folder, name: folder, folder, textProps: {}, prefixes: [] }));
+const stylesByFolder = new Map(seriesStyles.map((item) => [item.folder, [item]]));
+const seriesNode = buildFolderTree(seriesFolders).find((folder) => folder.id === 'series');
+const seriesExport = buildFolderExport(seriesNode, stylesByFolder);
+const seriesFile = validateImportData(JSON.parse(JSON.stringify(seriesExport.data)));
+assert.strictEqual(seriesFile.exportedStyles, undefined);
+assert.deepStrictEqual(seriesFile.folders, [{ id: 'series', name: 'Series', parentId: null }, { id: 'vol', name: 'Vol', parentId: 'series', order: 1 }, { id: 'sfx', name: 'SFX', parentId: 'vol', order: 0 }]);
+assert.deepStrictEqual(seriesFile.styles.map((item) => [item.id, item.folder]), [['s-series', 'series'], ['s-vol', 'vol'], ['s-sfx', 'sfx']]);
+assert.deepStrictEqual(seriesExport.styles.map((item) => item.id), ['s-series', 's-vol', 's-sfx']);
+const reimported = reducer(reducer(initial, { type: 'importStyleLibrary', folders: [{ id: 'first', name: 'First' }, { id: 'second', name: 'Second', order: 1 }], styles: [] }), { type: 'importStyleLibrary', folders: seriesFile.folders, styles: seriesFile.styles });
+assert.deepStrictEqual(buildFolderTree(reimported.folders).map((folder) => folder.id), ['first', 'second', 'series']);
+assert.strictEqual(reimported.folders.find((folder) => folder.id === 'sfx').parentId, 'vol');
+assert.strictEqual(reimported.folders.find((folder) => folder.id === 'series').parentId, null);
+assert.strictEqual(reimported.styles.find((item) => item.id === 's-sfx').folder, 'sfx');
+// A folder without subfolders keeps the flat format, even when it is nested
+const leafExport = buildFolderExport(seriesNode.children[0].children[0], stylesByFolder);
+assert.deepStrictEqual(Object.keys(leafExport.data), ['name', 'exportedStyles']);
+assert.deepStrictEqual(leafExport.data.exportedStyles.map((item) => item.id), ['s-sfx']);
+assert.strictEqual(leafExport.data.exportedStyles[0].textType, 'inherit');
+assert.deepStrictEqual(leafExport.styles.map((item) => item.id), ['s-sfx']);
 assert.deepStrictEqual(collectDescendantIds(cycle, 'a'), ['b']);
 const tree = [{ id: 'r' }, { id: 'c1', parentId: 'r' }, { id: 'c2', parentId: 'r' }, { id: 'g1', parentId: 'c1' }, { id: 'x', parentId: 'other' }];
 assert.deepStrictEqual(collectDescendantIds(tree, 'r'), ['c1', 'c2', 'g1']);

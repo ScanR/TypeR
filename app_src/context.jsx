@@ -802,7 +802,11 @@ const baseReducer = (state, action) => {
       const importedFolders = action.folders || [];
       const importedStyles = action.styles || [];
       const folderIds = new Set(importedFolders.map((folder) => folder.id));
-      newState.folders = normalizeFolders(state.folders.concat(importedFolders));
+      // Imported top-level folders go after the existing ones
+      const siblingCount = state.folders.filter((folder) => !(folder.parentId || null)).length;
+      newState.folders = normalizeFolders(state.folders.concat(importedFolders.map((folder) => (
+        folder.parentId ? folder : { ...folder, order: siblingCount + (folder.order || 0) }
+      ))));
       newState.styles = state.styles.concat(
         importedStyles.map((style) => ({
           ...style,

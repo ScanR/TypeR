@@ -1,4 +1,4 @@
-import { serializeStyle } from "../../librarySerialization";
+import { buildFolderExport } from "../../librarySerialization";
 import "./stylesBlock.scss";
 
 import React from "react";
@@ -521,24 +521,13 @@ const FolderItem = React.memo(function FolderItem(props) {
     const ext = withFonts ? "zip" : "json";
     const pathSelect = await window.cep.fs.showSaveDialogEx(false, false, [ext], props.data.name + "." + ext);
     if (!pathSelect?.data) return false;
-    const exportedFolder = {};
-    exportedFolder.name = props.data.name;
-    const exportedStyles = styles.map((style) => ({
-      ...serializeStyle(style),
-      name: style.name,
-      textType: style.textType || "inherit",
-      textProps: style.textProps,
-      prefixes: style.prefixes || [],
-      prefixColor: style.prefixColor,
-      stroke: style.stroke,
-    }));
-    exportedFolder.exportedStyles = exportedStyles;
+    const { data: exportedFolder, styles: exportedStyles } = buildFolderExport(props.data, props.stylesByFolder);
     if (withFonts) {
       const result = await exportZipWithFonts({
         zipPath: pathSelect.data,
         jsonFileName: props.data.name + ".json",
         jsonString: JSON.stringify(exportedFolder),
-        fontRefs: collectFontRefs(styles),
+        fontRefs: collectFontRefs(exportedStyles),
       });
       if (!result.ok) {
         nativeAlert(locale.exportFontFilesError || "Could not create the .zip archive.", locale.errorTitle, true);
@@ -558,7 +547,7 @@ const FolderItem = React.memo(function FolderItem(props) {
     if (!written || written.err) { nativeAlert(locale.saveError, locale.errorTitle, true); return; }
     // Plain export done: surface the Ctrl+Click zip shortcut once in a while
     props.dispatch({ type: "showExportFolderFontTip" });
-  }, [props.data.name, styles, props.dispatch]);
+  }, [props.data, props.stylesByFolder, props.dispatch]);
 
   const duplicateFolder = React.useCallback((e) => {
     e.stopPropagation();

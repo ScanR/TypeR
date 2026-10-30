@@ -100,6 +100,40 @@ export const serializeStyle = (style) => {
 };
 export const selectExportStyles = (styles, selectedFolderIds) => styles.filter(style => selectedFolderIds.includes(style.folder || null));
 
+// Build the file of a single folder export. `folder` is a buildFolderTree node.
+// Without subfolders the file keeps the flat `exportedStyles` format. With
+// subfolders it uses the library format, the one importers read a hierarchy from.
+export const buildFolderExport = (folder, stylesByFolder) => {
+  const directStyles = stylesByFolder.get(folder.id) || [];
+  if (!(folder.children || []).length) {
+    return {
+      data: {
+        name: folder.name,
+        exportedStyles: directStyles.map((style) => ({
+          ...serializeStyle(style),
+          name: style.name,
+          textType: style.textType || 'inherit',
+          textProps: style.textProps,
+          prefixes: style.prefixes || [],
+          prefixColor: style.prefixColor,
+          stroke: style.stroke,
+        })),
+      },
+      styles: directStyles,
+    };
+  }
+  const folders = [];
+  const styles = [];
+  const collect = (node, parentId) => {
+    // The exported folder drops its order: it belongs to the source library
+    folders.push({ id: node.id, name: node.name, parentId, order: parentId ? node.order : undefined });
+    styles.push(...(stylesByFolder.get(node.id) || []));
+    node.children.forEach((child) => collect(child, node.id));
+  };
+  collect(folder, null);
+  return { data: { name: folder.name, folders, styles: styles.map(serializeStyle) }, styles };
+};
+
 // Ask before replacing missing or locally newer styles. The native dialog is
 // asynchronous in UXP, so the UI obtains the decision before dispatching.
 export const hasStyleImportConflicts = (current, incoming) => current.some(style => {
