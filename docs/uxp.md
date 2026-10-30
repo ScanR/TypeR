@@ -116,18 +116,23 @@ Versions up to 2.5.0 update themselves to the Legacy package only: their updater
 `.zip` asset of a release whose name contains "typer" (`TypeR.zip`). So the switch is offered by the
 Legacy panel once it is updated (`app_src/uxpMigration.js`, `components/modal/uxpMigration.jsx`).
 
-- The offer opens a few seconds after startup, once no other window is open, when Photoshop is 2025
-  (26.0) or later, Creative Cloud's plugin installer is present and TypeR UXP is not installed. It is
-  shown only to existing users with update checks on. "Later" asks again a week later, "Don't ask
-  again" stops it, and Settings > General > Updates keeps a button.
+- The offer opens first at startup, before What's new, when Photoshop is 2025 (26.0) or later and
+  TypeR UXP is not installed. It is shown only to existing users with update checks on. "Later" asks
+  again a week later, "Don't ask again" stops it, and Settings > General > Updates keeps a button.
 - The panel downloads `TypeR-UXP.ccx` from the latest release, checks that it is a TypeR plugin, and
   hands it to Creative Cloud's plugin installer through the panel's Node.js (`child_process.execFile`,
   no ExtendScript). Photoshop loads a first installation at once. Without that installer, the panel
   installs the package by hand (see below) and asks to restart Photoshop.
 - TypeR UXP imports the Legacy styles, profiles and settings on its first start. The Legacy version
   stays installed; the panel offers to close it.
-- Without Creative Cloud's plugin installer (Photoshop installed without the Creative Cloud app),
-  nothing is offered: TypeR UXP could not update itself either.
+- While TypeR UXP is installed, the Legacy panel is called "TypeR (old)" in Photoshop: `<Menu>` in its
+  installed `CSXS/manifest.xml`, which Photoshop reads at its start (`app_src/legacyPanelName.js`). The
+  installers apply it, the UXP plugin at each start (whichever way it was installed), and the Legacy
+  panel at each start and after installing the plugin, which also restores "TypeR" once the plugin is
+  removed. The packaged manifest keeps "TypeR", so a Legacy update resets it until the next check.
+- Each start of the Legacy panel then says first, before the walkthrough and What's new, that the new
+  version opens from Plug-ins > TypeR, until "Don't show again". Those windows follow when it closes.
+  Photoshop versions older than 26.0 cannot run the plugin and get no such notice.
 
 Every release must therefore publish `TypeR.zip` and `TypeR-UXP.ccx`, and no other `.zip` whose name
 contains "typer".

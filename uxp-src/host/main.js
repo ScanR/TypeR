@@ -458,6 +458,7 @@ async function startOnce() {
   keysHelper.start((line) => post({ type: "watcherLine", line })).catch((error) => console.error("TypeR keys", error));
   services.removeStalePluginFolders().catch((error) => console.error("TypeR: plugin cleanup", error));
   services.removeUpdateFolder().catch((error) => console.error("TypeR: update cleanup", error));
+  services.renameLegacyPanel().catch((error) => console.error("TypeR: Legacy panel name", error));
 }
 
 const devResultListeners = [];

@@ -4,7 +4,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import { locale, readStorage, writeToStorage, scrollToLine, scrollToStyle, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, nativeAlert } from "./utils";
 import { shouldRunUpdateCheck } from "./updateLogic";
-import { readUxpMigrationState, shouldOfferUxpMigration } from "./uxpMigration";
+import { getNode, readUxpMigrationState, syncLegacyPanelName } from "./uxpMigration";
 import config from "./config";
 import { getNextLineNumberState } from "./lineNumbering";
 import { CUSTOM_IMAGE_THEME_ID, normalizeCustomThemes, normalizeEditorTheme, normalizePageLineColor, setCustomEditorThemes } from "./themePresets";
@@ -2030,34 +2030,15 @@ const ContextProvider = React.memo(function ContextProvider(props) {
       dispatch({ type: "setModal", modal: "update", data });
     }).catch(error => console.warn("Automatic update check failed:", error));
   }, [state.checkUpdates, state.autoUpdate]);
-  // Legacy panel: offer TypeR UXP once Photoshop can run it, a few seconds
-  // after startup and only while no other window is open (uxpMigration.js)
+  // Legacy panel: called "TypeR (old)" while TypeR UXP is installed (uxpMigration.js)
   React.useEffect(() => {
-    let migration;
     try {
-      migration = readUxpMigrationState(getUpdateTestConfig());
-    } catch (error) {
-      return undefined;
-    }
-    const current = stateRef.current;
-    if (!shouldOfferUxpMigration({
-      eligibility: migration.eligibility,
-      record: readStorage("uxpMigration"),
-      now: Date.now(),
-      notFirstTime: current.notFirstTime,
-      checkUpdates: current.checkUpdates,
-      force: migration.forced,
-    })) return undefined;
-    let timer = null;
-    const offer = () => {
-      if (stateRef.current.modalType) {
-        timer = setTimeout(offer, 5000);
-        return;
+      if (readUxpMigrationState(getUpdateTestConfig()).eligibility !== "uxp") {
+        syncLegacyPanelName(getNode(), new window.CSInterface().getSystemPath(window.SystemPath.EXTENSION));
       }
-      dispatch({ type: "setModal", modal: "uxpMigration", data: { forced: migration.forced } });
-    };
-    timer = setTimeout(offer, 4000);
-    return () => clearTimeout(timer);
+    } catch (error) {
+      console.warn("TypeR: Legacy panel name", error);
+    }
   }, []);
   return <Context.Provider value={contextValue}>{props.children}</Context.Provider>;
 });

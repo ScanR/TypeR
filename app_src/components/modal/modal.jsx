@@ -1,6 +1,7 @@
 import React from 'react';
 import {useContext} from '../../context';
-import {locale} from '../../utils';
+import {getUpdateTestConfig, locale, readStorage} from '../../utils';
+import {readUxpMigrationState, startupUxpGuide} from '../../uxpMigration';
 import config from '../../config';
 import {getWhatsNewDock, restoreTourTuning, whatsNewSession} from '../../whatsNewSession';
 import {getGuideStyle} from '../../whatsNewGuide';
@@ -98,6 +99,7 @@ const Modal = React.memo(function Modal() {
     const context = useContext((state) => ({
         modalType: state.modalType,
         notFirstTime: state.notFirstTime,
+        checkUpdates: state.checkUpdates,
         whatsNewSeen: state.whatsNewSeen,
         modalData: state.modalData,
         uiLayout: state.uiLayout,
@@ -120,13 +122,45 @@ const Modal = React.memo(function Modal() {
     else if (modalType === 'update') modalContent = <UpdateModal />;
     else if (modalType === 'uxpMigration') modalContent = <UxpMigrationModal />;
 
-    React.useEffect(() => {
-        // A TextShapeR lesson left by a tour Photoshop closed in the middle of
-        if (!whatsNewSession.active) restoreTourTuning(context.dispatch);
+    const openStartWindow = () => {
         if (!context.state.notFirstTime) {
             context.dispatch({type: 'showFirstRunWalkthrough'});
         } else if (context.state.whatsNewSeen !== config.whatsNewVersion) {
             context.dispatch({type: 'showWhatsNew'});
+        }
+    };
+
+    // Legacy panel: the guide to the new TypeR comes first, and hands over to
+    // the walkthrough or What's new when it closes. Runs before the effect
+    // below opens it, which would otherwise count as closed.
+    const uxpGuideOpen = React.useRef(false);
+    React.useEffect(() => {
+        if (!uxpGuideOpen.current || modalType === 'uxpMigration') return;
+        uxpGuideOpen.current = false;
+        if (!modalType) openStartWindow();
+    }, [modalType]);
+
+    React.useEffect(() => {
+        // A TextShapeR lesson left by a tour Photoshop closed in the middle of
+        if (!whatsNewSession.active) restoreTourTuning(context.dispatch);
+        let guide = null;
+        try {
+            guide = startupUxpGuide({
+                ...readUxpMigrationState(getUpdateTestConfig()),
+                noticeHidden: readStorage('uxpInstalledNoticeHidden'),
+                record: readStorage('uxpMigration'),
+                now: Date.now(),
+                notFirstTime: context.state.notFirstTime,
+                checkUpdates: context.state.checkUpdates,
+            });
+        } catch (error) {
+            console.warn('TypeR: UXP guide', error);
+        }
+        if (guide) {
+            uxpGuideOpen.current = true;
+            context.dispatch({type: 'setModal', modal: 'uxpMigration', data: guide});
+        } else {
+            openStartWindow();
         }
     }, []);
 

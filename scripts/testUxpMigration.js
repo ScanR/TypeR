@@ -10,6 +10,7 @@ const { strToU8, zipSync } = require("fflate");
 const load = require("./helpers/loadAppModule")();
 const migration = load("app_src/uxpMigration.js");
 const manual = load("app_src/uxpManualInstall.js");
+const panelName = load("app_src/legacyPanelName.js");
 const { parseUpdateTestConfig } = load("app_src/updateTestMode.js");
 
 const ccx = (manifest) => zipSync({ "manifest.json": strToU8(JSON.stringify(manifest)), "index.html": strToU8("<html>" + "x".repeat(200) + "</html>") });
@@ -42,6 +43,59 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   assert.strictEqual(migration.shouldOfferUxpMigration({ ...base, record: snoozed }), false, "Later waits a week");
   assert.strictEqual(migration.shouldOfferUxpMigration({ ...base, record: snoozed, now: now + migration.UXP_MIGRATION_SNOOZE_MS + 1 }), true);
   assert.strictEqual(migration.shouldOfferUxpMigration({ ...base, eligibility: "installed", notFirstTime: false, force: true }), true, "the test mode forces it");
+
+  // The notice of the Legacy panel once TypeR UXP is installed
+  const noticeBase = { eligibility: "installed", hidden: undefined, force: false };
+  assert.strictEqual(migration.shouldShowUxpInstalledNotice(noticeBase), true);
+  assert.strictEqual(migration.shouldShowUxpInstalledNotice({ ...noticeBase, hidden: true }), false, "Don't show again");
+  assert.strictEqual(migration.shouldShowUxpInstalledNotice({ ...noticeBase, force: true }), false, "the test mode shows the offer");
+  ["ok", "photoshop", "uxp"].forEach((eligibility) => {
+    assert.strictEqual(migration.shouldShowUxpInstalledNotice({ ...noticeBase, eligibility }), false, eligibility);
+  });
+
+  // What opens first: the guide comes before the walkthrough and What's new
+  const guideBase = { eligibility: "installed", forced: false, noticeHidden: undefined, record: null, now, notFirstTime: true, checkUpdates: true };
+  assert.deepStrictEqual(migration.startupUxpGuide(guideBase), { forced: false, notice: true });
+  assert.deepStrictEqual(migration.startupUxpGuide({ ...guideBase, notFirstTime: false, checkUpdates: false }), { forced: false, notice: true }, "the notice is for everyone");
+  assert.strictEqual(migration.startupUxpGuide({ ...guideBase, noticeHidden: true }), null);
+  assert.deepStrictEqual(migration.startupUxpGuide({ ...guideBase, eligibility: "ok" }), { forced: false, notice: false });
+  assert.strictEqual(migration.startupUxpGuide({ ...guideBase, eligibility: "ok", notFirstTime: false }), null, "a new user just chose an edition");
+  assert.strictEqual(migration.startupUxpGuide({ ...guideBase, eligibility: "photoshop" }), null);
+  assert.strictEqual(migration.startupUxpGuide({ ...guideBase, eligibility: "uxp" }), null, "never in the UXP panel");
+  assert.deepStrictEqual(migration.startupUxpGuide({ ...guideBase, eligibility: "ok", forced: true, notFirstTime: false }), { forced: true, notice: false });
+  const modalSource = fs.readFileSync(path.resolve(__dirname, "../app_src/components/modal/modal.jsx"), "utf8");
+  assert.ok(/if \(guide\) \{[\s\S]*?modal: 'uxpMigration'[\s\S]*?\} else \{\s*openStartWindow\(\);/.test(modalSource), "What's new waits for the guide");
+  assert.ok(modalSource.indexOf("uxpGuideOpen.current = false") < modalSource.indexOf("uxpGuideOpen.current = true"), "the handover effect runs before the guide opens");
+
+  // The Legacy panel's name in Photoshop: the real manifest, with its line endings
+  const packagedManifest = fs.readFileSync(path.resolve(__dirname, "../CSXS/manifest.xml"), "utf8");
+  assert.ok(packagedManifest.includes("<Menu>TypeR</Menu>"), "the package keeps the plain name");
+  const oldManifest = panelName.legacyManifestWithName(packagedManifest, true);
+  assert.strictEqual(oldManifest, packagedManifest.replace("<Menu>TypeR</Menu>", "<Menu>TypeR (old)</Menu>"));
+  assert.strictEqual(panelName.legacyManifestWithName(oldManifest, true), oldManifest, "nothing to write the second time");
+  assert.strictEqual(panelName.legacyManifestWithName(oldManifest, false), packagedManifest, "a removed plugin gives the name back");
+  assert.strictEqual(panelName.legacyManifestWithName("<Menu>Other</Menu>", true), "<Menu>Other</Menu>");
+
+  const nameSandbox = fs.mkdtempSync(path.join(os.tmpdir(), "typer-legacy-name-"));
+  const nameHome = path.join(nameSandbox, "home");
+  const nameRoot = path.join(nameSandbox, "typertools");
+  const installedManifest = path.join(nameRoot, "CSXS", "manifest.xml");
+  fs.mkdirSync(path.dirname(installedManifest), { recursive: true });
+  fs.writeFileSync(installedManifest, packagedManifest);
+  const nameNode = { fs, os: { platform: () => "darwin", homedir: () => nameHome }, path, env: {} };
+  assert.strictEqual(migration.syncLegacyPanelName(nameNode, nameRoot), false, "no plugin: the name stays");
+  const nameExternal = path.join(nameHome, "Library", "Application Support", "Adobe", "UXP", "Plugins", "External");
+  fs.mkdirSync(path.join(nameExternal, "com.scanr.typer_3.0.0"), { recursive: true });
+  assert.strictEqual(migration.syncLegacyPanelName(nameNode, nameRoot), true);
+  assert.strictEqual(fs.readFileSync(installedManifest, "utf8"), oldManifest);
+  assert.strictEqual(migration.syncLegacyPanelName(nameNode, nameRoot), false, "already renamed");
+  fs.rmSync(path.join(nameExternal, "com.scanr.typer_3.0.0"), { recursive: true });
+  assert.strictEqual(migration.syncLegacyPanelName(nameNode, nameRoot), true);
+  assert.strictEqual(fs.readFileSync(installedManifest, "utf8"), packagedManifest);
+  assert.deepStrictEqual(fs.readdirSync(path.dirname(installedManifest)), ["manifest.xml"], "no temporary file left");
+  assert.strictEqual(migration.syncLegacyPanelName(nameNode, path.join(nameSandbox, "missing")), false, "a failure is not an error");
+  assert.strictEqual(migration.syncLegacyPanelName(null, nameRoot), false);
+  fs.rmSync(nameSandbox, { recursive: true, force: true });
 
   // Paths
   assert.ok(migration.upiaPath("mac").endsWith("/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent"));

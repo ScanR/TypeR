@@ -1,11 +1,11 @@
 import { useModalClose } from "../../modalClose";
 import React from "react";
-import { FiAlertTriangle, FiCheckCircle, FiCpu, FiDownload, FiDownloadCloud, FiRefreshCw, FiX, FiZap } from "react-icons/fi";
+import { FiAlertTriangle, FiCheckCircle, FiCpu, FiDownload, FiDownloadCloud, FiInfo, FiRefreshCw, FiX, FiZap } from "react-icons/fi";
 
 import { clearUpdateTestConfig, csInterface, flushStorageWrite, getUpdateTestConfig, locale, openUrl, writeToStorage } from "../../utils";
 import { useContext } from "../../context";
 import {
-  UXP_RELEASE_PAGE, declinedUxpMigration, downloadUxpPackage, getNode, runUxpInstaller, snoozedUxpMigration,
+  UXP_RELEASE_PAGE, declinedUxpMigration, downloadUxpPackage, getNode, runUxpInstaller, snoozedUxpMigration, syncLegacyPanelName,
 } from "../../uxpMigration";
 
 const REASONS = {
@@ -27,8 +27,8 @@ const BENEFITS = [
 const UxpMigrationModal = React.memo(function UxpMigrationModal() {
   const context = useContext((state) => ({ modalData: state.modalData }));
   const forced = !!(context.state.modalData && context.state.modalData.forced);
-  // offer -> working -> done | error
-  const [phase, setPhase] = React.useState("offer");
+  // offer -> working -> done | error; notice: already installed
+  const [phase, setPhase] = React.useState(context.state.modalData && context.state.modalData.notice ? "notice" : "offer");
   const [status, setStatus] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [method, setMethod] = React.useState("");
@@ -46,6 +46,10 @@ const UxpMigrationModal = React.memo(function UxpMigrationModal() {
     writeToStorage({ uxpMigration: declinedUxpMigration() });
     close();
   };
+  const hideNotice = () => {
+    writeToStorage({ uxpInstalledNoticeHidden: true });
+    close();
+  };
   useModalClose(() => (phase === "offer" || phase === "error" ? later() : close()));
 
   const install = async () => {
@@ -58,6 +62,7 @@ const UxpMigrationModal = React.memo(function UxpMigrationModal() {
       // The new TypeR imports these styles and settings on its first start
       flushStorageWrite(true);
       setMethod(await runUxpInstaller(getNode(), bytes, { forceManual: !!(testConfig && testConfig.forceManualPluginInstall) }));
+      syncLegacyPanelName(getNode(), csInterface.getSystemPath(window.SystemPath.EXTENSION));
       writeToStorage({ uxpMigration: { installedAt: Date.now() } });
       if (forced) clearUpdateTestConfig();
       setPhase("done");
@@ -80,13 +85,39 @@ const UxpMigrationModal = React.memo(function UxpMigrationModal() {
   const header = (
     <div className="app-modal-header hostBrdBotContrast">
       <div className="app-modal-title">
-        {phase === "done" ? (locale.uxpMigrationDoneTitle || "The new TypeR is installed") : (locale.uxpMigrationTitle || "Meet the new TypeR (UXP)")}
+        {phase === "done"
+          ? (locale.uxpMigrationDoneTitle || "The new TypeR is installed")
+          : phase === "notice"
+            ? (locale.uxpMigrationNoticeTitle || "The new TypeR (UXP) is installed")
+            : (locale.uxpMigrationTitle || "Meet the new TypeR (UXP)")}
       </div>
-      <button className="topcoat-icon-button--large--quiet" title={locale.close} onClick={phase === "done" ? close : later} disabled={phase === "working"}>
+      <button className="topcoat-icon-button--large--quiet" title={locale.close} onClick={phase === "done" || phase === "notice" ? close : later} disabled={phase === "working"}>
         <FiX size={18} />
       </button>
     </div>
   );
+
+  if (phase === "notice") {
+    return (
+      <React.Fragment>
+        {header}
+        <div className="app-modal-body">
+          <div className="app-modal-body-inner article-format uxp-migration">
+            <FiInfo size={40} className="uxp-migration-icon" />
+            <p>{locale.uxpMigrationNoticeText || "You have opened the old version of TypeR. To open the new version, TypeR (UXP), go to the Plugins > TypeR menu at the top of Photoshop."}</p>
+            <p className="uxp-migration-hint">{locale.uxpMigrationDoneHint || "Use one version at a time: changes made in the Legacy version from now on are not copied to the new TypeR."}</p>
+            <button type="button" className="uxp-migration-never" onClick={hideNotice}>
+              {locale.uxpMigrationNoticeHide || "Don't show again"}
+            </button>
+          </div>
+        </div>
+        <div className="app-modal-footer hostBrdTopContrast uxp-migration-footer">
+          <button className="topcoat-button--large" onClick={close}>{locale.uxpMigrationNoticeStay || "Continue here"}</button>
+          <button className="topcoat-button--large--cta" onClick={closeLegacy}>{locale.uxpMigrationCloseLegacy || "Close the Legacy version"}</button>
+        </div>
+      </React.Fragment>
+    );
+  }
 
   if (phase === "done") {
     return (

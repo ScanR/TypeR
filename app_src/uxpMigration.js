@@ -73,6 +73,21 @@ export const shouldOfferUxpMigration = ({ eligibility, record, now, notFirstTime
   return !(record && Number(record.snoozedUntil) > now);
 };
 
+// Each start of the Legacy panel says where the new TypeR is, until declined.
+// A Photoshop too old for the plugin has only this panel: nothing to say.
+export const shouldShowUxpInstalledNotice = ({ eligibility, hidden, force }) => (
+  eligibility === "installed" && !hidden && !force
+);
+
+// What the Legacy panel opens first at its start, before the walkthrough and
+// What's new, since the goal is to move people to the new TypeR: the notice
+// when it is installed, otherwise the offer. Null when there is nothing to say.
+export const startupUxpGuide = ({ eligibility, forced, noticeHidden, record, now, notFirstTime, checkUpdates }) => {
+  if (shouldShowUxpInstalledNotice({ eligibility, hidden: noticeHidden, force: forced })) return { forced, notice: true };
+  if (shouldOfferUxpMigration({ eligibility, record, now, notFirstTime, checkUpdates, force: forced })) return { forced, notice: false };
+  return null;
+};
+
 export const snoozedUxpMigration = (now) => ({ snoozedUntil: now + UXP_MIGRATION_SNOOZE_MS });
 export const declinedUxpMigration = () => ({ declined: true });
 
@@ -163,6 +178,29 @@ export const readUxpEnvironment = (node) => {
     installerAvailable = false;
   }
   return { installerAvailable, uxpInstalled: hasTypeRPlugin(names) };
+};
+
+// The Legacy panel's name in Photoshop follows the plugin's presence
+// (legacyPanelName.js); Photoshop reads it at its next start. Returns whether
+// the manifest changed. A failure only leaves the name as it is.
+export const syncLegacyPanelName = (node, extensionRoot) => {
+  if (!node || !extensionRoot) return false;
+  const file = node.path.join(extensionRoot, "CSXS", "manifest.xml");
+  const temporary = file + ".tmp-" + Date.now();
+  try {
+    const text = node.fs.readFileSync(file, "utf8");
+    const next = legacyManifestWithName(text, readUxpEnvironment(node).uxpInstalled);
+    if (next === text) return false;
+    node.fs.writeFileSync(temporary, next, "utf8");
+    node.fs.renameSync(temporary, file);
+    return true;
+  } catch (error) {
+    console.warn("TypeR: could not rename the Legacy panel", error);
+    try {
+      node.fs.unlinkSync(temporary);
+    } catch (cleanup) {}
+    return false;
+  }
 };
 
 // Hands the package to Creative Cloud's plugin installer, which adds the

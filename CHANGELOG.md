@@ -11,7 +11,8 @@
 - Install updates from the panel through Creative Cloud's plugin installer, or by hand when it is missing or fails. Through the installer, the panel reloads with the new version without restarting Photoshop.
 - The UXP plugin no longer needs Creative Cloud: without its plugin installer, the installers, the panel's updates and the switch from Legacy extract the package and register it in Photoshop themselves, and Photoshop loads it at its next start.
 - The installers start by asking whether to install the new TypeR (UXP) or the Legacy (CEP) version, and the release archive contains the UXP plugin, so it installs offline.
-- The Legacy panel offers the switch to the new TypeR (UXP) when Photoshop can run it (2025 or later, with the Creative Cloud app): one click installs it, and it imports the styles, profiles and settings.
+- The Legacy panel first offers the switch to the new TypeR (UXP), before What's new, when Photoshop can run it (2025 or later): one click installs it, and it imports the styles, profiles and settings.
+- Once the new TypeR is installed, the Legacy panel is called "TypeR (old)" in Photoshop from its next start, and says at each start, before What's new, that the new version opens from Plug-ins > TypeR.
 
 ### Smart paste
 
