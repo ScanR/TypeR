@@ -115,9 +115,10 @@ function copyAssets() {
     fs.copyFileSync(path.join(root, "icons", name + "@2X.png"), path.join(out, "icons", name + "@2x.png"));
   });
   fs.copyFileSync(path.join(root, "LICENSE.md"), path.join(out, "LICENSE.md"));
-  // Practice page of the What's new tour, opened in Photoshop
+  // Practice pages of the guided tours, opened in Photoshop
   fs.mkdirSync(path.join(out, "assets"), { recursive: true });
   fs.copyFileSync(path.join(root, "app_src/assets/typer-practice-page.png"), path.join(out, "assets/typer-practice-page.png"));
+  fs.copyFileSync(path.join(root, "app_src/assets/typer-basics-page.png"), path.join(out, "assets/typer-basics-page.png"));
 }
 
 function packageCcx(manifest) {

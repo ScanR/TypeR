@@ -895,7 +895,7 @@ const StyleItem = React.memo(function StyleItem(props) {
             <MdEdit size={16} />
           </button>
         )}
-        <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} title={locale.insertStyle} onClick={insertStyle}>
+        <button className={"topcoat-icon-button--large--quiet" + (props.active ? " m-cta" : "")} data-tour="apply-style" title={locale.insertStyle} onClick={insertStyle}>
           <FiArrowRightCircle size={16} />
         </button>
       </div>

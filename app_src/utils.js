@@ -5,6 +5,7 @@ import { readJsonStorage, writeJsonStorage, reportStorageIssue } from "./storage
 import "./lib/CSInterface";
 import { resolveStylePointText } from "./textLayerPayload";
 import { planAlignment } from "./oneClick/alignPlan";
+import { noteTourEvent } from "./tourEvents";
 import { findNewerReleases, pickUpdateDownloadUrl } from "./updateLogic";
 import { installUpdateInPlace, uint8ToBase64 } from "./updateInstaller";
 import { UPDATE_TEST_CONFIG_FILE, parseUpdateTestConfig } from "./updateTestMode";
@@ -749,6 +750,8 @@ const setActiveLayerText = (text, style, direction, callback = () => {}, options
       });
   csInterface.evalScript("setActiveLayerText(" + data + ")", trackHostAction((error) => {
     if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
+    // A style applied to the layer, its text kept (style list, shortcut)
+    else if (!text && style) noteTourEvent("applyStyle");
     callback(!error);
   }));
 };
@@ -1047,6 +1050,7 @@ const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback 
       if (error === "smallSelection") nativeAlert(locale.errorSmallSelection, locale.errorTitle, true);
       else if (error === "noSelection") nativeAlert(locale.errorNoSelection, locale.errorTitle, true);
       else if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
+      else noteTourEvent("align");
       callback(!error);
     }, 15000, true));
   };

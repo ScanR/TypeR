@@ -1274,7 +1274,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
             </button>
           )}
           {uiVisible.previewAlignButton !== false && (
-            <button className="preview-top_big-btn preview-top_big-btn--small topcoat-button--large" title={withShortcutHint(locale.alignLayerDescr, context.state.shortcut.center)} onClick={handleAlignLayer}>
+            <button data-tour="align" className="preview-top_big-btn preview-top_big-btn--small topcoat-button--large" title={withShortcutHint(locale.alignLayerDescr, context.state.shortcut.center)} onClick={handleAlignLayer}>
               <MdCenterFocusWeak size={18} /> {locale.alignLayer}
             </button>
           )}
@@ -1301,7 +1301,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           <button className="topcoat-icon-button--large" title={locale.prevLine} onClick={handlePrevLine}>
             <FiArrowUp size={18} />
           </button>
-          <button className="topcoat-icon-button--large" title={locale.nextLine} onClick={handleNextLine}>
+          <button data-tour="next-line" className="topcoat-icon-button--large" title={locale.nextLine} onClick={handleNextLine}>
             <FiArrowDown size={18} />
           </button>
         </div>

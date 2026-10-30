@@ -3,7 +3,7 @@ import {useContext} from '../../context';
 import {getUpdateTestConfig, locale, readStorage} from '../../utils';
 import {readUxpMigrationState, startupUxpGuide} from '../../uxpMigration';
 import config from '../../config';
-import {getWhatsNewDock, restoreTourTuning, whatsNewSession} from '../../whatsNewSession';
+import {getWhatsNewDock, isTourModal, restoreTourTuning, whatsNewSession} from '../../whatsNewSession';
 import {getGuideStyle} from '../../whatsNewGuide';
 
 const modalLoaders = {
@@ -52,7 +52,9 @@ const TourCoach = React.memo(function TourCoach() {
             <div className="whats-new-coach-title">
                 {done
                     ? '✓ ' + (locale.whatsNewCoachDone || 'Done! Close this window to go on with the guide.')
-                    : locale.whatsNewCoachTitle || 'TypeR 3.0 guide'}
+                    : whatsNewSession.course === 'walkthrough'
+                        ? locale.walkthroughCoachTitle || 'TypeR guide'
+                        : locale.whatsNewCoachTitle || 'TypeR 3.0 guide'}
             </div>
             <div>{coach.text}</div>
         </div>
@@ -164,13 +166,13 @@ const Modal = React.memo(function Modal() {
         }
     }, []);
 
-    // A window opened from the What's new tour hands back to it on close
+    // A window opened from a tour hands back to it on close
     React.useEffect(() => {
-        if (!modalType && whatsNewSession.active) context.dispatch({type: 'setModal', modal: 'whatsNew'});
+        if (!modalType && whatsNewSession.active) context.dispatch({type: 'setModal', modal: whatsNewSession.course});
     }, [modalType]);
 
-    // The walkthroughs float over the panel so it stays usable
-    const floating = modalType === 'walkthrough' || modalType === 'whatsNew';
+    // The tours float over the panel so it stays usable
+    const floating = isTourModal(modalType);
     const coached = !floating && whatsNewSession.active && !!whatsNewSession.coach &&
         whatsNewSession.coach.modal === modalType;
 
@@ -198,9 +200,9 @@ const Modal = React.memo(function Modal() {
             {!floating && <div className="app-modal-hatch hostBgd"></div>}
             {/* Own element for the tour: its dragged position never sticks to another window */}
             <div
-                key={modalType === 'whatsNew' ? 'whats-new' : 'modal'}
-                className={`app-modal-inner hostBgdLight${floating ? ' app-modal-inner--walkthrough' : ''}${modalType === 'whatsNew' ? ' app-modal-inner--whats-new m-' + getWhatsNewDock(context.state.uiLayout) : ''}`}
-                style={modalType === 'whatsNew' ? getGuideStyle() : undefined}
+                key={floating ? 'tour-' + modalType : 'modal'}
+                className={`app-modal-inner hostBgdLight${floating ? ' app-modal-inner--walkthrough app-modal-inner--whats-new m-' + getWhatsNewDock(context.state.uiLayout) : ''}`}
+                style={floating ? getGuideStyle() : undefined}
             >
                 <ModalErrorBoundary modalType={modalType} onClose={close}>
                     <React.Suspense fallback={<div className="app-modal-body"><div className="app-modal-body-inner">{locale.loading || 'Loading...'}</div></div>}>

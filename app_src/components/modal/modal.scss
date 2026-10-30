@@ -949,47 +949,6 @@
 
 }
 
-.walkthrough-progress {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-}
-
-.walkthrough-dot {
-    width: 18px;
-    height: 5px;
-    border: 0;
-    border-radius: 3px;
-    padding: 0;
-    background: rgba(255, 255, 255, 0.25);
-    cursor: pointer;
-
-    &.m-active {
-        background: rgba(255, 255, 255, 0.9);
-    }
-
-    &.m-done {
-        background: rgba(84, 190, 120, 0.95);
-    }
-
-    .light-theme & {
-        background: rgba(0, 0, 0, 0.2);
-
-        &.m-active {
-            background: rgba(0, 0, 0, 0.65);
-        }
-
-        &.m-done {
-            background: rgba(36, 132, 72, 0.85);
-        }
-    }
-}
-
-.walkthrough-step-count {
-    font-size: 11px;
-    opacity: 0.72;
-}
-
 .walkthrough-footer {
     display: flex;
     align-items: center;
@@ -1006,128 +965,6 @@
 .walkthrough-footer-nav {
     display: flex;
     gap: 6px;
-}
-
-.walkthrough-practice {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-top: 2px;
-}
-
-.walkthrough-task,
-.walkthrough-result {
-    display: flex;
-    align-items: flex-start;
-    gap: 7px;
-    padding: 6px;
-    line-height: 1.35;
-    background: rgba(0, 0, 0, 0.16);
-}
-
-.walkthrough-task {
-    font-size: 12px;
-}
-
-.walkthrough-task > span {
-    flex: 1;
-}
-
-.walkthrough-result {
-    font-size: 12px;
-    border-left: 3px solid rgba(84, 190, 120, 0.9);
-}
-
-.walkthrough-status {
-    flex: 0 0 auto;
-    padding: 2px 6px;
-    font-size: 10px;
-    opacity: 0.75;
-    background: rgba(255, 255, 255, 0.14);
-
-    &.m-done {
-        opacity: 1;
-        background: rgba(84, 190, 120, 0.3);
-    }
-}
-
-.walkthrough-script-preview {
-    max-height: 58px;
-    margin: 0;
-    padding: 8px;
-    overflow: auto;
-    white-space: pre-wrap;
-    line-height: 1.35;
-    background: rgba(0, 0, 0, 0.18);
-}
-
-.walkthrough-style-list,
-.walkthrough-flow,
-.walkthrough-inline-fields {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-
-.walkthrough-inline-fields > * {
-    min-width: 0;
-    flex: 1 1 110px;
-}
-
-.walkthrough-style {
-    min-height: 32px;
-    padding: 5px 8px;
-    border: 1px solid rgba(255, 255, 255, 0.28);
-    background: rgba(0, 0, 0, 0.15);
-    color: inherit;
-    cursor: pointer;
-
-    &.m-active {
-        border-color: rgba(84, 190, 120, 0.95);
-        background: rgba(84, 190, 120, 0.22);
-    }
-}
-
-.walkthrough-tag-pill {
-    display: inline-flex;
-    align-items: center;
-    min-height: 32px;
-    padding: 5px 8px;
-    color: #fff;
-    background: rgba(84, 190, 120, 0.55);
-}
-
-.walkthrough-confirm {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 32px;
-    padding: 7px 8px;
-    border: 0;
-    color: inherit;
-    text-align: left;
-    background: rgba(0, 0, 0, 0.15);
-}
-
-.walkthrough-confirm {
-    cursor: pointer;
-
-    input {
-        flex: 0 0 auto;
-    }
-}
-
-.light-theme {
-    .walkthrough-task,
-    .walkthrough-result,
-    .walkthrough-style,
-    .walkthrough-confirm {
-        background: rgba(0, 0, 0, 0.08);
-    }
-
-    .walkthrough-status {
-        background: rgba(0, 0, 0, 0.1);
-    }
 }
 
 .settings-checkbox-custom {
@@ -3006,6 +2843,48 @@
     animation: whats-new-pulse 2.4s ease-in-out infinite;
 }
 
+/* Basics walkthrough illustrations (walkthrough.jsx) */
+.whats-new-line-current {
+    fill: rgba(108, 184, 240, 0.28);
+}
+
+.whats-new-target {
+    fill: none;
+    stroke: #6cb8f0;
+    stroke-width: 1.5;
+}
+
+.whats-new-tag.m-skipped,
+.whats-new-bar.m-skipped {
+    opacity: 0.35;
+}
+
+.whats-new-arrow.m-accent {
+    stroke: #6cb8f0;
+    opacity: 1;
+}
+
+.whats-new-card.m-accent {
+    stroke: #6cb8f0;
+    stroke-width: 1.5;
+    opacity: 1;
+}
+
+.whats-new-glyph {
+    fill: currentColor;
+    font-size: 30px;
+    font-weight: 700;
+    text-anchor: middle;
+}
+
+.whats-new-swatch {
+    fill: #c0504d;
+}
+
+.whats-new-drop {
+    animation: whats-new-drop 2.4s ease-in-out infinite;
+}
+
 .whats-new-cursor path {
     fill: #fff;
     stroke: #111;
@@ -3326,6 +3205,31 @@
     opacity: 0.8;
 }
 
+.whats-new-skip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: auto;
+    padding: 1px 6px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    font-size: 10.5px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    cursor: pointer;
+
+    &:hover {
+        border-color: rgba(108, 184, 240, 0.7);
+    }
+
+    .light-theme & {
+        border-color: rgba(0, 0, 0, 0.2);
+    }
+}
+
 .whats-new-badge {
     padding: 1px 5px;
     border-radius: 3px;
@@ -3413,6 +3317,14 @@
         border-radius: 10px;
         animation: whats-new-spot 1.6s ease-out infinite;
     }
+}
+
+// The controls inside the ring that all lead to the step (the pencils of
+// the style list): any of them will do
+.whats-new-mark {
+    border-radius: 4px;
+    box-shadow: 0 0 0 2px #6cb8f0, 0 0 8px rgba(108, 184, 240, 0.7);
+    animation: whats-new-mark 1.6s ease-in-out infinite;
 }
 
 // A window the tour sent the user to keeps the step's tip under it
@@ -3608,6 +3520,16 @@
     100% { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes whats-new-drop {
+    0%, 100% { transform: translateY(-3px); opacity: 0.6; }
+    50% { transform: translateY(3px); opacity: 1; }
+}
+
+@keyframes whats-new-mark {
+    0%, 100% { box-shadow: 0 0 0 2px #6cb8f0, 0 0 8px rgba(108, 184, 240, 0.7); }
+    50% { box-shadow: 0 0 0 2px rgba(108, 184, 240, 0.45), 0 0 2px rgba(108, 184, 240, 0.2); }
+}
+
 @keyframes whats-new-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.45; }
@@ -3617,6 +3539,7 @@
     .whats-new-svg *,
     .whats-new-spot,
     .whats-new-spot::after,
+    .whats-new-mark,
     .whats-new-coach,
     .whats-new-result,
     .whats-new-task {

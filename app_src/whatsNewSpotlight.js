@@ -22,6 +22,7 @@ let missingSince = 0;
 let missing = false;
 let revealedKey = null;
 let scrolledTo = null;
+let marked = [];
 
 const isVisible = (element) => {
   if (!element || !element.getBoundingClientRect) return false;
@@ -60,9 +61,30 @@ const ensureRing = () => {
   return ring;
 };
 
+// Secondary rings: a spot can also outline several controls inside the
+// ringed area ({ marks: selector }), when any of them will do (the pencils
+// of the style list)
+const setMarks = (elements) => {
+  marked.forEach((element) => {
+    if (elements.indexOf(element) === -1) element.classList.remove("whats-new-mark");
+  });
+  elements.forEach((element) => element.classList.add("whats-new-mark"));
+  marked = elements;
+};
+
+const findMarks = () => {
+  if (!spot || !spot.marks || blockingModal()) return [];
+  try {
+    return Array.prototype.slice.call(document.querySelectorAll(spot.marks)).filter(isVisible);
+  } catch (error) {
+    return [];
+  }
+};
+
 const hideRing = () => {
   if (ring) ring.style.display = "none";
   shown = null;
+  setMarks([]);
 };
 
 // Layout pixels of the ring per pixel of getBoundingClientRect: they differ
@@ -109,6 +131,7 @@ const tick = () => {
     missing = false;
     missingSince = 0;
     const rect = placeRing(target);
+    setMarks(findMarks());
     if (shown !== target) {
       shown = target;
       // Once per new target: scroll it into its list (script, settings)
@@ -141,7 +164,7 @@ const start = () => {
   if (!frame) frame = window.requestAnimationFrame(tick);
 };
 
-// next: { key, candidates, visit, stepId, reveal } or null
+// next: { key, candidates, marks, visit, stepId, reveal } or null
 export const setTourSpot = (next) => {
   const key = next ? next.key : null;
   if ((spot ? spot.key : null) === key) {

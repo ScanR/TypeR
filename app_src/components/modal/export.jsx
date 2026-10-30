@@ -3,6 +3,7 @@ import React from "react";
 import { FiCheckSquare, FiFolder, FiType, FiX } from "react-icons/fi";
 import { MdSave } from "react-icons/md";
 
+import { noteTourEvent } from "../../tourEvents";
 import config from "../../config";
 import { locale, nativeAlert } from "../../utils";
 import { useContext } from "../../context";
@@ -194,11 +195,13 @@ const ExportModal = React.memo(function ExportModal() {
           true
         );
       }
+      noteTourEvent("export");
       close();
       return;
     }
     const written = await window.cep.fs.writeFile(pathSelect.data, JSON.stringify(data));
     if (!written || written.err) { nativeAlert(locale.saveError, locale.errorTitle, true); return; }
+    noteTourEvent("export");
     close();
   };
 
@@ -332,7 +335,7 @@ const ExportModal = React.memo(function ExportModal() {
           </label>
 
           <div className="fields hostBrdTopContrast export-actions">
-            <button type="submit" className="topcoat-button--large--cta" disabled={!canExport}>
+            <button type="submit" data-tour="export-save" className="topcoat-button--large--cta" disabled={!canExport}>
               <MdSave size={18} /> {locale.save}
             </button>
           </div>

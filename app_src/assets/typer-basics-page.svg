@@ -1,0 +1,20 @@
+<!-- Source of typer-basics-page.png, the basics walkthrough practice page (render at 1200 x 1500) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1500" viewBox="0 0 1200 1500">
+<rect width="1200" height="1500" fill="#ffffff"/>
+<text x="1160" y="28" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="20" text-anchor="end" fill="#999999">TypeR</text>
+<rect x="40" y="40" width="1120" height="640" fill="#d6d6d6" stroke="#111" stroke-width="6"/>
+<rect x="610" y="720" width="550" height="740" fill="#d6d6d6" stroke="#111" stroke-width="6"/>
+<rect x="40" y="720" width="530" height="740" fill="#d6d6d6" stroke="#111" stroke-width="6"/>
+<ellipse cx="790" cy="370" rx="290" ry="210" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<ellipse cx="290" cy="290" rx="160" ry="100" fill="#ffffff" stroke="#111" stroke-width="5"/>
+<rect x="660" y="770" width="390" height="120" fill="none" stroke="#1976d2" stroke-width="4" stroke-dasharray="14 10"/>
+<polygon points="305.0,920.0 329.4,987.4 377.7,934.5 374.4,1006.1 439.4,975.6 408.9,1040.6 480.5,1037.3 427.6,1085.6 495.0,1110.0 427.6,1134.4 480.5,1182.7 408.9,1179.4 439.4,1244.4 374.4,1213.9 377.7,1285.5 329.4,1232.6 305.0,1300.0 280.6,1232.6 232.3,1285.5 235.6,1213.9 170.6,1244.4 201.1,1179.4 129.5,1182.7 182.4,1134.4 115.0,1110.0 182.4,1085.6 129.5,1037.3 201.1,1040.6 170.6,975.6 235.6,1006.1 232.3,934.5 280.6,987.4" fill="#ffffff" stroke="#111" stroke-width="5" stroke-linejoin="miter"/>
+<circle cx="1105" cy="95" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="1105" y="106" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">1</text>
+<circle cx="100" cy="175" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="100" y="186" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">2</text>
+<circle cx="1105" cy="775" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="1105" y="786" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">3</text>
+<circle cx="525" cy="775" r="28" fill="#1976d2" stroke="#ffffff" stroke-width="4"/>
+<text x="525" y="786" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="32" text-anchor="middle" fill="#ffffff">4</text>
+</svg>

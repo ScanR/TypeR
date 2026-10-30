@@ -8,6 +8,8 @@ const loadContext = require("./helpers/loadContext");
 
 const root = path.resolve(__dirname, "..");
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
+// The What's new course and the tour engine it runs on
+const readTour = () => read("app_src/components/modal/whatsNew.jsx") + "\n" + read("app_src/components/modal/tour.jsx");
 const config = createLoader()("app_src/config.js").default;
 
 // --- when the tour shows ---------------------------------------------------
@@ -37,7 +39,7 @@ const config = createLoader()("app_src/config.js").default;
   const modalSource = read("app_src/components/modal/modal.jsx");
   assert(/whatsNewSeen !== config\.whatsNewVersion\) \{\s*context\.dispatch\(\{type: 'showWhatsNew'\}\)/.test(modalSource),
     "The panel shows the tour at startup until this version is seen");
-  assert(/if \(!modalType && whatsNewSession\.active\) context\.dispatch\(\{type: 'setModal', modal: 'whatsNew'\}\)/.test(modalSource),
+  assert(/if \(!modalType && whatsNewSession\.active\) context\.dispatch\(\{type: 'setModal', modal: whatsNewSession\.course\}\)/.test(modalSource),
     "A window opened from the tour hands back to it");
   assert(/whatsNewSeen: config\.whatsNewVersion/.test(read("app_src/components/modal/profileSettings.jsx")),
     "A new profile does not replay the tour");
@@ -81,7 +83,7 @@ const session = createLoader({
   let state = reducer(initial, { type: "addTab", id: "practice-test", name: "Practice", data: { text: script, currentLineIndex: 0 } });
   assert.strictEqual(state.currentTabId, "practice-test", "addTab keeps the id it is given");
   assert(state.tabs.some((tab) => tab.id === "practice-test" && tab.text === script));
-  assert(/session\.practiceTabId = id;[\s\S]*type: "addTab",\s*id,/.test(read("app_src/components/modal/whatsNew.jsx")),
+  assert(/session\.practiceTabId = id;[\s\S]*type: "addTab",\s*id,/.test(readTour()),
     "The tour sets the practice tab id itself");
 
   // Go to line N from another tab: the line is found in the stored script
@@ -137,8 +139,8 @@ const session = createLoader({
 // --- chapters ---------------------------------------------------------------
 
 {
-  const source = read("app_src/components/modal/whatsNew.jsx");
-  const chapters = source.slice(source.indexOf("const getChapters"), source.indexOf("const stepState"));
+  const source = readTour();
+  const chapters = source.slice(source.indexOf("const getChapters"), source.indexOf("const COURSE"));
   const ids = (chapters.match(/^\s{8}id: "(\w+)"/gm) || []).map((line) => line.trim().slice(5, -1));
   assert(ids.length >= 20, "The chapters list their steps");
   assert.strictEqual(new Set(ids).size, ids.length, "Step ids are unique: progress is stored by id");
@@ -231,8 +233,8 @@ const session = createLoader({
 // the user's layout.
 
 {
-  const tour = read("app_src/components/modal/whatsNew.jsx");
-  const chapters = tour.slice(tour.indexOf("const getChapters"), tour.indexOf("const stepState"));
+  const tour = readTour();
+  const chapters = tour.slice(tour.indexOf("const getChapters"), tour.indexOf("const COURSE"));
   const actions = (chapters.match(/^\s+actions: \[[^\]]*\]/gm) || []).map((line) => (line.match(/type: "(\w+)"/) || [])[1]);
   assert.deepStrictEqual(actions.sort(), ["loadScript", "openPage"], "Only the practice page and script are set up for the user");
   assert(!/resultActions|type: "open"|createShoutStyle/.test(chapters), "No step opens a window for the user");
@@ -286,7 +288,7 @@ const session = createLoader({
   assert(/session\.guideLockKey = lockKey/.test(guide), "Dropping the guide locks it for the target");
   assert((tour.match(/onMouseDown=\{dragGuide\}/g) || []).length === 2, "Both the open and the folded guide can be dragged");
   assert(!/whatsNewDock(Top|Bottom)/.test(tour), "No more button to move the guide");
-  assert(/getGuideStyle\(\)/.test(modal) && /key=\{modalType === 'whatsNew'/.test(modal),
+  assert(/getGuideStyle\(\)/.test(modal) && /key=\{floating \? 'tour-' \+ modalType/.test(modal),
     "modal.jsx places the dragged guide on its own element");
 }
 
@@ -353,14 +355,16 @@ const session = createLoader({
   assert.strictEqual(blank.currentLineIndex, 0, "It starts again from line 1");
   assert.deepStrictEqual(blank.tabs.find((tab) => tab.id === blank.currentTabId).usedLineStyles, {}, "The tab itself is cleared");
 
-  const tour = read("app_src/components/modal/whatsNew.jsx");
+  const tour = readTour();
   assert(/dispatch\(\{ type: "switchTab", id: existing\.id \}\);\s*dispatch\(\{ type: "clearPastedLines" \}\)/.test(tour),
     "A practice tab from an earlier run is reused blank");
   assert(/if \(!session\.resumeOffer && !session\.startValues\) session\.startValues = takeStartValues/.test(tour),
     "The settings already there are read when the run begins");
-  ["shoutStyle"].forEach((id) => {
-    const block = tour.slice(tour.indexOf('id: "' + id + '"'), tour.indexOf('id: "' + id + '"') + 1200);
-    assert(/fresh: /.test(block.split("result")[0]) && /again: /.test(block.split("result")[0]), id + " must be done again in a new run");
+  // A role style already there is used, not made again
+  ["shoutStyle", "narrationStyle"].forEach((id) => {
+    const block = tour.slice(tour.indexOf('id: "' + id + '"'), tour.indexOf('id: "' + id + '"') + 2000).split("result:")[0];
+    assert(!/fresh: /.test(block) && !/again: /.test(block), id + " passes with the style already marked");
+    assert(/marks: \(env\) => roleMarks\("\w+", env\)/.test(block), id + " outlines every style that can take the role, none is forced");
   });
   // A value seen turned off drops the start value, even though the check fails
   assert(/const held = heldOver\(step, env\);\s*passed = step\.check\(env\) && !held;/.test(tour), "Turning a setting off and on again passes its step");
@@ -377,14 +381,21 @@ const session = createLoader({
   assert(/className=\{"style-item/.test(read("app_src/components/stylesBlock/stylesBlock.jsx")) ||
     /"style-item/.test(read("app_src/components/stylesBlock/stylesBlock.jsx")), "Style rows keep their class");
   assert(/React\.useEffect\(saveWhatsNewProgress\)/.test(tour), "Every change of the tour is saved");
-  assert(/startWhatsNewSession\(chapters\.length\)/.test(tour), "The tour looks for a run to resume when it opens");
+  assert(/startWhatsNewSession\(chapters\.length, course\.id\)/.test(tour), "The tour looks for a run to resume when it opens");
 }
 
 {
-  // The tour goes in order: no skipping, Next and later chapters open once
-  // the chapter is done, and a finished chapter moves on by itself
-  const tour = read("app_src/components/modal/whatsNew.jsx");
-  assert(!/skipStep|whatsNewSkipStep|whatsNewNextChapterSkip/.test(tour), "A step cannot be skipped");
+  // The tour goes in order: Next and later chapters open once the chapter is
+  // done (a skipped step counts), and a finished chapter moves on by itself
+  const tour = readTour();
+  assert(/session\.done\[step\.id\] = "skipped";/.test(tour), "The current step can be skipped");
+  assert(/\{stepTodo && \(\s*<button[\s\S]{0,120}className="whats-new-skip"/.test(tour), "Skip is offered only on a step to do");
+  assert(/if \(record === "skipped"\) return "skipped";/.test(tour) &&
+    /chapter\.steps\.every\(\(step\) => stepState\(step, env\) !== "todo"\)/.test(tour),
+    "A skipped step completes its chapter");
+  assert(/if \(id && session\.done\[id\] === "skipped"\) delete session\.done\[id\];/.test(tour),
+    "A skipped step opened again is to do after all");
+  assert(!/whatsNewNextChapterSkip/.test(tour), "A whole chapter cannot be skipped from Next");
   assert(/const chapterOpen = \(index\) => chapters\.slice\(0, Math\.max\(0, index - 1\)\)\.every\(\(item\) => chapterComplete\(item, env\)\)/.test(tour),
     "A chapter opens once the chapters before it are done");
   assert(/if \(!chapterOpen\(target\)\) return;/.test(tour), "goTo never jumps past an unfinished chapter");
@@ -454,7 +465,7 @@ const session = createLoader({
   assert.strictEqual(back.textShapeRTuning, null, "The tour lesson is gone");
   assert.strictEqual(back.textShapeRLearnUsed, false, "The learn tip is not marked as used by the tour");
 
-  const tour = read("app_src/components/modal/whatsNew.jsx");
+  const tour = readTour();
   assert(/if \(chapter && chapter\.id === "textShapeR"\) backupTourTuning\(getState\(\)\);\s*else restoreTourTuning\(dispatch\);/.test(tour),
     "Leaving the TextShapeR chapter gives the learning back");
   assert(/const close = \(\) => \{\s*clearTourSpot\(\);\s*restoreTourTuning\(dispatch\);/.test(tour), "Closing the tour gives it back");
@@ -465,7 +476,7 @@ const session = createLoader({
 {
   // The page has a spot without a bubble for the rectangle, and a narration
   // box made like the shout exercise: one line each, in reading order
-  const tour = read("app_src/components/modal/whatsNew.jsx");
+  const tour = readTour();
   const keys = session.PRACTICE_LINES.map((line) => line.key);
   assert.strictEqual(keys.length, 11, "One line per spot, two for the double bubble");
   assert.strictEqual(keys[4], "whatsNewPracticeLine10", "Line 5 goes into the dotted frame");
