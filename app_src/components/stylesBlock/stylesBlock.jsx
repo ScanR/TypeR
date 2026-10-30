@@ -15,7 +15,7 @@ import { buildFolderTree } from "../../folderUtils";
 import { collectFontRefs, exportZipWithFonts } from "../../fontFileExport";
 import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPreview";
 import { notePerfRender } from "../../perfDebug";
-import { getStyleTextSize, normalizeStyleSizePresets } from "../../styleSizePresets";
+import { getStyleTextSize, normalizeStyleSizePresets, parseStyleSize, sanitizeStyleSizeInput, stepStyleSize } from "../../styleSizePresets";
 import { isStyleStrokeOn } from "../../styleStroke";
 
 const FontPreviewContext = React.createContext({ aliases: {}, css: "", revision: 0 });
@@ -718,7 +718,6 @@ const StyleItem = React.memo(function StyleItem(props) {
   const quickWrapRef = React.useRef(null);
   const displaySize = quickSizeOverride !== null ? quickSizeOverride : (activeSize || "");
   const sizeStep = Number(props.styleSizeStep) > 0 ? Number(props.styleSizeStep) : 1;
-  const sizeStepDecimals = (sizeStep.toString().split(".")[1] || "").length;
 
   React.useEffect(() => () => {
     if (quickCloseTimeout.current) clearTimeout(quickCloseTimeout.current);
@@ -778,23 +777,26 @@ const StyleItem = React.memo(function StyleItem(props) {
   };
   const stopQuickEvent = (e) => e.stopPropagation();
   const applyQuickSize = (value) => {
-    const size = parseFloat(value);
-    if (!Number.isFinite(size) || size <= 0) return;
+    const size = parseStyleSize(value);
+    if (size === null) return;
     dispatch({ type: "updateActiveStyleSizePreset", id: props.style.id, size });
   };
   const changeQuickSize = (e) => {
     stopQuickEvent(e);
-    const value = e.target.value;
+    const value = sanitizeStyleSizeInput(e.target.value);
     setQuickSizeOverride(value);
     if (value !== "") applyQuickSize(value);
   };
   const nudgeQuickSize = (delta) => (e) => {
     stopQuickEvent(e);
-    const baseValue = parseFloat(quickSizeOverride ?? activeSize ?? 1);
-    const rounded = Math.round((baseValue + delta * sizeStep) / sizeStep) * sizeStep;
-    const nextValue = Math.max(1, parseFloat(rounded.toFixed(sizeStepDecimals)));
+    const nextValue = stepStyleSize(quickSizeOverride || activeSize, delta, sizeStep);
     setQuickSizeOverride(nextValue);
     applyQuickSize(nextValue);
+  };
+  const keyDownQuickSize = (e) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    nudgeQuickSize(e.key === "ArrowUp" ? 1 : -1)(e);
   };
   const startDrag = React.useCallback((e) => {
     currentDraggingStyleId = props.style.id;
@@ -912,11 +914,11 @@ const StyleItem = React.memo(function StyleItem(props) {
                 <FiMinus size={12} />
               </button>
               <input
-                type="number"
-                min={1}
-                step={sizeStep}
+                type="text"
+                inputMode="decimal"
                 value={displaySize}
                 onChange={changeQuickSize}
+                onKeyDown={keyDownQuickSize}
                 onBlur={() => setQuickSizeOverride(null)}
                 className="style-quick-size-input"
               />

@@ -4,7 +4,7 @@ import "./editStyle.scss";
 import React from "react";
 import deepClone from "../../deepClone";
 import PropTypes from "prop-types";
-import { FiCopy, FiX, FiMinus, FiPlus } from "react-icons/fi";
+import { FiChevronDown, FiChevronUp, FiCopy, FiX, FiMinus, FiPlus } from "react-icons/fi";
 import { TiSortAlphabetically } from "react-icons/ti";
 import { GiVerticalFlip, GiHorizontalFlip } from "react-icons/gi";
 import { TbAlphabetArabic } from "react-icons/tb";
@@ -25,6 +25,8 @@ import {
   normalizeStyleSizePresets,
   normalizeStyleSizePresetWidthConfig,
   parseStyleSize,
+  sanitizeStyleSizeInput,
+  stepStyleSize,
 } from "../../styleSizePresets";
 import FontScanPromo from "./fontScanPromo";
 import UnsavedChangesDialog from "./unsavedChangesDialog";
@@ -498,6 +500,27 @@ const StyleDetails = React.memo(function StyleDetails(props) {
     if (size !== null && previousSize === activeSize) changeProp("size", size);
   };
 
+  const stepSizePreset = (index, direction) => {
+    changeSizePreset(index, stepStyleSize(props.sizePresets[index], direction, sizeStep));
+  };
+
+  const keyDownSizePreset = (index) => (e) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    e.preventDefault();
+    stepSizePreset(index, e.key === "ArrowUp" ? 1 : -1);
+  };
+
+  // Keeps the focus in the field, so leaving it commits the presets as typing does
+  const focusSizePreset = (e) => {
+    e.preventDefault();
+    e.currentTarget.closest(".style-edit-size-preset").querySelector("input").focus();
+  };
+
+  const clickSizeStepper = (index, direction) => (e) => {
+    e.stopPropagation();
+    stepSizePreset(index, direction);
+  };
+
   const commitPresetStructure = (nextPresets) => {
     const defaultSize = parseStyleSize(props.sizePresets[props.sizePresetDefaultIndex]);
     const nextWidths = nextPresets.map((size) => {
@@ -646,15 +669,23 @@ const StyleDetails = React.memo(function StyleDetails(props) {
                 title={locale.editStyleActivateSizePreset || "Use this size preset"}
               >
                 <input
-                  type="number"
-                  min={1}
-                  step={sizeStep}
+                  type="text"
+                  inputMode="decimal"
                   value={value}
-                  onChange={(e) => changeSizePreset(index, e.target.value)}
+                  onChange={(e) => changeSizePreset(index, sanitizeStyleSizeInput(e.target.value))}
+                  onKeyDown={keyDownSizePreset(index)}
                   onBlur={commitSizePresets}
                   aria-label={`${locale.editStyleFontSize} ${index + 1}`}
                   className="topcoat-text-input--large"
                 />
+                <div className="style-edit-size-stepper" onMouseDown={focusSizePreset}>
+                  <button type="button" tabIndex={-1} onClick={clickSizeStepper(index, 1)}>
+                    <FiChevronUp size={9} />
+                  </button>
+                  <button type="button" tabIndex={-1} onClick={clickSizeStepper(index, -1)}>
+                    <FiChevronDown size={9} />
+                  </button>
+                </div>
                 <span className="style-edit-size-unit">{unit}</span>
                 <button
                   type="button"

@@ -1,8 +1,24 @@
 const MAX_STYLE_SIZE_PRESETS = 3;
 
 const parseStyleSize = (value) => {
-  const size = parseFloat(value);
+  const size = parseFloat(String(value).replace(",", "."));
   return Number.isFinite(size) && size > 0 ? size : null;
+};
+
+// Keeps digits and the first decimal separator, point or comma
+const sanitizeStyleSizeInput = (value) => {
+  const cleaned = String(value).replace(/[^\d.,]/g, "");
+  const separator = cleaned.search(/[.,]/);
+  if (separator < 0) return cleaned;
+  return cleaned.slice(0, separator + 1) + cleaned.slice(separator + 1).replace(/[.,]/g, "");
+};
+
+// Moves to the next multiple of step, so 15.2 goes to 16 or 15 with a step of 1
+const stepStyleSize = (value, direction, step) => {
+  const ratio = (parseStyleSize(value) ?? 1) / step;
+  const tick = direction > 0 ? Math.floor(ratio + 1e-9) + 1 : Math.ceil(ratio - 1e-9) - 1;
+  const decimals = (String(step).split(".")[1] || "").length;
+  return Math.max(1, parseFloat((tick * step).toFixed(decimals)));
 };
 
 const parsePageWidth = (value) => {
@@ -128,6 +144,8 @@ const cycleStyleSizePreset = (style) => {
 export {
   MAX_STYLE_SIZE_PRESETS,
   parseStyleSize,
+  sanitizeStyleSizeInput,
+  stepStyleSize,
   parsePageWidth,
   getStyleTextSize,
   normalizeStyleSizePresets,

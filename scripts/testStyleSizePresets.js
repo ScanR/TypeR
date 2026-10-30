@@ -16,8 +16,11 @@ const {
   cycleStyleSizePreset,
   normalizeStyleSizePresetWidthConfig,
   normalizeStyleSizePresets,
+  parseStyleSize,
   resolveStyleSizePresetForPageWidth,
+  sanitizeStyleSizeInput,
   setStyleSizePreset,
+  stepStyleSize,
   updateActiveStyleSizePreset,
 } = presetModule.exports;
 
@@ -32,6 +35,34 @@ const makeStyle = (size, sizePresets) => ({
 });
 
 assert.strictEqual(MAX_STYLE_SIZE_PRESETS, 3);
+
+// Decimal sizes are typed with a point or a comma
+assert.strictEqual(parseStyleSize("15,2"), 15.2);
+assert.strictEqual(parseStyleSize("15.2"), 15.2);
+assert.strictEqual(parseStyleSize("15,"), 15);
+assert.strictEqual(parseStyleSize(15.2), 15.2);
+assert.strictEqual(parseStyleSize(""), null);
+assert.strictEqual(parseStyleSize(","), null);
+assert.strictEqual(parseStyleSize(undefined), null);
+assert.deepStrictEqual(normalizeStyleSizePresets(makeStyle(15.2, ["15,2", "18,5"])), [15.2, 18.5]);
+assert.strictEqual(sanitizeStyleSizeInput("15,2"), "15,2");
+assert.strictEqual(sanitizeStyleSizeInput("15.2"), "15.2");
+assert.strictEqual(sanitizeStyleSizeInput("1a5,2,3.4-"), "15,234");
+assert.strictEqual(stepStyleSize("15,2", 1, 1), 16);
+assert.strictEqual(stepStyleSize("15,2", -1, 1), 15);
+assert.strictEqual(stepStyleSize(15, 1, 1), 16);
+assert.strictEqual(stepStyleSize(15, -1, 1), 14);
+assert.strictEqual(stepStyleSize(15.2, 1, 0.1), 15.3);
+assert.strictEqual(stepStyleSize(15.2, -1, 0.5), 15);
+assert.strictEqual(stepStyleSize(1, -1, 1), 1);
+assert.strictEqual(stepStyleSize("", 1, 1), 2);
+
+// A number field would reject the comma or block saving on its step
+["app_src/components/modal/editStyle.jsx", "app_src/components/stylesBlock/stylesBlock.jsx"].forEach((file) => {
+  const ui = fs.readFileSync(path.join(rootDir, file), "utf8");
+  assert(/type="text"\s+inputMode="decimal"/.test(ui), file + " must accept decimal sizes");
+  assert(!/type="number"\s+min=\{1\}\s+step=\{sizeStep\}/.test(ui), file + " must not validate sizes on a step");
+});
 assert.deepStrictEqual(normalizeStyleSizePresets(makeStyle(23)), [23]);
 assert.deepStrictEqual(normalizeStyleSizePresets(makeStyle(35, [23, 23, 0, "bad"])), [35, 23]);
 assert.deepStrictEqual(normalizeStyleSizePresets(makeStyle(23, [23, 35, 48, 60])), [23, 35, 48]);
