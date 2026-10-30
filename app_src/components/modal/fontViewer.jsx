@@ -1,4 +1,3 @@
-import { fetchBody } from "../../network";
 import React from "react";
 import {
   FiCheck,
@@ -18,16 +17,16 @@ import {
 } from "react-icons/fi";
 import { getUserFonts, locale, openUrl, refreshUserFonts } from "../../utils";
 import { uint8ToBase64 } from "../../updateInstaller";
-import { FONT_VIEWER_API_BASE, getDownloadManifest, getFontFamilies, getFontFilters } from "../../fontViewerApi";
+import { FONT_VIEWER_API_BASE, getFontFamilies, getFontFilters } from "../../fontViewerApi";
 import { installFontFiles, isFontInstallSupported } from "../../fontInstaller";
-import { shuffleFamilies } from "../../fontViewerRandom";
+import { fetchFontFinderFiles, fetchWithConcurrency, safeFileName, scheduleFontRefresh } from "../../fontFinderInstall";
+import { getRemainingPages, shuffleFamilies } from "../../fontViewerRandom";
 import FontFinderLogo from "./fontFinderLogo";
 
 import "./fontViewer.scss";
 
 const PER_PAGE = 200;
 const RANDOM_BATCH_SIZE = 24;
-const DOWNLOAD_CONCURRENCY = 3;
 const VIEW_STORAGE_KEY = "typer.fontViewer.compactView";
 const SCROLL_STORAGE_KEY = "typer.fontViewer.scrollTop";
 const LAST_PREVIEW_STORAGE_KEY = "typer.fontViewer.lastPreview";
@@ -206,39 +205,6 @@ const sortFamilies = (families, sort) => {
   return copy.sort((a, b) => String(a.family).localeCompare(String(b.family)));
 };
 
-const safeFileName = (name, fallback = "font") => {
-  const clean = String(name || fallback).replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").trim();
-  return clean || fallback;
-};
-
-const makeUniqueFileNames = (fonts) => {
-  const used = new Set();
-  return (fonts || []).map((font) => {
-    const original = safeFileName(font.file_name, `${font.name || font.id}.otf`);
-    const dot = original.lastIndexOf(".");
-    const stem = dot > 0 ? original.slice(0, dot) : original;
-    const ext = dot > 0 ? original.slice(dot) : "";
-    let name = original;
-    for (let suffix = 2; used.has(name.toLowerCase()); suffix += 1) name = `${stem}-${suffix}${ext}`;
-    used.add(name.toLowerCase());
-    return { ...font, saveName: name };
-  });
-};
-
-const fetchWithConcurrency = async (items, worker, limit = DOWNLOAD_CONCURRENCY) => {
-  const results = new Array(items.length);
-  let nextIndex = 0;
-  const runners = new Array(Math.min(limit, items.length)).fill(null).map(async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await worker(items[index], index);
-    }
-  });
-  await Promise.all(runners);
-  return results;
-};
-
 const LazyFontPreview = ({ font, text, uppercase }) => {
   const ref = React.useRef(null);
   const [ready, setReady] = React.useState(false);
@@ -387,6 +353,7 @@ const FontViewer = () => {
   const [randomSeed, setRandomSeed] = React.useState(() => Date.now() >>> 0);
   const [randomOffset, setRandomOffset] = React.useState(0);
   const [randomLoading, setRandomLoading] = React.useState(false);
+  const [randomPool, setRandomPool] = React.useState({ signature: null, families: [] });
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [filterData, setFilterData] = React.useState(null);
   const [filterError, setFilterError] = React.useState(false);
@@ -402,6 +369,7 @@ const FontViewer = () => {
   const [loading, setLoading] = React.useState(!initialSnapshot);
   const [error, setError] = React.useState("");
   const [retryToken, setRetryToken] = React.useState(0);
+  const [settledRequest, setSettledRequest] = React.useState(0);
   const [alphabetLoading, setAlphabetLoading] = React.useState(false);
   const [pendingLetter, setPendingLetter] = React.useState(null);
   const [selected, setSelected] = React.useState({});
@@ -418,7 +386,6 @@ const FontViewer = () => {
   const scrollRestored = React.useRef(false);
   const rememberedScroll = React.useRef(readStoredScroll());
   const requestSignatureRef = React.useRef("");
-  const randomPageKeysRef = React.useRef(new Set());
 
   React.useEffect(() => {
     mounted.current = true;
@@ -517,6 +484,9 @@ const FontViewer = () => {
       setPagination(nextPagination);
       setLoading(false);
       if (isDefaultRequest) storeFamiliesSnapshot(data.families, nextPagination);
+      // Last: outside events React renders each update on its own, and the
+      // Random pool must not start from the previous request's pagination.
+      setSettledRequest(currentRequest);
     }).catch((requestError) => {
       if (!active || requestId.current !== currentRequest) return;
       snapshotSilenceRef.current = false;
@@ -524,11 +494,58 @@ const FontViewer = () => {
       // of replacing it with the error screen.
       if (!silent) setError(requestError && requestError.message === "rateLimited" ? "rateLimited" : "requestFailed");
       setLoading(false);
+      setSettledRequest(currentRequest);
     });
     return () => {
       active = false;
     };
   }, [page, requestSignature, retryToken]);
+
+  const fetchFamilyPages = async (pages, shouldContinue = () => true) => {
+    const responses = await fetchWithConcurrency(
+      pages,
+      (nextPage) => (shouldContinue()
+        ? getFontFamilies({
+          page: nextPage,
+          perPage: PER_PAGE,
+          q: query,
+          tags: selectedFilters.tags,
+          genres: selectedFilters.genres,
+          styles: selectedFilters.styles,
+          collections: selectedFilters.collections,
+        })
+        : { families: [] }),
+      2
+    );
+    return [].concat(...responses.map((response) => response.families || []));
+  };
+
+  // Random draws from the whole result set: the catalogue is sorted by name, so
+  // the first pages alone would only ever offer fonts starting with A. The rest
+  // stays out of `families` to keep the name list light once Random is left.
+  const randomPoolReady = !pagination.has_more || randomPool.signature === requestSignature;
+  React.useEffect(() => {
+    if (sort !== "random" || error || randomPoolReady || settledRequest !== requestId.current) return undefined;
+    let active = true;
+    const signature = requestSignature;
+    setRandomLoading(true);
+    fetchFamilyPages(getRemainingPages({ total: pagination.total, page: 1 }, 1, PER_PAGE), () => active).then((pool) => {
+      if (active) setRandomPool({ signature, families: pool });
+    }).catch((randomError) => {
+      if (active) setError(randomError && randomError.message === "rateLimited" ? "rateLimited" : "requestFailed");
+    });
+    return () => {
+      active = false;
+      if (mounted.current) setRandomLoading(false);
+    };
+  }, [sort, error, randomPoolReady, settledRequest]);
+
+  const sourceFamilies = React.useMemo(
+    () => (sort === "random" && randomPool.signature === requestSignature
+      ? uniqueById(families.concat(randomPool.families))
+      : families),
+    [families, sort, randomPool, requestSignature]
+  );
 
   const toggleFilter = (group, value) => {
     setPage(1);
@@ -574,33 +591,17 @@ const FontViewer = () => {
     });
   }, []);
 
-  // Shared by download and install: resolves the original files for the given
-  // fonts and fetches their bytes with progress feedback.
-  const fetchFontFiles = React.useCallback(async (fonts) => {
-    let manifestFonts;
-    if (fonts.length === 1) {
-      const font = fonts[0];
-      manifestFonts = [{ ...font, download_url: `${FONT_VIEWER_API_BASE}/fonts/${Number(font.id)}/file?original=1` }];
-    } else {
-      const manifest = await getDownloadManifest(fonts.map((font) => font.id));
-      manifestFonts = manifest.fonts || [];
-    }
-    const namedFonts = makeUniqueFileNames(manifestFonts);
-    let completed = 0;
-    return fetchWithConcurrency(namedFonts, async (font) => {
-      const bytes = new Uint8Array(await fetchBody(font.download_url, { headers: { Accept: "application/octet-stream" } }, "arrayBuffer", 60000));
-      completed += 1;
-      if (mounted.current) {
-        setDownloadState({
-          busy: true,
-          error: false,
-          message: locale.fontViewerDownloading.replace("{current}", completed).replace("{total}", namedFonts.length),
-          progress: completed / namedFonts.length,
-        });
-      }
-      return { id: font.id, name: font.saveName, displayName: font.name || font.family || font.saveName, bytes };
+  // Shared by download and install: fetches the original files of the given
+  // fonts with progress feedback.
+  const fetchFontFiles = React.useCallback((fonts) => fetchFontFinderFiles(fonts, (completed, total) => {
+    if (!mounted.current) return;
+    setDownloadState({
+      busy: true,
+      error: false,
+      message: locale.fontViewerDownloading.replace("{current}", completed).replace("{total}", total),
+      progress: completed / total,
     });
-  }, []);
+  }), []);
 
   const downloadFonts = React.useCallback(async (fonts) => {
     if (!fonts.length || downloadBusyRef.current) return;
@@ -639,7 +640,7 @@ const FontViewer = () => {
 
   const installFonts = React.useCallback(async (fonts) => {
     const familyFonts = uniqueById(fonts.reduce((allFonts, font) => {
-      const family = families.find((item) => (item.fonts || []).some((variant) => variant.id === font.id));
+      const family = sourceFamilies.find((item) => (item.fonts || []).some((variant) => variant.id === font.id));
       return allFonts.concat(family ? family.fonts : (font.familyFonts || [font]));
     }, []));
     if (!familyFonts.length || downloadBusyRef.current || !installSupported) return;
@@ -657,32 +658,27 @@ const FontViewer = () => {
         });
         setDownloadState({ busy: false, error: false, message: locale.fontViewerInstalled.replace("{count}", files.length) });
       }
-      // The files are fully registered at this point; ask Photoshop to rescan
-      // its font list (app.refreshFonts) so the new fonts appear without a
-      // restart, with one delayed backstop (one-shot, not a recurring
-      // re-enumeration).
-      window.setTimeout(() => refreshUserFonts(null, true), 1500);
-      window.setTimeout(() => refreshUserFonts(null, true), 10000);
+      scheduleFontRefresh();
     } catch (installError) {
       if (mounted.current) setDownloadState({ busy: false, error: true, message: locale.fontViewerInstallError });
     } finally {
       downloadBusyRef.current = false;
     }
-  }, [families, fetchFontFiles, installSupported]);
+  }, [sourceFamilies, fetchFontFiles, installSupported]);
 
   const selectedFonts = Object.values(selected);
   const installedFontNames = React.useMemo(() => getInstalledFontNames(systemFonts), [systemFonts]);
   const effectiveInstalled = React.useMemo(() => {
     const next = { ...installed };
-    families.forEach((family) => {
+    sourceFamilies.forEach((family) => {
       (family.fonts || []).forEach((font) => {
         if (isFontInstalled(font, installed, installedFontNames)) next[font.id] = true;
       });
     });
     return next;
-  }, [families, installed, installedFontNames]);
+  }, [sourceFamilies, installed, installedFontNames]);
   const availableFamilies = React.useMemo(
-    () => families
+    () => sourceFamilies
       .filter((family) => family && family.fonts && family.fonts.length)
       .map((family) => {
         if (!hideInstalled && !showOnlyInstalled) return family;
@@ -699,12 +695,14 @@ const FontViewer = () => {
         };
       })
       .filter(Boolean),
-    [families, hideInstalled, showOnlyInstalled, effectiveInstalled]
+    [sourceFamilies, hideInstalled, showOnlyInstalled, effectiveInstalled]
   );
   const visibleFamilies = React.useMemo(() => {
     if (sort !== "random") return sortFamilies(availableFamilies, sort);
+    if (!randomPoolReady) return [];
     return shuffleFamilies(availableFamilies, randomSeed).slice(randomOffset, randomOffset + RANDOM_BATCH_SIZE);
-  }, [availableFamilies, sort, randomSeed, randomOffset]);
+  }, [availableFamilies, sort, randomSeed, randomOffset, randomPoolReady]);
+  const listLoading = loading || (sort === "random" && !randomPoolReady);
   const availableLetters = React.useMemo(
     () => new Set(visibleFamilies.map((family) => getFamilyLetter(family.family))),
     [visibleFamilies]
@@ -777,31 +775,13 @@ const FontViewer = () => {
     if (!pagination.has_more) return;
 
     const signature = requestSignature;
-    const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / PER_PAGE));
-    const firstMissingPage = Math.max(2, (pagination.page || page) + 1);
-    const pages = [];
-    for (let nextPage = firstMissingPage; nextPage <= totalPages; nextPage += 1) pages.push(nextPage);
-    if (!pages.length) return;
-
     setAlphabetLoading(true);
     try {
-      const responses = await fetchWithConcurrency(
-        pages,
-        (nextPage) => getFontFamilies({
-          page: nextPage,
-          perPage: PER_PAGE,
-          q: query,
-          tags: selectedFilters.tags,
-          genres: selectedFilters.genres,
-          styles: selectedFilters.styles,
-          collections: selectedFilters.collections,
-        }),
-        2
-      );
+      const remaining = await fetchFamilyPages(getRemainingPages(pagination, page, PER_PAGE));
       if (!mounted.current || requestSignatureRef.current !== signature) return;
-      const combined = uniqueById(families.concat(...responses.map((response) => response.families || [])));
+      const combined = uniqueById(families.concat(remaining));
       setFamilies(combined);
-      setPagination((current) => ({ ...current, page: totalPages, has_more: false }));
+      setPagination((current) => ({ ...current, has_more: false }));
       if (combined.some((family) => getFamilyLetter(family.family) === letter)) setPendingLetter(letter);
     } catch (alphabetError) {
       if (mounted.current) {
@@ -819,22 +799,10 @@ const FontViewer = () => {
     else scrollRoot.scrollTop = 0;
   };
 
-  const getRandomPageCandidates = () => {
-    const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / PER_PAGE));
-    const sequentialPages = Math.max(1, Number(pagination.page) || page || 1);
-    const candidates = [];
-    for (let randomPage = sequentialPages + 1; randomPage <= totalPages; randomPage += 1) {
-      const key = `${requestSignature}:${randomPage}`;
-      if (!randomPageKeysRef.current.has(key)) candidates.push({ key, page: randomPage });
-    }
-    return candidates;
-  };
-
-  const shuffleLoadedFonts = async () => {
+  const shuffleFonts = () => {
     if (randomLoading) return;
-    const availableCount = availableFamilies.length;
     const nextOffset = sort === "random" ? randomOffset + RANDOM_BATCH_SIZE : 0;
-    if (sort === "random" && nextOffset < availableCount) {
+    if (sort === "random" && nextOffset < availableFamilies.length) {
       setRandomOffset(nextOffset);
       scrollToTop();
       return;
@@ -844,43 +812,14 @@ const FontViewer = () => {
     setRandomOffset(0);
     setRandomSeed((current) => (current + 0x9e3779b9) >>> 0);
     scrollToTop();
-
-    // Fetch one unseen catalogue page only when starting Random or after the
-    // local reservoir has been consumed. Each page then powers several clicks.
-    const candidates = getRandomPageCandidates();
-    if (!candidates.length) return;
-
-    const candidate = candidates[Math.floor(Math.random() * candidates.length)];
-    randomPageKeysRef.current.add(candidate.key);
-    setRandomLoading(true);
-    try {
-      const data = await getFontFamilies({
-        page: candidate.page,
-        perPage: PER_PAGE,
-        q: query,
-        tags: selectedFilters.tags,
-        genres: selectedFilters.genres,
-        styles: selectedFilters.styles,
-        collections: selectedFilters.collections,
-      });
-      if (mounted.current && requestSignatureRef.current === requestSignature) {
-        setFamilies((current) => uniqueById(current.concat(data.families || [])));
-      }
-    } catch (randomError) {
-      // The already loaded reservoir still provides a useful Random mode.
-      // Forget failed pages so a later batch can retry through the API cache.
-      randomPageKeysRef.current.delete(candidate.key);
-    } finally {
-      if (mounted.current) setRandomLoading(false);
-    }
   };
 
   const canLoadMore = sort === "random"
-    ? randomOffset + RANDOM_BATCH_SIZE < availableFamilies.length || getRandomPageCandidates().length > 0
+    ? randomOffset + RANDOM_BATCH_SIZE < availableFamilies.length
     : pagination.has_more;
   const loadMoreFonts = () => {
     if (sort === "random") {
-      shuffleLoadedFonts();
+      shuffleFonts();
       return;
     }
     setPage((value) => value + 1);
@@ -948,7 +887,7 @@ const FontViewer = () => {
           type="button"
           className={`font-viewer-random-button${sort === "random" ? " m-active" : ""}`}
           disabled={!visibleFamilies.length || loading || alphabetLoading || randomLoading}
-          onClick={shuffleLoadedFonts}
+          onClick={shuffleFonts}
           title={locale.fontViewerRandomHint}
           aria-label={locale.fontViewerRandomHint}
           aria-pressed={sort === "random"}
@@ -1069,7 +1008,7 @@ const FontViewer = () => {
             <FiRefreshCw size={13} /> {locale.fontViewerRetry}
           </button>
         </div>
-      ) : !loading && !visibleFamilies.length ? (
+      ) : !listLoading && !visibleFamilies.length ? (
         <div className="font-viewer-empty"><strong>{locale.fontViewerNoResults}</strong><span>{locale.fontViewerNoResultsHint}</span></div>
       ) : (
         <div className="font-viewer-grid">
@@ -1094,11 +1033,11 @@ const FontViewer = () => {
               />
             );
           })}
-          {loading && new Array(page === 1 ? 6 : 2).fill(null).map((_, index) => <div key={`skeleton-${index}`} className="font-viewer-card m-skeleton" />)}
+          {listLoading && new Array(page === 1 ? 6 : 2).fill(null).map((_, index) => <div key={`skeleton-${index}`} className="font-viewer-card m-skeleton" />)}
         </div>
       )}
 
-      {!error && !loading && !!visibleFamilies.length && canLoadMore && (
+      {!error && !listLoading && !!visibleFamilies.length && canLoadMore && (
         <button
           type="button"
           className="font-viewer-load-more"

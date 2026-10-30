@@ -8,8 +8,8 @@ const createSeededRandom = (seed) => {
   };
 };
 
-// A seeded shuffle keeps the order stable across React renders. The operation
-// is entirely local: clicking Random never needs another catalogue request.
+// A seeded shuffle keeps the order stable across React renders, and consecutive
+// Random clicks walk through it without showing a family twice.
 const shuffleFamilies = (families, seed) => {
   const shuffled = (families || []).slice();
   const random = createSeededRandom(seed);
@@ -22,4 +22,12 @@ const shuffleFamilies = (families, seed) => {
   return shuffled;
 };
 
-export { shuffleFamilies };
+// Catalogue pages not fetched yet, given the last page the API returned.
+const getRemainingPages = (pagination, currentPage, perPage) => {
+  const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / perPage));
+  const pages = [];
+  for (let page = Math.max(2, (pagination.page || currentPage) + 1); page <= totalPages; page += 1) pages.push(page);
+  return pages;
+};
+
+export { getRemainingPages, shuffleFamilies };
