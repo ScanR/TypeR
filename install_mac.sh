@@ -23,8 +23,7 @@ LANGUAGE=$((defaults read -g AppleLocale 2>/dev/null || printf 'en') | cut -d"_"
 # —————————————————————————————————————————————————————————————
 # Messages en anglais
 # —————————————————————————————————————————————————————————————
-MSG_INSTALL_EN="Photoshop extension TypeR v$EXT_VERSION will be installed."
-MSG_CLOSE_PHOTOSHOP_EN="Close Photoshop (if it is open)."
+MSG_CLOSE_PHOTOSHOP_EN="Photoshop is open: close it first."
 MSG_PRESS_KEY_EN="Press any key to continue"
 MSG_INSTALL_COMPLETE_EN="Installation completed."
 MSG_OPEN_PHOTOSHOP_EN="Open Photoshop and in the menu click the following: [Window] > [Extensions] > [TypeR]"
@@ -32,12 +31,22 @@ MSG_PRESS_ENTER_EN="Press Enter to continue"
 MSG_CREDITS_EN="TypeR developed by Sakushi & SeanR."
 MSG_TYPERTOOLS_EN="typertools, developed by Swirt: https://swirt.github.io/typertools/"
 MSG_DISCORD_EN="ScanR's Discord if you need help: https://discord.com/invite/Pdmfmqk"
+MSG_TITLE_EN="TypeR installer"
+MSG_PS_FOUND_EN="Photoshop found:"
+MSG_PS_NONE_EN="Photoshop was not found on this computer."
+MSG_UXP_NAME_EN="New TypeR (UXP)"
+MSG_UXP_DESC_EN="Faster, built on Adobe's newer plugin framework."
+MSG_UXP_REQ_EN="Photoshop 2025 (version 26.0) or later"
+MSG_UXP_TOO_OLD_EN="Your Photoshop is too old for this version."
+MSG_LEGACY_NAME_EN="Legacy (CEP)"
+MSG_LEGACY_DESC_EN="Older and slower."
+MSG_LEGACY_REQ_EN="Photoshop CC 2015 (version 16.0) or later"
+MSG_LEGACY_ROSETTA_EN="On this Mac, Photoshop 2026 and later need Rosetta: a launcher will be created."
+MSG_RECOMMENDED_EN="(recommended)"
+MSG_KEYS_EN="↑/↓ choose  ·  Enter install  ·  Q quit"
+MSG_CANCELLED_EN="Installation cancelled."
+MSG_CHOICE_PROMPT_EN="Your choice [1/2] (Enter = %s): "
 MSG_CHOOSE_EN="Which version of TypeR do you want to install?"
-MSG_CHOICE_UXP_EN="  1) New TypeR (UXP), recommended (faster, built on Adobe's newer plugin framework)
-     Photoshop 2025 (version 26.0) or later"
-MSG_CHOICE_LEGACY_EN="  2) Legacy, CEP (works with more Photoshop versions; older and slower, but more thoroughly tested)
-     Photoshop CC 2015 (version 16.0) or later; Photoshop 2026 on Apple Silicon must run under Rosetta"
-MSG_CHOICE_PROMPT_EN="Your choice [1/2] (Enter = 1): "
 MSG_BOTH_INSTALLED_EN="The other version of TypeR is installed too: do not open both panels at the same time (each shortcut would run twice)."
 MSG_UXP_DOWNLOAD_EN="Downloading the new TypeR (UXP)..."
 MSG_UXP_INSTALLING_EN="Installing the new TypeR (UXP)..."
@@ -48,8 +57,7 @@ MSG_UXP_FAILED_EN="The installation failed. Close Photoshop and run this script 
 # —————————————————————————————————————————————————————————————
 # Messages en français
 # —————————————————————————————————————————————————————————————
-MSG_INSTALL_FR="L'extension Photoshop TypeR v$EXT_VERSION sera installée."
-MSG_CLOSE_PHOTOSHOP_FR="Fermez Photoshop (s'il est ouvert)."
+MSG_CLOSE_PHOTOSHOP_FR="Photoshop est ouvert : fermez-le d'abord."
 MSG_PRESS_KEY_FR="Appuyez sur une touche pour continuer"
 MSG_INSTALL_COMPLETE_FR="Installation terminée."
 MSG_OPEN_PHOTOSHOP_FR="Ouvrez Photoshop et dans le menu cliquez sur : [Fenêtre] > [Extensions] > [TypeR]"
@@ -57,12 +65,22 @@ MSG_PRESS_ENTER_FR="Appuyez sur Entrée pour continuer"
 MSG_CREDITS_FR="TypeR développé par Sakushi & SeanR."
 MSG_TYPERTOOLS_FR="typertools, développé par Swirt : https://swirt.github.io/typertools/"
 MSG_DISCORD_FR="Discord de ScanR si besoin d'aide : https://discord.com/invite/Pdmfmqk"
+MSG_TITLE_FR="Installation de TypeR"
+MSG_PS_FOUND_FR="Photoshop détecté :"
+MSG_PS_NONE_FR="Photoshop n'a pas été trouvé sur cet ordinateur."
+MSG_UXP_NAME_FR="Nouveau TypeR (UXP)"
+MSG_UXP_DESC_FR="Plus rapide, basé sur le framework de plugins le plus récent d'Adobe."
+MSG_UXP_REQ_FR="Photoshop 2025 (version 26.0) ou plus récent"
+MSG_UXP_TOO_OLD_FR="Votre Photoshop est trop ancien pour cette version."
+MSG_LEGACY_NAME_FR="Legacy (CEP)"
+MSG_LEGACY_DESC_FR="Plus ancienne et plus lente."
+MSG_LEGACY_REQ_FR="Photoshop CC 2015 (version 16.0) ou plus récent"
+MSG_LEGACY_ROSETTA_FR="Sur ce Mac, Photoshop 2026 et plus récent ont besoin de Rosetta : un lanceur sera créé."
+MSG_RECOMMENDED_FR="(recommandé)"
+MSG_KEYS_FR="↑/↓ choisir  ·  Entrée installer  ·  Q quitter"
+MSG_CANCELLED_FR="Installation annulée."
+MSG_CHOICE_PROMPT_FR="Votre choix [1/2] (Entrée = %s) : "
 MSG_CHOOSE_FR="Quelle version de TypeR voulez-vous installer ?"
-MSG_CHOICE_UXP_FR="  1) Nouveau TypeR (UXP), recommandé (plus rapide, basé sur le framework de plugins le plus récent d'Adobe)
-     Photoshop 2025 (version 26.0) ou plus récent"
-MSG_CHOICE_LEGACY_FR="  2) Legacy, CEP (compatible avec plus de versions de Photoshop ; plus ancienne et plus lente, mais mieux éprouvée)
-     Photoshop CC 2015 (version 16.0) ou plus récent ; sur Mac Apple Silicon, Photoshop 2026 doit tourner sous Rosetta"
-MSG_CHOICE_PROMPT_FR="Votre choix [1/2] (Entrée = 1) : "
 MSG_BOTH_INSTALLED_FR="L'autre version de TypeR est aussi installée : n'ouvrez pas les deux panneaux en même temps (chaque raccourci s'exécuterait deux fois)."
 MSG_UXP_DOWNLOAD_FR="Téléchargement du nouveau TypeR (UXP)..."
 MSG_UXP_INSTALLING_FR="Installation du nouveau TypeR (UXP)..."
@@ -73,8 +91,7 @@ MSG_UXP_FAILED_FR="L'installation a échoué. Fermez Photoshop et relancez ce sc
 # —————————————————————————————————————————————————————————————
 # Messages en espagnol
 # —————————————————————————————————————————————————————————————
-MSG_INSTALL_ES="La extensión de Photoshop TypeR v$EXT_VERSION será instalada."
-MSG_CLOSE_PHOTOSHOP_ES="Cierra Photoshop (si está abierto)."
+MSG_CLOSE_PHOTOSHOP_ES="Photoshop está abierto: ciérralo primero."
 MSG_PRESS_KEY_ES="Presiona cualquier tecla para continuar"
 MSG_INSTALL_COMPLETE_ES="Instalación completada."
 MSG_OPEN_PHOTOSHOP_ES="Abre Photoshop y en el menú haz clic en: [Ventana] > [Extensiones] > [TypeR]"
@@ -82,12 +99,22 @@ MSG_PRESS_ENTER_ES="Presiona Enter para continuar"
 MSG_CREDITS_ES="TypeR desarrollado por Sakushi & SeanR."
 MSG_TYPERTOOLS_ES="typertools, desarrollado por Swirt: https://swirt.github.io/typertools/"
 MSG_DISCORD_ES="Discord de ScanR si necesitas ayuda: https://discord.com/invite/Pdmfmqk"
+MSG_TITLE_ES="Instalador de TypeR"
+MSG_PS_FOUND_ES="Photoshop detectado:"
+MSG_PS_NONE_ES="No se encontró Photoshop en este ordenador."
+MSG_UXP_NAME_ES="Nuevo TypeR (UXP)"
+MSG_UXP_DESC_ES="Más rápido, basado en el framework de plugins más reciente de Adobe."
+MSG_UXP_REQ_ES="Photoshop 2025 (versión 26.0) o posterior"
+MSG_UXP_TOO_OLD_ES="Tu Photoshop es demasiado antiguo para esta versión."
+MSG_LEGACY_NAME_ES="Legacy (CEP)"
+MSG_LEGACY_DESC_ES="Más antigua y lenta."
+MSG_LEGACY_REQ_ES="Photoshop CC 2015 (versión 16.0) o posterior"
+MSG_LEGACY_ROSETTA_ES="En este Mac, Photoshop 2026 y posteriores necesitan Rosetta: se creará un lanzador."
+MSG_RECOMMENDED_ES="(recomendado)"
+MSG_KEYS_ES="↑/↓ elegir  ·  Enter instalar  ·  Q salir"
+MSG_CANCELLED_ES="Instalación cancelada."
+MSG_CHOICE_PROMPT_ES="Tu elección [1/2] (Enter = %s): "
 MSG_CHOOSE_ES="¿Qué versión de TypeR quieres instalar?"
-MSG_CHOICE_UXP_ES="  1) Nuevo TypeR (UXP), recomendado (más rápido, basado en el framework de plugins más reciente de Adobe)
-     Photoshop 2025 (versión 26.0) o posterior"
-MSG_CHOICE_LEGACY_ES="  2) Legacy, CEP (compatible con más versiones de Photoshop; más antigua y lenta, pero más probada)
-     Photoshop CC 2015 (versión 16.0) o posterior; en Mac Apple Silicon, Photoshop 2026 debe ejecutarse con Rosetta"
-MSG_CHOICE_PROMPT_ES="Tu elección [1/2] (Enter = 1): "
 MSG_BOTH_INSTALLED_ES="La otra versión de TypeR también está instalada: no abras ambos paneles a la vez (cada atajo se ejecutaría dos veces)."
 MSG_UXP_DOWNLOAD_ES="Descargando el nuevo TypeR (UXP)..."
 MSG_UXP_INSTALLING_ES="Instalando el nuevo TypeR (UXP)..."
@@ -98,8 +125,7 @@ MSG_UXP_FAILED_ES="La instalación falló. Cierra Photoshop y vuelve a ejecutar 
 # —————————————————————————————————————————————————————————————
 # Messages en portugais
 # —————————————————————————————————————————————————————————————
-MSG_INSTALL_PT="A extensão Photoshop TypeR v$EXT_VERSION será instalada."
-MSG_CLOSE_PHOTOSHOP_PT="Feche o Photoshop (se estiver aberto)."
+MSG_CLOSE_PHOTOSHOP_PT="O Photoshop está aberto: feche-o primeiro."
 MSG_PRESS_KEY_PT="Pressione qualquer tecla para continuar"
 MSG_INSTALL_COMPLETE_PT="Instalação concluída."
 MSG_OPEN_PHOTOSHOP_PT="Abra o Photoshop e no menu clique em: [Janela] > [Extensões] > [TypeR]"
@@ -107,12 +133,22 @@ MSG_PRESS_ENTER_PT="Pressione Enter para continuar"
 MSG_CREDITS_PT="TypeR desenvolvido por Sakushi & SeanR."
 MSG_TYPERTOOLS_PT="typertools, desenvolvido por Swirt: https://swirt.github.io/typertools/"
 MSG_DISCORD_PT="Discord do ScanR se precisar de ajuda: https://discord.com/invite/Pdmfmqk"
+MSG_TITLE_PT="Instalador do TypeR"
+MSG_PS_FOUND_PT="Photoshop detectado:"
+MSG_PS_NONE_PT="O Photoshop não foi encontrado neste computador."
+MSG_UXP_NAME_PT="Novo TypeR (UXP)"
+MSG_UXP_DESC_PT="Mais rápido, baseado no framework de plugins mais recente da Adobe."
+MSG_UXP_REQ_PT="Photoshop 2025 (versão 26.0) ou mais recente"
+MSG_UXP_TOO_OLD_PT="O seu Photoshop é antigo demais para esta versão."
+MSG_LEGACY_NAME_PT="Legacy (CEP)"
+MSG_LEGACY_DESC_PT="Mais antiga e lenta."
+MSG_LEGACY_REQ_PT="Photoshop CC 2015 (versão 16.0) ou mais recente"
+MSG_LEGACY_ROSETTA_PT="Neste Mac, o Photoshop 2026 e mais recentes precisam do Rosetta: um iniciador será criado."
+MSG_RECOMMENDED_PT="(recomendado)"
+MSG_KEYS_PT="↑/↓ escolher  ·  Enter instalar  ·  Q sair"
+MSG_CANCELLED_PT="Instalação cancelada."
+MSG_CHOICE_PROMPT_PT="Sua escolha [1/2] (Enter = %s): "
 MSG_CHOOSE_PT="Qual versão do TypeR você quer instalar?"
-MSG_CHOICE_UXP_PT="  1) Novo TypeR (UXP), recomendado (mais rápido, baseado no framework de plugins mais recente da Adobe)
-     Photoshop 2025 (versão 26.0) ou mais recente"
-MSG_CHOICE_LEGACY_PT="  2) Legacy, CEP (compatível com mais versões do Photoshop; mais antiga e lenta, mas mais testada)
-     Photoshop CC 2015 (versão 16.0) ou mais recente; em Mac Apple Silicon, o Photoshop 2026 deve rodar com Rosetta"
-MSG_CHOICE_PROMPT_PT="Sua escolha [1/2] (Enter = 1): "
 MSG_BOTH_INSTALLED_PT="A outra versão do TypeR também está instalada: não abra os dois painéis ao mesmo tempo (cada atalho seria executado duas vezes)."
 MSG_UXP_DOWNLOAD_PT="Baixando o novo TypeR (UXP)..."
 MSG_UXP_INSTALLING_PT="Instalando o novo TypeR (UXP)..."
@@ -129,15 +165,16 @@ case "$LANGUAGE" in
   pt) LANGUAGE_SUFFIX=PT ;;
   *) LANGUAGE_SUFFIX=EN ;;
 esac
-for name in INSTALL CLOSE_PHOTOSHOP PRESS_KEY INSTALL_COMPLETE OPEN_PHOTOSHOP PRESS_ENTER CREDITS TYPERTOOLS DISCORD \
-  CHOOSE CHOICE_UXP CHOICE_LEGACY CHOICE_PROMPT BOTH_INSTALLED UXP_DOWNLOAD UXP_INSTALLING UXP_COMPLETE UXP_COMPLETE_MANUAL UXP_FAILED; do
+for name in CLOSE_PHOTOSHOP PRESS_KEY INSTALL_COMPLETE OPEN_PHOTOSHOP PRESS_ENTER CREDITS TYPERTOOLS DISCORD \
+  TITLE PS_FOUND PS_NONE UXP_NAME UXP_DESC UXP_REQ UXP_TOO_OLD LEGACY_NAME LEGACY_DESC LEGACY_REQ LEGACY_ROSETTA RECOMMENDED KEYS CANCELLED \
+  CHOOSE CHOICE_PROMPT BOTH_INSTALLED UXP_DOWNLOAD UXP_INSTALLING UXP_COMPLETE UXP_COMPLETE_MANUAL UXP_FAILED; do
   localized="MSG_${name}_${LANGUAGE_SUFFIX}"
   printf -v "MSG_$name" '%s' "${!localized}"
 done
 
 # —————————————————————————————————————————————————————————————
 # Arguments : --uxp | --legacy (--cep), --silent, un paquet .ccx pour UXP
-# Sans choix, une console interactive demande la version ; une installation
+# Sans choix, une console interactive affiche le menu ; une installation
 # scriptée (mise à jour, tests) installe la version Legacy.
 # —————————————————————————————————————————————————————————————
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -155,20 +192,178 @@ for argument in "$@"; do
 done
 INTERACTIVE=0
 if [ -t 0 ] && [ "$SILENT" -eq 0 ] && [ "${TYPER_INSTALL_VALIDATE_ONLY:-}" != 1 ]; then INTERACTIVE=1; fi
+
+# Colors and the arrow menu need a real terminal
+FANCY=0
+if [ "$INTERACTIVE" -eq 1 ] && [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then FANCY=1; fi
+if [ "$FANCY" -eq 1 ] && [ -z "${NO_COLOR:-}" ]; then
+  BOLD=$'\033[1m'; DIM=$'\033[2m'; CYAN=$'\033[36m'; GREEN=$'\033[32m'; YELLOW=$'\033[33m'; RED=$'\033[31m'; RESET=$'\033[0m'
+else
+  BOLD=""; DIM=""; CYAN=""; GREEN=""; YELLOW=""; RED=""; RESET=""
+fi
+
+print_header() {
+  local title="$MSG_TITLE${EXT_VERSION:+  $EXT_VERSION}" line
+  line="$(printf '─%.0s' $(seq 1 $((${#title} + 4))))"
+  printf '\n  %s╭%s╮%s\n  %s│%s  %s%s%s  %s│%s\n  %s╰%s╯%s\n\n' \
+    "$CYAN" "$line" "$RESET" "$CYAN" "$RESET" "$BOLD" "$title" "$RESET" "$CYAN" "$RESET" "$CYAN" "$line" "$RESET"
+}
+
+# Photoshop installations, one "name=version" per line.
+# TYPER_PHOTOSHOP_VERSIONS="name=version;..." replaces the search in tests.
+list_photoshops() {
+  if [ -n "${TYPER_PHOTOSHOP_VERSIONS+set}" ]; then
+    [ -z "$TYPER_PHOTOSHOP_VERSIONS" ] || printf '%s\n' "$TYPER_PHOTOSHOP_VERSIONS" | tr ';' '\n'
+    return 0
+  fi
+  local app seen="" version
+  while IFS= read -r app; do
+    [ -d "$app" ] || continue
+    case "$app" in */.Trash/*) continue ;; esac
+    case "$seen" in *"|$app|"*) continue ;; esac
+    seen="$seen|$app|"
+    version="$(defaults read "$app/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || true)"
+    printf '%s=%s\n' "$(basename "$app" .app | sed 's/^Adobe //')" "$version"
+  done < <(
+    for app in /Applications/Adobe\ Photoshop*/Adobe\ Photoshop*.app "$HOME"/Applications/Adobe\ Photoshop*/Adobe\ Photoshop*.app; do
+      if [ -d "$app" ]; then printf '%s\n' "$app"; fi
+    done
+    if command -v mdfind >/dev/null 2>&1; then mdfind "kMDItemCFBundleIdentifier == 'com.adobe.Photoshop'" 2>/dev/null || true; fi
+  )
+}
+
+# The newest Photoshop decides: UXP needs version 26, Legacy works with the
+# older ones. No Photoshop found (or no version read): no recommendation.
+RECOMMENDED=""
+PHOTOSHOPS=""
+PHOTOSHOP_MAJOR=0
+detect_photoshops() {
+  local name version major
+  while IFS='=' read -r name version; do
+    [ -n "$name" ] || continue
+    PHOTOSHOPS="$PHOTOSHOPS${PHOTOSHOPS:+, }$name${version:+ ($version)}"
+    major="${version%%.*}"
+    case "$major" in ''|*[!0-9]*) continue ;; esac
+    if [ "$major" -gt "$PHOTOSHOP_MAJOR" ]; then PHOTOSHOP_MAJOR="$major"; fi
+  done < <(list_photoshops)
+  if [ "$PHOTOSHOP_MAJOR" -ge 26 ]; then RECOMMENDED=uxp
+  elif [ "$PHOTOSHOP_MAJOR" -gt 0 ]; then RECOMMENDED=legacy
+  fi
+}
+
+draw_option() {
+  local selected="$1" name="$2" recommended="$3" description="$4" requirement="$5" warning="${6:-}" arrow="  " style=""
+  if [ "$selected" -eq 1 ]; then arrow="${CYAN}❯${RESET} "; style="$BOLD$CYAN"; fi
+  printf '  %s%s%s%s' "$arrow" "$style" "$name" "$RESET"
+  if [ "$recommended" -eq 1 ]; then printf '  %s%s%s' "$GREEN" "$MSG_RECOMMENDED" "$RESET"; fi
+  printf '\n      %s%s%s\n      %s%s%s\n' "$DIM" "$description" "$RESET" "$DIM" "$requirement" "$RESET"
+  if [ -n "$warning" ]; then printf '      %s%s%s\n' "$YELLOW" "$warning" "$RESET"; fi
+  printf '\n'
+}
+
+draw_menu() {
+  local uxp_warning="" legacy_warning="" uxp_recommended=0 legacy_recommended=0
+  if [ "$RECOMMENDED" = uxp ]; then uxp_recommended=1; fi
+  if [ "$RECOMMENDED" = legacy ]; then legacy_recommended=1; uxp_warning="$MSG_UXP_TOO_OLD"; fi
+  if [ "$PHOTOSHOP_MAJOR" -ge 27 ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ]; then legacy_warning="$MSG_LEGACY_ROSETTA"; fi
+  printf '\033[H\033[J'
+  print_header
+  if [ -n "$PHOTOSHOPS" ]; then printf '  %s %s%s%s\n\n' "$MSG_PS_FOUND" "$BOLD" "$PHOTOSHOPS" "$RESET"
+  else printf '  %s%s%s\n\n' "$YELLOW" "$MSG_PS_NONE" "$RESET"
+  fi
+  printf '  %s\n\n' "$MSG_CHOOSE"
+  draw_option "$([ "$1" = uxp ] && echo 1 || echo 0)" "$MSG_UXP_NAME" "$uxp_recommended" "$MSG_UXP_DESC" "$MSG_UXP_REQ" "$uxp_warning"
+  draw_option "$([ "$1" = legacy ] && echo 1 || echo 0)" "$MSG_LEGACY_NAME" "$legacy_recommended" "$MSG_LEGACY_DESC" "$MSG_LEGACY_REQ" "$legacy_warning"
+  printf '  %s%s%s\n' "$DIM" "$MSG_KEYS" "$RESET"
+}
+
+cancel_install() {
+  printf '\033[?25h'
+  stty echo 2>/dev/null || true
+  printf '\n  %s\n\n' "$MSG_CANCELLED"
+  exit 130
+}
+
+# Any arrow moves between the two versions, 1 and 2 pick one directly.
+# A lone Escape waits for the rest of a sequence: read has no shorter timeout on macOS's bash 3.2.
+choose_with_menu() {
+  local cursor="${RECOMMENDED:-uxp}" key rest
+  trap cancel_install INT TERM
+  printf '\033[?25l'
+  while true; do
+    draw_menu "$cursor"
+    IFS= read -rsn1 key || cancel_install
+    case "$key" in
+      $'\033')
+        rest=""
+        IFS= read -rsn2 -t 1 rest || true
+        case "$rest" in
+          '[A'|'[B'|'[C'|'[D'|OA|OB|OC|OD) if [ "$cursor" = uxp ]; then cursor=legacy; else cursor=uxp; fi ;;
+        esac ;;
+      1) cursor=uxp ;;
+      2) cursor=legacy ;;
+      j|k) if [ "$cursor" = uxp ]; then cursor=legacy; else cursor=uxp; fi ;;
+      q|Q) cancel_install ;;
+      "") break ;;
+    esac
+  done
+  printf '\033[?25h\033[H\033[J'
+  trap - INT TERM
+  EDITION="$cursor"
+}
+
+# Without a real terminal (output piped): the same choice as a question
+choose_with_prompt() {
+  local default=1 choice uxp_tag="" legacy_tag=""
+  if [ "$RECOMMENDED" = legacy ]; then default=2; legacy_tag=" $MSG_RECOMMENDED"; fi
+  if [ "$RECOMMENDED" = uxp ]; then uxp_tag=" $MSG_RECOMMENDED"; fi
+  printf '%s\n\n  1) %s%s\n     %s\n  2) %s%s\n     %s\n\n' "$MSG_CHOOSE" "$MSG_UXP_NAME" "$uxp_tag" "$MSG_UXP_REQ" "$MSG_LEGACY_NAME" "$legacy_tag" "$MSG_LEGACY_REQ"
+  while true; do
+    read -r -p "${MSG_CHOICE_PROMPT//%s/$default}" choice
+    case "${choice:-$default}" in
+      1) EDITION=uxp; break ;;
+      2) EDITION=legacy; break ;;
+    esac
+  done
+  echo
+}
+
+if [ "${TYPER_INSTALL_PROBE:-}" = recommendation ]; then
+  detect_photoshops
+  printf 'recommended=%s\nphotoshops=%s\n' "$RECOMMENDED" "$PHOTOSHOPS"
+  exit 0
+fi
 if [ -z "$EDITION" ]; then
   EDITION=legacy
   if [ "$INTERACTIVE" -eq 1 ]; then
-    printf '%s\n\n%s\n%s\n\n' "$MSG_CHOOSE" "$MSG_CHOICE_UXP" "$MSG_CHOICE_LEGACY"
-    while true; do
-      read -r -p "$MSG_CHOICE_PROMPT" choice
-      case "$choice" in
-        ""|1) EDITION=uxp; break ;;
-        2) EDITION=legacy; break ;;
-      esac
-    done
-    echo
+    detect_photoshops
+    if [ "$FANCY" -eq 1 ]; then choose_with_menu; else choose_with_prompt; fi
   fi
 fi
+if [ "${TYPER_INSTALL_PROBE:-}" = choice ]; then
+  printf 'edition=%s\n' "$EDITION"
+  exit 0
+fi
+if [ "$FANCY" -eq 1 ]; then print_header; fi
+
+# Every failure ends on what to do and where to ask for help
+on_exit() {
+  local status="${1:-$?}"
+  if [ "$status" -ne 0 ] && [ "$status" -ne 130 ]; then
+    printf '\n  %s%s%s\n' "$RED" "$MSG_UXP_FAILED" "$RESET" >&2
+    if [ "$INTERACTIVE" -eq 1 ]; then printf '  %s\n\n' "$MSG_DISCORD" >&2; fi
+  fi
+  return 0
+}
+trap on_exit EXIT
+
+print_credits() {
+  if [ "$FANCY" -eq 1 ]; then
+    printf '\n  %s%s\n  %s\n  %s%s\n\n' "$DIM" "$MSG_CREDITS" "$MSG_TYPERTOOLS" "$MSG_DISCORD" "$RESET"
+  fi
+}
+
+photoshop_is_running() { pgrep -f '/Contents/MacOS/Adobe Photoshop' >/dev/null 2>&1; }
 
 CEP_DESTDIR="${TYPER_INSTALL_TARGET:-${HOME}/Library/Application Support/Adobe/CEP/extensions/typertools}"
 UXP_ROOT="${TYPER_UXP_ROOT:-${HOME}/Library/Application Support/Adobe/UXP}"
@@ -247,43 +442,61 @@ rename_legacy_panel() {
 }
 
 if [ "$EDITION" = uxp ]; then
-  UPIA="/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent"
+  UPIA="${TYPER_INSTALL_UPIA:-/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent}"
+  CREATIVE_CLOUD="/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud.app"
   PACKAGE="${UXP_PACKAGE:-$SCRIPT_DIR/TypeR-UXP.ccx}"
   WORK="$(mktemp -d)"
-  trap 'rm -rf "$WORK"' EXIT
+  trap 'status=$?; rm -rf "$WORK"; on_exit "$status"' EXIT
   # The installer reads the package from a temporary folder: macOS would ask
   # Creative Cloud for access to Desktop or Downloads otherwise
   if [ -f "$PACKAGE" ]; then
     cp "$PACKAGE" "$WORK/TypeR-UXP.ccx"
   else
-    printf '%s\n' "$MSG_UXP_DOWNLOAD"
-    curl -fL --retry 2 -o "$WORK/TypeR-UXP.ccx" "https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx"
+    printf '  %s\n' "$MSG_UXP_DOWNLOAD"
+    curl -fL --retry 2 --progress-bar -o "$WORK/TypeR-UXP.ccx" "https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx"
   fi
-  printf '%s\n' "$MSG_UXP_INSTALLING"
+  # A package extracted from a downloaded archive is still marked as downloaded
+  xattr -d com.apple.quarantine "$WORK/TypeR-UXP.ccx" 2>/dev/null || true
+  printf '  %s\n' "$MSG_UXP_INSTALLING"
+  # Creative Cloud's plugin installer can fail or hang without a working
+  # Creative Cloud session: after a limit, the package is installed by hand.
+  run_upia() {
+    local pid ticks=0 limit=$((${TYPER_INSTALL_UPIA_TIMEOUT:-60} * 10))
+    "$UPIA" --install "$WORK/TypeR-UXP.ccx" >"$WORK/upia.log" 2>&1 &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+      if [ "$ticks" -ge "$limit" ]; then
+        kill "$pid" 2>/dev/null || true
+        return 124
+      fi
+      sleep 0.1
+      ticks=$((ticks + 1))
+    done
+    wait "$pid"
+  }
   # The installer's exit code does not tell: a failure can still exit with 0
   COMPLETE_MESSAGE=""
-  if [ -x "$UPIA" ] && [ "${TYPER_INSTALL_NO_UPIA:-}" != 1 ]; then
-    if UPIA_OUTPUT="$("$UPIA" --install "$WORK/TypeR-UXP.ccx" 2>&1)"; then UPIA_STATUS=0; else UPIA_STATUS=$?; fi
-    printf '%s\n' "$UPIA_OUTPUT"
-    if [ "$UPIA_STATUS" -eq 0 ] && ! printf '%s' "$UPIA_OUTPUT" | grep -qi 'fail'; then COMPLETE_MESSAGE="$MSG_UXP_COMPLETE"; fi
+  if [ -x "$UPIA" ] && [ "${TYPER_INSTALL_NO_UPIA:-}" != 1 ] && { [ -d "$CREATIVE_CLOUD" ] || [ -n "${TYPER_INSTALL_UPIA:-}" ]; }; then
+    if run_upia && ! grep -qi 'fail' "$WORK/upia.log"; then COMPLETE_MESSAGE="$MSG_UXP_COMPLETE"; fi
   fi
   if [ -z "$COMPLETE_MESSAGE" ]; then
     if install_uxp_manually "$WORK/TypeR-UXP.ccx"; then
       COMPLETE_MESSAGE="$MSG_UXP_COMPLETE_MANUAL"
     else
-      printf '%s\n' "$MSG_UXP_FAILED" >&2
+      if [ -f "$WORK/upia.log" ]; then cat "$WORK/upia.log" >&2; fi
       exit 1
     fi
   fi
   rename_legacy_panel
-  printf '\n%s\n' "$COMPLETE_MESSAGE"
-  if [ -d "$CEP_DESTDIR/CSXS" ]; then printf '%s\n' "$MSG_BOTH_INSTALLED"; fi
+  printf '\n  %s✓ %s%s\n' "$GREEN" "$COMPLETE_MESSAGE" "$RESET"
+  if [ -d "$CEP_DESTDIR/CSXS" ]; then printf '  %s%s%s\n' "$YELLOW" "$MSG_BOTH_INSTALLED" "$RESET"; fi
+  print_credits
   exit 0
 fi
 
-if [ "$INTERACTIVE" -eq 1 ]; then
-  printf '%s\n' "$MSG_INSTALL" "$MSG_CLOSE_PHOTOSHOP"
-  read -r -p "$MSG_PRESS_ENTER "
+if [ "$INTERACTIVE" -eq 1 ] && photoshop_is_running; then
+  printf '  %s%s%s\n' "$YELLOW" "$MSG_CLOSE_PHOTOSHOP" "$RESET"
+  read -r -p "  $MSG_PRESS_ENTER "
 fi
 # Validate the entire source before creating or moving destination files.
 [ -f "$SRCDIR/app/package.sha256" ] || { echo 'Incomplete TypeR package: missing inventory' >&2; exit 1; }
@@ -332,6 +545,7 @@ cleanup() {
     if [ "$failed" -ne 0 ]; then echo "Recovery backup retained: $WORKDIR" >&2; exit 1; fi
   fi
   rm -rf "$WORKDIR"
+  on_exit "$status"
   exit "$status"
 }
 trap cleanup EXIT
@@ -357,5 +571,6 @@ if [ -z "${TYPER_INSTALL_SKIP_DEBUG:-}" ]; then
   ROSETTA_FIX="$(cd "$(dirname "$0")" && pwd)/fix_mac_rosetta.sh"
   if [ -f "$ROSETTA_FIX" ]; then TYPER_INSTALL_TARGET="$DESTDIR" bash "$ROSETTA_FIX" --from-installer || true; fi
 fi
-printf '%s\n' "$MSG_INSTALL_COMPLETE" "$MSG_OPEN_PHOTOSHOP"
-if compgen -G "$UXP_PLUGINS/com.scanr.typer_*" >/dev/null; then printf '%s\n' "$MSG_BOTH_INSTALLED"; fi
+printf '\n  %s✓ %s%s\n  %s\n' "$GREEN" "$MSG_INSTALL_COMPLETE" "$RESET" "$MSG_OPEN_PHOTOSHOP"
+if compgen -G "$UXP_PLUGINS/com.scanr.typer_*" >/dev/null; then printf '  %s%s%s\n' "$YELLOW" "$MSG_BOTH_INSTALLED" "$RESET"; fi
+print_credits

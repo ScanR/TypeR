@@ -33,18 +33,28 @@ if (Test-Path $ManifestPath) {
 $Lang = $Host.CurrentCulture.TwoLetterISOLanguageName
 
 # Valeurs par défaut (anglais)
-$msg_install  = "Photoshop extension TypeR v$ExtVersion will be installed."
-$msg_close    = "Close Photoshop (if it is open)."
+$msg_close    = "Photoshop is open: close it first."
 $msg_complete = "Installation completed."
 $msg_open     = "Open Photoshop and in the upper menu click the following: [Window] > [Extensions] > [TypeR]"
 $msg_pause    = "Press Enter to continue..."
 $msg_credits  = "TypeR developed by Sakushi & SeanR."
 $msg_typertools = "typertools, developed by Swirt: https://swirt.github.io/typertools/"
 $msg_discord  = "ScanR's Discord if you need help: https://discord.com/invite/Pdmfmqk"
+$msg_title = "TypeR installer"
+$msg_ps_found = "Photoshop found:"
+$msg_ps_none = "Photoshop was not found on this computer."
+$msg_uxp_name = "New TypeR (UXP)"
+$msg_uxp_desc = "Faster, built on Adobe's newer plugin framework."
+$msg_uxp_req = "Photoshop 2025 (version 26.0) or later"
+$msg_uxp_too_old = "Your Photoshop is too old for this version."
+$msg_legacy_name = "Legacy (CEP)"
+$msg_legacy_desc = "Older and slower."
+$msg_legacy_req = "Photoshop CC 2015 (version 16.0) or later"
+$msg_recommended = "(recommended)"
+$msg_keys = "↑/↓ choose  ·  Enter install  ·  Q quit"
+$msg_cancelled = "Installation cancelled."
+$msg_choice_prompt = "Your choice [1/2] (Enter = {0})"
 $msg_choose   = "Which version of TypeR do you want to install?"
-$msg_choice_uxp = "  1) New TypeR (UXP), recommended (faster, built on Adobe's newer plugin framework)`n     Photoshop 2025 (version 26.0) or later"
-$msg_choice_legacy = "  2) Legacy, CEP (works with more Photoshop versions; older and slower, but more thoroughly tested)`n     Photoshop CC 2015 (version 16.0) or later"
-$msg_choice_prompt = "Your choice [1/2] (Enter = 1)"
 $msg_both     = "The other version of TypeR is installed too: do not open both panels at the same time (each shortcut would run twice)."
 $msg_uxp_download = "Downloading the new TypeR (UXP)..."
 $msg_uxp_installing = "Installing the new TypeR (UXP)..."
@@ -53,18 +63,28 @@ $msg_uxp_complete_manual = "TypeR is installed: restart Photoshop if it is open,
 $msg_uxp_failed = "The installation failed. Close Photoshop and run this script again."
 
 if ($Lang -eq "fr") {
-    $msg_install  = "L'extension Photoshop TypeR v$ExtVersion sera installée."
-    $msg_close    = "Fermez Photoshop (s'il est ouvert)."
+    $msg_close    = "Photoshop est ouvert : fermez-le d'abord."
     $msg_complete = "Installation terminée."
     $msg_open     = "Ouvrez Photoshop et dans le menu supérieur cliquez sur : [Fenêtre] > [Extensions] > [TypeR]"
     $msg_pause    = "Appuyez sur Entrée pour continuer..."
     $msg_credits  = "TypeR développé par Sakushi & SeanR."
     $msg_typertools = "typertools, développé par Swirt : https://swirt.github.io/typertools/"
     $msg_discord  = "Discord de ScanR si besoin d'aide : https://discord.com/invite/Pdmfmqk"
+    $msg_title = "Installation de TypeR"
+    $msg_ps_found = "Photoshop détecté :"
+    $msg_ps_none = "Photoshop n'a pas été trouvé sur cet ordinateur."
+    $msg_uxp_name = "Nouveau TypeR (UXP)"
+    $msg_uxp_desc = "Plus rapide, basé sur le framework de plugins le plus récent d'Adobe."
+    $msg_uxp_req = "Photoshop 2025 (version 26.0) ou plus récent"
+    $msg_uxp_too_old = "Votre Photoshop est trop ancien pour cette version."
+    $msg_legacy_name = "Legacy (CEP)"
+    $msg_legacy_desc = "Plus ancienne et plus lente."
+    $msg_legacy_req = "Photoshop CC 2015 (version 16.0) ou plus récent"
+    $msg_recommended = "(recommandé)"
+    $msg_keys = "↑/↓ choisir  ·  Entrée installer  ·  Q quitter"
+    $msg_cancelled = "Installation annulée."
+    $msg_choice_prompt = "Votre choix [1/2] (Entrée = {0})"
     $msg_choose   = "Quelle version de TypeR voulez-vous installer ?"
-    $msg_choice_uxp = "  1) Nouveau TypeR (UXP), recommandé (plus rapide, basé sur le framework de plugins le plus récent d'Adobe)`n     Photoshop 2025 (version 26.0) ou plus récent"
-    $msg_choice_legacy = "  2) Legacy, CEP (compatible avec plus de versions de Photoshop ; plus ancienne et plus lente, mais mieux éprouvée)`n     Photoshop CC 2015 (version 16.0) ou plus récent"
-    $msg_choice_prompt = "Votre choix [1/2] (Entrée = 1)"
     $msg_both     = "L'autre version de TypeR est aussi installée : n'ouvrez pas les deux panneaux en même temps (chaque raccourci s'exécuterait deux fois)."
     $msg_uxp_download = "Téléchargement du nouveau TypeR (UXP)..."
     $msg_uxp_installing = "Installation du nouveau TypeR (UXP)..."
@@ -73,18 +93,28 @@ if ($Lang -eq "fr") {
     $msg_uxp_failed = "L'installation a échoué. Fermez Photoshop et relancez ce script."
 }
 elseif ($Lang -eq "es") {
-    $msg_install  = "La extensión de Photoshop TypeR v$ExtVersion se instalará."
-    $msg_close    = "Cierra Photoshop (si está abierto)."
+    $msg_close    = "Photoshop está abierto: ciérralo primero."
     $msg_complete = "Instalación completada."
     $msg_open     = "Abre Photoshop y en el menú superior haz clic en lo siguiente: [Ventana] > [Extensiones] > [TypeR]"
     $msg_pause    = "Presiona Enter para continuar..."
     $msg_credits  = "TypeR desarrollado por Sakushi & SeanR."
     $msg_typertools = "typertools, desarrollado por Swirt: https://swirt.github.io/typertools/"
     $msg_discord  = "Discord de ScanR si necesitas ayuda: https://discord.com/invite/Pdmfmqk"
+    $msg_title = "Instalador de TypeR"
+    $msg_ps_found = "Photoshop detectado:"
+    $msg_ps_none = "No se encontró Photoshop en este ordenador."
+    $msg_uxp_name = "Nuevo TypeR (UXP)"
+    $msg_uxp_desc = "Más rápido, basado en el framework de plugins más reciente de Adobe."
+    $msg_uxp_req = "Photoshop 2025 (versión 26.0) o posterior"
+    $msg_uxp_too_old = "Tu Photoshop es demasiado antiguo para esta versión."
+    $msg_legacy_name = "Legacy (CEP)"
+    $msg_legacy_desc = "Más antigua y lenta."
+    $msg_legacy_req = "Photoshop CC 2015 (versión 16.0) o posterior"
+    $msg_recommended = "(recomendado)"
+    $msg_keys = "↑/↓ elegir  ·  Enter instalar  ·  Q salir"
+    $msg_cancelled = "Instalación cancelada."
+    $msg_choice_prompt = "Tu elección [1/2] (Enter = {0})"
     $msg_choose   = "¿Qué versión de TypeR quieres instalar?"
-    $msg_choice_uxp = "  1) Nuevo TypeR (UXP), recomendado (más rápido, basado en el framework de plugins más reciente de Adobe)`n     Photoshop 2025 (versión 26.0) o posterior"
-    $msg_choice_legacy = "  2) Legacy, CEP (compatible con más versiones de Photoshop; más antigua y lenta, pero más probada)`n     Photoshop CC 2015 (versión 16.0) o posterior"
-    $msg_choice_prompt = "Tu elección [1/2] (Enter = 1)"
     $msg_both     = "La otra versión de TypeR también está instalada: no abras ambos paneles a la vez (cada atajo se ejecutaría dos veces)."
     $msg_uxp_download = "Descargando el nuevo TypeR (UXP)..."
     $msg_uxp_installing = "Instalando el nuevo TypeR (UXP)..."
@@ -93,18 +123,28 @@ elseif ($Lang -eq "es") {
     $msg_uxp_failed = "La instalación falló. Cierra Photoshop y vuelve a ejecutar este script."
 }
 elseif ($Lang -eq "pt") {
-    $msg_install  = "A extensão do Photoshop TypeR v$ExtVersion será instalada."
-    $msg_close    = "Feche o Photoshop (se estiver aberto)."
+    $msg_close    = "O Photoshop está aberto: feche-o primeiro."
     $msg_complete = "Instalação concluída."
     $msg_open     = "Abra o Photoshop e no menu superior clique em: [Janela] > [Extensões] > [TypeR]"
     $msg_pause    = "Pressione Enter para continuar..."
     $msg_credits  = "TypeR desenvolvido por Sakushi & SeanR."
     $msg_typertools = "typertools, desenvolvido por Swirt: https://swirt.github.io/typertools/"
     $msg_discord  = "Discord do ScanR se precisar de ajuda: https://discord.com/invite/Pdmfmqk"
+    $msg_title = "Instalador do TypeR"
+    $msg_ps_found = "Photoshop detectado:"
+    $msg_ps_none = "O Photoshop não foi encontrado neste computador."
+    $msg_uxp_name = "Novo TypeR (UXP)"
+    $msg_uxp_desc = "Mais rápido, baseado no framework de plugins mais recente da Adobe."
+    $msg_uxp_req = "Photoshop 2025 (versão 26.0) ou mais recente"
+    $msg_uxp_too_old = "O seu Photoshop é antigo demais para esta versão."
+    $msg_legacy_name = "Legacy (CEP)"
+    $msg_legacy_desc = "Mais antiga e lenta."
+    $msg_legacy_req = "Photoshop CC 2015 (versão 16.0) ou mais recente"
+    $msg_recommended = "(recomendado)"
+    $msg_keys = "↑/↓ escolher  ·  Enter instalar  ·  Q sair"
+    $msg_cancelled = "Instalação cancelada."
+    $msg_choice_prompt = "Sua escolha [1/2] (Enter = {0})"
     $msg_choose   = "Qual versão do TypeR você quer instalar?"
-    $msg_choice_uxp = "  1) Novo TypeR (UXP), recomendado (mais rápido, baseado no framework de plugins mais recente da Adobe)`n     Photoshop 2025 (versão 26.0) ou mais recente"
-    $msg_choice_legacy = "  2) Legacy, CEP (compatível com mais versões do Photoshop; mais antiga e lenta, mas mais testada)`n     Photoshop CC 2015 (versão 16.0) ou mais recente"
-    $msg_choice_prompt = "Sua escolha [1/2] (Enter = 1)"
     $msg_both     = "A outra versão do TypeR também está instalada: não abra os dois painéis ao mesmo tempo (cada atalho seria executado duas vezes)."
     $msg_uxp_download = "Baixando o novo TypeR (UXP)..."
     $msg_uxp_installing = "Instalando o novo TypeR (UXP)..."
@@ -113,39 +153,222 @@ elseif ($Lang -eq "pt") {
     $msg_uxp_failed = "A instalação falhou. Feche o Photoshop e execute este script novamente."
 }
 
-if ($Interactive) { Clear-Host }
-Write-Host "+------------------------------------------------------------------+" -ForegroundColor Cyan
-Write-Host "|                          TypeR Installer                         |" -ForegroundColor Cyan
-Write-Host "+------------------------------------------------------------------+" -ForegroundColor Cyan
-Write-Host ""
+# Whether the console can draw: colors and the arrow menu need a real one
+$Fancy = $Interactive
+try {
+    if ([Console]::IsOutputRedirected) { $Fancy = $false }
+} catch { $Fancy = $false }
 
-function Write-TypeRCredits {
-    Write-Host "+------------------------------------------------------------------+"
-    Write-Host "| Credits:                                                         |"
-    Write-Host "+------------------------------------------------------------------+"
-    Write-Host ("  {0}" -f $msg_credits)
-    Write-Host ("  {0}" -f $msg_typertools)
-    Write-Host ("  {0}" -f $msg_discord)
+function Write-TypeRHeader {
+    $Title = $msg_title + $(if ($ExtVersion -ne 'Inconnue') { "  $ExtVersion" } else { '' })
+    $Line = '─' * ($Title.Length + 4)
+    Write-Host ""
+    Write-Host "  ┌$Line┐" -ForegroundColor Cyan
+    Write-Host "  │  " -ForegroundColor Cyan -NoNewline
+    Write-Host $Title -ForegroundColor White -NoNewline
+    Write-Host "  │" -ForegroundColor Cyan
+    Write-Host "  └$Line┘" -ForegroundColor Cyan
     Write-Host ""
 }
 
+function Write-TypeRCredits {
+    Write-Host ""
+    Write-Host "  $msg_credits" -ForegroundColor DarkGray
+    Write-Host "  $msg_typertools" -ForegroundColor DarkGray
+    Write-Host "  $msg_discord" -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+# Every failure ends on what to do and where to ask for help, and the console
+# stays open when it was opened by a double-click
+trap {
+    Write-Host ""
+    Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "  $msg_uxp_failed" -ForegroundColor Red
+    Write-Host "  $msg_discord"
+    if ($Interactive) { Read-Host -Prompt $msg_pause }
+    exit 1
+}
+
+# Photoshop installations, as name and version. $env:TYPER_PHOTOSHOP_VERSIONS
+# ("name=version;...") replaces the search in tests.
+function Get-TypeRPhotoshops {
+    $Found = @()
+    if ($null -ne $env:TYPER_PHOTOSHOP_VERSIONS) {
+        foreach ($Item in ($env:TYPER_PHOTOSHOP_VERSIONS -split ';')) {
+            if ($Item) {
+                $Parts = $Item -split '=', 2
+                $Found += [PSCustomObject]@{ Name = $Parts[0]; Version = $Parts[1] }
+            }
+        }
+        return $Found
+    }
+    if ($env:OS -ne 'Windows_NT') { return $Found }
+    $Candidates = @()
+    foreach ($Key in 'HKLM:\SOFTWARE\Adobe\Photoshop', 'HKLM:\SOFTWARE\WOW6432Node\Adobe\Photoshop') {
+        foreach ($Child in @(Get-ChildItem -Path $Key -ErrorAction SilentlyContinue)) {
+            $Folder = (Get-ItemProperty -Path $Child.PSPath -ErrorAction SilentlyContinue).ApplicationPath
+            if ($Folder) { $Candidates += (Join-Path $Folder 'Photoshop.exe') }
+        }
+    }
+    $AppPath = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Photoshop.exe' -ErrorAction SilentlyContinue
+    if ($AppPath -and $AppPath.'(default)') { $Candidates += $AppPath.'(default)'.Trim('"') }
+    # Installations that left nothing in the registry, on any drive
+    foreach ($Drive in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
+        foreach ($Folder in 'Program Files', 'Program Files (x86)') {
+            $Pattern = Join-Path $Drive.Root "$Folder\Adobe\Adobe Photoshop*\Photoshop.exe"
+            $Candidates += @(Get-Item -Path $Pattern -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+        }
+    }
+    foreach ($Candidate in @($Candidates | Sort-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $Candidate -PathType Leaf)) { continue }
+        $Info = (Get-Item -LiteralPath $Candidate).VersionInfo
+        $Version = if ([string]$Info.ProductVersion -match '^\d+(\.\d+)*') { $Matches[0] } elseif ($Info.ProductMajorPart) { [string]$Info.ProductMajorPart } else { '' }
+        $Name = (Split-Path -Leaf (Split-Path -Parent $Candidate)) -replace '^Adobe ', ''
+        $Found += [PSCustomObject]@{ Name = $Name; Version = $Version }
+    }
+    return $Found
+}
+
+# The newest Photoshop decides: UXP needs version 26, Legacy works with the
+# older ones. No Photoshop found (or no version read): no recommendation.
+$Recommended = ''
+$PhotoshopList = ''
+function Update-TypeRRecommendation {
+    $Names = @()
+    $Newest = 0
+    foreach ($Photoshop in @(Get-TypeRPhotoshops)) {
+        $Names += $(if ($Photoshop.Version) { "$($Photoshop.Name) ($($Photoshop.Version))" } else { $Photoshop.Name })
+        if ([string]$Photoshop.Version -match '^(\d+)') {
+            if ([int]$Matches[1] -gt $Newest) { $Newest = [int]$Matches[1] }
+        }
+    }
+    $script:PhotoshopList = $Names -join ', '
+    $script:Recommended = if ($Newest -ge 26) { 'uxp' } elseif ($Newest -gt 0) { 'legacy' } else { '' }
+}
+
+function Write-TypeROption([bool]$Selected, [string]$Name, [bool]$IsRecommended, [string]$Description, [string]$Requirement, [string]$Warning) {
+    if ($Selected) {
+        Write-Host "  > " -ForegroundColor Cyan -NoNewline
+        Write-Host $Name -ForegroundColor Cyan -NoNewline
+    } else {
+        Write-Host "    $Name" -NoNewline
+    }
+    if ($IsRecommended) { Write-Host "  $msg_recommended" -ForegroundColor Green -NoNewline }
+    Write-Host ""
+    Write-Host "      $Description" -ForegroundColor DarkGray
+    Write-Host "      $Requirement" -ForegroundColor DarkGray
+    if ($Warning) { Write-Host "      $Warning" -ForegroundColor Yellow }
+    Write-Host ""
+}
+
+function Write-TypeRMenu([string]$Cursor) {
+    $UxpWarning = if ($Recommended -eq 'legacy') { $msg_uxp_too_old } else { '' }
+    Write-TypeROption ($Cursor -eq 'uxp') $msg_uxp_name ($Recommended -eq 'uxp') $msg_uxp_desc $msg_uxp_req $UxpWarning
+    Write-TypeROption ($Cursor -eq 'legacy') $msg_legacy_name ($Recommended -eq 'legacy') $msg_legacy_desc $msg_legacy_req ''
+    Write-Host "  $msg_keys" -ForegroundColor DarkGray
+}
+
+# Any arrow moves between the two versions, 1 and 2 pick one directly. Returns
+# the version, or $null when cancelled.
+function Read-TypeREditionFromMenu {
+    $Cursor = if ($Recommended) { $Recommended } else { 'uxp' }
+    Clear-Host
+    Write-TypeRHeader
+    if ($PhotoshopList) {
+        Write-Host "  $msg_ps_found " -NoNewline
+        Write-Host $PhotoshopList -ForegroundColor White
+    } else {
+        Write-Host "  $msg_ps_none" -ForegroundColor Yellow
+    }
+    Write-Host ""
+    Write-Host "  $msg_choose"
+    Write-Host ""
+    [Console]::CursorVisible = $false
+    # Ctrl+C is read like the other keys, so that it cancels like Q
+    [Console]::TreatControlCAsInput = $true
+    try {
+        Write-TypeRMenu $Cursor
+        # The console may have scrolled: the height of the menu locates its top
+        $Height = if ($Recommended -eq 'legacy') { 10 } else { 9 }
+        $Top = [Math]::Max(0, [Console]::CursorTop - $Height)
+        while ($true) {
+            $Key = [Console]::ReadKey($true)
+            $Previous = $Cursor
+            if (@('UpArrow', 'DownArrow', 'LeftArrow', 'RightArrow') -contains [string]$Key.Key) {
+                $Cursor = if ($Cursor -eq 'uxp') { 'legacy' } else { 'uxp' }
+            } elseif ($Key.KeyChar -eq '1') {
+                $Cursor = 'uxp'
+            } elseif ($Key.KeyChar -eq '2') {
+                $Cursor = 'legacy'
+            } elseif ([string]$Key.Key -eq 'Enter') {
+                return $Cursor
+            } elseif ([string]$Key.Key -eq 'Q' -or [string]$Key.Key -eq 'Escape' -or ([string]$Key.Key -eq 'C' -and ($Key.Modifiers -band [ConsoleModifiers]::Control))) {
+                return $null
+            }
+            if ($Cursor -ne $Previous) {
+                [Console]::SetCursorPosition(0, $Top)
+                Write-TypeRMenu $Cursor
+            }
+        }
+    } finally {
+        [Console]::TreatControlCAsInput = $false
+        [Console]::CursorVisible = $true
+    }
+}
+
+# Without a console that can draw: the same choice as a question
+function Read-TypeREditionFromPrompt {
+    $Default = if ($Recommended -eq 'legacy') { '2' } else { '1' }
+    $UxpTag = if ($Recommended -eq 'uxp') { " $msg_recommended" } else { '' }
+    $LegacyTag = if ($Recommended -eq 'legacy') { " $msg_recommended" } else { '' }
+    Write-Host $msg_choose
+    Write-Host ""
+    Write-Host "  1) $msg_uxp_name$UxpTag"
+    Write-Host "     $msg_uxp_req"
+    Write-Host "  2) $msg_legacy_name$LegacyTag"
+    Write-Host "     $msg_legacy_req"
+    Write-Host ""
+    while ($true) {
+        $Choice = (Read-Host -Prompt ($msg_choice_prompt -f $Default)).Trim()
+        if (-not $Choice) { $Choice = $Default }
+        if ($Choice -eq '1') { return 'uxp' }
+        if ($Choice -eq '2') { return 'legacy' }
+    }
+}
+
 # --- 4. Choix de la version : UXP ou Legacy (CEP) ---
+if ($env:TYPER_INSTALL_PROBE -eq 'recommendation') {
+    Update-TypeRRecommendation
+    Write-Output "recommended=$Recommended"
+    Write-Output "photoshops=$PhotoshopList"
+    return
+}
 $Edition = if ($Uxp) { 'uxp' } elseif ($Legacy) { 'legacy' } else { $null }
 if (-not $Edition) {
     $Edition = 'legacy'
     if ($Interactive) {
-        Write-Host $msg_choose
-        Write-Host ""
-        Write-Host $msg_choice_uxp
-        Write-Host $msg_choice_legacy
-        Write-Host ""
-        while ($true) {
-            $Choice = (Read-Host -Prompt $msg_choice_prompt).Trim()
-            if ($Choice -eq '' -or $Choice -eq '1') { $Edition = 'uxp'; break }
-            if ($Choice -eq '2') { $Edition = 'legacy'; break }
+        Update-TypeRRecommendation
+        if ($Fancy) {
+            $Edition = Read-TypeREditionFromMenu
+            if (-not $Edition) {
+                Write-Host ""
+                Write-Host "  $msg_cancelled"
+                Write-Host ""
+                exit 130
+            }
+        } else {
+            $Edition = Read-TypeREditionFromPrompt
         }
-        Write-Host ""
     }
+}
+if ($env:TYPER_INSTALL_PROBE -eq 'choice') {
+    Write-Output "edition=$Edition"
+    return
+}
+if ($Fancy) {
+    Clear-Host
+    Write-TypeRHeader
 }
 $CepTarget = if ($env:TYPER_INSTALL_TARGET) { $env:TYPER_INSTALL_TARGET } else { Join-Path $env:APPDATA 'Adobe\CEP\extensions\typertools' }
 $UxpRoot = if ($env:TYPER_UXP_ROOT) { $env:TYPER_UXP_ROOT } else { Join-Path $env:APPDATA 'Adobe\UXP' }
@@ -246,7 +469,8 @@ function Rename-TypeRLegacyPanel {
 # ou à la main sans lui ---
 if ($Edition -eq 'uxp') {
     $CommonFiles = if ($env:CommonProgramW6432) { $env:CommonProgramW6432 } else { $env:CommonProgramFiles }
-    $Upia = if ($CommonFiles) { Join-Path $CommonFiles 'Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe' } else { $null }
+    $Upia = if ($env:TYPER_INSTALL_UPIA) { $env:TYPER_INSTALL_UPIA } elseif ($CommonFiles) { Join-Path $CommonFiles 'Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe' } else { $null }
+    $CreativeCloud = if ($env:TYPER_INSTALL_UPIA) { $Upia } elseif ($env:ProgramFiles) { Join-Path $env:ProgramFiles 'Adobe\Adobe Creative Cloud\ACC\Creative Cloud.exe' } else { $null }
     $Source = if ($Package) { [IO.Path]::GetFullPath($Package) } else { Join-Path $PSScriptRoot 'TypeR-UXP.ccx' }
     $Work = Join-Path ([IO.Path]::GetTempPath()) ('TypeR-UXP-' + [Guid]::NewGuid().ToString('N') + '.ccx')
     $CompleteMessage = $null
@@ -254,34 +478,54 @@ if ($Edition -eq 'uxp') {
         if (Test-Path -LiteralPath $Source -PathType Leaf) {
             Copy-Item -LiteralPath $Source -Destination $Work
         } else {
-            Write-Host $msg_uxp_download
+            Write-Host "  $msg_uxp_download"
             [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+            $ProgressPreference = 'SilentlyContinue'
             Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx' -OutFile $Work
         }
-        Write-Host $msg_uxp_installing
+        Write-Host "  $msg_uxp_installing"
+        # Creative Cloud's plugin installer can fail or hang without a working
+        # Creative Cloud session: after a limit, the package is installed by hand.
         # The installer's exit code does not tell: a failure can still exit with 0
-        if ($Upia -and $env:TYPER_INSTALL_NO_UPIA -ne '1' -and (Test-Path -LiteralPath $Upia -PathType Leaf)) {
-            $UpiaOutput = & $Upia --install $Work 2>&1 | Out-String
-            $UpiaStatus = $LASTEXITCODE
-            Write-Host $UpiaOutput
-            if ($UpiaStatus -eq 0 -and $UpiaOutput -notmatch 'fail') { $CompleteMessage = $msg_uxp_complete }
+        if ($Upia -and $env:TYPER_INSTALL_NO_UPIA -ne '1' -and (Test-Path -LiteralPath $Upia -PathType Leaf) -and $CreativeCloud -and (Test-Path -LiteralPath $CreativeCloud -PathType Leaf)) {
+            $Limit = if ($env:TYPER_INSTALL_UPIA_TIMEOUT) { [int]$env:TYPER_INSTALL_UPIA_TIMEOUT } else { 60 }
+            try {
+                $Start = New-Object Diagnostics.ProcessStartInfo
+                $Start.FileName = $Upia
+                $Start.Arguments = '--install "' + $Work + '"'
+                $Start.UseShellExecute = $false
+                $Start.CreateNoWindow = $true
+                $Start.RedirectStandardOutput = $true
+                $Start.RedirectStandardError = $true
+                $Process = [Diagnostics.Process]::Start($Start)
+                $Output = $Process.StandardOutput.ReadToEndAsync()
+                $Errors = $Process.StandardError.ReadToEndAsync()
+                if ($Process.WaitForExit($Limit * 1000)) {
+                    $Process.WaitForExit()
+                    if ($Process.ExitCode -eq 0 -and ($Output.Result + $Errors.Result) -notmatch 'fail') { $CompleteMessage = $msg_uxp_complete }
+                } else {
+                    $Process.Kill()
+                }
+            } catch {
+                # Whatever happened to the installer, the installation by hand comes next
+            }
         }
         if (-not $CompleteMessage) {
             Install-TypeRPluginManually $Work
             $CompleteMessage = $msg_uxp_complete_manual
         }
     } catch {
-        Write-Host $_.Exception.Message -ForegroundColor Red
-        Write-Host $msg_uxp_failed -ForegroundColor Red
+        Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "  $msg_uxp_failed" -ForegroundColor Red
+        Write-Host "  $msg_discord"
     } finally {
         Remove-Item -LiteralPath $Work -Force -ErrorAction SilentlyContinue
     }
     Write-Host ""
     if ($CompleteMessage) {
         Rename-TypeRLegacyPanel
-        Write-Host $CompleteMessage -ForegroundColor Cyan
-        if (Test-Path -LiteralPath (Join-Path $CepTarget 'CSXS')) { Write-Host $msg_both -ForegroundColor Yellow }
-        Write-Host ""
+        Write-Host "  √ $CompleteMessage" -ForegroundColor Green
+        if (Test-Path -LiteralPath (Join-Path $CepTarget 'CSXS')) { Write-Host "  $msg_both" -ForegroundColor Yellow }
         Write-TypeRCredits
     }
     if ($Interactive) { Read-Host -Prompt $msg_pause }
@@ -295,11 +539,10 @@ if (-not (Test-Path $ManifestPath)) {
     if ($Interactive) { Read-Host "Appuyez sur Entrée pour quitter..." }
     exit 1
 }
-Write-Host $msg_install
-Write-Host ""
-Write-Host $msg_close -ForegroundColor Yellow
-Write-Host ""
-if ($Interactive) { Read-Host -Prompt $msg_pause }
+if ($Interactive -and (Get-Process -Name Photoshop -ErrorAction SilentlyContinue)) {
+    Write-Host "  $msg_close" -ForegroundColor Yellow
+    Read-Host -Prompt "  $msg_pause"
+}
 
 # Use .NET directly: Get-FileHash may be absent from older Windows PowerShell
 # or from child processes inheriting a PowerShell Core module search path.
@@ -388,14 +631,8 @@ if (-not $env:TYPER_INSTALL_SKIP_DEBUG) {
 
 # --- 7. Fin ---
 Write-Host ""
-Write-Host "+------------------------------------------------------------------+" -ForegroundColor Green
-Write-Host "|                      Installation Completed                      |" -ForegroundColor Green
-Write-Host "+------------------------------------------------------------------+" -ForegroundColor Green
-Write-Host ""
-Write-Host $msg_complete
-Write-Host ""
-Write-Host $msg_open -ForegroundColor Cyan
-if (Get-ChildItem -LiteralPath $UxpPlugins -Filter 'com.scanr.typer_*' -Directory -ErrorAction SilentlyContinue) { Write-Host $msg_both -ForegroundColor Yellow }
-Write-Host ""
+Write-Host "  √ $msg_complete" -ForegroundColor Green
+Write-Host "  $msg_open" -ForegroundColor Cyan
+if (Get-ChildItem -LiteralPath $UxpPlugins -Filter 'com.scanr.typer_*' -Directory -ErrorAction SilentlyContinue) { Write-Host "  $msg_both" -ForegroundColor Yellow }
 Write-TypeRCredits
 if ($Interactive) { Read-Host -Prompt $msg_pause }

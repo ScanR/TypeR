@@ -178,7 +178,9 @@ runs on macOS and Linux.
 
 The installers, the panel's updates and the switch from Legacy all use Creative Cloud's plugin
 installer (UPIA) when it is there and works. Its exit code does not tell: a failure can still exit
-with 0, so its output is read too. Otherwise, they install the package by hand
+with 0, so its output is read too. The two install scripts also skip it when the Creative Cloud app
+itself is missing, since UPIA can be left behind without it, and stop waiting for it after a minute
+(`TYPER_INSTALL_UPIA_TIMEOUT`, in seconds). Otherwise, they install the package by hand
 (`app_src/uxpManualInstall.js`, `install_mac.sh`, `install.ps1`):
 
 1. Extract the `.ccx`, a plain zip, to `Plugins/External/com.scanr.typer_<version>`, through a
@@ -202,10 +204,35 @@ in `exit()` after quitting (windows closed, UXP terminated, process still there)
 launch. It was seen in some quits and not in others, and its cause is not established: the same
 quit was not compared on a Creative Cloud install.
 
+Reports from other developers: copying to `Plugins/External` and editing `PluginsInfo` was described
+for Windows in [this 2021 thread](https://forums.creativeclouddeveloper.com/t/install-uxp-plugin-with-own-installer/3846),
+and unzipping the `.ccx` into Photoshop's own `Plug-ins` folder is
+[confirmed by several users on Reddit](https://www.reddit.com/r/photoshop/comments/xm9pe4/comment/l04qrnj/).
+TypeR does not use that folder: it can need administrator rights on Windows, is tied to one Photoshop
+version, and the panel's updates would not reach it. It remains the thing to try by hand if a build
+ignores `PS.json`.
+
 Test it with Creative Cloud installed: `TYPER_INSTALL_NO_UPIA=1 ./install_uxp_mac.sh`
 (`$env:TYPER_INSTALL_NO_UPIA='1'` on Windows; `TYPER_UXP_ROOT` installs to another folder), or
 `npm run test:uxp-migration -- --manual` for the Legacy panel's switch. `forceManualPluginInstall` in
 the update test file does the same for the panels.
+
+## The installers' menu
+
+`get.sh` and `get.ps1` download the latest `TypeR.zip`, check it against `TypeR.zip.sha256` when the
+release has one, and start its installer. They are read from `master`, so they work as soon as they are
+merged there, and install whatever the latest release contains.
+
+Without `--uxp` / `--legacy` (`-Uxp` / `-Legacy`), an interactive console shows the menu; a scripted run
+still installs Legacy without asking. The installer finds each Photoshop and the newest one decides:
+version 26 or later recommends UXP, an older one Legacy, and none found (or an unreadable version)
+recommends nothing, with the cursor on UXP. The other choice stays selectable, for someone about to
+upgrade. On Windows, the search reads the registry and `Program Files\Adobe` on every drive; on macOS,
+`/Applications`, `~/Applications` and Spotlight.
+
+`scripts/testInstallers.js` covers these rules. The keys need a terminal: to try them without installing
+anything, run the script with `TYPER_INSTALL_PROBE=choice`, which prints the choice and stops, and
+`TYPER_PHOTOSHOP_VERSIONS="Photoshop 2024=25.0.0"`, which replaces the search.
 
 ## Building
 

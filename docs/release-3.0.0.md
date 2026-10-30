@@ -44,4 +44,4 @@ Record Photoshop, CEP, OS and architecture for each test. Do not infer a passed 
 - [ ] Test Windows native installer failure/rollback and update from the previous stable version.
 - [ ] Replace or re-record the older video guide if it is promoted with this release.
 
-Publishing the GitHub release/tag and uploading the ZIP are separate from pushing these changes.
+Publishing the GitHub release/tag and uploading `TypeR.zip`, `TypeR.zip.sha256` and `TypeR-UXP.ccx` are separate from pushing these changes. The one-command install (`get.sh`, `get.ps1`) reads `master` and the latest release: merge to `master` and publish before announcing it.

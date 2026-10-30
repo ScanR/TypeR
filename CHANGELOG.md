@@ -10,8 +10,10 @@
 - Read bubble and selection shapes from the selection mask, leave no history state for reads, and fix size changes on layers with floating-point colors, size changes on rich text and FontScanR on documents with a background layer.
 - Install updates from the panel through Creative Cloud's plugin installer, or by hand when it is missing or fails. Through the installer, the panel reloads with the new version without restarting Photoshop.
 - The UXP plugin no longer needs Creative Cloud: without its plugin installer, the installers, the panel's updates and the switch from Legacy extract the package and register it in Photoshop themselves, and Photoshop loads it at its next start.
-- The installers start by asking whether to install the new TypeR (UXP) or the Legacy (CEP) version, and the release archive contains the UXP plugin, so it installs offline.
+- The installers start with a menu to choose the new TypeR (UXP) or the Legacy (CEP) version with the arrow keys. It finds the installed Photoshop and marks the version made for it as recommended. The release archive contains the UXP plugin, so it installs offline.
+- Install in one command: `curl -fsSL https://raw.githubusercontent.com/ScanR/TypeR/master/get.sh | bash` on macOS, `irm https://raw.githubusercontent.com/ScanR/TypeR/master/get.ps1 | iex` on Windows. The archive also has `install_mac.command` to double-click on macOS, and its macOS scripts no longer need `chmod`.
 - A Finder `.DS_Store` file no longer breaks a release build or the Legacy installation on macOS.
+- The installers no longer call Creative Cloud's plugin installer when the Creative Cloud app is missing, and stop waiting for it after a minute. On Windows, an installer that cannot start now falls back to the direct installation instead of failing.
 - The Legacy panel first offers the switch to the new TypeR (UXP), before What's new, when Photoshop can run it (2025 or later): one click installs it, and it imports the styles, profiles and settings.
 - Once the new TypeR is installed, the Legacy panel is called "TypeR (old)" in Photoshop from its next start, and says at each start, before What's new, that the new version opens from Plug-ins > TypeR.
 
