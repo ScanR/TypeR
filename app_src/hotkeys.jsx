@@ -13,20 +13,34 @@ const intervalTime = 75;
 // background sessions crawl. The first pressed key restores the fast rate.
 const idleIntervalTime = 500;
 
+const MODIFIER_KEYS = ["WIN", "CTRL", "ALT", "SHIFT"];
+// Held longer than this, modifiers alone are not a tap: a drag or a click on
+// the canvas usually follows (Cmd+Shift+drag, Cmd+Opt+drag)
+const MODIFIER_CHORD_MAX_HOLD = 700;
+// The same key is "=" or "+" depending on the layout and on what reads it:
+// ScriptUI reports Equal for Shift+= where the UXP reader reports both
+const KEY_ALIASES = { PLUS: "EQUAL", EQUAL: "PLUS" };
+
+const isKeyHeld = (state, key) => state.includes(key) || (KEY_ALIASES[key] !== undefined && state.includes(KEY_ALIASES[key]));
+
 const checkShortcut = (state, ref) => {
-  return Array.isArray(ref) && ref.length > 0 && ref.every((key) => state.includes(key));
+  return Array.isArray(ref) && ref.length > 0 && ref.every((key) => isKeyHeld(state, key));
 };
+
+const isModifierChord = (ref) => Array.isArray(ref) && ref.length > 0 && ref.every((key) => MODIFIER_KEYS.includes(key));
 
 // Matching is subset-based, so a modifier-only binding (e.g. default add =
 // WIN+CTRL) would always shadow a longer custom binding built on the same
 // modifiers. Pick the most specific match instead of the first one.
-const matchBinding = (state, shortcut) => {
+// Bindings made of modifiers only and the others run at different times (see
+// createModifierChordTracker), so the caller picks one of the two kinds.
+const matchBinding = (state, shortcut, modifierChords) => {
   let best = null;
   let bestLength = 0;
   shortcutCommands.forEach((command) => {
     if (command.modifierOnly) return;
     const ref = shortcut[command.id];
-    if (checkShortcut(state, ref) && ref.length > bestLength) {
+    if (isModifierChord(ref) === modifierChords && checkShortcut(state, ref) && ref.length > bestLength) {
       best = command;
       bestLength = ref.length;
     }
@@ -137,11 +151,58 @@ const createShortcutGate = ({ now = () => Date.now(), schedule = setTimeout, can
   };
 };
 
+// Decides when a shortcut made of modifiers only (Cmd+Ctrl, Cmd+Shift...) runs.
+// These keys start most of Photoshop's own shortcuts, so such a chord runs when
+// its first key is released, with every modifier held at that point: the press
+// order does not matter. It does not run if another key joined it (Cmd+Shift+Z),
+// nor if it was held too long to be a tap. Pure apart from the injected clock,
+// so scripts/testShortcuts.js can drive it.
+const createModifierChordTracker = ({ now = () => Date.now(), maxHold = MODIFIER_CHORD_MAX_HOLD } = {}) => {
+  let peak = [];
+  let lastAddedAt = 0;
+  let spent = false;
+  let cancelled = false;
+  let ignored = [];
+  return {
+    // Takes the held keys, answers the modifiers of the chord to run, if any
+    update(keys) {
+      const modifiers = keys.filter((key) => MODIFIER_KEYS.includes(key));
+      const others = keys.filter((key) => !MODIFIER_KEYS.includes(key));
+      // A name already there with the first modifier is not part of the
+      // chord: ScriptUI can keep a stale keyName while only modifiers are held
+      if (!peak.length && modifiers.length) ignored = others;
+      if (others.some((key) => !ignored.includes(key))) cancelled = true;
+      let chord = null;
+      if (peak.some((key) => !modifiers.includes(key))) {
+        if (!spent && !cancelled && now() - lastAddedAt <= maxHold) chord = peak;
+        spent = true;
+      }
+      if (modifiers.some((key) => !peak.includes(key))) {
+        spent = false;
+        lastAddedAt = now();
+      }
+      peak = modifiers;
+      if (!modifiers.length) {
+        spent = false;
+        cancelled = false;
+        ignored = [];
+      }
+      return chord;
+    },
+    // Another shortcut used these modifiers: they are not a chord of their own
+    cancel() {
+      cancelled = true;
+    },
+  };
+};
+
 const HotkeysListner = React.memo(function HotkeysListner() {
   const context = useContext(() => ({}));
 
   const gateRef = React.useRef(null);
   if (!gateRef.current) gateRef.current = createShortcutGate();
+  const chordRef = React.useRef(null);
+  if (!chordRef.current) chordRef.current = createModifierChordTracker();
   const hotkeyPollPendingRef = React.useRef(false);
   const lastPollAtRef = React.useRef(0);
 
@@ -173,11 +234,17 @@ const HotkeysListner = React.memo(function HotkeysListner() {
         if (realState.length) notePanelActivity();
         syncKeepSizeHeld(context, realState);
       }
-      const command = matchBinding(realState, shortcut);
+      const chord = chordRef.current.update(realState);
+      if (chord && canFire) {
+        const chordCommand = matchBinding(chord, shortcut, true);
+        if (chordCommand) gateRef.current.press(chordCommand, runCommand(chordCommand, getCommandOptions(chord, shortcut)), true);
+      }
+      const command = matchBinding(realState, shortcut, false);
       if (!command) {
         gateRef.current.release();
         return;
       }
+      chordRef.current.cancel();
       if (canFire) gateRef.current.press(command, runCommand(command, getCommandOptions(realState, shortcut)));
     };
 
@@ -251,6 +318,7 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     startForegroundWatcher();
 
     const unsubscribe = onMouseShortcut((state) => {
+      chordRef.current.cancel();
       const ctxState = context.getState();
       // No isFormFieldActive() guard: a side button never types a character,
       // and the panel's textarea usually holds focus while the user works

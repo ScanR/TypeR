@@ -9,6 +9,11 @@
 //
 // Keys are only reported while Photoshop is the frontmost application, like
 // the CEP host did with lsappinfo. The helper exits when Photoshop does.
+// Without macOS's Input Monitoring permission for Photoshop, which starts this
+// helper, CGEventSourceKeyState leaves out every key that types a character
+// (modifiers, Return, Tab and function keys still show). The user has to add
+// Photoshop by hand: CGRequestListenEventAccess shows nothing from here, and
+// the count of key presses is no way around it, as it comes half a second late.
 // The file holds "<state>|<beat>": the beat moves on every write and at
 // least once a second, so the plugin can tell a quiet keyboard from a dead
 // helper (uxp-src/host/keysHelper.js restarts it).
@@ -95,6 +100,19 @@ static NSString *layoutCharacter(CGKeyCode key, int shift) {
   return [NSString stringWithCharacters:chars length:length];
 }
 
+// The letter printed on a key in the ANSI position, for layouts that have no
+// Latin letters: the default shortcuts name the key H, the layout types "Р"
+static const char *const kAnsiLetters[] = {
+  "A", "S", "D", "F", "H", "G", "Z", "X", "C", "V", NULL, "B", "Q", "W", "E", "R", "Y", "T",
+  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+  "O", "U", NULL, "I", "P", NULL, "L", "J", NULL, "K", NULL, NULL, NULL, NULL, "N", "M",
+};
+
+static NSString *ansiLetter(CGKeyCode key) {
+  if (key >= sizeof(kAnsiLetters) / sizeof(kAnsiLetters[0]) || !kAnsiLetters[key]) return nil;
+  return [NSString stringWithUTF8String:kAnsiLetters[key]];
+}
+
 static NSString *characterNames(NSString *text) {
   if ([text isEqualToString:@"+"]) return @"PLUS";
   if ([text isEqualToString:@"-"]) return @"MINUS";
@@ -118,6 +136,8 @@ static NSString *pressedKeyNames(int shift) {
     NSString *plain = layoutCharacter(key, 0);
     if (!plain.length) continue;
     NSString *names = characterNames(plain);
+    NSString *letter = [plain characterAtIndex:0] > 0x7F ? ansiLetter(key) : nil;
+    if (letter) names = [names stringByAppendingFormat:@"|%@", letter];
     if (shift) {
       NSString *shifted = layoutCharacter(key, 1);
       if (shifted.length && ![[shifted uppercaseString] isEqualToString:[plain uppercaseString]]) {

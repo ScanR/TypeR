@@ -52,8 +52,8 @@ assert(
 const insertTextBlock = commandBlockById.get("insertText");
 assert(insertTextBlock, "Missing shortcut command: insertText");
 assert(
-  /defaultKeys:\s*\["WIN",\s*"SHIFT",\s*"V"\]/.test(insertTextBlock),
-  "insertText must use the safer default Cmd/Ctrl+Shift+V shortcut"
+  /defaultKeys:\s*\["CTRL",\s*"ALT",\s*"L"\]/.test(insertTextBlock),
+  "insertText must not share its default with Photoshop's Paste in Place (Cmd+Shift+V)"
 );
 const keepTextSizeBlock = commandBlockById.get("keepTextSize");
 assert(keepTextSizeBlock, "Missing shortcut modifier: keepTextSize");
@@ -183,7 +183,7 @@ new Function("require", "module", "exports", transformedCommands)(
 );
 const runtimeCommands = commandModule.exports.shortcutCommands;
 const getCommand = (id) => runtimeCommands.find((command) => command.id === id);
-assert.deepStrictEqual(commandModule.exports.getDefaultShortcuts().insertText, ["WIN", "SHIFT", "V"]);
+assert.deepStrictEqual(commandModule.exports.getDefaultShortcuts().insertText, ["CTRL", "ALT", "L"]);
 assert.deepStrictEqual(commandModule.exports.getDefaultShortcuts().keepTextSize, ["ALT"]);
 assert.strictEqual(
   commandModule.exports.isShortcutActiveForEvent({ altKey: true }, ["ALT"]),
@@ -200,7 +200,12 @@ const migratedShortcuts = commandModule.exports.migrateShortcutDefaults(
   commandModule.exports.getDefaultShortcuts()
 );
 assert.strictEqual(migratedShortcuts.migrated, true, "The old insertText default must be migrated");
-assert.deepStrictEqual(migratedShortcuts.shortcuts.insertText, ["WIN", "SHIFT", "V"]);
+assert.deepStrictEqual(migratedShortcuts.shortcuts.insertText, ["CTRL", "ALT", "L"]);
+assert.deepStrictEqual(
+  commandModule.exports.migrateShortcutDefaults({ insertText: ["WIN", "SHIFT", "V"] }).shortcuts.insertText,
+  ["CTRL", "ALT", "L"],
+  "Every earlier insertText default must be migrated"
+);
 assert.deepStrictEqual(migratedShortcuts.shortcuts.nextPage, ["ALT", "P"], "Custom shortcuts must be preserved");
 
 const dispatches = [];
@@ -499,6 +504,165 @@ assert(
     "A textarea left focused while Photoshop has the keyboard must not block shortcuts"
   );
   assert.strictEqual(isFormFieldActive({ activeElement: textarea })(), true, "Without hasFocus the field alone decides");
+}
+
+// --- modifier-only chords ----------------------------------------------------
+
+const matchingStart = hotkeySource.indexOf("const MODIFIER_KEYS");
+const matchingEnd = hotkeySource.indexOf("const getCommandOptions");
+const chordStart = hotkeySource.indexOf("const createModifierChordTracker");
+const chordEnd = hotkeySource.indexOf("const HotkeysListner");
+assert(matchingStart !== -1 && matchingEnd > matchingStart && chordStart !== -1 && chordEnd > chordStart, "Could not extract the chord tracker");
+const {
+  checkShortcut: checkKeys,
+  matchBinding: matchKeys,
+  createModifierChordTracker,
+} = new Function(
+  "shortcutCommands",
+  `${hotkeySource.slice(matchingStart, matchingEnd)}\n${hotkeySource.slice(chordStart, chordEnd)}\nreturn { checkShortcut, matchBinding, createModifierChordTracker };`
+)(runtimeCommands);
+
+const defaultShortcuts = commandModule.exports.getDefaultShortcuts();
+const permutations = (keys) => (keys.length < 2
+  ? [keys]
+  : keys.flatMap((key, index) => permutations(keys.filter((_, other) => other !== index)).map((rest) => [key].concat(rest))));
+
+// Presses the keys one by one, then releases them in the same order, through
+// both matchers as hotkeys.jsx does; answers the commands that ran
+const playChord = (order, { hold = 100, shortcut = defaultShortcuts } = {}) => {
+  let time = 1000;
+  const tracker = createModifierChordTracker({ now: () => time });
+  const ran = [];
+  const held = [];
+  let mainFired = false;
+  const step = () => {
+    const chord = tracker.update(held.slice());
+    if (chord) {
+      const command = matchKeys(chord, shortcut, true);
+      if (command) ran.push(command.id + (checkKeys(chord, shortcut.keepTextSize) ? "+keep" : ""));
+    }
+    const command = matchKeys(held, shortcut, false);
+    if (!command) {
+      mainFired = false;
+      return;
+    }
+    tracker.cancel();
+    if (!mainFired) ran.push(command.id);
+    mainFired = true;
+  };
+  order.forEach((key, index) => {
+    if (index) time += 40;
+    held.push(key);
+    step();
+  });
+  time += hold;
+  order.forEach((key) => {
+    held.splice(held.indexOf(key), 1);
+    step();
+    time += 40;
+  });
+  return ran;
+};
+
+[
+  [["WIN", "CTRL"], "add"],
+  [["WIN", "SHIFT"], "apply"],
+  [["WIN", "ALT"], "center+keep"],
+  [["WIN", "CTRL", "ALT"], "add+keep"],
+  [["WIN", "SHIFT", "ALT"], "apply+keep"],
+].forEach(([keys, expected]) => permutations(keys).forEach((order) => {
+  assert.deepStrictEqual(playChord(order), [expected], `${order.join(" > ")} must run ${expected} once, in any press order`);
+}));
+["S", "Z", "N", "I", "E"].forEach((key) => {
+  assert.deepStrictEqual(playChord(["WIN", "SHIFT", key]), [], `Cmd+Shift+${key} belongs to Photoshop`);
+  assert.deepStrictEqual(playChord(["WIN", "ALT", key]), [], `Cmd+Opt+${key} belongs to Photoshop`);
+  assert.deepStrictEqual(playChord(["WIN", "CTRL", key]), [], `Cmd+Ctrl+${key} belongs to Photoshop or the system`);
+  assert.deepStrictEqual(playChord(["WIN", "ALT", "SHIFT", key]), [], "Three modifiers and a key must not run anything");
+});
+{
+  const shortcut = { ...defaultShortcuts, insertText: ["WIN", "SHIFT", "V"] };
+  permutations(["WIN", "SHIFT", "V"]).forEach((order) => {
+    assert.deepStrictEqual(playChord(order, { shortcut }), ["insertText"], `${order.join(" > ")} must run the longer shortcut and nothing else`);
+  });
+}
+{
+  const shortcut = { ...defaultShortcuts, centerDouble: ["WIN", "SHIFT", "B"] };
+  assert.deepStrictEqual(playChord(["WIN", "SHIFT", "B"], { shortcut }), ["centerDouble"], "A chord may extend a modifier-only shortcut");
+}
+assert.deepStrictEqual(playChord(["WIN", "CTRL"], { hold: 2000 }), [], "Modifiers held for long are not a tap");
+assert.deepStrictEqual(playChord(["ALT"]), [], "The keep-size modifier alone runs nothing");
+
+{
+  let time = 0;
+  const tracker = createModifierChordTracker({ now: () => time });
+  const feed = (...keys) => {
+    time += 50;
+    return tracker.update(keys);
+  };
+  // Cmd held, Ctrl tapped: each tap runs
+  feed("WIN");
+  feed("WIN", "CTRL");
+  assert.deepStrictEqual(feed("WIN"), ["WIN", "CTRL"]);
+  feed("WIN", "CTRL");
+  assert.deepStrictEqual(feed("WIN"), ["WIN", "CTRL"], "A chord can be tapped again while a modifier stays held");
+  assert.strictEqual(feed(), null, "Releasing the rest of a chord that ran must not run it again");
+  // A key cancels until every modifier is up
+  feed("WIN");
+  feed("WIN", "SHIFT");
+  feed("WIN", "SHIFT", "Z");
+  assert.strictEqual(feed("WIN", "SHIFT"), null);
+  feed("WIN");
+  feed("WIN", "SHIFT");
+  assert.strictEqual(feed("WIN"), null, "A chord stays cancelled until every modifier is up");
+  feed();
+  feed("WIN");
+  feed("WIN", "SHIFT");
+  assert.deepStrictEqual(feed("WIN"), ["WIN", "SHIFT"], "A new chord runs after a full release");
+  feed();
+  // A stale ScriptUI keyName is there from the first modifier on
+  feed("APOSTROPHE");
+  feed("WIN", "APOSTROPHE");
+  feed("WIN", "CTRL", "APOSTROPHE");
+  assert.deepStrictEqual(feed("WIN", "APOSTROPHE"), ["WIN", "CTRL"], "A stale key name must not cancel a chord");
+  feed();
+  // A side button or another shortcut takes the modifiers
+  feed("WIN");
+  feed("WIN", "CTRL");
+  tracker.cancel();
+  assert.strictEqual(feed("WIN"), null);
+  feed();
+}
+
+// The key is "=" or "+" depending on the layout and the reader
+["EQUAL", "PLUS"].forEach((key) => {
+  assert.strictEqual(checkKeys(["CTRL", "ALT", key], ["CTRL", "ALT", "EQUAL"]), true);
+  assert.strictEqual(checkKeys(["CTRL", "ALT", key], ["CTRL", "ALT", "PLUS"]), true);
+});
+assert.strictEqual(checkKeys(["CTRL", "ALT", "MINUS"], ["CTRL", "ALT", "EQUAL"]), false);
+
+// New defaults, and the migration away from the ones Photoshop also reacts to
+assert.deepStrictEqual(defaultShortcuts.previous, ["CTRL", "SHIFT", "ENTER"]);
+assert.deepStrictEqual(defaultShortcuts.nextPage, ["CTRL", "ALT", "ENTER"]);
+assert.deepStrictEqual(defaultShortcuts.increase, ["CTRL", "ALT", "U"]);
+assert.deepStrictEqual(defaultShortcuts.decrease, ["CTRL", "ALT", "D"]);
+{
+  const { shortcuts, migrated } = commandModule.exports.migrateShortcutDefaults({
+    previous: ["CTRL", "TAB"],
+    nextPage: ["SHIFT", "X"],
+    increase: ["CTRL", "SHIFT", "PLUS"],
+    decrease: ["F5"],
+  });
+  assert.strictEqual(migrated, true);
+  assert.deepStrictEqual(shortcuts.previous, defaultShortcuts.previous);
+  assert.deepStrictEqual(shortcuts.nextPage, defaultShortcuts.nextPage);
+  assert.deepStrictEqual(shortcuts.increase, defaultShortcuts.increase);
+  assert.deepStrictEqual(shortcuts.decrease, ["F5"], "A customized shortcut must be kept");
+  const taken = commandModule.exports.migrateShortcutDefaults({
+    previous: ["CTRL", "TAB"],
+    nextStyle: ["CTRL", "SHIFT", "ENTER"],
+  });
+  assert.deepStrictEqual(taken.shortcuts.previous, ["CTRL", "TAB"], "The old default stays when the new one is taken");
+  assert.strictEqual(taken.migrated, false);
 }
 
 console.log("shortcut registry tests passed");

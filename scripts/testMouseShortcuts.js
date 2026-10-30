@@ -68,7 +68,7 @@ assert.strictEqual(foregroundWatcher.name, "Photoshop", "A bare process name mus
 
 // --- runtime matching ------------------------------------------------------
 
-const matchBlock = slice(hotkeySource, "const checkShortcut", "const isFormFieldActive", "hotkey matching");
+const matchBlock = slice(hotkeySource, "const MODIFIER_KEYS", "const isFormFieldActive", "hotkey matching");
 const commands = [
   { id: "add" },
   { id: "next" },
@@ -97,9 +97,9 @@ assert.strictEqual(matching.matchMouseBinding(["WIN", "CTRL"], shortcut), null,
   "A keyboard-only binding must never fire through the mouse path");
 
 // The keyboard poll never sees a mouse token, so mouse bindings must be inert there
-assert.strictEqual(matching.matchBinding(["CTRL"], shortcut), null,
+assert.strictEqual(matching.matchBinding(["CTRL"], shortcut, false), null,
   "A mouse binding must not be reachable from the keyboard poll");
-assert.strictEqual(matching.matchBinding(["WIN", "CTRL"], shortcut).id, "add",
+assert.strictEqual(matching.matchBinding(["WIN", "CTRL"], shortcut, true).id, "add",
   "Keyboard matching must keep working unchanged");
 
 // --- recording and labels --------------------------------------------------

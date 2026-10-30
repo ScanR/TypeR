@@ -69,6 +69,14 @@
 - Produce `Releases/TypeR.zip` and its checksum after tests and artifact checks, with the README and license included.
 - Run regression tests and release checks in CI on Windows, macOS and Linux; update build dependencies.
 
+### Shortcuts
+
+- Shortcuts made of modifier keys only (Paste `Win+Ctrl`, Apply `Win+Shift`, Center `Win+Alt`) now run when you release them, and not if another key joined them. `Cmd+Shift+Z`, `Cmd+Opt+I` and every other Photoshop shortcut starting with these keys no longer run a TypeR action on the way, and a custom shortcut can extend them.
+- The keep-size modifier works in any press order.
+- Change the defaults Photoshop also reacts to: previous line is `Ctrl+Shift+Enter` (was `Ctrl+Tab`, which also changed document), next page is `Ctrl+Alt+Enter` (was `Shift+X`, which also swapped the colors), text size is `Ctrl+Alt+U` and `Ctrl+Alt+D` (was `Ctrl+Shift+Plus` and `Minus`, where Plus also changed the layer's blending mode), inserting the text is `Ctrl+Alt+L` (was `Win+Shift+V`, which also ran Paste in Place). Unchanged old defaults move to the new ones; customized shortcuts are kept.
+- `=` and `+` count as the same key, so a Plus shortcut also works in Legacy, whose keyboard reader only reports Equal for that key.
+- macOS: the UXP keyboard reader also reports the physical letter on layouts without Latin letters, so the default shortcuts work on them. Photoshop must be added to Input Monitoring in the system settings, or macOS hides letters, digits and symbols from the reader.
+
 ### Validation limits
 
 Automated host tests simulate Photoshop operations. They do not certify every Photoshop/OS pair. Release acceptance still requires real CEP testing on CC 2015 and a current Photoshop version, on both Windows and macOS, including a long typesetting session. The existing video guide describes an older workflow; use the in-panel walkthrough for the current interface.

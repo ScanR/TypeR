@@ -240,7 +240,8 @@ const shortcutCommands = [
   {
     id: "previous",
     label: "shortcut_previous",
-    defaultKeys: ["CTRL", "TAB"],
+    defaultKeys: ["CTRL", "SHIFT", "ENTER"],
+    legacyDefaultKeys: [["CTRL", "TAB"]],
     repeatDelay: 300,
     handler: (ctx) => ctx.dispatch({ type: "prevLine" }),
   },
@@ -261,7 +262,8 @@ const shortcutCommands = [
   {
     id: "nextPage",
     label: "shortcut_nextPage",
-    defaultKeys: ["SHIFT", "X"],
+    defaultKeys: ["CTRL", "ALT", "ENTER"],
+    legacyDefaultKeys: [["SHIFT", "X"]],
     repeatDelay: 300,
     handler: (ctx) => ctx.dispatch({ type: "nextPage" }),
   },
@@ -289,14 +291,16 @@ const shortcutCommands = [
   {
     id: "increase",
     label: "shortcut_increase",
-    defaultKeys: ["CTRL", "SHIFT", "PLUS"],
+    defaultKeys: ["CTRL", "ALT", "U"],
+    legacyDefaultKeys: [["CTRL", "SHIFT", "PLUS"]],
     repeatDelay: 300,
     handler: (ctx) => changeActiveLayerTextSize(ctx.state.textSizeIncrement || 1),
   },
   {
     id: "decrease",
     label: "shortcut_decrease",
-    defaultKeys: ["CTRL", "SHIFT", "MINUS"],
+    defaultKeys: ["CTRL", "ALT", "D"],
+    legacyDefaultKeys: [["CTRL", "SHIFT", "MINUS"]],
     repeatDelay: 300,
     handler: (ctx) => changeActiveLayerTextSize(-(ctx.state.textSizeIncrement || 1)),
   },
@@ -310,8 +314,8 @@ const shortcutCommands = [
   {
     id: "insertText",
     label: "shortcut_insertText",
-    defaultKeys: ["WIN", "SHIFT", "V"],
-    legacyDefaultKeys: ["WIN", "V"],
+    defaultKeys: ["CTRL", "ALT", "L"],
+    legacyDefaultKeys: [["WIN", "V"], ["WIN", "SHIFT", "V"]],
     repeatDelay: 0,
     handler: insertLineText,
   },
@@ -419,15 +423,18 @@ const sameShortcut = (left, right) => (
 );
 
 // Move users who still have an unchanged previous default onto the new one,
-// while preserving shortcuts they explicitly customized.
+// while preserving shortcuts they explicitly customized: the old default stays
+// when another action already uses the new one.
 const migrateShortcutDefaults = (storedShortcuts, defaults = getDefaultShortcuts()) => {
   const stored = storedShortcuts && typeof storedShortcuts === "object" ? storedShortcuts : {};
   const shortcuts = { ...defaults, ...stored };
   let migrated = false;
 
   shortcutCommands.forEach((command) => {
-    if (!sameShortcut(stored[command.id], command.legacyDefaultKeys)) return;
-    shortcuts[command.id] = (defaults[command.id] || []).concat([]);
+    if (!(command.legacyDefaultKeys || []).some((keys) => sameShortcut(stored[command.id], keys))) return;
+    const target = defaults[command.id] || [];
+    if (Object.keys(shortcuts).some((id) => id !== command.id && sameShortcut(shortcuts[id], target))) return;
+    shortcuts[command.id] = target.concat([]);
     migrated = true;
   });
 

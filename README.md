@@ -173,7 +173,7 @@ UXP needs Photoshop 2025 (UXP 8.0): it is the first version whose plugin panels 
 
 On its first start the plugin copies the styles, profiles and settings of an installed CEP TypeR (the CEP files are left untouched). An updated Legacy panel also offers this switch by itself when Photoshop can run the new TypeR. Its own data lives in `~/Library/Application Support/TypeR/UXP` on macOS and `%APPDATA%\TypeR\UXP` on Windows, outside Photoshop's version-specific plugin folders, so a Photoshop upgrade keeps it. Updates are offered and installed from the panel like the CEP version's; restart Photoshop afterwards.
 
-Global shortcuts (such as Cmd+Ctrl for Paste) need to read the keyboard while the canvas has the focus. UXP cannot, so the plugin starts a small keyboard reader that reports the pressed keys while Photoshop is in front, and stops with Photoshop.
+Global shortcuts (such as Cmd+Ctrl for Paste) need to read the keyboard while the canvas has the focus. UXP cannot, so the plugin starts a small keyboard reader that reports the pressed keys while Photoshop is in front, and stops with Photoshop. On macOS, add Photoshop to **System Settings → Privacy & Security → Input Monitoring**. Without it, macOS only shows the reader the modifiers and keys such as Enter, Tab or the function keys: shortcuts with a letter, digit or symbol do not run, and Photoshop shortcuts such as `Cmd + Shift + Z` also run the TypeR shortcut they start with.
 
 ### Requirements
 
@@ -252,13 +252,13 @@ Every binding is customizable in **Settings → Shortcuts**. `Win` is TypeR's la
 | Apply the current line and style to the active layer | `Win + Shift` |
 | Center the active layer in the selection | `Win + Alt` |
 | Next line | `Ctrl + Enter` |
-| Previous line | `Ctrl + Tab` |
-| Increase text size | `Ctrl + Shift + Plus` |
-| Decrease text size | `Ctrl + Shift + Minus` |
-| Insert text into the active layer without changing its style | `Win + Shift + V` |
+| Previous line | `Ctrl + Shift + Enter` |
+| Increase text size | `Ctrl + Alt + U` |
+| Decrease text size | `Ctrl + Alt + D` |
+| Insert text into the active layer without changing its style | `Ctrl + Alt + L` |
 | Keep the active text size while creating or applying text | Hold `Alt` with the action |
 | Select style 1 to 9 in the current folder, panel focused outside a text field | Numeric keypad `1` to `9` |
-| Jump to the next page marker | `Shift + X` |
+| Jump to the next page marker | `Ctrl + Alt + Enter` |
 | Toggle multi-bubble mode | `Ctrl + Alt + M` |
 | Jump to the previous page marker | Not assigned |
 | Select the previous style | Not assigned |
@@ -270,6 +270,8 @@ Every binding is customizable in **Settings → Shortcuts**. `Win` is TypeR's la
 | Toggle TextShapeR | Not assigned |
 | Switch to the previous tab | Not assigned |
 | Switch to the next tab | Not assigned |
+
+A shortcut made of modifier keys only (`Win + Ctrl`, `Win + Shift`, `Win + Alt`) runs when you release it, and not if another key joined it: `Cmd + Shift + Z` stays Photoshop's redo.
 
 Shortcut behavior can vary with keyboard layouts and operating-system bindings. If a combination conflicts with another application, assign a different one in TypeR. Settings warns when the same combination is assigned to more than one TypeR action.
 
