@@ -52,6 +52,7 @@
 - Bind captured bubble selections to the current Photoshop document and session.
 - Validate a batch before creating layers and restore Photoshop history if a batch fails.
 - Preserve undo history during temporary TextShapeR scans.
+- Fix TextShapeR's learning, which could suddenly degrade the suggestions after many lessons.
 - Refine compact panel settings, the active-size modifier and keyboard workflows.
 - Select styles 1 through 9 in the current folder with the numeric keypad while the panel has focus and no text field or modal is active.
 - Fix right-to-left text (Arabic): the Text direction setting now reaches Photoshop. Before, the paragraph direction was dropped on every write, so layers went back to left-to-right. Pasting into the current layer also sets right-to-left when the panel is set to RTL, styles keep their direction, composer and Arabic digits, and TextShapeR keeps the diacritic offsets.

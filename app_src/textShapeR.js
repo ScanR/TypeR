@@ -274,28 +274,25 @@ const rankingAccuracy = (weights, pairs) => {
 //
 // - Recency: pairs are down-weighted by an exponential discount on their
 //   feedback age (weighted likelihood, as in discounted linear bandits for
-//   non-stationary preferences), so a style change is followed within a few
-//   lessons instead of being outvoted by the whole history.
+//   non-stationary preferences), so a style change is followed instead of
+//   being outvoted by the whole history.
 // - Uncertainty: the diagonal Laplace posterior variance of each weight
 //   moderates it (probit approximation of the predictive): weights backed
 //   by little or contradictory evidence are shrunk, well-supported ones keep
 //   their full value. The bounds below are only a safety net.
-// - Solver: full-batch preconditioned Newton steps; order independent.
+// - Solver: full Newton with backtracking; order independent. The features are
+//   strongly correlated, and a per-weight step diverges on them once evidence
+//   grows: weights then slam into their caps and the ranking collapses.
 const RANK_TEMPERATURE = 150;
 const RANK_PRIOR_PRECISION = 1.2;
-// Candidate memory lengths (half-life, in feedbacks). The ranker keeps the
-// one that best predicts the user's latest lessons from the earlier ones
-const RANK_HALF_LIVES = [10, 40];
-const RANK_HALF_LIFE = 40; // default until there is enough history to choose
-const RANK_HOLDOUT_FEEDBACKS = 3;
-const RANK_SELECTION_MIN_FEEDBACKS = 8;
-const RANK_ITERATIONS = 60;
-// Converged once no weight moves more than this in a step (1/RANK_TEMPERATURE
-// units, so 1.5e-5 once stored), far below the 0.01 rounding of the weights
-const RANK_TOLERANCE = 1e-7;
-const RANK_STEP = 0.6;
+const RANK_HALF_LIFE = 80;
+const RANK_ITERATIONS = 25;
+const RANK_LINE_SEARCH_STEPS = 12;
+const RANK_TOLERANCE = 1e-5;
 const RANK_CAP_GROWTH = RANK_CAP_GROWTH_LIMIT; // caps widen with effective evidence, up to x(1+3)
 const RANK_CAP_EVIDENCE = 60; // effective pairs for a full widening
+// Weights trained before this solver can be stuck at their caps: refit on load
+const RANK_SOLVER_VERSION = 2;
 
 // Pairs from older buffers carry no feedback index: date them from their
 // chronological position (about four pairs per feedback, newest last)
@@ -336,34 +333,88 @@ const trainRankingWeights = (pairs, halfLife = RANK_HALF_LIFE) => {
   const caps = FEATURE_KEYS.map((key) => FEATURE_CAPS[key] * capScale / RANK_TEMPERATURE);
   // Zero-mean prior: with no evidence the generator ranks on its own
   const units = new Float64Array(count);
+  const trial = new Float64Array(count);
   const gradient = new Float64Array(count);
   const hessian = new Float64Array(count);
+  const fullHessian = new Float64Array(count * count);
+  const cholesky = new Float64Array(count * count);
+  const step = new Float64Array(count);
+  const objective = (values) => {
+    let total = 0;
+    for (let index = 0; index < count; index++) total += 0.5 * RANK_PRIOR_PRECISION * values[index] * values[index];
+    for (let pairIndex = 0, offset = 0; pairIndex < pairCount; pairIndex++, offset += count) {
+      let margin = offsets[pairIndex];
+      for (let index = 0; index < count; index++) margin += values[index] * diffs[offset + index];
+      total += pairWeights[pairIndex] * Math.log1p(Math.exp(-margin));
+    }
+    return total;
+  };
+  let current = objective(units);
   for (let iteration = 0; iteration < RANK_ITERATIONS; iteration++) {
+    fullHessian.fill(0);
     for (let index = 0; index < count; index++) {
       gradient[index] = RANK_PRIOR_PRECISION * units[index];
-      hessian[index] = RANK_PRIOR_PRECISION;
+      fullHessian[index * count + index] = RANK_PRIOR_PRECISION;
     }
     for (let pairIndex = 0, offset = 0; pairIndex < pairCount; pairIndex++, offset += count) {
       let margin = offsets[pairIndex];
       for (let index = 0; index < count; index++) margin += units[index] * diffs[offset + index];
       const probability = 1 / (1 + Math.exp(-margin));
-      const weight = pairWeights[pairIndex];
-      const pull = weight * (1 - probability);
-      const curvature = weight * probability * (1 - probability);
-      for (let index = 0; index < count; index++) {
-        const diff = diffs[offset + index];
-        gradient[index] -= pull * diff;
-        hessian[index] += curvature * diff * diff;
+      const pull = pairWeights[pairIndex] * (1 - probability);
+      const curvature = pairWeights[pairIndex] * probability * (1 - probability);
+      for (let row = 0; row < count; row++) {
+        const diff = diffs[offset + row];
+        gradient[row] -= pull * diff;
+        if (!diff) continue;
+        for (let column = row; column < count; column++) fullHessian[row * count + column] += curvature * diff * diffs[offset + column];
       }
     }
-    // Curvature floor: a saturated sigmoid must not stall the update
+    // Cholesky solve: the prior keeps the Hessian positive definite
+    for (let row = 0; row < count; row++) {
+      for (let column = 0; column <= row; column++) {
+        let sum = fullHessian[column * count + row];
+        for (let k = 0; k < column; k++) sum -= cholesky[row * count + k] * cholesky[column * count + k];
+        cholesky[row * count + column] = row === column ? Math.sqrt(Math.max(sum, 1e-9)) : sum / cholesky[column * count + column];
+      }
+    }
+    for (let row = 0; row < count; row++) {
+      let sum = -gradient[row];
+      for (let k = 0; k < row; k++) sum -= cholesky[row * count + k] * step[k];
+      step[row] = sum / cholesky[row * count + row];
+    }
+    for (let row = count - 1; row >= 0; row--) {
+      let sum = step[row];
+      for (let k = row + 1; k < count; k++) sum -= cholesky[k * count + row] * step[k];
+      step[row] = sum / cholesky[row * count + row];
+    }
+    let rate = 1;
+    let accepted = false;
+    for (let attempt = 0; attempt < RANK_LINE_SEARCH_STEPS; attempt++) {
+      for (let index = 0; index < count; index++) trial[index] = clamp(units[index] + rate * step[index], -caps[index], caps[index]);
+      const value = objective(trial);
+      if (value <= current) {
+        current = value;
+        accepted = true;
+        break;
+      }
+      rate *= 0.5;
+    }
+    if (!accepted) break;
     let largest = 0;
     for (let index = 0; index < count; index++) {
-      const previous = units[index];
-      units[index] = clamp(previous - RANK_STEP * gradient[index] / Math.max(hessian[index], RANK_PRIOR_PRECISION), -caps[index], caps[index]);
-      largest = Math.max(largest, Math.abs(units[index] - previous));
+      largest = Math.max(largest, Math.abs(trial[index] - units[index]));
+      units[index] = trial[index];
     }
     if (largest < RANK_TOLERANCE) break;
+  }
+  // Curvature at the optimum, for the moderation below
+  hessian.fill(RANK_PRIOR_PRECISION);
+  for (let pairIndex = 0, offset = 0; pairIndex < pairCount; pairIndex++, offset += count) {
+    let margin = offsets[pairIndex];
+    for (let index = 0; index < count; index++) margin += units[index] * diffs[offset + index];
+    const probability = 1 / (1 + Math.exp(-margin));
+    const curvature = pairWeights[pairIndex] * probability * (1 - probability);
+    for (let index = 0; index < count; index++) hessian[index] += curvature * diffs[offset + index] * diffs[offset + index];
   }
   // Moderated weights: E[w] / sqrt(1 + pi/8 * Var[w] * E[d^2]), the probit
   // approximation of the predictive with the diagonal Laplace variance
@@ -381,45 +432,15 @@ const trainRankingWeights = (pairs, halfLife = RANK_HALF_LIFE) => {
   return { weights, capScale };
 };
 
-// Log-likelihood of held-out pairs under trained weights (offsets included)
-const pairLogLikelihood = (weights, pairs) => pairs.reduce((sum, pair) => {
-  const margin = (pair.o || 0) + pairSeparation(weights, pair) / RANK_TEMPERATURE;
-  return sum - Math.log1p(Math.exp(-margin));
-}, 0);
-
-// Adaptive forgetting: a long memory is best for a stable style, a short one
-// right after the user changes style. Train each candidate on everything but
-// the latest feedbacks and keep the one predicting them best (prequential
-// validation), then retrain on the full buffer with it
-const selectHalfLife = (pairs) => {
-  const latest = pairs.reduce((max, pair) => Math.max(max, pair.t || 0), 0);
-  const earliest = pairs.reduce((min, pair) => Math.min(min, pair.t || 0), latest);
-  if (latest - earliest + 1 < RANK_SELECTION_MIN_FEEDBACKS) return RANK_HALF_LIFE;
-  const cutoff = latest - RANK_HOLDOUT_FEEDBACKS + 1;
-  const past = pairs.filter((pair) => (pair.t || 0) < cutoff);
-  const recent = pairs.filter((pair) => (pair.t || 0) >= cutoff);
-  if (!past.length || !recent.length) return RANK_HALF_LIFE;
-  let best = RANK_HALF_LIFE;
-  let bestLikelihood = -Infinity;
-  RANK_HALF_LIVES.forEach((halfLife) => {
-    const likelihood = pairLogLikelihood(trainRankingWeights(past, halfLife).weights, recent);
-    // Ties keep the longer, steadier memory
-    if (likelihood > bestLikelihood + 1e-6 || (Math.abs(likelihood - bestLikelihood) <= 1e-6 && halfLife > best)) {
-      bestLikelihood = likelihood;
-      best = halfLife;
-    }
-  });
-  return best;
-};
-
 // Rebuild from the buffer rather than warm-starting from the previous
 // weights: equal stored evidence produces equal weights regardless of the
 // path that led to it, so a retrain is idempotent
 const retrainRanker = (next) => {
   if (!next.pairs || !next.pairs.length) return next;
   const trainingPairs = sortTrainingPairs(datePairs(next.pairs, next.samples || 0));
-  const trained = trainRankingWeights(trainingPairs, selectHalfLife(trainingPairs));
+  const trained = trainRankingWeights(trainingPairs, RANK_HALF_LIFE);
   next.weights = sanitizeWeights(trained.weights, trained.capScale);
+  next.rankSolver = RANK_SOLVER_VERSION;
   next.pairAccuracy = Math.round(rankingAccuracy(trained.weights, trainingPairs) * 1000) / 1000;
   return next;
 };
@@ -511,6 +532,7 @@ const sanitizeTuning = (raw) => {
     curveDelta: pick("curveDelta", -0.25, 0.3),
     style: sanitizeStyle(source.style),
     weights: sanitizeWeights(source.weights),
+    rankSolver: Number(source.rankSolver) === RANK_SOLVER_VERSION ? RANK_SOLVER_VERSION : null,
     exemplars: sanitizeExemplars(source.exemplars),
     pairs: compatiblePairSchema ? sanitizeTrainingPairs(source.pairs, pairSchemaVersion) : null,
     pairSchemaVersion: PAIR_SCHEMA_VERSION,
@@ -537,6 +559,9 @@ let tuning = sanitizeTuning(defaultTextShapeRTuning);
 let tuningRevision = 0;
 const setTextShapeRTuning = (next) => {
   tuning = sanitizeTuning(next == null ? defaultTextShapeRTuning : next);
+  // Weights left at their caps by the previous solver are refit from the
+  // user's own lessons, once per session: the next lesson persists the result
+  if (tuning.pairs && tuning.pairs.length && tuning.rankSolver !== RANK_SOLVER_VERSION) retrainRanker(tuning);
   tuningRevision++;
 };
 
