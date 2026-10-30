@@ -136,6 +136,12 @@ const mixedLeading = boxText();
 mixedLeading.layerText.textStyleRange.push({ from: 3, to: 6, textStyle: { size: 10, autoLeading: true } });
 assert.strictEqual(box._textResizePlan(mixedLeading, 2, 72).scaleLeading, false, "leading only scales when fixed and shared");
 assert.strictEqual(box._textResizePlan(mixedLeading, 2, 72).uniform, true);
+const impliedLeading = boxText();
+impliedLeading.layerText.textStyleRange[0].textStyle.impliedFontSize = 30;
+impliedLeading.layerText.textStyleRange[0].textStyle.impliedLeading = 36;
+assert.strictEqual(box._textResizePlan(impliedLeading, 3, 72).nextLeading, 36 * 33 / 30, "the next leading is a displayed one");
+assert.strictEqual(box._textResizePlan(boxText(), 4, 72).nextLeading, 24 * 1.2, "without implied leading: stored x transform");
+assert.strictEqual(box._displayedStyleValue({ baselineShift: 2, impliedBaselineShift: 0 }, "baselineShift", "impliedBaselineShift", 2), 0, "an implied 0 is a value");
 assert.strictEqual(box._appliedSizeRatio({ value: 10, unit: "p" }, { value: 12.5, unit: "p" }, 9), 1.25);
 assert.strictEqual(box._appliedSizeRatio({ value: 10, unit: "p" }, { value: 12, unit: "px" }, 9), 9, "units must match");
 assert.strictEqual(box._appliedSizeRatio(null, { value: 12, unit: "p" }, 9), 9);
@@ -180,7 +186,8 @@ Object.assign(box, {
       const ranges = params.layerText.textStyleRange;
       if (ranges) {
         layer.rebuilds++;
-        layer.size = round(ranges[0].textStyle.size);
+        // Photoshop takes a written size as a displayed one
+        layer.size = round(ranges[0].textStyle.size / 2);
       }
       const shape = params.layerText.textShape && params.layerText.textShape[0];
       if (shape) {
@@ -231,7 +238,7 @@ box._readTextStyleSize = () => null;
 box._resizeTextStyleFast = () => { throw new Error("must not run on mixed sizes"); };
 assert.strictEqual(box.changeActiveLayerTextSize(4), "");
 const ranges = written.layerText.textStyleRange;
-assert.deepStrictEqual([ranges[0].textStyle.size, ranges[0].textStyle.leading, ranges[1].textStyle.size], [12, 12 * 1.2, 18]);
+assert.deepStrictEqual([ranges[0].textStyle.size, ranges[0].textStyle.leading, ranges[1].textStyle.size], [24, 24 * 1.2, 36], "what is written is displayed sizes");
 assert.deepStrictEqual([ranges[0].textStyle.fontName, ranges[1].textStyle.fontName], ["A", "B"], "every run keeps its style");
 assert.strictEqual(ranges[1].textStyle.leading, undefined);
 assert.strictEqual(ranges[1].textStyle.impliedFontSize, undefined);
@@ -241,6 +248,49 @@ close(written.layerText.textShape[0].bounds.right, layer.shape.right * 1.2, "the
 box.jamText.getLayerText = () => { throw new Error("no text"); };
 box._resizeTextStyleFast = () => { throw new Error("refused"); };
 assert.strictEqual(box.changeActiveLayerTextSize(2), "layer");
+
+/* ------------- size +/- on a layer scaled with Ctrl+T ------------- */
+
+// The numbers of a real layer: Photoshop reads the stored size but takes any
+// written size as a displayed one, whichever way it is written
+const scaled = { stored: 16, scale: 1.3520103342483452, baselineShift: 2, frameRight: 129 };
+const scaledParams = () => ({
+  typeUnit: "pixelsUnit",
+  layerText: {
+    textKey: "abcdef",
+    transform: { xx: scaled.scale, xy: 0, yx: 0, yy: scaled.scale, tx: 0, ty: 0 },
+    textStyleRange: [{ from: 0, to: 6, textStyle: {
+      size: scaled.stored,
+      impliedFontSize: scaled.stored * scaled.scale,
+      autoLeading: true,
+      baselineShift: scaled.baselineShift,
+      impliedBaselineShift: scaled.baselineShift * scaled.scale,
+    } }],
+    textShape: [{ textType: "box", orientation: "horizontal", bounds: { top: 0, left: 0, right: scaled.frameRight, bottom: 76 } }],
+  },
+});
+const applyWrite = (params) => {
+  const style = params.layerText.textStyleRange[0].textStyle;
+  scaled.stored = style.size / scaled.scale;
+  scaled.baselineShift = style.baselineShift / scaled.scale;
+  scaled.frameRight = params.layerText.textShape[0].bounds.right;
+};
+box.jamText.getLayerText = scaledParams;
+box.jamText.setLayerText = applyWrite;
+box._readTextStyleSize = () => null;
+box._resizeTextStyleFast = () => { throw new Error("no textStyle"); };
+const displayed = () => scaled.stored * scaled.scale;
+const startDisplayed = displayed();
+assert.strictEqual(box.changeActiveLayerTextSize(1), "");
+close(displayed(), startDisplayed + 1, "+ grows the displayed size by one step");
+close(scaled.baselineShift, 2, "the baseline shift stays as it is displayed");
+close(scaled.frameRight / scaled.stored, 129 / 16, "the frame keeps its proportion to the text");
+box.changeActiveLayerTextSize(1);
+close(displayed(), startDisplayed + 2, "a second + grows it again");
+box.changeActiveLayerTextSize(-2);
+close(displayed(), startDisplayed, "- comes back");
+close(scaled.stored, 16, "the stored size comes back too");
+close(scaled.frameRight, 129, "the frame comes back too");
 
 /* ------------------------ TextShapeR size ------------------------ */
 

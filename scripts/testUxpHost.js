@@ -274,7 +274,7 @@ const HOST_HELPERS = [
   "_buildPathShapeRows", "_polygonScanlineSpan",
   // auto-centre, double bubble, size +/- and TextShapeR live size
   "_rectFrom", "_unionRect", "_usableBubble", "_bubbleCandidateValid", "_probePoints", "_probeMargin", "_pickBubble",
-  "_splitBubble", "_autoCenterEnabled", "_doubleBubbleEntriesValid", "_transformScale", "_displayedTextSize",
+  "_splitBubble", "_autoCenterEnabled", "_doubleBubbleEntriesValid", "_transformScale", "_displayedTextSize", "_displayedStyleValue",
   "_scaleTextShape", "_textResizePlan", "_appliedSizeRatio", "_keepLiveTextSize", "_alignPlacementMap",
 ];
 const host = new Function(hostSource + "\nreturn {" + HOST_HELPERS.join(", ") + "};")();
@@ -481,7 +481,8 @@ const simulatedPhotoshop = () => {
     }
     if (d._obj === "set" && property === "textStyle") {
       if (sim.fastRefused) return { _obj: "error", result: -1 };
-      layer.size = sim.roundSize(value(d.to.size));
+      // Photoshop takes a written size as a displayed one
+      layer.size = sim.roundSize(value(d.to.size) / layer.scale);
       sim.log.push(["fast", layer.size]);
       return {};
     }
@@ -499,7 +500,7 @@ const simulatedPhotoshop = () => {
       return {};
     }
     if (d._obj === "set" && target[0] && target[0]._ref === "layer") {
-      if (d.to.textStyleRange) layer.size = sim.roundSize(value(d.to.textStyleRange[0].textStyle.size));
+      if (d.to.textStyleRange) layer.size = sim.roundSize(value(d.to.textStyleRange[0].textStyle.size) / layer.scale);
       if (d.to.textShape) {
         const b = d.to.textShape[0].bounds;
         layer.shape = { top: b.top, left: b.left, bottom: b.bottom, right: b.right };

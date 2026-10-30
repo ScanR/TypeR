@@ -1020,6 +1020,15 @@ function _displayedTextSize(textParams, resolution) {
   return result;
 }
 
+// Photoshop reads `size`, `leading` and `baselineShift` before the layer
+// transform but takes a written value as a displayed one: a stored value
+// written back on a scaled layer would change the text by the transform.
+function _displayedStyleValue(style, key, impliedKey, scale) {
+  const implied = style[impliedKey];
+  if (implied !== undefined && implied !== null && isFinite(Number(implied))) return Number(implied);
+  return Number(style[key]) * scale;
+}
+
 // A box frame scaled with its text. Point text has no frame: null.
 function _scaleTextShape(shape, ratio) {
   if (!shape || shape.textType !== "box" || !shape.bounds) return null;
@@ -1053,14 +1062,15 @@ function _textResizePlan(textParams, delta, resolution) {
     if (sized[k].autoLeading || sized[k].leading === undefined || Number(sized[k].leading) !== Number(first.leading)) scaleLeading = false;
   }
   const shape = layerText.textShape && layerText.textShape[0];
+  const ratio = nextShown / shown;
   return {
-    ratio: nextShown / shown,
+    ratio,
     nextShown,
     base,
     unit: textParams.typeUnit || "pointsUnit",
     uniform,
     scaleLeading,
-    leading: Number(first.leading),
+    nextLeading: scaleLeading ? _displayedStyleValue(first, "leading", "impliedLeading", _transformScale(layerText)) * ratio : NaN,
     frame: shape && shape.textType === "box" && shape.bounds ? _clone(shape) : null,
   };
 }
@@ -2371,20 +2381,17 @@ function _readTextStyleSize() {
   }
 }
 
-// Fast path: one "set textStyle" on the whole layer (see host.js)
+// Fast path: one "set textStyle" on the whole layer, with the plan's displayed
+// values (see host.js)
 function _resizeTextStyleFast(plan, delta) {
   const current = _readTextStyleSize();
   if (!current) throw new Error("no textStyle");
-  const newSize = plan ? current.value * plan.ratio : current.value + delta;
+  const newSize = plan ? plan.nextShown : current.value + delta;
   if (!(newSize > 0)) throw new Error("bad size");
-  const to = { _obj: "textStyle", size: { _unit: current.unit, _value: newSize } };
-  if (plan && plan.scaleLeading) {
-    const textStyle = get([{ _property: "textStyle" }, TARGET_TEXT_LAYER]).textStyle || {};
-    const leading = textStyle.leading;
-    const currentLeading = Number(unitValue(leading));
-    if (leading !== undefined && currentLeading > 0) {
-      to.leading = { _unit: leading && leading._unit ? leading._unit : current.unit, _value: currentLeading * plan.ratio };
-    }
+  const unit = plan ? plan.unit : current.unit;
+  const to = { _obj: "textStyle", size: { _unit: unit, _value: newSize } };
+  if (plan && plan.scaleLeading && plan.nextLeading > 0) {
+    to.leading = { _unit: unit, _value: plan.nextLeading };
   }
   play({ _obj: "set", _target: [{ _ref: "property", _property: "textStyle" }, TARGET_TEXT_LAYER], to });
 }
@@ -2396,7 +2403,13 @@ function _resizeTextRebuild(oldTextParams, plan, delta) {
   const text = oldLayerText ? _normalizeTextKey(oldLayerText.textKey) : "";
   if (!text || !oldLayerText.textStyleRange || !oldLayerText.textStyleRange.length) return false;
   const firstSize = Number(oldLayerText.textStyleRange[0].textStyle && oldLayerText.textStyleRange[0].textStyle.size);
-  const ratio = plan ? plan.ratio : (firstSize > 0 ? Math.max(0.1, firstSize + delta) / firstSize : 1);
+  let ratio = 1;
+  if (plan) {
+    ratio = plan.ratio;
+  } else if (firstSize > 0) {
+    ratio = Math.max(0.1, firstSize + delta) / firstSize;
+  }
+  const scale = _transformScale(oldLayerText);
   const newTextParams = {
     typeUnit: oldTextParams.typeUnit,
     layerText: {
@@ -2408,13 +2421,16 @@ function _resizeTextRebuild(oldTextParams, plan, delta) {
         const range = _clone(oldRange);
         const style = range.textStyle || {};
         const size = Number(style.size);
-        if (size > 0) style.size = Math.max(0.1, size * ratio);
+        if (size > 0) style.size = Math.max(0.1, _displayedStyleValue(style, "size", "impliedFontSize", scale) * ratio);
         if (style.autoLeading || style.leading === undefined) {
           style.autoLeading = true;
           delete style.leading;
         } else {
-          style.leading = Math.max(0.1, Number(style.leading) * ratio);
+          style.leading = Math.max(0.1, _displayedStyleValue(style, "leading", "impliedLeading", scale) * ratio);
           style.autoLeading = false;
+        }
+        if (style.baselineShift !== undefined) {
+          style.baselineShift = _displayedStyleValue(style, "baselineShift", "impliedBaselineShift", scale);
         }
         delete style.impliedFontSize;
         delete style.impliedLeading;
@@ -3885,7 +3901,7 @@ module.exports = {
     _selectionBoundsKey, _normalizeTextKey,
     // auto-centre, double bubble, size +/- and TextShapeR live size
     _rectFrom, _unionRect, _usableBubble, _bubbleCandidateValid, _probePoints, _probeMargin, _pickBubble,
-    _splitBubble, _autoCenterEnabled, _doubleBubbleEntriesValid, _transformScale, _displayedTextSize,
+    _splitBubble, _autoCenterEnabled, _doubleBubbleEntriesValid, _transformScale, _displayedTextSize, _displayedStyleValue,
     _scaleTextShape, _textResizePlan, _appliedSizeRatio, _keepLiveTextSize, _alignPlacementMap,
     // the auto-centre entry point, run against a simulated Photoshop
     _autoCenterCreated,

@@ -34,6 +34,7 @@
 
 ### Workspace and typesetting
 
+- Fix the + and - size buttons on text layers resized with Ctrl+T: + made the text smaller, and now both change the displayed size by one step and keep the line breaks.
 - Add contextual alternates and the single-line composer to the style editor, and turn on standard and contextual ligatures for new styles.
 - Keep every script tab and the active tab when multi-tab mode is hidden.
 - Recognize complete page headings, including `Page 12 :`, `Page 12 : title`, `Page 12 - title`, `[Page 12]` and Markdown headings. Mentions of a page inside dialogue remain dialogue.

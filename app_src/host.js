@@ -1232,11 +1232,26 @@ function _displayedTextSize(textParams, resolution) {
   result.unit = textParams.typeUnit || "pointsUnit";
   var base = Number(style.size);
   var implied = Number(style.impliedFontSize);
-  var value = isFinite(implied) && implied > 0 ? implied : (isFinite(base) ? base * _transformScale(layerText) : NaN);
+  // No nested ternary here: once minified ExtendScript misreads it
+  var value = NaN;
+  if (isFinite(implied) && implied > 0) {
+    value = implied;
+  } else if (isFinite(base)) {
+    value = base * _transformScale(layerText);
+  }
   if (!isFinite(value) || value <= 0) return result;
   result.value = value;
   result.pixels = _typeValueToPixels(value, result.unit, resolution || 72);
   return result;
+}
+
+// Photoshop reads `size`, `leading` and `baselineShift` before the layer
+// transform but takes a written value as a displayed one: a stored value
+// written back on a scaled layer would change the text by the transform.
+function _displayedStyleValue(style, key, impliedKey, scale) {
+  var implied = style[impliedKey];
+  if (implied !== undefined && implied !== null && isFinite(Number(implied))) return Number(implied);
+  return Number(style[key]) * scale;
 }
 
 // A box frame scaled with its text. Point text has no frame: null.
@@ -1278,14 +1293,15 @@ function _textResizePlan(textParams, delta, resolution) {
     if (sized[k].autoLeading || sized[k].leading === undefined || Number(sized[k].leading) !== Number(first.leading)) scaleLeading = false;
   }
   var shape = layerText.textShape && layerText.textShape[0];
+  var ratio = nextShown / shown;
   return {
-    ratio: nextShown / shown,
+    ratio: ratio,
     nextShown: nextShown,
     base: base,
     unit: textParams.typeUnit || "pointsUnit",
     uniform: uniform,
     scaleLeading: scaleLeading,
-    leading: Number(first.leading),
+    nextLeading: scaleLeading ? _displayedStyleValue(first, "leading", "impliedLeading", _transformScale(layerText)) * ratio : NaN,
     frame: shape && shape.textType === "box" && shape.bounds ? _clone(shape) : null,
   };
 }
@@ -2882,28 +2898,19 @@ function _readTextStyleSize() {
 }
 
 // Fast path: one "set textStyle" action on the whole layer. With a plan the
-// stored size (and a shared fixed leading) follow the plan ratio, in the
-// descriptor's own unit; without one the raw delta is added as before.
+// displayed size (and a shared fixed leading) of the plan are written, in the
+// plan's unit; without one the raw delta is added as before.
 function _resizeTextStyleFast(plan, delta) {
   var current = _readTextStyleSize();
   if (!current) throw new Error("no textStyle");
-  var newSize = plan ? current.value * plan.ratio : current.value + delta;
+  var newSize = plan ? plan.nextShown : current.value + delta;
   if (!(newSize > 0)) throw new Error("bad size");
+  var unit = plan ? stringIDToTypeID(plan.unit) : current.unit;
 
   var newTextStyle = new ActionDescriptor();
-  newTextStyle.putUnitDouble(charID.Size, current.unit, newSize);
-  if (plan && plan.scaleLeading) {
-    var leadingKey = stringIDToTypeID("leading");
-    var ref = new ActionReference();
-    ref.putProperty(charID.Property, charID.TextStyle);
-    ref.putEnumerated(charID.TextLayer, charID.Ordinal, charID.Target);
-    var textStyle = executeActionGet(ref).getObjectValue(charID.TextStyle);
-    if (textStyle.hasKey(leadingKey)) {
-      var currentLeading = textStyle.getUnitDoubleValue(leadingKey);
-      if (currentLeading > 0) {
-        newTextStyle.putUnitDouble(leadingKey, textStyle.getUnitDoubleType(leadingKey), currentLeading * plan.ratio);
-      }
-    }
+  newTextStyle.putUnitDouble(charID.Size, unit, newSize);
+  if (plan && plan.scaleLeading && plan.nextLeading > 0) {
+    newTextStyle.putUnitDouble(stringIDToTypeID("leading"), unit, plan.nextLeading);
   }
 
   var descriptor = new ActionDescriptor();
@@ -2923,7 +2930,14 @@ function _resizeTextRebuild(oldTextParams, plan, delta) {
   var text = oldLayerText ? _normalizeTextKey(oldLayerText.textKey) : "";
   if (!text || !oldLayerText.textStyleRange || !oldLayerText.textStyleRange.length) return false;
   var firstSize = Number(oldLayerText.textStyleRange[0].textStyle && oldLayerText.textStyleRange[0].textStyle.size);
-  var ratio = plan ? plan.ratio : (firstSize > 0 ? Math.max(0.1, firstSize + delta) / firstSize : 1);
+  // No nested ternary here: once minified ExtendScript misreads it
+  var ratio = 1;
+  if (plan) {
+    ratio = plan.ratio;
+  } else if (firstSize > 0) {
+    ratio = Math.max(0.1, firstSize + delta) / firstSize;
+  }
+  var scale = _transformScale(oldLayerText);
   var newTextParams = {
     typeUnit: oldTextParams.typeUnit,
     layerText: {
@@ -2938,13 +2952,16 @@ function _resizeTextRebuild(oldTextParams, plan, delta) {
     var range = _clone(oldLayerText.textStyleRange[i]);
     var style = range.textStyle || {};
     var size = Number(style.size);
-    if (size > 0) style.size = Math.max(0.1, size * ratio);
+    if (size > 0) style.size = Math.max(0.1, _displayedStyleValue(style, "size", "impliedFontSize", scale) * ratio);
     if (style.autoLeading || style.leading === undefined) {
       style.autoLeading = true;
       delete style.leading;
     } else {
-      style.leading = Math.max(0.1, Number(style.leading) * ratio);
+      style.leading = Math.max(0.1, _displayedStyleValue(style, "leading", "impliedLeading", scale) * ratio);
       style.autoLeading = false;
+    }
+    if (style.baselineShift !== undefined) {
+      style.baselineShift = _displayedStyleValue(style, "baselineShift", "impliedBaselineShift", scale);
     }
     delete style.impliedFontSize;
     delete style.impliedLeading;
