@@ -132,9 +132,13 @@ const tabFields = TAB_FIELDS;
 // remain readable for migration, but new writes persist only the tab schema.
 const persistedFields = storeFields.filter((field) => !tabFields.includes(field));
 
+// The textarea always reads "\r" as a line break while the rows split on "\n"
+// only: a stray one would put them a row apart for the rest of the script.
+const normalizeLineBreaks = (text) => String(text).replace(/\r\n?/g, "\n");
+
 const loadTabIntoState = (state, tab) => {
   state.currentTabId = tab.id;
-  state.text = tab.text || "";
+  state.text = normalizeLineBreaks(tab.text || "");
   state.images = tab.images || [];
   state.currentLineIndex = tab.currentLineIndex || 0;
   state.lastOpenedImagePath = tab.lastOpenedImagePath || null;
@@ -505,7 +509,7 @@ const baseReducer = (state, action) => {
     }
 
     case "setText": {
-      newState.text = action.text;
+      newState.text = normalizeLineBreaks(action.text ?? "");
       break;
     }
 

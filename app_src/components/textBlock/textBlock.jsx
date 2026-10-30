@@ -11,6 +11,7 @@ import { useContext } from "../../context";
 import { notePerfRender } from "../../perfDebug";
 import { formatMarkdownSelection } from "../../markdownFormatting";
 import { createPageImageLookup, getImageForPage } from "../../pageImageMapping";
+import { measureRows, sameRowHeights } from "./rowLayout";
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -68,7 +69,7 @@ const getTextAreaSelectionRects = (textArea) => {
 };
 
 // Extracted memoized line component to avoid re-rendering every line on each render
-const LineItem = React.memo(function LineItem({ line, direction, isCurrent, dispatch, renderHighlightedText, lineNum }) {
+const LineItem = React.memo(function LineItem({ line, direction, isCurrent, dispatch, renderHighlightedText, lineNum, height }) {
   const className = "text-line" +
     (line.ignore ? " m-empty" : "") +
     (isCurrent ? " m-current" : "") +
@@ -87,7 +88,7 @@ const LineItem = React.memo(function LineItem({ line, direction, isCurrent, disp
   }, [dispatch, line.text, direction]);
 
   return (
-    <div className={className} data-line-index={line.rawIndex}>
+    <div className={className} data-line-index={line.rawIndex} style={height ? { height } : undefined}>
       <div className="text-line-num" title={String(lineNum || "")}>{lineNum}</div>
       <div className="text-line-select" title={line.ignore ? "" : locale.selectLine}>
         {line.ignore ? " " : <FiTarget size={14} onClick={handleSelect} />}
@@ -122,6 +123,7 @@ LineItem.propTypes = {
   dispatch: PropTypes.func.isRequired,
   renderHighlightedText: PropTypes.func.isRequired,
   lineNum: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  height: PropTypes.number,
 };
 
 const TextBlock = React.memo(function TextBlock() {
@@ -145,6 +147,9 @@ const TextBlock = React.memo(function TextBlock() {
   const textAreaRef = React.useRef(null);
   const formatToolbarRef = React.useRef(null);
   const linesRef = React.useRef(null);
+  const rowMirrorRef = React.useRef(null);
+  const rowMeasureRef = React.useRef(null);
+  const [rowMirrorWidth, setRowMirrorWidth] = React.useState(0);
   const [rowLayout, setRowLayout] = React.useState(null);
   const [viewport, setViewport] = React.useState({ top: 0, height: 600 });
   const scrollFrameRef = React.useRef(null);
@@ -313,35 +318,41 @@ const TextBlock = React.memo(function TextBlock() {
     });
   }, [context.state.lines, context.state.images, pageImageLookup]);
 
-  // Measure the real wrapped height of each row once, then keep only the rows
-  // near the viewport mounted. The textarea remains the source of the total
-  // scroll height, while spacers preserve the highlight layer's geometry.
+  // Panel resizes rewrap the text without any state change, and the scrollbar
+  // appearing narrows it too: follow the width of the mirror itself. Deferred
+  // out of the notification, as the new row heights can resize what is observed.
+  React.useEffect(() => {
+    const mirror = rowMirrorRef.current;
+    if (!mirror) return undefined;
+    let timer = null;
+    const syncWidth = () => {
+      timer = null;
+      setRowMirrorWidth(mirror.clientWidth);
+    };
+    const requestSync = () => {
+      if (!timer) timer = setTimeout(syncWidth, 0);
+    };
+    syncWidth();
+    window.addEventListener("resize", requestSync);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(requestSync);
+    if (observer) observer.observe(mirror);
+    return () => {
+      window.removeEventListener("resize", requestSync);
+      if (observer) observer.disconnect();
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  // Keep only the rows near the viewport mounted, sized from the mirror. The
+  // spacers then preserve the highlight layer's geometry for the others.
   React.useLayoutEffect(() => {
-    const container = linesRef.current;
-    if (!container || linesWithNums.length < 200) {
-      if (rowLayout) setRowLayout(null);
-      return;
-    }
-    const width = container.clientWidth;
-    const nodes = container.querySelectorAll("[data-line-index]");
-    const needsFullLayout = !rowLayout || rowLayout.heights.length !== linesWithNums.length || Math.abs(rowLayout.width - width) > 1;
-    const heights = needsFullLayout ? new Array(linesWithNums.length).fill(17) : rowLayout.heights.concat([]);
-    let changed = needsFullLayout;
-    for (let i = 0; i < nodes.length; i++) {
-      const index = parseInt(nodes[i].getAttribute("data-line-index"), 10);
-      const height = nodes[i].offsetHeight || 17;
-      if (heights[index] !== height) {
-        heights[index] = height;
-        changed = true;
-      }
-    }
-    if (changed) {
-      const offsets = new Array(heights.length + 1);
-      offsets[0] = 0;
-      for (let i = 0; i < heights.length; i++) offsets[i + 1] = offsets[i] + heights[i];
-      setRowLayout({ heights, offsets, total: offsets[offsets.length - 1], width });
-    }
-  }, [context.state.lines, linesWithNums.length, rowLayout]);
+    const mirror = rowMirrorRef.current;
+    // A hidden panel measures 0: keep the layout until it is shown again
+    if (!mirror || !mirror.clientWidth) return;
+    const measured = measureRows(mirror, context.state.lines.map((line) => line.rawText), rowMeasureRef.current);
+    rowMeasureRef.current = measured;
+    setRowLayout((current) => (sameRowHeights(current, measured) ? current : measured));
+  }, [context.state.lines, rowMirrorWidth]);
 
   React.useEffect(() => {
     const scrollContainer = linesRef.current?.parentElement;
@@ -359,31 +370,38 @@ const TextBlock = React.memo(function TextBlock() {
     updateViewport();
     scrollContainer.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", updateViewport);
+    // The panel splitters resize the block without resizing the window
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(onScroll);
+    if (observer) observer.observe(scrollContainer);
     return () => {
       scrollContainer.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", updateViewport);
+      if (observer) observer.disconnect();
       if (scrollFrameRef.current) cancelAnimationFrame(scrollFrameRef.current);
       scrollFrameRef.current = null;
     };
   }, [linesWithNums.length]);
 
   const virtualWindow = React.useMemo(() => {
-    if (!rowLayout || linesWithNums.length < 200 || rowLayout.heights.length !== linesWithNums.length) {
+    // Right after an edit the layout may still describe the previous line
+    // count: the measuring effect corrects it before anything is painted.
+    const count = rowLayout ? Math.min(linesWithNums.length, rowLayout.heights.length) : 0;
+    if (!count || linesWithNums.length < 200) {
       return { start: 0, end: linesWithNums.length, top: 0, bottom: 0 };
     }
     const overscan = 450;
     const minY = Math.max(0, viewport.top - overscan);
     const maxY = viewport.top + viewport.height + overscan;
     let low = 0;
-    let high = linesWithNums.length;
+    let high = count;
     while (low < high) {
       const middle = (low + high) >> 1;
       if (rowLayout.offsets[middle + 1] < minY) low = middle + 1;
       else high = middle;
     }
-    const start = low;
+    const start = Math.min(low, count - 1);
     low = start;
-    high = linesWithNums.length;
+    high = count;
     while (low < high) {
       const middle = (low + high) >> 1;
       if (rowLayout.offsets[middle] <= maxY) low = middle + 1;
@@ -555,6 +573,7 @@ const TextBlock = React.memo(function TextBlock() {
             dispatch={context.dispatch}
             renderHighlightedText={renderHighlightedText}
             lineNum={lineNum}
+            height={rowLayout && rowLayout.heights[line.rawIndex]}
           />
         ))}
         {virtualWindow.bottom > 0 && <div className="text-lines-spacer" style={{ height: virtualWindow.bottom }} />}
@@ -562,6 +581,7 @@ const TextBlock = React.memo(function TextBlock() {
       <div className={"text-area-overlay" + (focused ? " m-hidden" : "")} dir={direction}>
         {overlayContent}
       </div>
+      <div ref={rowMirrorRef} className="text-area-overlay text-row-mirror" dir={direction} aria-hidden="true" />
       <textarea
         ref={textAreaRef}
         className={"text-area" + (focused ? " m-focused" : "")}

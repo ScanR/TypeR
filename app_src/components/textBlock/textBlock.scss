@@ -286,6 +286,17 @@ body.light-theme .text-block {
     visibility: hidden;
   }
 }
+// Hidden copy of the script, one block per line, that the rows take their
+// height from. Same class as the overlay so it always wraps like the text.
+.text-row-mirror {
+  visibility: hidden;
+  height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  & > div {
+    min-height: $code-leading;
+  }
+}
 .text-format-toolbar {
   position: fixed;
   display: flex;

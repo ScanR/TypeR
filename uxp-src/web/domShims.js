@@ -87,7 +87,12 @@ export function installFileInputs() {
 // Forward errors to the host: the WebView console is not part of
 // Photoshop's UXP log
 export function installErrorReporting(report) {
-  window.addEventListener("error", (event) => report("panel error: " + ((event && event.message) || event)));
+  window.addEventListener("error", (event) => {
+    const message = (event && event.message) || event;
+    // Not a failure: the browser only postponed some resize notifications
+    if (/^ResizeObserver loop/.test(String(message))) return;
+    report("panel error: " + message);
+  });
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event && event.reason;
     report("panel rejection: " + ((reason && (reason.stack || reason.message)) || reason));

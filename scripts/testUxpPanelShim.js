@@ -155,3 +155,17 @@ installCepEnvironment({
     });
   });
 }
+
+// A ResizeObserver loop only postpones notifications: no error banner for it
+{
+  const listeners = {};
+  const reports = [];
+  global.window.addEventListener = (type, listener) => { listeners[type] = listener; };
+  const { installErrorReporting } = createLoader()("uxp-src/web/domShims.js");
+  installErrorReporting((text) => reports.push(text));
+  listeners.error({ message: "ResizeObserver loop completed with undelivered notifications." });
+  listeners.error({ message: "ResizeObserver loop limit exceeded" });
+  assert.deepStrictEqual(reports, []);
+  listeners.error({ message: "boom" });
+  assert.deepStrictEqual(reports, ["panel error: boom"]);
+}
