@@ -82,6 +82,43 @@ const UPPERCASE_LETTER = /[A-ZÀ-ÖØ-Þ]/;
 // Accepts every syllable-boundary score, including the weak vowel-vowel
 // ones (7); rejects unknown clusters (10) and consonant+vowel onsets (16)
 const CESURE_MAX_PENALTY = 8;
+// Second ranking pass: the previous generation of the scorer. Its best shapes
+// stay in the list as alternatives to the current scorer's (see mergeRankings)
+let classicRanking = false;
+
+// Measured on about 3,000 hand-lettered bubbles from several letterers.
+// The block grows wider with its text: text per line follows units^0.42, and
+// style.density stores that curve's value at DENSITY_REFERENCE_UNITS
+const DENSITY_REFERENCE_UNITS = 14;
+const DENSITY_VOLUME_POWER = 0.42;
+const getDensityFactor = (units) => Math.pow(Math.max(1, units) / DENSITY_REFERENCE_UNITS, DENSITY_VOLUME_POWER);
+// Stored tunings older than this model hold a plain text-per-line average
+const DENSITY_MODEL = 2;
+const LEGACY_DENSITY_UNITS = 28;
+// A long word may sit alone on its line in the middle of a block
+const PEAK_WORD_RATIO = 0.5;
+const CLASSIC_PEAK_WORD_RATIO = 0.72;
+// Letterers keep the body of a block nearly flat instead of a diamond: the
+// lines next to the edges stay close to the widest one, which often sits low
+const SHAPE_ROOM_LIMIT = 0.7;
+const SHAPE_ROOM_WEIGHT = 8000;
+const SHAPE_SHOULDER_MIN_LINES = 4;
+const SHAPE_SECOND_LINE_WEIGHT = 400;
+const SHAPE_PENULTIMATE_LINE_WEIGHT = 600;
+const SHAPE_FIRST_LINE_LIMIT = 0.6;
+const SHAPE_FIRST_LINE_WEIGHT = 30;
+const SHAPE_HIGH_PEAK_WEIGHT = 150;
+// A word left dangling after punctuation, a sentence ending inside a line and
+// a tiny word alone on an inner line all read badly
+const DANGLING_SENTENCE_PENALTY = 90;
+const INLINE_SENTENCE_PENALTY = 15;
+const DANGLING_CLAUSE_PENALTY = 45;
+const LONE_TINY_WORD_PENALTY = 60;
+const DANGLING_LINE_COST = 0.5;
+// A cesure is a last resort: it only outranks clean shapes when none is usable.
+const NEEDLESS_CESURE_PENALTY = 200;
+// The list always offers one good cesure and the classic scorer's favourites
+const CESURE_SLOT = 4;
 
 let dehyphenationEnabled = false;
 const setDehyphenationEnabled = (enabled) => {
@@ -510,6 +547,15 @@ const sanitizeDdp = (value) => (
     : null
 );
 
+// Older tunings stored the plain average text per line: bring it to the value
+// of the volume curve at its reference, from the text volume they learned on
+const migrateStyleDensity = (style, source) => {
+  if (!style || style.density == null || Number(source.densityModel) === DENSITY_MODEL) return style;
+  const units = Array.isArray(source.exemplars) ? source.exemplars.map((entry) => Number(entry && entry.units)).filter((value) => value > 0) : [];
+  const typicalUnits = units.length ? units.reduce((sum, value) => sum + value, 0) / units.length : LEGACY_DENSITY_UNITS;
+  return { ...style, density: clamp(style.density / getDensityFactor(typicalUnits), 2, 80) };
+};
+
 const sanitizeTuning = (raw) => {
   const source = raw && typeof raw === "object" ? raw : {};
   // Unversioned pairs came from the first replay implementation and use the
@@ -530,7 +576,8 @@ const sanitizeTuning = (raw) => {
     hyphenPenaltyScale: pick("hyphenPenaltyScale", 0.4, 2.5),
     stepSlackDelta: pick("stepSlackDelta", 0, 0.15),
     curveDelta: pick("curveDelta", -0.25, 0.3),
-    style: sanitizeStyle(source.style),
+    style: migrateStyleDensity(sanitizeStyle(source.style), source),
+    densityModel: DENSITY_MODEL,
     weights: sanitizeWeights(source.weights),
     rankSolver: Number(source.rankSolver) === RANK_SOLVER_VERSION ? RANK_SOLVER_VERSION : null,
     exemplars: sanitizeExemplars(source.exemplars),
@@ -900,6 +947,7 @@ const buildCandidate = (tokens, lineCount, targets) => {
           cost = cost > 0.09 ? cost - 0.09 : 0;
         }
         if (to - from === 1 && punctOnly[from]) cost += 3;
+        if (!classicRanking && to - from >= 2 && endsBreak[to - 2]) cost += DANGLING_LINE_COST;
         const nextCost = baseCost + cost;
         if (nextCost < dpBuffer[nextRowOffset + to]) {
           dpBuffer[nextRowOffset + to] = nextCost;
@@ -1782,8 +1830,10 @@ const scoreStyleAffinity = (lengths, lines, hyphenCount) => {
     // Text quantity per line is the strongest fingerprint of a typesetter's
     // style: score each candidate's own density against the learned one
     // instead of only steering the global line-count target with it
-    const density = lengths.reduce((sum, length) => sum + length, 0) / lengths.length;
-    const offset = Math.abs(Math.log(Math.max(1, density) / style.density));
+    const units = lengths.reduce((sum, length) => sum + length, 0);
+    const density = units / lengths.length;
+    const reference = classicRanking ? style.density : style.density * getDensityFactor(units);
+    const offset = Math.abs(Math.log(Math.max(1, density) / reference));
     score += Math.max(0, offset - 0.08) * 260 * confidence;
   }
   if (style.hyphenRate != null && lengths.length >= 2) {
@@ -1808,6 +1858,30 @@ const scoreStyleAffinity = (lengths, lines, hyphenCount) => {
       score += Math.max(0, offset - 0.12) * 90 * confidence;
     }
   }
+  return score;
+};
+
+const scoreLetteredShape = (lengths, lineCount, fit) => {
+  if (lineCount < 2) return 0;
+  const peak = Math.max.apply(null, lengths) || 1;
+  let score = 0;
+  if (fit && fit.rows) {
+    let tightest = 0;
+    lengths.forEach((length, index) => {
+      const room = (getProfileWidthAt(fit.rows, clamp(getFitLineY(index, lineCount, fit), 0, 1)) || 0) * fit.width / fit.unitPx;
+      tightest = Math.max(tightest, length / Math.max(room, 1));
+    });
+    const excess = tightest - SHAPE_ROOM_LIMIT;
+    if (excess > 0) score += SHAPE_ROOM_WEIGHT * excess * excess;
+  }
+  if (lineCount >= SHAPE_SHOULDER_MIN_LINES) {
+    score += SHAPE_SECOND_LINE_WEIGHT * Math.pow(1 - lengths[1] / peak, 2);
+    score += SHAPE_PENULTIMATE_LINE_WEIGHT * Math.pow(1 - lengths[lineCount - 2] / peak, 2);
+    const firstExcess = Math.max(0, lengths[0] / peak - SHAPE_FIRST_LINE_LIMIT);
+    score += SHAPE_FIRST_LINE_WEIGHT * firstExcess * firstExcess;
+  }
+  const peakPosition = (lengths.indexOf(peak) + 0.5) / lineCount;
+  if (peakPosition < 0.5) score += SHAPE_HIGH_PEAK_WEIGHT * (0.5 - peakPosition);
   return score;
 };
 
@@ -1885,12 +1959,23 @@ const scoreCandidate = (lines, hyphenCount, profile) => {
     score += widthExcess * widthExcess * 320;
     if (length <= 1) score += 30;
     if (lineCount > 3 && visibleLength(lineText(lines[index])) <= 4) score += 8;
+    if (!classicRanking) {
+      if (index > 0 && index < lineCount - 1 && lines[index].length === 1 && visibleLength(lineText(lines[index])) <= 3) score += LONE_TINY_WORD_PENALTY;
+      const words = lines[index];
+      for (let word = 0; word < words.length - 1; word++) {
+        const clean = stripMarkdownForMeasure(words[word].text).replace(/[)"'’»\]]+$/g, "");
+        const dangling = word === words.length - 2;
+        if (/[.!?…]$/.test(clean)) score += dangling ? DANGLING_SENTENCE_PENALTY : INLINE_SENTENCE_PENALTY;
+        else if (dangling && /[,;:]$/.test(clean)) score += DANGLING_CLAUSE_PENALTY;
+      }
+    }
     if (/^[.,;:!?]+$/.test(serializeLines([lines[index]]))) score += 40;
     if (index < lineCount - 1 && endsWithBreakPunctuation(lineText(lines[index]))) {
       score -= punctuationBonus;
     }
   });
 
+  if (profile.letteredShape) score += scoreLetteredShape(lengths, lineCount, fit);
   score += scoreStyleAffinity(lengths, lines, hyphenCount);
   if (tuning.ddp) score += scoreDdp(lengths, lines.map((line) => lineText(line)), profile.aspectLog || 0);
 
@@ -2250,7 +2335,7 @@ const generateHyphenTokenSets = (words, baseTokens) => {
 
 // Same text + same options come back often (hover refreshes, panel
 // re-mounts, page switches): cache the last few results so those are free
-const VARIANT_CACHE_LIMIT = 16;
+const VARIANT_CACHE_LIMIT = 48;
 const variantCache = new Map();
 
 const getVariantCacheKey = (text, options) => JSON.stringify([
@@ -2272,11 +2357,60 @@ const getVariantCacheKey = (text, options) => JSON.stringify([
     : null,
 ]);
 
+// The current scorer owns the first place. Its next proposals alternate with
+// the classic scorer's so both views of the same text stay one click away, and
+// one good cesure stays in the list when the text allows one
+const mergeRankings = (current, classic, limit, allowHyphenation) => {
+  const merged = [];
+  const seen = new Set();
+  const take = (variant) => {
+    if (!variant || seen.has(variant.text) || merged.length >= limit) return;
+    seen.add(variant.text);
+    merged.push(variant);
+  };
+  take(current[0]);
+  let currentIndex = 1;
+  let classicIndex = 0;
+  while (merged.length < limit && (currentIndex < current.length || classicIndex < classic.length)) {
+    take(current[currentIndex++]);
+    take(classic[classicIndex++]);
+  }
+  if (allowHyphenation && !merged.slice(0, CESURE_SLOT + 1).some((variant) => variant.hyphenCount)) {
+    const cesure = current.concat(classic).find((variant) => variant.hyphenCount
+      && variant.badness <= CLEAN_SILHOUETTE_BADNESS && variant.fits !== false);
+    if (cesure) {
+      const existing = merged.findIndex((variant) => variant.text === cesure.text);
+      if (existing >= 0) merged.splice(existing, 1);
+      merged.splice(Math.min(CESURE_SLOT, merged.length), 0, cesure);
+      merged.length = Math.min(merged.length, limit);
+    }
+  }
+  return merged.map((variant, index) => ({ ...variant, id: `shape-${index + 1}` }));
+};
+
 const generateTextShapeRVariants = (text, options = {}) => {
   const normalized = normalizeText(text);
   if (!normalized) return [];
+  const cacheKey = `list:${getVariantCacheKey(normalized, options)}`;
+  const cached = variantCache.get(cacheKey);
+  if (cached) return cached;
+  const current = rankTextShapeRVariants(normalized, options);
+  classicRanking = true;
+  let classic;
+  try {
+    classic = rankTextShapeRVariants(normalized, options);
+  } finally {
+    classicRanking = false;
+  }
+  const result = mergeRankings(current, classic, options.limit || MAX_VARIANTS, options.allowHyphenation !== false);
+  if (current.scoringProfile) Object.defineProperty(result, "scoringProfile", { value: current.scoringProfile, enumerable: false });
+  if (variantCache.size >= VARIANT_CACHE_LIMIT) variantCache.delete(variantCache.keys().next().value);
+  variantCache.set(cacheKey, result);
+  return result;
+};
 
-  const cacheKey = getVariantCacheKey(normalized, options);
+const rankTextShapeRVariants = (normalized, options) => {
+  const cacheKey = `${classicRanking ? "classic" : "current"}:${getVariantCacheKey(normalized, options)}`;
   const cached = variantCache.get(cacheKey);
   if (cached) return cached;
 
@@ -2288,7 +2422,7 @@ const generateTextShapeRVariants = (text, options = {}) => {
   // and past this count some line is forced down to a lone tiny word beside
   // it — the ragged staircases no scoring tweak can save. Hyphen token sets
   // compute their own cap because splitting the widest word raises it.
-  const granularityMaxLines = clamp(Math.floor(totalUnits / (widestWordUnits * 0.72)), 1, 8);
+  const granularityMaxLines = clamp(Math.floor(totalUnits / (widestWordUnits * (classicRanking ? CLASSIC_PEAK_WORD_RATIO : PEAK_WORD_RATIO))), 1, 8);
   const resultMap = new Map();
   const seenTargets = new Set();
   const shapeRows = normalizeShapeRows(options.shapeProfile).filter((row) => row.width > 0);
@@ -2362,7 +2496,9 @@ const generateTextShapeRVariants = (text, options = {}) => {
     };
   }
   const styleConfidence = getStyleConfidence();
-  let learnedDensity = styleConfidence > 0 && tuning.style.density ? tuning.style.density : null;
+  let learnedDensity = styleConfidence > 0 && tuning.style.density
+    ? (classicRanking ? tuning.style.density : tuning.style.density * getDensityFactor(totalUnits))
+    : null;
   let densityConfidence = styleConfidence;
   if (matchedExemplars.length) {
     // Context-matched exemplars know this case better than the global EMA:
@@ -2421,6 +2557,8 @@ const generateTextShapeRVariants = (text, options = {}) => {
     scoringProfile = { ...scoringProfile, exemplarCurves };
   }
   if (aspect != null) scoringProfile = { ...scoringProfile, aspectLog: Math.log(aspect) };
+  // An explicit tall or wide request outranks the balanced lettering habits
+  if (!classicRanking && profile === PROFILE_PRESETS.balanced) scoringProfile = { ...scoringProfile, letteredShape: true };
   const baseMinLines = words.length <= 2 ? 1 : profile.minLines;
   let minLines = Math.min(Math.max(1, baseMinLines), Math.max(1, words.length));
   if (shapeRows.length > 1 && fit) {
@@ -2490,7 +2628,7 @@ const generateTextShapeRVariants = (text, options = {}) => {
       // be allowed to split onto two lines). Their granularity cap is
       // recomputed on the set because the split word is narrower.
       const setWidestUnits = tokens.reduce((max, token) => Math.max(max, tokenLength(token)), 1);
-      const setGranularityMaxLines = clamp(Math.floor(totalUnits / (setWidestUnits * 0.72)), 2, 8);
+      const setGranularityMaxLines = clamp(Math.floor(totalUnits / (setWidestUnits * (classicRanking ? CLASSIC_PEAK_WORD_RATIO : PEAK_WORD_RATIO))), 2, 8);
       const hyphenMaxLines = Math.min(
         options.maxLines || Math.max(profileMaxLines, maxLines),
         Math.max(1, tokens.length),
@@ -2589,6 +2727,16 @@ const generateTextShapeRVariants = (text, options = {}) => {
   if (bearable.length) variants = bearable;
   const clean = variants.filter((variant) => variant.badness <= CLEAN_SILHOUETTE_BADNESS);
   if (clean.length >= Math.min(3, limit)) variants = clean;
+  if (!classicRanking) {
+    // A cesure must be needed: it stays available but only leads when no clean
+    // hyphen-free shape is usable
+    const cleanShapeExists = variants.some((variant) => !variant.hyphenCount && variant.badness <= BEARABLE_SILHOUETTE_BADNESS && (!fit || variant.fits));
+    if (cleanShapeExists) {
+      variants.forEach((variant) => {
+        if (variant.hyphenCount && !variant.injected) variant.score += NEEDLESS_CESURE_PENALTY;
+      });
+    }
+  }
   const compareVariants = (a, b) => {
     if (fit && a.fits !== b.fits) return a.fits ? -1 : 1;
     return a.score - b.score || a.text.localeCompare(b.text);
@@ -2716,7 +2864,9 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
   tuningRevision++;
   let variants;
   try {
-    variants = generateTextShapeRVariants(flatText, options);
+    // The ranker learns against the current scorer alone: classic proposals
+    // in the merged list carry scores from another scale
+    variants = rankTextShapeRVariants(normalizeText(flatText), options);
   } finally {
     tuning = previousTuning;
     tuningRevision++;
@@ -2780,7 +2930,7 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
     previous == null || !Number.isFinite(previous) ? sample : previous + alpha * (sample - previous)
   );
   const totalUnits = visibleWidth(normalizeText(flatText));
-  style.density = clamp(emaValue(style.density, totalUnits / chosenLines.length), 2, 80);
+  style.density = clamp(emaValue(style.density, (totalUnits / chosenLines.length) / getDensityFactor(totalUnits)), 2, 80);
   if (chosenLines.length >= 2) {
     const curve = resampleSilhouette(lengths);
     if (curve) {

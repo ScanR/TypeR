@@ -1,5 +1,6 @@
 {
   "samples": 178,
+  "densityModel": 2,
   "lineTargetBias": 0.662269378254904,
   "hyphenPenaltyScale": 1.8466763813870317,
   "stepSlackDelta": 0.13655140186915893,

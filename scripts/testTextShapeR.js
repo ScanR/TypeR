@@ -540,6 +540,20 @@ const testLineModel = async () => {
     `the taught layout must not lose rank (before ${rankBefore}, after ${rankAfter})`);
   assert.strictEqual(rankAfter, 0, `the taught layout should become the top proposal, got rank ${rankAfter}`);
 
+  // Older tunings: the plain density average moves to the volume curve once,
+  // and weights the previous solver left at their caps are refit on load
+  const legacyDensity = sanitizeTextShapeRTuning({ samples: 10, style: { density: 8 } }).style.density;
+  assert.ok(legacyDensity < 8, "a legacy density average is brought to the reference volume");
+  assert.strictEqual(sanitizeTextShapeRTuning(sanitizeTextShapeRTuning({ samples: 10, style: { density: 8 } })).style.density, legacyDensity,
+    "the density migration runs only once");
+  const refitSource = recordTextShapeRFeedback(ddpTarget.text, ddpOptions, null).tuning;
+  const staleWeights = { ...refitSource, rankSolver: null, weights: { stepMean: 650, meanRatio: -640 } };
+  setTextShapeRTuning(staleWeights);
+  const refitTop = generateTextShapeRVariants(ddpText, ddpOptions)[0].text;
+  setTextShapeRTuning(refitSource);
+  assert.strictEqual(refitTop, generateTextShapeRVariants(ddpText, ddpOptions)[0].text, "stale capped weights are refit on load");
+  setTextShapeRTuning(ddpTuning);
+
   // Deterministic: same lessons, same weights
   let replay = null;
   for (let pass = 0; pass < 3; pass++) replay = refitTextShapeRLineModel(recordTextShapeRFeedback(ddpTarget.text, ddpOptions, replay).tuning);

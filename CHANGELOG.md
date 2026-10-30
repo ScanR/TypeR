@@ -52,6 +52,7 @@
 - Bind captured bubble selections to the current Photoshop document and session.
 - Validate a batch before creating layers and restore Photoshop history if a batch fails.
 - Preserve undo history during temporary TextShapeR scans.
+- TextShapeR ranks shapes from about 3,000 hand-lettered bubbles: the first proposal follows how letterers actually break lines, and the previous ranking's favourites stay in the list as alternatives.
 - Fix TextShapeR's learning, which could suddenly degrade the suggestions after many lessons.
 - Refine compact panel settings, the active-size modifier and keyboard workflows.
 - Select styles 1 through 9 in the current folder with the numeric keypad while the panel has focus and no text field or modal is active.
