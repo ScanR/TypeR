@@ -401,6 +401,9 @@ const baseReducer = (state, action) => {
 
     case "completeWalkthrough": {
       newState.notFirstTime = true;
+      // The full walkthrough covers What's new. Closed before its end (a
+      // known user replaying it from Help), it does not.
+      if (action.finished) newState.whatsNewSeen = config.whatsNewVersion;
       newState.modalType = null;
       newState.modalData = {};
       break;

@@ -6,6 +6,9 @@
 // A course (walkthrough.jsx, whatsNew.jsx) gives the chapters and the
 // texts of the intro, end and resume screens; this engine runs them, keeps
 // the progress (whatsNewSession.js) and places the guide (whatsNewGuide.js).
+// Chapters of a course made of several parts name theirs (`part`), and their
+// steps too: the guide is on the practice page and script of the chapter on
+// screen.
 
 import React from "react";
 import {
@@ -31,9 +34,12 @@ import { alignTextLayerToSelection, locale, openFile, scrollToLine } from "../..
 import {
   buildPracticeScript,
   endWhatsNewSession,
+  enterTourPart,
   findPracticeLineIndex,
+  forgetPracticeTabs,
   backupTourTuning,
   getPracticePagePath,
+  practiceTabIds,
   restoreTourTuning,
   resumeWhatsNewSession,
   saveWhatsNewProgress,
@@ -112,6 +118,9 @@ const stepState = (step, env) => {
   const record = session.done[step.id];
   if (record === "skipped") return "skipped";
   if (record) return "done";
+  // env describes the part on screen: the page and script of another part
+  // say nothing about this step
+  if (step.part && step.part !== session.part) return "todo";
   // Passes only while it is the current step (preset effect)
   if (step.preset) return "todo";
   let passed;
@@ -170,6 +179,7 @@ const TourModal = React.memo(function TourModal({ course }) {
   const [, rerender] = React.useReducer((count) => count + 1, 0);
   const view = session.chapter;
   const chapter = view >= 1 && view <= chapters.length ? chapters[view - 1] : null;
+  if (chapter) enterTourPart(chapter.part);
 
   /* --------------------------- environment --------------------------- */
 
@@ -427,7 +437,7 @@ const TourModal = React.memo(function TourModal({ course }) {
     restoreTourTuning(dispatch);
     session.coach = null;
     endWhatsNewSession();
-    dispatch({ type: course.completeAction });
+    dispatch({ type: course.completeAction, finished: session.chapter > chapters.length });
   };
   const setMinimized = (value) => {
     session.minimized = value;
@@ -763,19 +773,21 @@ const TourModal = React.memo(function TourModal({ course }) {
         const complete = chapterComplete(item, env);
         const locked = !chapterOpen(index + 1);
         return (
-          <button
-            key={item.id}
-            type="button"
-            className={`whats-new-topic${complete ? " m-done" : ""}${locked ? " m-locked" : ""}`}
-            disabled={locked}
-            title={locked ? locale.whatsNewChapterLocked || "Finish the chapters before this one first." : undefined}
-            onClick={() => goTo(index + 1)}
-          >
-            {complete ? <FiCheck size={14} className="whats-new-topic-check" /> : locked ? <FiLock size={14} /> : <item.Icon size={14} />}
-            <span>{item.title}</span>
-            <small>{formatMinutes(item.minutes)}</small>
-            <FiChevronRight size={13} className="whats-new-topic-chevron" />
-          </button>
+          <React.Fragment key={item.id}>
+            {item.section && <div className="whats-new-topics-section">{item.section}</div>}
+            <button
+              type="button"
+              className={`whats-new-topic${complete ? " m-done" : ""}${locked ? " m-locked" : ""}`}
+              disabled={locked}
+              title={locked ? locale.whatsNewChapterLocked || "Finish the chapters before this one first." : undefined}
+              onClick={() => goTo(index + 1)}
+            >
+              {complete ? <FiCheck size={14} className="whats-new-topic-check" /> : locked ? <FiLock size={14} /> : <item.Icon size={14} />}
+              <span>{item.title}</span>
+              <small>{formatMinutes(item.minutes)}</small>
+              <FiChevronRight size={13} className="whats-new-topic-chevron" />
+            </button>
+          </React.Fragment>
         );
       })}
     </div>
@@ -794,17 +806,10 @@ const TourModal = React.memo(function TourModal({ course }) {
     </React.Fragment>
   );
 
-  // Leaves the tour for another window or tour (end screen buttons)
-  const leave = () => {
-    clearTourSpot();
-    session.coach = null;
-    endWhatsNewSession();
-    dispatch({ type: course.completeAction });
-  };
-
   const renderEnd = () => {
     const done = chapters.filter((item) => chapterComplete(item, env)).length;
     const spent = Math.max(1, Math.round((Date.now() - session.startedAt) / 60000));
+    const openTabs = practiceTabIds().filter((id) => (state.tabs || []).some((tab) => tab.id === id));
     return (
       <React.Fragment>
         <div className="whats-new-hero m-done"><FiCheck size={30} /></div>
@@ -818,32 +823,22 @@ const TourModal = React.memo(function TourModal({ course }) {
         </p>
         {renderContents()}
         <div className="whats-new-where">
-          {locale.whatsNewDoneCleanup || "Close the practice page in Photoshop without saving it."}
+          {course.end.cleanup()}
         </div>
         <div className="whats-new-actions">
-          {practiceTab && (state.tabs || []).length > 1 && (
+          {openTabs.length > 0 && (state.tabs || []).length > 1 && (
             <button
               type="button"
               className="topcoat-button--large"
               onClick={() => {
-                dispatch({ type: "deleteTab", id: session.practiceTabId });
-                session.practiceTabId = null;
+                openTabs.forEach((id) => dispatch({ type: "deleteTab", id }));
+                forgetPracticeTabs();
                 rerender();
               }}
             >
-              {locale.whatsNewCloseTab || "Close the practice tab"}
-            </button>
-          )}
-          {course.end.next && (
-            <button
-              type="button"
-              className="topcoat-button--large"
-              onClick={() => {
-                leave();
-                dispatch({ type: "setModal", modal: course.end.next.modal, data: { source: course.id } });
-              }}
-            >
-              <FiPlayCircle size={15} /> {course.end.next.label()}
+              {openTabs.length > 1
+                ? locale.walkthroughCloseTabs || "Close the practice tabs"
+                : locale.whatsNewCloseTab || "Close the practice tab"}
             </button>
           )}
         </div>

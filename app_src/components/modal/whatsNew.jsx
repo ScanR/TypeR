@@ -1,5 +1,6 @@
 // What's new in TypeR 3.0: the guided tour (tour.jsx) of the features added
-// since 2.5, shown once to users updating from an earlier version.
+// since 2.5, shown once to users updating from an earlier version. New users
+// get these chapters as the second part of the walkthrough (walkthrough.jsx).
 
 import React from "react";
 import { FiColumns, FiFileText, FiSearch } from "react-icons/fi";
@@ -73,7 +74,7 @@ const TextShapeRArt = () => (
   </svg>
 );
 
-const ART = {
+export const ART = {
   smartPaste: <SmartPasteArt />,
   pasteOnClick: <PasteOnClickArt />,
   bubbles: <BubblesArt />,
@@ -125,15 +126,20 @@ const roleWasThere = (role) => !session[role + "KnownIds"];
 // user does it, in Photoshop or in the panel. The guide never does the
 // gesture: `spot` rings the control to use, `fallback` is offered only when
 // that control is hidden in the user's layout. env: see TourModal (tour.jsx).
-const getChapters = () => [
+// inWalkthrough: for someone who has just learned the basics and never knew 2.5.
+export const getChapters = ({ inWalkthrough = false } = {}) => [
   {
     id: "prep",
     Icon: FiFileText,
     minutes: 0.5,
-    title: locale.whatsNewPrepTitle || "Get ready",
-    intro:
-      locale.whatsNewPrepIntro ||
-      "The tour is hands-on: TypeR opens a practice page with numbered bubbles and a practice script, one line per bubble.",
+    title: inWalkthrough
+      ? locale.walkthroughMorePrepTitle || "Next practice page"
+      : locale.whatsNewPrepTitle || "Get ready",
+    intro: inWalkthrough
+      ? locale.walkthroughMorePrepIntro ||
+        "You know the basics: now, what TypeR does for you. This part has its own practice page with numbered bubbles and its own script, one line per bubble."
+      : locale.whatsNewPrepIntro ||
+        "The tour is hands-on: TypeR opens a practice page with numbered bubbles and a practice script, one line per bubble.",
     steps: [
       {
         id: "openPage",
@@ -173,9 +179,11 @@ const getChapters = () => [
     Icon: MdOutlineAutoAwesome,
     minutes: 0.5,
     title: locale.whatsNewSmartPasteTitle || "Smart paste",
-    intro:
-      locale.whatsNewSmartPasteIntro ||
-      "Until 2.5, the text filled the rectangle of the selection. TypeR now reads the real outline of the bubble and lays the text out inside it.",
+    intro: inWalkthrough
+      ? locale.walkthroughMoreSmartPasteIntro ||
+        "TypeR reads the real outline of a bubble and lays the text out inside it, even when the text is too long for it."
+      : locale.whatsNewSmartPasteIntro ||
+        "Until 2.5, the text filled the rectangle of the selection. TypeR now reads the real outline of the bubble and lays the text out inside it.",
     needs: [{ field: "smartPaste", action: "setSmartPaste", label: locale.settingsSmartPasteLabel || "Smart paste" }],
     steps: [
       {
@@ -509,7 +517,7 @@ const COURSE = {
   },
   end: {
     title: () => locale.whatsNewDoneTitle || "You are all set",
-    next: { modal: "walkthrough", label: () => locale.whatsNewOpenBasics || "Basics walkthrough" },
+    cleanup: () => locale.whatsNewDoneCleanup || "Close the practice page in Photoshop without saving it.",
     notes: () => [
       isUxp()
         ? locale.whatsNewDoneUxp ||

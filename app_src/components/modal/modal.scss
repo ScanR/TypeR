@@ -2705,6 +2705,19 @@
     gap: 3px;
 }
 
+.whats-new-topics-section {
+    margin-top: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.7;
+
+    &:first-child {
+        margin-top: 0;
+    }
+}
+
 .whats-new-topic {
     display: flex;
     align-items: center;

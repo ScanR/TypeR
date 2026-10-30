@@ -4,7 +4,9 @@
 // and checks each exercise from the panel state. Its progress lives here,
 // outside the modal, so a window the tour opens (style editor, settings)
 // hands back to it when it closes (components/modal/modal.jsx). One tour
-// runs at a time: `course` says which.
+// runs at a time: `course` says which. The walkthrough, for new users, goes on
+// with the What's new chapters: it has two parts, each with its practice page
+// and script.
 
 import config from "./config";
 import { csInterface, locale } from "./utils";
@@ -19,6 +21,10 @@ const createSession = () => ({
   active: false,
   // Modal type of the running tour: whatsNew or walkthrough
   course: WHATS_NEW_MODAL,
+  // The part on screen in a tour made of several (its practice material is
+  // the one of that course), and what the other parts keep of theirs
+  part: null,
+  parts: {},
   chapter: 0,
   minimized: false,
   // Step ids already done: a step stays done once it passed
@@ -79,10 +85,12 @@ const PROGRESS_KEYS = {
   whatsNew: "typer.whatsNewProgress",
   walkthrough: "typer.walkthroughProgress",
 };
-const BASICS_VERSION = "basics-1";
+const BASICS_VERSION = "basics-2";
 const courseVersion = (course) => (course === WALKTHROUGH_MODAL ? BASICS_VERSION : config.whatsNewVersion);
 const progressKey = (course) => PROGRESS_KEYS[course] || PROGRESS_KEYS.whatsNew;
 const PROGRESS_FIELDS = [
+  "part",
+  "parts",
   "chapter",
   "done",
   "focus",
@@ -153,6 +161,8 @@ export const readWhatsNewProgress = (chapters, course = whatsNewSession.course) 
   saved.pageOpened = progress.pageOpened === true;
   saved.stylePicked = progress.stylePicked === true;
   saved.undoSeen = progress.undoSeen === true;
+  saved.part = PRACTICE_PAGES[progress.part] ? progress.part : null;
+  saved.parts = progress.parts && typeof progress.parts === "object" ? progress.parts : {};
   saved.leftPracticeTab = progress.leftPracticeTab === true;
   ["practiceTabId", "previousTabId", "shoutBaseId", "narrationBaseId"].forEach((field) => {
     saved[field] = progress[field] === undefined ? null : progress[field];
@@ -225,6 +235,44 @@ export const endWhatsNewSession = () => {
   whatsNewSession.active = false;
 };
 
+// What a part keeps for itself: the steps read them for the part on screen
+const PART_FIELDS = ["pageOpened", "stylePicked", "practiceTabId", "previousTabId", "leftPracticeTab"];
+
+export const enterTourPart = (part) => {
+  const run = whatsNewSession;
+  if (!part || run.part === part) return;
+  if (run.part) {
+    run.parts[run.part] = {};
+    PART_FIELDS.forEach((field) => {
+      run.parts[run.part][field] = run[field];
+    });
+  }
+  const fresh = createSession();
+  PART_FIELDS.forEach((field) => {
+    const saved = run.parts[part];
+    run[field] = saved && saved[field] !== undefined ? saved[field] : fresh[field];
+  });
+  run.part = part;
+};
+
+// The practice tabs of the run, one per part
+export const practiceTabIds = () => {
+  const run = whatsNewSession;
+  return Object.keys(run.parts)
+    .filter((part) => part !== run.part)
+    .map((part) => run.parts[part].practiceTabId)
+    .concat(run.practiceTabId)
+    .filter(Boolean);
+};
+
+export const forgetPracticeTabs = () => {
+  const run = whatsNewSession;
+  Object.keys(run.parts).forEach((part) => {
+    run.parts[part].practiceTabId = null;
+  });
+  run.practiceTabId = null;
+};
+
 // The tours float over the panel and let the user work: shortcuts and mouse
 // buttons keep running while one is open
 export const isBlockingModal = (modalType) => !!modalType && !isTourModal(modalType);
@@ -259,7 +307,10 @@ export const basicsShoutPrefix = () => String(locale.walkthroughShoutPrefix || "
 
 const courseLines = (course) => (course === WALKTHROUGH_MODAL ? BASICS_LINES : PRACTICE_LINES);
 
-export const practiceLineText = (number, course = whatsNewSession.course) => {
+// The course whose practice page and script the tour is on
+const practiceCourse = () => whatsNewSession.part || whatsNewSession.course;
+
+export const practiceLineText = (number, course = practiceCourse()) => {
   const line = courseLines(course)[number - 1];
   const text = (line && locale[line.key]) || (line && line.text) || "";
   return line && line.prefix ? basicsShoutPrefix() + " " + text : text;
@@ -267,7 +318,7 @@ export const practiceLineText = (number, course = whatsNewSession.course) => {
 
 // The basics script also has a page marker and a translator note, which
 // TypeR skips: the walkthrough shows them
-export const buildPracticeScript = (course = whatsNewSession.course) => {
+export const buildPracticeScript = (course = practiceCourse()) => {
   const lines = courseLines(course).map((line, index) => practiceLineText(index + 1, course));
   if (course !== WALKTHROUGH_MODAL) return lines.join("\n");
   // The page marker stays in English: TypeR reads "Page N" in every language
@@ -277,7 +328,7 @@ export const buildPracticeScript = (course = whatsNewSession.course) => {
 };
 
 // Index of a practice line in the parsed script of the current tab
-export const findPracticeLineIndex = (lines, number, course = whatsNewSession.course) => {
+export const findPracticeLineIndex = (lines, number, course = practiceCourse()) => {
   const wanted = practiceLineText(number, course).trim();
   if (!wanted || !Array.isArray(lines)) return -1;
   for (let i = 0; i < lines.length; i++) {
@@ -289,7 +340,7 @@ export const findPracticeLineIndex = (lines, number, course = whatsNewSession.co
 
 // Same, from the raw script of a tab that is not loaded yet (one parsed line
 // per raw line, so the raw index is the line index)
-export const findPracticeLineInText = (text, number, course = whatsNewSession.course) => {
+export const findPracticeLineInText = (text, number, course = practiceCourse()) => {
   const wanted = practiceLineText(number, course).trim();
   if (!wanted || typeof text !== "string") return -1;
   const rawLines = text.split("\n");
@@ -375,7 +426,7 @@ export const PRACTICE_PAGES = {
 
 // Native path of a copy of the practice page in the temporary folder (the
 // bundled file itself when the copy fails), so Photoshop never saves over it
-export const getPracticePagePath = async (course = whatsNewSession.course) => {
+export const getPracticePagePath = async (course = practiceCourse()) => {
   const PRACTICE_PAGE = PRACTICE_PAGES[course] || PRACTICE_PAGES.whatsNew;
   if (typeof window !== "undefined" && window.typerUXP) {
     return window.typerUXP.request("practicePagePath", PRACTICE_PAGE);

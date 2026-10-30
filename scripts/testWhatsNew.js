@@ -30,7 +30,7 @@ const config = createLoader()("app_src/config.js").default;
   const { reducer, initial } = loadContext({});
   const first = reducer(initial, { type: "showFirstRunWalkthrough" });
   assert.strictEqual(first.modalType, "walkthrough");
-  assert.strictEqual(first.whatsNewSeen, config.whatsNewVersion, "A new user gets the basics, not what changed since 2.5");
+  assert.strictEqual(first.whatsNewSeen, config.whatsNewVersion, "A new user gets What's new inside the walkthrough, not on its own afterwards");
 }
 
 {

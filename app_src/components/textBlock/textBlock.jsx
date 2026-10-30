@@ -11,6 +11,7 @@ import { useContext } from "../../context";
 import { notePerfRender } from "../../perfDebug";
 import { formatMarkdownSelection } from "../../markdownFormatting";
 import { createPageImageLookup, getImageForPage } from "../../pageImageMapping";
+import { practiceTabIds, whatsNewSession } from "../../whatsNewSession";
 import { measureRows, sameRowHeights } from "./rowLayout";
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -283,7 +284,9 @@ const TextBlock = React.memo(function TextBlock() {
       }
     }
     if (image && image.path !== lastOpenedPath.current) {
-      openFile(image.path, context.state.autoClosePSD, (result) => {
+      // Auto close saves the page it leaves: never the practice page of a tour
+      const onPracticePage = whatsNewSession.active && practiceTabIds().indexOf(context.state.currentTabId) !== -1;
+      openFile(image.path, context.state.autoClosePSD && !onPracticePage, (result) => {
         if (!active || result.superseded) return;
         if (!result.ok) {
           nativeAlert(locale.errorOpenPage.replace("{path}", image.path), locale.errorTitle, true);

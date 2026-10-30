@@ -1,5 +1,5 @@
-// The basics walkthrough: its practice script and page, the steps it checks,
-// and how it shares the tour engine with What's new
+// The walkthrough: its practice script and page, the steps it checks, and how
+// it goes on with the chapters of What's new
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
@@ -18,6 +18,7 @@ const loadSession = (locale = {}) => createLoader({
 })("app_src/whatsNewSession.js");
 const session = loadSession();
 const COURSE = "walkthrough";
+const config = createLoader()("app_src/config.js").default;
 
 // --- when it shows ------------------------------------------------------------
 
@@ -222,6 +223,7 @@ const COURSE = "walkthrough";
   ["paste", "shout", "retouch"].forEach((id) => assert(order(id) < order("pages"), "Pages come after chapter " + id));
   assert(/check: \(env\) => env\.onPracticeTab && \(env\.state\.images/.test(chapters), "Linking files on the practice tab passes the step");
   assert(/type: "clearPastedLines" \}\);[\s\S]{0,120}type: "setImages", images: \[\]/.test(engine), "A practice tab picked up again drops its files");
+  assert(/context\.state\.autoClosePSD && !onPracticePage/.test(read("app_src/components/textBlock/textBlock.jsx")), "Auto close leaves the practice page alone");
 
   // The guide never does the gesture: it only sets up the practice page and
   // script; the paste and align buttons are fallbacks for a hidden control
@@ -255,14 +257,14 @@ const COURSE = "walkthrough";
   const stepOf = (id) => chapters.slice(chapters.indexOf('id: "' + id + '"'), chapters.indexOf('id: "' + id + '"') + 1600).split("result")[0];
   assert(/known: true/.test(stepOf("createStyle")) && /env\.newStyles\("createStyle"\)/.test(stepOf("createStyle")),
     "The style step passes on a style made during it");
-  assert(/known: true/.test(stepOf("shoutStyle")) && /reselectLine: true/.test(stepOf("shoutStyle")),
+  assert(/known: true/.test(stepOf("tagStyle")) && /reselectLine: true/.test(stepOf("tagStyle")),
     "The copy step picks the current line again, so its tag style becomes current");
   assert(/check: pastedWithTag,/.test(stepOf("shoutPaste")) && /miss: /.test(stepOf("shoutPaste")),
     "Line 4 pasted with a style its tag does not pick does not pass, and says how to do it again");
   assert(/line: 4,/.test(stepOf("shoutPaste")), "Line 4 checks a tag style was used");
   assert(/env\.shoutStyle = basicsShoutStyle\(env\.state\);/.test(walkthrough),
     "The Shout style is the one the tag picks, made in the walkthrough or before it");
-  assert(/check: \(env\) => !!env\.shoutStyle,/.test(stepOf("shoutStyle")), "A tag style already there passes the step");
+  assert(/check: \(env\) => !!env\.shoutStyle,/.test(stepOf("tagStyle")), "A tag style already there passes the step");
   assert(/\(!!env\.currentStyle && session\.stylePicked === true\)/.test(stepOf("createStyle")),
     "With styles already there, picking any of them passes the style step");
   assert(!/“(Dialogue|Shout|Narration)”/.test(read("locale/messages.properties").split("\n")
@@ -337,4 +339,161 @@ const COURSE = "walkthrough";
   delete global.window;
 }
 
-console.log("Basics walkthrough tests passed");
+// --- two parts in one guide ------------------------------------------------------
+
+{
+  // Who gets what: nothing new to detect, the Legacy storage (and so
+  // notFirstTime and whatsNewSeen) is imported by the plugin at its first start
+  const modal = read("app_src/components/modal/modal.jsx");
+  assert(/if \(!context\.state\.notFirstTime\) \{\s*context\.dispatch\(\{type: 'showFirstRunWalkthrough'\}\);\s*\} else if \(context\.state\.whatsNewSeen !== config\.whatsNewVersion\) \{\s*context\.dispatch\(\{type: 'showWhatsNew'\}\);/.test(modal),
+    "A new user gets the walkthrough, a known one only What's new");
+  assert(/const imported = await files\.importCepStorage\(storageRoot\)/.test(read("uxp-src/host/main.js")), "A Legacy user is a known user in the plugin");
+  const { reducer, initial } = loadContext({});
+  const first = reducer(initial, { type: "showFirstRunWalkthrough" });
+  assert.strictEqual(first.whatsNewSeen, config.whatsNewVersion, "The walkthrough covers What's new: it does not open again afterwards");
+
+  // A known user who has not seen What's new and replays the walkthrough from
+  // Help: only reaching its end covers What's new
+  const known = loadContext({ notFirstTime: true }).initial;
+  assert.strictEqual(known.whatsNewSeen, null);
+  const open = { ...known, modalType: "walkthrough" };
+  assert.strictEqual(reducer(open, { type: "completeWalkthrough", finished: false }).whatsNewSeen, null, "Closed on the way, What's new still shows");
+  assert.strictEqual(reducer(open, { type: "completeWalkthrough", finished: true }).whatsNewSeen, config.whatsNewVersion, "Finished, What's new does not show");
+  assert(/dispatch\(\{ type: course\.completeAction, finished: session\.chapter > chapters\.length \}\);/.test(engine), "The guide says when it was closed from its end screen");
+}
+
+{
+  // Two practice pages and scripts: each part keeps its own
+  const items = {};
+  global.window = {
+    localStorage: {
+      getItem: (key) => (Object.prototype.hasOwnProperty.call(items, key) ? items[key] : null),
+      setItem: (key, value) => { items[key] = String(value); },
+      removeItem: (key) => { delete items[key]; },
+    },
+  };
+  const run = session.whatsNewSession;
+  run.active = false;
+  session.startWhatsNewSession(15, COURSE);
+  assert.strictEqual(session.practiceLineText(1), session.practiceLineText(1, COURSE), "The intro is on the basics");
+  session.enterTourPart(COURSE);
+  run.pageOpened = true;
+  run.stylePicked = true;
+  run.practiceTabId = "basics-tab";
+  session.enterTourPart("whatsNew");
+  assert.strictEqual(run.pageOpened, false, "The second part opens its own page");
+  assert.strictEqual(run.stylePicked, false, "The second part asks for the dialogue style again: the Shout style may be the current one");
+  assert.strictEqual(run.practiceTabId, null, "The second part loads its own script");
+  assert.strictEqual(session.buildPracticeScript(), session.buildPracticeScript("whatsNew"), "Its script is the one of What's new");
+  assert.strictEqual(session.practiceLineText(5), session.practiceLineText(5, "whatsNew"), "Its lines are the ones of What's new");
+  run.practiceTabId = "more-tab";
+  assert.deepStrictEqual(session.practiceTabIds().sort(), ["basics-tab", "more-tab"], "Both practice tabs are known");
+  session.enterTourPart(COURSE);
+  assert.strictEqual(run.pageOpened, true, "Going back finds the first part as it was");
+  assert.strictEqual(run.practiceTabId, "basics-tab");
+  session.enterTourPart("whatsNew");
+  assert.strictEqual(run.practiceTabId, "more-tab", "And the second one too");
+
+  // The part comes back on resume
+  run.chapter = 10;
+  session.endWhatsNewSession();
+  session.startWhatsNewSession(15, COURSE);
+  session.resumeWhatsNewSession(true);
+  assert.strictEqual(run.part, "whatsNew");
+  assert.strictEqual(run.practiceTabId, "more-tab");
+  assert.deepStrictEqual(session.practiceTabIds().sort(), ["basics-tab", "more-tab"], "The tabs of both parts come back on resume");
+  session.forgetPracticeTabs();
+  assert.deepStrictEqual(session.practiceTabIds(), []);
+  run.active = false;
+  run.part = null;
+  run.parts = {};
+  delete global.window;
+}
+
+{
+  // The guide itself, rendered: one list of chapters, and the steps of the
+  // part not on screen say nothing
+  const React = require("react");
+  const { renderToStaticMarkup } = require("react-dom/server");
+  // Nothing runs in effects on the server: only what the render shows is read
+  const useLayoutEffect = React.useLayoutEffect;
+  React.useLayoutEffect = React.useEffect;
+  const load = createLoader({
+    "./utils": { csInterface: {}, locale: {} },
+    "./uxpMigration": { getNode: () => null },
+    "../../utils": { locale: {}, scrollToLine: () => {}, alignTextLayerToSelection: () => {}, openFile: () => {} },
+    "../../context": { useContext: () => ({ state: guideState, dispatch: () => {}, getState: () => guideState }) },
+    "../../modalClose": { useModalClose: () => {} },
+    "../../shortcutCommands": { pasteInSelection: () => {}, shortcutKeyLabels: {} },
+  });
+  const guideState = { styles: [{ id: "s", name: "Dialogue" }], currentStyleId: "s", currentStyle: { id: "s", name: "Dialogue" }, tabs: [{ id: "t", text: "" }], currentTabId: "t", lines: [], usedLineStyles: {}, shortcut: {}, uiLayout: {} };
+  const shared = load("app_src/whatsNewSession.js");
+  const Guide = load("app_src/components/modal/walkthrough.jsx").default;
+  const html = () => renderToStaticMarkup(React.createElement(Guide));
+  const run = shared.whatsNewSession;
+  run.active = false;
+
+  const intro = html();
+  assert.strictEqual((intro.match(/whats-new-topic /g) || []).length + (intro.match(/whats-new-topic"/g) || []).length, 15, "The intro lists the chapters of both parts");
+  assert.strictEqual((intro.match(/whats-new-topics-section/g) || []).length, 2, "Under one heading per part");
+  assert(/The basics/.test(intro) && /Going further/.test(intro));
+  assert(/About 11 min 30/.test(intro), "The time of both parts is announced");
+  assert(!/m-done/.test(intro), "Nothing is done yet");
+
+  // The practice page of the basics does not pass the step of the second one
+  run.chapter = 1;
+  assert(/Chapter 1 of 15/.test(html()));
+  assert.strictEqual(run.part, COURSE);
+  run.pageOpened = true;
+
+  // Every step of the basics done: the second part opens on its own page
+  const baseIds = (walkthrough.slice(walkthrough.indexOf("const getChapters"), walkthrough.indexOf("const markPart")).match(/^\s{8}id: "(\w+)"/gm) || []).map((line) => line.trim().slice(5, -1));
+  baseIds.forEach((id) => { run.done[id] = true; });
+  run.chapter = 9;
+  const second = html();
+  assert(/Chapter 9 of 15/.test(second), "The second part goes on with the same count");
+  assert.strictEqual(run.part, "whatsNew");
+  assert.strictEqual(run.pageOpened, false);
+  assert(/Next practice page/.test(second) && /Open the practice page/.test(second), "It opens its own page");
+  assert(!/Until 2\.5/.test(second));
+  run.chapter = 10;
+  run.done.openPage = run.done.loadScript = run.done.style = true;
+  const smart = html();
+  assert(!/Until 2\.5/.test(smart) && !/whats-new-art/.test(smart), "Smart paste is not compared with a 2.5 a new user never saw");
+  run.chapter = 16;
+  const end = html();
+  assert(/You are all set/.test(end) && /two practice pages/.test(end), "One end screen, for both pages");
+  assert(!/What&#x27;s new|Go further: TypeR/.test(end), "It sends nowhere else");
+  run.active = false;
+  run.part = null;
+  run.parts = {};
+
+  // What's new on its own stays as it is for known users
+  const WhatsNew = load("app_src/components/modal/whatsNew.jsx").default;
+  const known = renderToStaticMarkup(React.createElement(WhatsNew));
+  assert.strictEqual(run.course, "whatsNew");
+  assert.strictEqual(run.part, null);
+  assert((known.match(/whats-new-topic(?:"| )/g) || []).length === 7, "Its 7 chapters only");
+  assert(!/The basics|whats-new-topics-section/.test(known));
+  run.chapter = 2;
+  assert(/Until 2\.5/.test(renderToStaticMarkup(React.createElement(WhatsNew))), "A known user is told what changed since 2.5");
+  run.active = false;
+  React.useLayoutEffect = useLayoutEffect;
+}
+
+{
+  // Step and chapter ids are unique across the parts: progress is stored by id
+  const whatsNew = read("app_src/components/modal/whatsNew.jsx");
+  const stepIds = (source) => (source.match(/^\s{8}id: "(\w+)"/gm) || []).map((line) => line.trim().slice(5, -1));
+  const chapterIds = (source) => (source.match(/^\s{4}id: "(\w+)"/gm) || []).map((line) => line.trim().slice(5, -1));
+  const firstSteps = stepIds(chapters);
+  stepIds(whatsNew).forEach((id) => assert(firstSteps.indexOf(id) === -1, "Step " + id + " is in both parts"));
+  const firstChapters = chapterIds(chapters);
+  chapterIds(whatsNew).forEach((id) => assert(firstChapters.indexOf(id) === -1, "Chapter " + id + " is in both parts"));
+  assert(/if \(step\.part && step\.part !== session\.part\) return "todo";/.test(engine), "A step of another part never passes on the state of this one");
+  assert(/if \(chapter\) enterTourPart\(chapter\.part\);/.test(engine), "The guide is on the part of the chapter on screen");
+  assert(/practiceTabIds\(\)\.indexOf\(context\.state\.currentTabId\) !== -1/.test(read("app_src/components/textBlock/textBlock.jsx")),
+    "Auto close leaves the practice pages of both parts alone");
+}
+
+console.log("Walkthrough tests passed");

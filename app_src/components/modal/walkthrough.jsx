@@ -1,7 +1,8 @@
-// The basics walkthrough: the guided tour (tour.jsx) of the TypeR workflow,
-// shown to new users and available from Help and Settings > General. It
-// opens its own practice page (four numbered spots) and script, with a page
-// marker and a translator note the user sees TypeR skip.
+// The walkthrough: the guided tour (tour.jsx) shown to new users and available
+// from Help and Settings > General, in two parts. The basics of the TypeR
+// workflow open their own practice page (four numbered spots) and script, with
+// a page marker and a translator note the user sees TypeR skip. The chapters
+// of What's new (whatsNew.jsx) follow, on the practice page of that tour.
 
 import React from "react";
 import { FiAlignLeft, FiDownload, FiFileText, FiFolderPlus, FiLayers, FiSliders } from "react-icons/fi";
@@ -9,9 +10,11 @@ import { MdCenterFocusWeak, MdOutlineFormatColorText } from "react-icons/md";
 
 import { locale, scrollToLine } from "../../utils";
 import {
-  basicsShoutPrefix, basicsShoutStyle, currentFolderStyles, findNamedStyle, hasBasicsShoutTag, whatsNewSession as session,
+  basicsShoutPrefix, basicsShoutStyle, currentFolderStyles, findNamedStyle, hasBasicsShoutTag,
+  WALKTHROUGH_MODAL, WHATS_NEW_MODAL, whatsNewSession as session,
 } from "../../whatsNewSession";
 import TourModal, { Bars, byId, fill, styleItem, stylePencil, tabOf, tour, unlessActive } from "./tour";
+import { ART as WHATS_NEW_ART, getChapters as getWhatsNewChapters } from "./whatsNew";
 
 /* ============================ illustrations ============================ */
 
@@ -110,7 +113,11 @@ const BackupArt = () => (
   </svg>
 );
 
+// The illustration of smart paste compares it with 2.5, unknown to new users
+const { smartPaste, ...WHATS_NEW_ART_FOR_NEW_USERS } = WHATS_NEW_ART;
+
 const ART = {
+  ...WHATS_NEW_ART_FOR_NEW_USERS,
   script: <ScriptArt />,
   style: <StyleArt />,
   paste: <PasteArt />,
@@ -137,7 +144,7 @@ const lineTarget = (env, number) => {
 // the step, active, without the prefix yet
 const shoutCopyId = (env) => {
   const id = env.state.currentStyleId;
-  return id && !env.shoutStyle && env.newStyles("shoutStyle").some((style) => style.id === id) ? id : null;
+  return id && !env.shoutStyle && env.newStyles("tagStyle").some((style) => style.id === id) ? id : null;
 };
 
 // A shout style the user already has, without the tag of line 4: the style
@@ -163,7 +170,7 @@ const pastedWithTag = (env) => {
 // that control is hidden in the user's layout. env: see TourModal (tour.jsx).
 const getChapters = () => [
   {
-    id: "prep",
+    id: "basicsPrep",
     Icon: FiFileText,
     minutes: 0.5,
     title: locale.walkthroughPrepTitle || "Get ready",
@@ -269,7 +276,7 @@ const getChapters = () => [
       "The core loop: select a bubble in Photoshop, paste, and TypeR moves on to the next line.",
     steps: [
       {
-        id: "bubble1",
+        id: "basicsBubble1",
         line: 1,
         text:
           locale.walkthroughPasteStep1 ||
@@ -280,7 +287,7 @@ const getChapters = () => [
           "A text layer with your style, centered in the bubble: the lines follow its round shape. TypeR moved on to line 2 by itself.",
       },
       {
-        id: "bubble2",
+        id: "basicsBubble2",
         line: 2,
         text: locale.walkthroughPasteStep2 || "Bubble 2: same gesture, and this time paste with your shortcut.",
         paste: true,
@@ -311,7 +318,7 @@ const getChapters = () => [
       "A tag at the start of a script line picks its style: the line is pasted with that style, without the tag.",
     steps: [
       {
-        id: "shoutStyle",
+        id: "tagStyle",
         known: true,
         reselectLine: true,
         coachIn: "editStyle",
@@ -340,7 +347,7 @@ const getChapters = () => [
             ? [stylePencil(shoutCandidate(env).id)]
             : [tour("duplicate-style"), styleItem((session.styleBefore && session.styleBefore.id) || env.state.currentStyleId)]),
         // No baseline: the tag was already there when the guide got to the step
-        result: (env) => (!session.known.shoutStyle && env.shoutStyle
+        result: (env) => (!session.known.tagStyle && env.shoutStyle
           ? fill(
             locale.walkthroughShoutResult1Existing ||
               "Your style “{name}” already has the {prefix} tag: every line starting with it gets that style, as soon as that line is the current line.",
@@ -457,17 +464,31 @@ const getChapters = () => [
 
 /* =============================== course =============================== */
 
+const markPart = (chapters, part, section) => chapters.map((chapter, index) => ({
+  ...chapter,
+  part,
+  section: index === 0 ? section : undefined,
+  steps: chapter.steps.map((step) => ({ ...step, part })),
+}));
+
+const getGuideChapters = () => [
+  ...markPart(getChapters(), WALKTHROUGH_MODAL, locale.walkthroughPartBasics || "The basics"),
+  ...markPart(getWhatsNewChapters({ inWalkthrough: true }), WHATS_NEW_MODAL, locale.walkthroughPartMore || "Going further"),
+];
+
 const COURSE = {
   id: "walkthrough",
-  getChapters,
+  getChapters: getGuideChapters,
   art: ART,
   hero: "TypeR",
   title: () => locale.walkthroughTitle || "TypeR walkthrough",
-  practiceTabName: () => locale.walkthroughPracticeTab || "TypeR practice",
+  practiceTabName: () => (session.part === WHATS_NEW_MODAL
+    ? locale.whatsNewPracticeTab || "TypeR 3.0 practice"
+    : locale.walkthroughPracticeTab || "TypeR practice"),
   completeAction: "completeWalkthrough",
-  // The Shout style of the walkthrough: the style the tag of line 4 picks
+  // The Shout style of the basics: the style the tag of line 4 picks
   extendEnv: (env) => {
-    env.shoutStyle = basicsShoutStyle(env.state);
+    if (session.part !== WHATS_NEW_MODAL) env.shoutStyle = basicsShoutStyle(env.state);
   },
   intro: {
     title: () => locale.walkthroughIntroTitle || "Welcome to TypeR",
@@ -477,8 +498,8 @@ const COURSE = {
       "You do every gesture yourself: the guide highlights the button to use in the panel. Drag the guide by its header, or fold it away with ▴.",
   },
   end: {
-    title: () => locale.walkthroughDoneTitle || "You know the basics",
-    next: { modal: "whatsNew", label: () => locale.walkthroughOpenWhatsNew || "Go further: TypeR 3.0" },
+    title: () => locale.whatsNewDoneTitle || "You are all set",
+    cleanup: () => locale.walkthroughDoneCleanup || "Close the two practice pages in Photoshop without saving them.",
     notes: () => [
       locale.walkthroughDoneHelp || "Help, the ? at the bottom of the panel, lists every feature and your shortcuts.",
       locale.walkthroughDoneText || "Reopen this guide at any time from Help or Settings > General.",
