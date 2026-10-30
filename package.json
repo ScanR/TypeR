@@ -20,6 +20,7 @@
     "build:uxp": "webpack --config webpack.uxp.config.js --mode=production && node scripts/buildUxp.js",
     "build:uxp:dev": "webpack --config webpack.uxp.config.js --mode=development --env dev && node scripts/buildUxp.js --dev --package",
     "package:uxp": "npm run build:uxp && node scripts/buildUxp.js --package",
+    "package:uxp:trace": "webpack --config webpack.uxp.config.js --mode=production --env trace && node scripts/buildUxp.js --package --trace",
     "test:uxp": "node scripts/testUxpHost.js && node scripts/testUxpPanelShim.js"
   },
   "dependencies": {

@@ -5,6 +5,10 @@
 const ps = require("photoshop");
 const uxp = require("uxp");
 const os = require("os");
+// Crash trace builds only: installed before photoshop.js keeps its own
+// reference to batchPlay (see crashTrace.js)
+const crashTrace = typeof TYPER_TRACE !== "undefined" && TYPER_TRACE ? require("./crashTrace") : null;
+if (crashTrace) crashTrace.install();
 const photoshop = require("./photoshop");
 const smartPaste = require("./smartPaste");
 const files = require("./files");
@@ -13,6 +17,13 @@ const keysHelper = require("./keysHelper");
 const services = require("./services");
 const { runJsx } = require("./jsx");
 const { parseCall, callTimeout, createCallQueue } = require("./evalScript");
+
+if (crashTrace) {
+  files.resolveFolders()
+    .then(() => services.requests.pluginVersion())
+    .then((version) => crashTrace.open(files.getStorageRoot(), { typer: version, build: "crash trace" }))
+    .catch((error) => console.error("TypeR: crash trace file", error));
+}
 
 const EXTENSION_ID = "typer";
 const PANEL_URL = "plugin:/web/index.html";
@@ -212,6 +223,10 @@ const DOCUMENT_CHANGING_CALLS = {
   selectLayerById: "select",
 };
 
+// Answered without Photoshop: kept out of the crash trace
+const UNTRACED_CALLS = { getHotkeyPressed: true, isHostAppFrontmost: true };
+let traceCallCount = 0;
+
 async function evalScript(script) {
   const call = parseCall(script);
   const method = call && Object.prototype.hasOwnProperty.call(methods, call.name) ? methods[call.name] : null;
@@ -219,10 +234,16 @@ async function evalScript(script) {
     console.error("TypeR: unknown host call", String(script).slice(0, 120));
     return "EvalScript error.";
   }
+  const traceTag = crashTrace && !UNTRACED_CALLS[call.name] ? "call#" + ++traceCallCount : null;
+  const traceStarted = Date.now();
+  if (traceTag) crashTrace.note(traceTag, call.name + "(" + crashTrace.json(call.args, 500).slice(1, -1) + ")");
   try {
     const result = await method(...call.args);
-    return result === undefined || result === null ? "" : String(result);
+    const text = result === undefined || result === null ? "" : String(result);
+    if (traceTag) crashTrace.note(traceTag, call.name + " -> " + (Date.now() - traceStarted) + " ms: " + crashTrace.clip(text, 300));
+    return text;
   } catch (error) {
+    if (traceTag) crashTrace.note(traceTag, call.name + " threw after " + (Date.now() - traceStarted) + " ms: " + crashTrace.errorText(error));
     console.error("TypeR:", call.name, (error && error.stack) || error);
     return "EvalScript error.";
   } finally {
@@ -290,7 +311,12 @@ const requests = {
 };
 Object.assign(requests, services.requests);
 
+// Panel requests in the crash trace: evalScript has its own lines, and the
+// storage writes and log lines say nothing about Photoshop
+const UNTRACED_REQUESTS = { evalScript: true, writeMirror: true, deleteMirror: true, flushMirror: true, log: true };
+
 async function handleRequest(message) {
+  if (crashTrace && !UNTRACED_REQUESTS[message.method]) crashTrace.note("request", String(message.method));
   const handler = Object.prototype.hasOwnProperty.call(requests, message.method) ? requests[message.method] : null;
   if (!handler) {
     post({ type: "reply", id: message.id, error: "Unknown request " + message.method });
@@ -441,9 +467,11 @@ if (typeof TYPER_DEV !== "undefined" && TYPER_DEV) {
 uxp.entrypoints.setup({
   plugin: {
     create() {
+      if (crashTrace) crashTrace.note("lifecycle", "plugin create");
       startOnce();
     },
     destroy() {
+      if (crashTrace) crashTrace.note("lifecycle", "plugin destroy (Photoshop closed TypeR normally)");
       keysHelper.stop();
       return mirror.flush();
     },
@@ -451,19 +479,23 @@ uxp.entrypoints.setup({
   panels: {
     typer: {
       create() {
+        if (crashTrace) crashTrace.note("lifecycle", "panel create");
         attachView();
         startOnce();
       },
       show() {
+        if (crashTrace) crashTrace.note("lifecycle", "panel show");
         attachView();
         panelVisible = true;
         post({ type: "visibility", hidden: false });
       },
       hide() {
+        if (crashTrace) crashTrace.note("lifecycle", "panel hide");
         panelVisible = false;
         post({ type: "visibility", hidden: true });
       },
       destroy() {
+        if (crashTrace) crashTrace.note("lifecycle", "panel destroy");
         return mirror.flush();
       },
     },

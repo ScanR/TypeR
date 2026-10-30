@@ -141,7 +141,9 @@ function packageCcx(manifest) {
   if (JSON.parse(Buffer.from(check["manifest.json"]).toString("utf8")).version !== manifest.version) throw new Error("Package check failed");
   const directory = path.join(root, "Releases");
   fs.mkdirSync(directory, { recursive: true });
-  const name = process.argv.includes("--dev") ? "TypeR-UXP-dev.ccx" : "TypeR-UXP.ccx";
+  // --trace: the crash trace build (uxp-src/host/crashTrace.js), sent to a
+  // user whose Photoshop crashes
+  const name = process.argv.includes("--dev") ? "TypeR-UXP-dev.ccx" : process.argv.includes("--trace") ? "TypeR-UXP-trace.ccx" : "TypeR-UXP.ccx";
   const target = path.join(directory, name);
   fs.writeFileSync(target, zip);
   fs.writeFileSync(target + ".sha256", sha256(zip) + "  " + name + "\n");

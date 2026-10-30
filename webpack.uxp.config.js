@@ -31,7 +31,7 @@ const hostConfig = (env, argv, entry, filename, library) => ({
       },
     ],
   },
-  plugins: [new webpack.DefinePlugin({ TYPER_DEV: JSON.stringify(!!env.dev) })],
+  plugins: [new webpack.DefinePlugin({ TYPER_DEV: JSON.stringify(!!env.dev), TYPER_TRACE: JSON.stringify(!!env.trace) })],
   optimization: { minimize: false },
   performance: { hints: false },
 });
