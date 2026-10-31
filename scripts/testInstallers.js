@@ -244,6 +244,24 @@ sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
       assert.match(computer.legacyManifest(), /<Menu>TypeR \(old\)<\/Menu>/, 'Legacy is kept as it was, renamed');
       assert.match(computer.legacyManifest(), /Version="3\.0\.0"/);
 
+      // The versions found: under each option of the menu, and said once updated
+      computer = machine({ legacy: true });
+      const shown = computer.runInTerminal('\r');
+      ok(shown);
+      assert.match(shown.stdout, /3\.0\.0\D+3\.1\.0/, 'the menu says which version it updates');
+      computer = machine({ plugin: true });
+      const told = computer.run();
+      ok(told);
+      assert.match(told.stdout, /3\.0\.0 → 3\.1\.0/, 'the end says what changed');
+      const installedRoot = path.join(sandbox, 'versions');
+      fs.mkdirSync(path.join(installedRoot, 'cep', 'CSXS'), { recursive: true });
+      fs.writeFileSync(path.join(installedRoot, 'cep', 'CSXS', 'manifest.xml'), LEGACY_MANIFEST);
+      for (const name of ['3.0.0', '3.10.0', '3.9.0', '4.0.0.installing']) fs.mkdirSync(path.join(installedRoot, 'UXP', 'Plugins', 'External', 'com.scanr.typer_' + name), { recursive: true });
+      const found = runInstaller([], { TYPER_INSTALL_PROBE: 'installed', TYPER_INSTALL_TARGET: path.join(installedRoot, 'cep'), TYPER_UXP_ROOT: path.join(installedRoot, 'UXP') });
+      assert.strictEqual(found.status, 0, found.stderr + found.stdout);
+      assert.match(found.stdout, /legacy=3\.0\.0/);
+      assert.match(found.stdout, /uxp=3\.10\.0/, 'the newest folder, compared as numbers, not an interrupted one');
+
       // 2 keeps Legacy (the second Enter answers "Photoshop is open" if it is), and Q changes nothing
       computer = machine({ legacy: true });
       ok(computer.runInTerminal('2\r\r'));
@@ -287,13 +305,13 @@ sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
 
   // Both the bash installer's messages and the PowerShell ones exist in every language
   const macText = fs.readFileSync(path.join(root, 'installer', 'install_mac.sh'), 'utf8');
-  for (const name of ['TITLE', 'UXP_NAME', 'LEGACY_NAME', 'RECOMMENDED', 'KEYS', 'CANCELLED', 'PS_FOUND', 'PS_NONE', 'UXP_TOO_OLD']) {
+  for (const name of ['TITLE', 'UXP_NAME', 'LEGACY_NAME', 'RECOMMENDED', 'KEYS', 'CANCELLED', 'PS_FOUND', 'PS_NONE', 'UXP_TOO_OLD', 'STATUS_UPDATE', 'STATUS_CURRENT', 'STATUS_NEWER', 'CHOOSE_UPDATE', 'UPDATED']) {
     for (const language of ['EN', 'FR', 'ES', 'PT']) assert.ok(macText.includes(`MSG_${name}_${language}=`), name + ' ' + language);
   }
   const winBytes = fs.readFileSync(path.join(root, 'installer', 'install.ps1'));
   assert.deepStrictEqual([...winBytes.subarray(0, 3)], [0xef, 0xbb, 0xbf], 'Windows PowerShell 5.1 misreads accents without a byte order mark');
   const winText = winBytes.toString('utf8');
-  for (const name of ['title', 'uxp_name', 'legacy_name', 'recommended', 'keys', 'cancelled', 'ps_found', 'ps_none', 'uxp_too_old']) {
+  for (const name of ['title', 'uxp_name', 'legacy_name', 'recommended', 'keys', 'cancelled', 'ps_found', 'ps_none', 'uxp_too_old', 'status_update', 'status_current', 'status_newer', 'choose_update', 'updated']) {
     assert.strictEqual(winText.split(`$msg_${name} = `).length - 1, 4, name);
   }
   assert.ok(/^[\x00-\x7f]*$/.test(fs.readFileSync(path.join(root, 'get.ps1'), 'utf8')), 'get.ps1 stays ASCII');

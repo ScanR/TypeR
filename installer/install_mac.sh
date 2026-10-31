@@ -52,6 +52,11 @@ MSG_UXP_DOWNLOAD_EN="Downloading the new TypeR (UXP)..."
 MSG_UXP_INSTALLING_EN="Installing the new TypeR (UXP)..."
 MSG_UXP_COMPLETE_EN="TypeR is installed: in Photoshop, open it from the menu [Plugins] > [TypeR]. If TypeR was already installed, restart Photoshop."
 MSG_UXP_COMPLETE_MANUAL_EN="TypeR is installed: restart Photoshop if it is open, then open TypeR from the menu [Plugins] > [TypeR]."
+MSG_STATUS_UPDATE_EN="Installed version: {old}, updates to {new}"
+MSG_STATUS_CURRENT_EN="Installed version: {new}, up to date"
+MSG_STATUS_NEWER_EN="Installed version: {old}, newer than this archive ({new})"
+MSG_CHOOSE_UPDATE_EN="Which version of TypeR do you want to update or install?"
+MSG_UPDATED_EN="TypeR was updated: {old} → {new}"
 MSG_UXP_FAILED_EN="The installation failed. Close Photoshop and run this script again."
 
 # —————————————————————————————————————————————————————————————
@@ -86,6 +91,11 @@ MSG_UXP_DOWNLOAD_FR="Téléchargement du nouveau TypeR (UXP)..."
 MSG_UXP_INSTALLING_FR="Installation du nouveau TypeR (UXP)..."
 MSG_UXP_COMPLETE_FR="TypeR est installé : dans Photoshop, ouvrez-le depuis le menu [Plug-ins] > [TypeR]. Si TypeR était déjà installé, redémarrez Photoshop."
 MSG_UXP_COMPLETE_MANUAL_FR="TypeR est installé : redémarrez Photoshop s'il est ouvert, puis ouvrez TypeR depuis le menu [Plug-ins] > [TypeR]."
+MSG_STATUS_UPDATE_FR="Version installée : {old}, mise à jour vers {new}"
+MSG_STATUS_CURRENT_FR="Version installée : {new}, à jour"
+MSG_STATUS_NEWER_FR="Version installée : {old}, plus récente que cette archive ({new})"
+MSG_CHOOSE_UPDATE_FR="Quelle version de TypeR voulez-vous mettre à jour ou installer ?"
+MSG_UPDATED_FR="TypeR a été mis à jour : {old} → {new}"
 MSG_UXP_FAILED_FR="L'installation a échoué. Fermez Photoshop et relancez ce script."
 
 # —————————————————————————————————————————————————————————————
@@ -120,6 +130,11 @@ MSG_UXP_DOWNLOAD_ES="Descargando el nuevo TypeR (UXP)..."
 MSG_UXP_INSTALLING_ES="Instalando el nuevo TypeR (UXP)..."
 MSG_UXP_COMPLETE_ES="TypeR está instalado: en Photoshop, ábrelo desde el menú [Plugins] > [TypeR]. Si TypeR ya estaba instalado, reinicia Photoshop."
 MSG_UXP_COMPLETE_MANUAL_ES="TypeR está instalado: reinicia Photoshop si está abierto y abre TypeR desde el menú [Plugins] > [TypeR]."
+MSG_STATUS_UPDATE_ES="Versión instalada: {old}, se actualiza a {new}"
+MSG_STATUS_CURRENT_ES="Versión instalada: {new}, al día"
+MSG_STATUS_NEWER_ES="Versión instalada: {old}, más reciente que este archivo ({new})"
+MSG_CHOOSE_UPDATE_ES="¿Qué versión de TypeR quieres actualizar o instalar?"
+MSG_UPDATED_ES="TypeR se ha actualizado: {old} → {new}"
 MSG_UXP_FAILED_ES="La instalación falló. Cierra Photoshop y vuelve a ejecutar este script."
 
 # —————————————————————————————————————————————————————————————
@@ -154,6 +169,11 @@ MSG_UXP_DOWNLOAD_PT="Baixando o novo TypeR (UXP)..."
 MSG_UXP_INSTALLING_PT="Instalando o novo TypeR (UXP)..."
 MSG_UXP_COMPLETE_PT="O TypeR está instalado: no Photoshop, abra-o pelo menu [Plug-ins] > [TypeR]. Se o TypeR já estava instalado, reinicie o Photoshop."
 MSG_UXP_COMPLETE_MANUAL_PT="O TypeR está instalado: reinicie o Photoshop se estiver aberto e abra o TypeR pelo menu [Plug-ins] > [TypeR]."
+MSG_STATUS_UPDATE_PT="Versão instalada: {old}, atualiza para {new}"
+MSG_STATUS_CURRENT_PT="Versão instalada: {new}, atualizada"
+MSG_STATUS_NEWER_PT="Versão instalada: {old}, mais recente que este arquivo ({new})"
+MSG_CHOOSE_UPDATE_PT="Qual versão do TypeR você quer atualizar ou instalar?"
+MSG_UPDATED_PT="O TypeR foi atualizado: {old} → {new}"
 MSG_UXP_FAILED_PT="A instalação falhou. Feche o Photoshop e execute este script novamente."
 
 # —————————————————————————————————————————————————————————————
@@ -167,7 +187,8 @@ case "$LANGUAGE" in
 esac
 for name in CLOSE_PHOTOSHOP PRESS_KEY INSTALL_COMPLETE OPEN_PHOTOSHOP PRESS_ENTER CREDITS TYPERTOOLS DISCORD \
   TITLE PS_FOUND PS_NONE UXP_NAME UXP_DESC UXP_REQ UXP_TOO_OLD LEGACY_NAME LEGACY_DESC LEGACY_REQ LEGACY_ROSETTA RECOMMENDED KEYS CANCELLED \
-  CHOOSE CHOICE_PROMPT BOTH_INSTALLED UXP_DOWNLOAD UXP_INSTALLING UXP_COMPLETE UXP_COMPLETE_MANUAL UXP_FAILED; do
+  CHOOSE CHOICE_PROMPT BOTH_INSTALLED UXP_DOWNLOAD UXP_INSTALLING UXP_COMPLETE UXP_COMPLETE_MANUAL UXP_FAILED \
+  STATUS_UPDATE STATUS_CURRENT STATUS_NEWER CHOOSE_UPDATE UPDATED; do
   localized="MSG_${name}_${LANGUAGE_SUFFIX}"
   printf -v "MSG_$name" '%s' "${!localized}"
 done
@@ -250,14 +271,84 @@ detect_photoshops() {
   fi
 }
 
+# What is installed: the versions found before the installation changes them
+CEP_DESTDIR="${TYPER_INSTALL_TARGET:-${HOME}/Library/Application Support/Adobe/CEP/extensions/typertools}"
+UXP_ROOT="${TYPER_UXP_ROOT:-${HOME}/Library/Application Support/Adobe/UXP}"
+UXP_PLUGINS="$UXP_ROOT/Plugins/External"
+UXP_REGISTRY="$UXP_ROOT/PluginsInfo/v1/PS.json"
+
+compare_versions() {
+  awk -v left="$1" -v right="$2" 'BEGIN {
+    left_count = split(left, left_parts, /[^0-9]+/)
+    right_count = split(right, right_parts, /[^0-9]+/)
+    count = left_count > right_count ? left_count : right_count
+    for (i = 1; i <= count; i++) {
+      left_part = left_parts[i] + 0; right_part = right_parts[i] + 0
+      if (left_part > right_part) { print 1; exit }
+      if (left_part < right_part) { print -1; exit }
+    }
+    print 0
+  }'
+}
+
+installed_legacy_version() {
+  (grep -oE '<Extension Id="typer" Version="[^"]+"' "$CEP_DESTDIR/CSXS/manifest.xml" 2>/dev/null || true) \
+    | sed -E 's/.*Version="([^"]+)".*/\1/' | head -n 1
+}
+
+# After an update by hand, the previous folder stays until Photoshop runs the new one
+installed_plugin_version() {
+  local folder version newest=""
+  for folder in "$UXP_PLUGINS"/com.scanr.typer_*; do
+    [ -d "$folder" ] || continue
+    version="${folder##*/com.scanr.typer_}"
+    case "$version" in *.installing) continue ;; esac
+    if [ -z "$newest" ] || [ "$(compare_versions "$version" "$newest")" = 1 ]; then newest="$version"; fi
+  done
+  printf '%s' "$newest"
+}
+
+LEGACY_VERSION="$(installed_legacy_version)"
+PLUGIN_VERSION="$(installed_plugin_version)"
+
+format_versions() {
+  local text="$1"
+  text="${text//\{old\}/$2}"
+  printf '%s' "${text//\{new\}/$3}"
+}
+
+# The line under a version already installed, compared with this archive's
+version_status() {
+  local installed="$1"
+  if [ -z "$installed" ] || [ -z "$EXT_VERSION" ]; then return 0; fi
+  case "$(compare_versions "$installed" "$EXT_VERSION")" in
+    -1) format_versions "$MSG_STATUS_UPDATE" "$installed" "$EXT_VERSION" ;;
+    1) format_versions "$MSG_STATUS_NEWER" "$installed" "$EXT_VERSION" ;;
+    *) format_versions "$MSG_STATUS_CURRENT" "$installed" "$EXT_VERSION" ;;
+  esac
+}
+
+# Says it when a version really changed
+print_update_line() {
+  if [ -n "$1" ] && [ -n "$2" ] && [ "$1" != "$2" ]; then
+    printf '\n  %s✓ %s%s\n' "$GREEN" "$(format_versions "$MSG_UPDATED" "$1" "$2")" "$RESET"
+  fi
+}
+
 draw_option() {
-  local selected="$1" name="$2" recommended="$3" description="$4" requirement="$5" warning="${6:-}" arrow="  " style=""
+  local selected="$1" name="$2" recommended="$3" description="$4" requirement="$5" warning="${6:-}" status="${7:-}" arrow="  " style=""
   if [ "$selected" -eq 1 ]; then arrow="${CYAN}❯${RESET} "; style="$BOLD$CYAN"; fi
   printf '  %s%s%s%s' "$arrow" "$style" "$name" "$RESET"
   if [ "$recommended" -eq 1 ]; then printf '  %s%s%s' "$GREEN" "$MSG_RECOMMENDED" "$RESET"; fi
-  printf '\n      %s%s%s\n      %s%s%s\n' "$DIM" "$description" "$RESET" "$DIM" "$requirement" "$RESET"
+  printf '\n'
+  if [ -n "$status" ]; then printf '      %s%s%s\n' "$GREEN" "$status" "$RESET"; fi
+  printf '      %s%s%s\n      %s%s%s\n' "$DIM" "$description" "$RESET" "$DIM" "$requirement" "$RESET"
   if [ -n "$warning" ]; then printf '      %s%s%s\n' "$YELLOW" "$warning" "$RESET"; fi
   printf '\n'
+}
+
+choose_message() {
+  if [ -n "$LEGACY_VERSION$PLUGIN_VERSION" ]; then printf '%s' "$MSG_CHOOSE_UPDATE"; else printf '%s' "$MSG_CHOOSE"; fi
 }
 
 draw_menu() {
@@ -270,9 +361,9 @@ draw_menu() {
   if [ -n "$PHOTOSHOPS" ]; then printf '  %s %s%s%s\n\n' "$MSG_PS_FOUND" "$BOLD" "$PHOTOSHOPS" "$RESET"
   else printf '  %s%s%s\n\n' "$YELLOW" "$MSG_PS_NONE" "$RESET"
   fi
-  printf '  %s\n\n' "$MSG_CHOOSE"
-  draw_option "$([ "$1" = uxp ] && echo 1 || echo 0)" "$MSG_UXP_NAME" "$uxp_recommended" "$MSG_UXP_DESC" "$MSG_UXP_REQ" "$uxp_warning"
-  draw_option "$([ "$1" = legacy ] && echo 1 || echo 0)" "$MSG_LEGACY_NAME" "$legacy_recommended" "$MSG_LEGACY_DESC" "$MSG_LEGACY_REQ" "$legacy_warning"
+  printf '  %s\n\n' "$(choose_message)"
+  draw_option "$([ "$1" = uxp ] && echo 1 || echo 0)" "$MSG_UXP_NAME" "$uxp_recommended" "$MSG_UXP_DESC" "$MSG_UXP_REQ" "$uxp_warning" "$(version_status "$PLUGIN_VERSION")"
+  draw_option "$([ "$1" = legacy ] && echo 1 || echo 0)" "$MSG_LEGACY_NAME" "$legacy_recommended" "$MSG_LEGACY_DESC" "$MSG_LEGACY_REQ" "$legacy_warning" "$(version_status "$LEGACY_VERSION")"
   printf '  %s%s%s\n' "$DIM" "$MSG_KEYS" "$RESET"
 }
 
@@ -313,10 +404,16 @@ choose_with_menu() {
 
 # Without a real terminal (output piped): the same choice as a question
 choose_with_prompt() {
-  local default=1 choice uxp_tag="" legacy_tag=""
+  local default=1 choice uxp_tag="" legacy_tag="" uxp_status legacy_status
+  uxp_status="$(version_status "$PLUGIN_VERSION")"
+  legacy_status="$(version_status "$LEGACY_VERSION")"
   if [ "$RECOMMENDED" = legacy ]; then default=2; legacy_tag=" $MSG_RECOMMENDED"; fi
   if [ "$RECOMMENDED" = uxp ]; then uxp_tag=" $MSG_RECOMMENDED"; fi
-  printf '%s\n\n  1) %s%s\n     %s\n  2) %s%s\n     %s\n\n' "$MSG_CHOOSE" "$MSG_UXP_NAME" "$uxp_tag" "$MSG_UXP_REQ" "$MSG_LEGACY_NAME" "$legacy_tag" "$MSG_LEGACY_REQ"
+  printf '%s\n\n  1) %s%s\n' "$(choose_message)" "$MSG_UXP_NAME" "$uxp_tag"
+  if [ -n "$uxp_status" ]; then printf '     %s\n' "$uxp_status"; fi
+  printf '     %s\n  2) %s%s\n' "$MSG_UXP_REQ" "$MSG_LEGACY_NAME" "$legacy_tag"
+  if [ -n "$legacy_status" ]; then printf '     %s\n' "$legacy_status"; fi
+  printf '     %s\n\n' "$MSG_LEGACY_REQ"
   while true; do
     read -r -p "${MSG_CHOICE_PROMPT//%s/$default}" choice
     case "${choice:-$default}" in
@@ -330,6 +427,11 @@ choose_with_prompt() {
 if [ "${TYPER_INSTALL_PROBE:-}" = recommendation ]; then
   detect_photoshops
   printf 'recommended=%s\nphotoshops=%s\n' "$RECOMMENDED" "$PHOTOSHOPS"
+  exit 0
+fi
+if [ "${TYPER_INSTALL_PROBE:-}" = installed ]; then
+  if [ -n "$PLUGIN_VERSION" ]; then printf 'installed=uxp\n'; fi
+  printf 'legacy=%s\nuxp=%s\n' "$LEGACY_VERSION" "$PLUGIN_VERSION"
   exit 0
 fi
 if [ -z "$EDITION" ]; then
@@ -363,11 +465,6 @@ print_credits() {
 }
 
 photoshop_is_running() { pgrep -f '/Contents/MacOS/Adobe Photoshop' >/dev/null 2>&1; }
-
-CEP_DESTDIR="${TYPER_INSTALL_TARGET:-${HOME}/Library/Application Support/Adobe/CEP/extensions/typertools}"
-UXP_ROOT="${TYPER_UXP_ROOT:-${HOME}/Library/Application Support/Adobe/UXP}"
-UXP_PLUGINS="$UXP_ROOT/Plugins/External"
-UXP_REGISTRY="$UXP_ROOT/PluginsInfo/v1/PS.json"
 
 # —————————————————————————————————————————————————————————————
 # Version UXP : le paquet .ccx (celui de l'archive, sinon la dernière
@@ -487,6 +584,7 @@ if [ "$EDITION" = uxp ]; then
     fi
   fi
   rename_legacy_panel
+  print_update_line "$PLUGIN_VERSION" "$(installed_plugin_version)"
   printf '\n  %s✓ %s%s\n' "$GREEN" "$COMPLETE_MESSAGE" "$RESET"
   if [ -d "$CEP_DESTDIR/CSXS" ]; then printf '  %s%s%s\n' "$YELLOW" "$MSG_BOTH_INSTALLED" "$RESET"; fi
   print_credits
@@ -570,6 +668,7 @@ if [ -z "${TYPER_INSTALL_SKIP_DEBUG:-}" ]; then
   ROSETTA_FIX="$(cd "$(dirname "$0")" && pwd)/fix_mac_rosetta.sh"
   if [ -f "$ROSETTA_FIX" ]; then TYPER_INSTALL_TARGET="$DESTDIR" bash "$ROSETTA_FIX" --from-installer || true; fi
 fi
+print_update_line "$LEGACY_VERSION" "$EXT_VERSION"
 printf '\n  %s✓ %s%s\n  %s\n' "$GREEN" "$MSG_INSTALL_COMPLETE" "$RESET" "$MSG_OPEN_PHOTOSHOP"
 if compgen -G "$UXP_PLUGINS/com.scanr.typer_*" >/dev/null; then printf '  %s%s%s\n' "$YELLOW" "$MSG_BOTH_INSTALLED" "$RESET"; fi
 print_credits

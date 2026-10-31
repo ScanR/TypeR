@@ -244,6 +244,11 @@ recommends nothing, with the cursor on UXP. The other choice stays selectable, f
 upgrade. On Windows, the search reads the registry and `Program Files\Adobe` on every drive; on macOS,
 `/Applications`, `~/Applications` and Spotlight.
 
+When TypeR is already installed, the installer reads each version it finds (`CSXS/manifest.xml` for Legacy; for
+the plugin, the `com.scanr.typer_<version>` folders on macOS, and the manifest of every copy on Windows, where
+copies can also be in Photoshop's `Plug-ins` folders; the newest counts) and says under that option whether it updates it,
+is up to date, or is newer than the archive. It then says what changed at the end.
+
 `scripts/testInstallers.js` covers these rules. The keys need a terminal: to try them without installing
 anything, run the script with `TYPER_INSTALL_PROBE=choice`, which prints the choice and stops, and
 `TYPER_PHOTOSHOP_VERSIONS="Photoshop 2024=25.0.0"`, which replaces the search.

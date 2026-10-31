@@ -12,6 +12,9 @@ $TestRoot = Join-Path ([IO.Path]::GetTempPath()) ('TypeR-installer-tests-' + [Gu
 $null = New-Item -ItemType Directory -Path $TestRoot
 $Interactive = $false
 $msg_close = 'Photoshop must be closed.'
+$msg_status_update = 'update {old} {new}'
+$msg_status_current = 'current {new}'
+$msg_status_newer = 'newer {old} {new}'
 $script:CaseNumber = 0
 $script:Passed = 0
 $OriginalVerifier = ${function:Assert-TypeRInstalledFiles}
@@ -155,6 +158,28 @@ try {
         $Result = Invoke-UpdaterFixture $true $false '' $false
         Assert ($Result.ExitCode -eq 0) $Result.Output
         Assert (-not $Result.Calls[0].Package -and $Result.Calls[0].Source -ne (Join-Path $Fixture 'updater')) 'Wrong missing-package fallback'
+    }
+    Test 'Installed versions come from the manifests, newest copy first' {
+        New-Plugin $Direct '3.0.0'
+        New-Plugin (Join-Path $UxpPlugins 'arbitrary-folder-name') '3.10.0'
+        New-Plugin (Join-Path $UxpPlugins 'com.scanr.typer_3.9.0') '3.9.0'
+        New-Plugin (Join-Path $UxpPlugins 'com.scanr.typer_4.0.0.installing') '4.0.0'
+        Assert ((Get-TypeRPluginVersion) -eq '3.10.0') 'Wrong plugin version'
+        $script:CepTarget = Join-Path $Fixture 'cep'
+        Assert ((Get-TypeRLegacyVersion) -eq '') 'A missing Legacy has no version'
+        Write-Text (Join-Path $CepTarget 'CSXS\manifest.xml') '<Extension Id="typer" Version="2.5.0" />'
+        Assert ((Get-TypeRLegacyVersion) -eq '2.5.0') 'Wrong Legacy version'
+    }
+    Test 'An unreadable plugin manifest never stops the version display' {
+        Write-Text (Join-Path $UxpPlugins 'broken\manifest.json') '{broken'
+        Assert ((Get-TypeRPluginVersion) -eq '') 'Detection error escaped'
+    }
+    Test 'The menu says how an installed version compares with the archive' {
+        $script:ExtVersion = '3.1.0'
+        Assert ((Get-TypeRVersionStatus '') -eq '') 'Status for a version not installed'
+        Assert ((Get-TypeRVersionStatus '3.0.9') -eq 'update 3.0.9 3.1.0') 'Older version'
+        Assert ((Get-TypeRVersionStatus '3.1.0') -eq 'current 3.1.0') 'Same version'
+        Assert ((Get-TypeRVersionStatus '3.10.0') -eq 'newer 3.10.0 3.1.0') 'Compared as text'
     }
     Test 'Fresh external install preserves other plugins and registry properties' {
         $Other = '{"schema":7,"plugins":[{"pluginId":"other","path":"other-path","extra":[1,2]}]}'

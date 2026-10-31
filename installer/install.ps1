@@ -61,6 +61,11 @@ $msg_uxp_download = "Downloading the new TypeR (UXP)..."
 $msg_uxp_installing = "Installing the new TypeR (UXP)..."
 $msg_uxp_complete = "TypeR is installed: in Photoshop, open it from the menu [Plugins] > [TypeR]. If TypeR was already installed, restart Photoshop."
 $msg_uxp_complete_manual = "TypeR is installed: restart Photoshop if it is open, then open TypeR from the menu [Plugins] > [TypeR]."
+$msg_status_update = "Installed version: {old}, updates to {new}"
+$msg_status_current = "Installed version: {new}, up to date"
+$msg_status_newer = "Installed version: {old}, newer than this archive ({new})"
+$msg_choose_update = "Which version of TypeR do you want to update or install?"
+$msg_updated = "TypeR was updated: {old} → {new}"
 $msg_uxp_failed = "Installation failed. See the error above; no success was confirmed."
 
 if ($Lang -eq "fr") {
@@ -91,6 +96,11 @@ if ($Lang -eq "fr") {
     $msg_uxp_installing = "Installation du nouveau TypeR (UXP)..."
     $msg_uxp_complete = "TypeR est installé : dans Photoshop, ouvrez-le depuis le menu [Plug-ins] > [TypeR]. Si TypeR était déjà installé, redémarrez Photoshop."
     $msg_uxp_complete_manual = "TypeR est installé : redémarrez Photoshop s'il est ouvert, puis ouvrez TypeR depuis le menu [Plug-ins] > [TypeR]."
+    $msg_status_update = "Version installée : {old}, mise à jour vers {new}"
+    $msg_status_current = "Version installée : {new}, à jour"
+    $msg_status_newer = "Version installée : {old}, plus récente que cette archive ({new})"
+    $msg_choose_update = "Quelle version de TypeR voulez-vous mettre à jour ou installer ?"
+    $msg_updated = "TypeR a été mis à jour : {old} → {new}"
     $msg_uxp_failed = "L'installation a échoué. Consultez l'erreur ci-dessus ; aucun succès n'a été confirmé."
 }
 elseif ($Lang -eq "es") {
@@ -121,6 +131,11 @@ elseif ($Lang -eq "es") {
     $msg_uxp_installing = "Instalando el nuevo TypeR (UXP)..."
     $msg_uxp_complete = "TypeR está instalado: en Photoshop, ábrelo desde el menú [Plugins] > [TypeR]. Si TypeR ya estaba instalado, reinicia Photoshop."
     $msg_uxp_complete_manual = "TypeR está instalado: reinicia Photoshop si está abierto y abre TypeR desde el menú [Plugins] > [TypeR]."
+    $msg_status_update = "Versión instalada: {old}, se actualiza a {new}"
+    $msg_status_current = "Versión instalada: {new}, al día"
+    $msg_status_newer = "Versión instalada: {old}, más reciente que este archivo ({new})"
+    $msg_choose_update = "¿Qué versión de TypeR quieres actualizar o instalar?"
+    $msg_updated = "TypeR se ha actualizado: {old} → {new}"
     $msg_uxp_failed = "La instalación falló. Consulta el error anterior."
 }
 elseif ($Lang -eq "pt") {
@@ -151,6 +166,11 @@ elseif ($Lang -eq "pt") {
     $msg_uxp_installing = "Instalando o novo TypeR (UXP)..."
     $msg_uxp_complete = "O TypeR está instalado: no Photoshop, abra-o pelo menu [Plug-ins] > [TypeR]. Se o TypeR já estava instalado, reinicie o Photoshop."
     $msg_uxp_complete_manual = "O TypeR está instalado: reinicie o Photoshop se estiver aberto e abra o TypeR pelo menu [Plug-ins] > [TypeR]."
+    $msg_status_update = "Versão instalada: {old}, atualiza para {new}"
+    $msg_status_current = "Versão instalada: {new}, atualizada"
+    $msg_status_newer = "Versão instalada: {old}, mais recente que este arquivo ({new})"
+    $msg_choose_update = "Qual versão do TypeR você quer atualizar ou instalar?"
+    $msg_updated = "O TypeR foi atualizado: {old} → {new}"
     $msg_uxp_failed = "A instalação falhou. Consulte o erro acima."
 }
 
@@ -273,7 +293,7 @@ function Update-TypeRRecommendation {
     $script:Recommended = if ($Newest -ge 26) { 'uxp' } elseif ($Newest -gt 0) { 'legacy' } else { '' }
 }
 
-function Write-TypeROption([bool]$Selected, [string]$Name, [bool]$IsRecommended, [string]$Description, [string]$Requirement, [string]$Warning) {
+function Write-TypeROption([bool]$Selected, [string]$Name, [bool]$IsRecommended, [string]$Description, [string]$Requirement, [string]$Warning, [string]$Status) {
     if ($Selected) {
         Write-Host "  > " -ForegroundColor Cyan -NoNewline
         Write-Host $Name -ForegroundColor Cyan -NoNewline
@@ -282,6 +302,7 @@ function Write-TypeROption([bool]$Selected, [string]$Name, [bool]$IsRecommended,
     }
     if ($IsRecommended) { Write-Host "  $msg_recommended" -ForegroundColor Green -NoNewline }
     Write-Host ""
+    if ($Status) { Write-Host "      $Status" -ForegroundColor Green }
     Write-Host "      $Description" -ForegroundColor DarkGray
     Write-Host "      $Requirement" -ForegroundColor DarkGray
     if ($Warning) { Write-Host "      $Warning" -ForegroundColor Yellow }
@@ -290,8 +311,8 @@ function Write-TypeROption([bool]$Selected, [string]$Name, [bool]$IsRecommended,
 
 function Write-TypeRMenu([string]$Cursor) {
     $UxpWarning = if ($Recommended -eq 'legacy') { $msg_uxp_too_old } else { '' }
-    Write-TypeROption ($Cursor -eq 'uxp') $msg_uxp_name ($Recommended -eq 'uxp') $msg_uxp_desc $msg_uxp_req $UxpWarning
-    Write-TypeROption ($Cursor -eq 'legacy') $msg_legacy_name ($Recommended -eq 'legacy') $msg_legacy_desc $msg_legacy_req ''
+    Write-TypeROption ($Cursor -eq 'uxp') $msg_uxp_name ($Recommended -eq 'uxp') $msg_uxp_desc $msg_uxp_req $UxpWarning $PluginStatus
+    Write-TypeROption ($Cursor -eq 'legacy') $msg_legacy_name ($Recommended -eq 'legacy') $msg_legacy_desc $msg_legacy_req '' $LegacyStatus
     Write-Host "  $msg_keys" -ForegroundColor DarkGray
 }
 
@@ -308,7 +329,7 @@ function Read-TypeREditionFromMenu {
         Write-Host "  $msg_ps_none" -ForegroundColor Yellow
     }
     Write-Host ""
-    Write-Host "  $msg_choose"
+    Write-Host "  $ChooseMessage"
     Write-Host ""
     [Console]::CursorVisible = $false
     # Ctrl+C is read like the other keys, so that it cancels like Q
@@ -316,7 +337,10 @@ function Read-TypeREditionFromMenu {
     try {
         Write-TypeRMenu $Cursor
         # The console may have scrolled: the height of the menu locates its top
-        $Height = if ($Recommended -eq 'legacy') { 10 } else { 9 }
+        $Height = 9
+        if ($Recommended -eq 'legacy') { $Height++ }
+        if ($PluginStatus) { $Height++ }
+        if ($LegacyStatus) { $Height++ }
         $Top = [Math]::Max(0, [Console]::CursorTop - $Height)
         while ($true) {
             $Key = [Console]::ReadKey($true)
@@ -348,11 +372,13 @@ function Read-TypeREditionFromPrompt {
     $Default = if ($Recommended -eq 'legacy') { '2' } else { '1' }
     $UxpTag = if ($Recommended -eq 'uxp') { " $msg_recommended" } else { '' }
     $LegacyTag = if ($Recommended -eq 'legacy') { " $msg_recommended" } else { '' }
-    Write-Host $msg_choose
+    Write-Host $ChooseMessage
     Write-Host ""
     Write-Host "  1) $msg_uxp_name$UxpTag"
+    if ($PluginStatus) { Write-Host "     $PluginStatus" }
     Write-Host "     $msg_uxp_req"
     Write-Host "  2) $msg_legacy_name$LegacyTag"
+    if ($LegacyStatus) { Write-Host "     $LegacyStatus" }
     Write-Host "     $msg_legacy_req"
     Write-Host ""
     while ($true) {
@@ -363,40 +389,6 @@ function Read-TypeREditionFromPrompt {
     }
 }
 
-# --- 4. Choix de la version : UXP ou Legacy (CEP) ---
-if ($Uxp -and $Legacy) { throw 'Choose either -Uxp or -Legacy.' }
-if ($env:TYPER_INSTALL_PROBE -eq 'recommendation') {
-    Update-TypeRRecommendation
-    Write-Output "recommended=$Recommended"
-    Write-Output "photoshops=$PhotoshopList"
-    return
-}
-$Edition = if ($env:TYPER_INSTALL_PROBE -eq 'installed') { 'probe' } elseif ($Uxp) { 'uxp' } elseif ($Legacy) { 'legacy' } else { $null }
-if (-not $Edition) {
-    $Edition = 'legacy'
-    if ($Interactive) {
-        Update-TypeRRecommendation
-        if ($Fancy) {
-            $Edition = Read-TypeREditionFromMenu
-            if (-not $Edition) {
-                Write-Host ""
-                Write-Host "  $msg_cancelled"
-                Write-Host ""
-                exit 130
-            }
-        } else {
-            $Edition = Read-TypeREditionFromPrompt
-        }
-    }
-}
-if ($env:TYPER_INSTALL_PROBE -eq 'choice') {
-    Write-Output "edition=$Edition"
-    return
-}
-if ($Fancy) {
-    Clear-Host
-    Write-TypeRHeader
-}
 $CepTarget = if ($env:TYPER_INSTALL_TARGET) { $env:TYPER_INSTALL_TARGET } else { Join-Path $env:APPDATA 'Adobe\CEP\extensions\typertools' }
 $UxpRoot = if ($env:TYPER_UXP_ROOT) { $env:TYPER_UXP_ROOT } else { Join-Path $env:APPDATA 'Adobe\UXP' }
 $UxpPlugins = Join-Path $UxpRoot 'Plugins\External'
@@ -787,14 +779,109 @@ function Rename-TypeRLegacyPanel {
     }
 }
 
-# --- 5. UXP: install directly and verify actual files, never trust UPIA's
-# exit code (it can report success without installing anything).
+function Compare-TypeRVersions([string]$Left, [string]$Right) {
+    $LeftParts = @($Left -split '[^0-9]+' | Where-Object { $_ -ne '' })
+    $RightParts = @($Right -split '[^0-9]+' | Where-Object { $_ -ne '' })
+    $Count = [Math]::Max($LeftParts.Count, $RightParts.Count)
+    for ($Index = 0; $Index -lt $Count; $Index++) {
+        $LeftPart = if ($Index -lt $LeftParts.Count) { [long]$LeftParts[$Index] } else { 0 }
+        $RightPart = if ($Index -lt $RightParts.Count) { [long]$RightParts[$Index] } else { 0 }
+        if ($LeftPart -gt $RightPart) { return 1 }
+        if ($LeftPart -lt $RightPart) { return -1 }
+    }
+    return 0
+}
+
+function Get-TypeRLegacyVersion {
+    try {
+        $File = Join-Path $CepTarget 'CSXS\manifest.xml'
+        if ((Test-Path -LiteralPath $File -PathType Leaf) -and [IO.File]::ReadAllText($File) -match 'Extension Id="typer".*?Version="([^"]+)"') { return $Matches[1] }
+    } catch { Write-Verbose $_.Exception.Message }
+    return ''
+}
+
+# The newest of the copies found. Showing a version never stops an installation.
+function Get-TypeRPluginVersion {
+    $Newest = ''
+    try {
+        foreach ($Path in @(Get-TypeRInstalledPluginPaths)) {
+            $Version = [string]([IO.File]::ReadAllText((Join-Path $Path 'manifest.json')) | ConvertFrom-Json).version
+            if ($Version -and (-not $Newest -or (Compare-TypeRVersions $Version $Newest) -gt 0)) { $Newest = $Version }
+        }
+    } catch { Write-Verbose $_.Exception.Message }
+    return $Newest
+}
+
+function Format-TypeRVersions([string]$Text, [string]$Old, [string]$New) {
+    return $Text.Replace('{old}', $Old).Replace('{new}', $New)
+}
+
+# The line under a version already installed, compared with this archive's
+function Get-TypeRVersionStatus([string]$Installed) {
+    if (-not $Installed -or $ExtVersion -eq 'Inconnue') { return '' }
+    $Order = Compare-TypeRVersions $Installed $ExtVersion
+    $Text = if ($Order -lt 0) { $msg_status_update } elseif ($Order -gt 0) { $msg_status_newer } else { $msg_status_current }
+    return Format-TypeRVersions $Text $Installed $ExtVersion
+}
+
+# Says it when a version really changed
+function Write-TypeRUpdateLine([string]$Old, [string]$New) {
+    if ($Old -and $New -and $Old -ne $New -and $New -ne 'Inconnue') {
+        Write-Host ""
+        Write-Host "  √ $(Format-TypeRVersions $msg_updated $Old $New)" -ForegroundColor Green
+    }
+}
+
+# --- 4. Choix de la version : UXP ou Legacy (CEP) ---
+if ($Uxp -and $Legacy) { throw 'Choose either -Uxp or -Legacy.' }
+if ($env:TYPER_INSTALL_PROBE -eq 'recommendation') {
+    Update-TypeRRecommendation
+    Write-Output "recommended=$Recommended"
+    Write-Output "photoshops=$PhotoshopList"
+    return
+}
+# What is installed: the versions found before the installation changes them
+$LegacyVersion = Get-TypeRLegacyVersion
+$PluginVersion = Get-TypeRPluginVersion
+$ChooseMessage = if ($LegacyVersion -or $PluginVersion) { $msg_choose_update } else { $msg_choose }
+$LegacyStatus = Get-TypeRVersionStatus $LegacyVersion
+$PluginStatus = Get-TypeRVersionStatus $PluginVersion
 if ($env:TYPER_INSTALL_PROBE -eq 'installed') {
     $Installed = @(Get-TypeRInstalledPluginPaths | Sort-Object -Unique)
     if ($Installed.Count) { Write-Output 'installed=uxp' }
     foreach ($Path in $Installed) { Write-Output "plugin=$Path" }
+    Write-Output "legacy=$LegacyVersion"
+    Write-Output "uxp=$PluginVersion"
     return
 }
+$Edition = if ($Uxp) { 'uxp' } elseif ($Legacy) { 'legacy' } else { $null }
+if (-not $Edition) {
+    $Edition = 'legacy'
+    if ($Interactive) {
+        Update-TypeRRecommendation
+        if ($Fancy) {
+            $Edition = Read-TypeREditionFromMenu
+            if (-not $Edition) {
+                Write-Host ""
+                Write-Host "  $msg_cancelled"
+                Write-Host ""
+                exit 130
+            }
+        } else {
+            $Edition = Read-TypeREditionFromPrompt
+        }
+    }
+}
+if ($env:TYPER_INSTALL_PROBE -eq 'choice') {
+    Write-Output "edition=$Edition"
+    return
+}
+if ($Fancy) {
+    Clear-Host
+    Write-TypeRHeader
+}
+# --- 5. UXP: install directly and verify actual files, never trust UPIA's
+# exit code (it can report success without installing anything).
 if ($Edition -eq 'uxp') {
     $Source = if ($Package) { [IO.Path]::GetFullPath($Package) } else { Join-Path $ScriptDir 'TypeR-UXP.ccx' }
     $Work = Join-Path ([IO.Path]::GetTempPath()) ('TypeR-UXP-' + [Guid]::NewGuid().ToString('N') + '.ccx')
@@ -825,6 +912,7 @@ if ($Edition -eq 'uxp') {
     Write-Host ""
     if ($CompleteMessage) {
         Rename-TypeRLegacyPanel
+        Write-TypeRUpdateLine $PluginVersion (Get-TypeRPluginVersion)
         Write-Host "  √ $CompleteMessage" -ForegroundColor Green
         if (Test-Path -LiteralPath (Join-Path $CepTarget 'CSXS')) { Write-Host "  $msg_both" -ForegroundColor Yellow }
         Write-TypeRCredits
@@ -919,6 +1007,7 @@ if (-not $env:TYPER_INSTALL_SKIP_DEBUG) {
 }
 
 # --- 7. Fin ---
+Write-TypeRUpdateLine $LegacyVersion $ExtVersion
 Write-Host ""
 Write-Host "  √ $msg_complete" -ForegroundColor Green
 Write-Host "  $msg_open" -ForegroundColor Cyan
