@@ -307,6 +307,25 @@ strokePort._setLayerStroke(strokeOff);
 assert.strictEqual(strokeCalls.length, 0, "A disabled stroke must not reach Photoshop");
 strokePort._setLayerStroke({ ...strokeOff, enabled: true });
 assert.strictEqual(strokeCalls.length, 1, "An enabled stroke must reach Photoshop");
+// A content-only paste must write the layer's anti-aliasing back: Photoshop
+// resets a text layer to Sharp when a text set leaves it out
+const contentWrites = [];
+const antiAliasStrong = { _enum: "antiAliasType", _value: "antiAliasStrong" };
+loadPortModule({
+  action: {
+    batchPlay: (commands) => commands.map((command) => {
+      if (command._obj === "get") return { textKey: { textKey: "old", antiAlias: antiAliasStrong } };
+      contentWrites.push(command);
+      return {};
+    }),
+  },
+  app: {},
+  core: {},
+  constants: { LayerKind: {} },
+})._internals._setTextContentsOnly("new");
+assert.strictEqual(contentWrites.length, 1);
+assert.strictEqual(contentWrites[0].to.textKey, "new");
+assert.deepStrictEqual(contentWrites[0].to.antiAlias, antiAliasStrong, "A content-only paste must keep the anti-aliasing");
 ["a\nb\r\nc", "", null, "x\ry"].forEach((text) => assert.strictEqual(port._normalizeTextKey(text), host._normalizeTextKey(text)));
 [undefined, null, {}, { textProps: { layerText: { a: 1 } } }, { stroke: null }].forEach((style) => {
   assert.deepStrictEqual(port._ensureStyle(style), host._ensureStyle(style));

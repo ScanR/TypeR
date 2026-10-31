@@ -2183,6 +2183,8 @@ function _setTextContentsOnly(text) {
   const to = { _obj: "textLayer", textKey: text };
   if (textStyleRange) to.textStyleRange = textStyleRange;
   if (paragraphStyleRange) to.paragraphStyleRange = paragraphStyleRange;
+  // A set without antiAlias resets the layer to Sharp
+  if (textKey.antiAlias) to.antiAlias = textKey.antiAlias;
   play({ _obj: "set", _target: [TARGET_LAYER], to });
 }
 
@@ -3925,7 +3927,7 @@ module.exports = {
   // internals, for tests
   setTrace: (fn) => { trace = fn || null; },
   _internals: {
-    play, get, modal, suspendHistory, jamText, _hostState, _getLayerStroke, _getLayerText,
+    play, get, modal, suspendHistory, jamText, _hostState, _getLayerStroke, _getLayerText, _setTextContentsOnly,
     // smart paste (uxp-src/host/smartPaste.js)
     _makeTextLayer, _applyMiddleEast, _changeToBoxText, _changeToPointText, _setLayerStroke, _getActiveLayerId,
     _layerIsTextLayer, _getTextLayerSize, _getFontList,
