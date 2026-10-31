@@ -38,6 +38,7 @@ import TextShapeRTraining from "./textShapeRTraining";
 import FontFinderLogo from "./fontFinderLogo";
 import MissingFontsDialog from "./missingFontsDialog";
 import { collectMissingStyleFonts } from "../../fontFinderMatch";
+import { NO_TEXT_PRESETS, toolPresetFileToImportData } from "../../toolPresetImport";
 import { getFontViewerStatus } from "../../fontViewerApi";
 import { shortcutCommands } from "../../shortcutCommands";
 import { clearTypeRCache, formatCacheBytes, getTypeRCacheInfo } from "../../cepCache";
@@ -1006,18 +1007,20 @@ const SettingsModal = React.memo(function SettingsModal() {
   };
 
   const importSettings = async () => {
-    const pathSelect = await window.cep.fs.showOpenDialogEx(true, false, null, null, ["json"]);
+    const pathSelect = await window.cep.fs.showOpenDialogEx(true, false, null, null, ["json", "tpl"]);
     if (!pathSelect?.data?.length) return false;
     let foldersImported = 0;
     let backedUp = false;
     const importedStyles = [];
     for (const path of pathSelect.data) {
-      const result = await window.cep.fs.readFile(path);
+      const isToolPresetFile = /\.tpl$/i.test(path);
+      const result = await window.cep.fs.readFile(path, isToolPresetFile ? window.cep.encoding.Base64 : undefined);
       if (result.err) {
         nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
       } else {
         try {
-          const data = validateImportData(JSON.parse(result.data));
+          const data = validateImportData(isToolPresetFile ? toolPresetFileToImportData(result.data, path) : JSON.parse(result.data));
+          if (data.incomplete) nativeAlert(locale.importTplPartial, locale.errorTitle, true);
           if (!backedUp) {
             if (!backupStorage()) { nativeAlert(locale.storageWarning, locale.errorTitle, true); continue; }
             backedUp = true;
@@ -1103,7 +1106,7 @@ const SettingsModal = React.memo(function SettingsModal() {
             closeModal();
           }
         } catch (error) {
-          nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
+          nativeAlert(error.message === NO_TEXT_PRESETS ? locale.importTplNoText : locale.errorImportStyles, locale.errorTitle, true);
         }
       }
     }

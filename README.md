@@ -120,6 +120,8 @@ TextShapeR proposes every good way to break the current line, ranked for the bub
 
 **FontScanR** scans finished `.psd` files and lists the font, usual size, color, stroke and anti-aliasing of their text layers, then turns the ones you pick into TypeR styles. It helps when joining an existing project or recovering a style guide.
 
+Already have Photoshop type tool presets? **Settings > Import styles or settings** also takes `.tpl` files: each file becomes a style folder, with one style per text preset. A `.tpl` holds no layer effects, so add any stroke to the styles afterwards.
+
 **Font FindeR** searches a font catalogue, previews results with your own line and installs them in one click. FontScanR results and imported styles look up the fonts you are missing there.
 
 ### Share with your team
