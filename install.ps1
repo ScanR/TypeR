@@ -208,7 +208,9 @@ function Get-TypeRPhotoshops {
     foreach ($Key in 'HKLM:\SOFTWARE\Adobe\Photoshop', 'HKLM:\SOFTWARE\WOW6432Node\Adobe\Photoshop') {
         foreach ($Child in @(Get-ChildItem -Path $Key -ErrorAction SilentlyContinue)) {
             $Folder = (Get-ItemProperty -Path $Child.PSPath -ErrorAction SilentlyContinue).ApplicationPath
-            if ($Folder) { $Candidates += (Join-Path $Folder 'Photoshop.exe') }
+            # Not Join-Path: it fails on a drive that no longer exists, which an old
+            # installation can leave in the registry
+            if ($Folder) { $Candidates += ([string]$Folder).TrimEnd('\') + '\Photoshop.exe' }
         }
     }
     $AppPath = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Photoshop.exe' -ErrorAction SilentlyContinue
@@ -237,7 +239,10 @@ $PhotoshopList = ''
 function Update-TypeRRecommendation {
     $Names = @()
     $Newest = 0
-    foreach ($Photoshop in @(Get-TypeRPhotoshops)) {
+    # The search never stops an installation: at worst, no recommendation
+    $Photoshops = @()
+    try { $Photoshops = @(Get-TypeRPhotoshops) } catch { Write-Verbose $_.Exception.Message }
+    foreach ($Photoshop in $Photoshops) {
         $Names += $(if ($Photoshop.Version) { "$($Photoshop.Name) ($($Photoshop.Version))" } else { $Photoshop.Name })
         if ([string]$Photoshop.Version -match '^(\d+)') {
             if ([int]$Matches[1] -gt $Newest) { $Newest = [int]$Matches[1] }
