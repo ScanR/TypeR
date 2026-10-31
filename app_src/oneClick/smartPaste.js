@@ -93,9 +93,12 @@ const overrideSize = (style, size) => {
 };
 
 // The style of a line in a bubble of this kind: a script prefix wins, then
-// the style marked for the kind in the current folder, then the line's style
-export const styleForKind = (line, kind, roleStyles) => {
-  if (!line.styleLocked && roleStyles && (kind === "shout" || kind === "narration") && roleStyles[kind]) {
+// the style marked for the kind in the current folder, then the line's style.
+// Narration is detected on Magic Wand selections only: a rectangle or a lasso
+// is the user's own frame, not a box found on the page.
+export const styleForKind = (line, kind, roleStyles, source) => {
+  const detected = kind === "shout" || (kind === "narration" && source === "wand");
+  if (!line.styleLocked && roleStyles && detected && roleStyles[kind]) {
     return { style: roleStyles[kind], role: kind };
   }
   return { style: line.style, role: null };
@@ -156,7 +159,7 @@ export const prepareSmartPaste = async (request, adapter) => {
   for (let i = 0; i < chambers.length; i++) {
     const chamber = chambers[i];
     const line = lines[i];
-    const picked = styleForKind(line, chamber.kind, request.roleStyles);
+    const picked = styleForKind(line, chamber.kind, request.roleStyles, chamber.source);
     if (!validStyle(picked.style)) throw new SmartPasteError("style", "The style has no text settings");
     const pageStyle = resolveStyleSizeForPage(clone(picked.style), page.width);
     const keepsActiveSize = settings.keepSize && input.activeTextSize > 0;

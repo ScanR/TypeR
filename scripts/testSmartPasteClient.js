@@ -321,6 +321,15 @@ const baseState = () => ({
   assert.deepStrictEqual(client.recentSelectionTrigger(), { source: "wand", x: 1, y: 1 });
   client.rememberSelectionTrigger({ source: "lasso" });
   assert.strictEqual(client.recentSelectionTrigger(), null, "a lasso cannot be replayed");
+  // A manual Paste carries the tool of the last selection
+  const manualState = { ...state, currentLineIndex: 1 };
+  client.rememberSelectionTrigger({ source: "wand", x: 1, y: 1 });
+  assert.deepStrictEqual(client.buildSmartPasteRequest(manualState, { source: "manual" }).request.trigger, { source: "manual", lastSource: "wand" });
+  client.rememberSelectionTrigger({ source: "rectangle", left: 0, top: 0, right: 9, bottom: 9 });
+  assert.deepStrictEqual(client.buildSmartPasteRequest(manualState, null).request.trigger, { source: "manual", lastSource: "rectangle" });
+  client.rememberSelectionTrigger(null);
+  assert.deepStrictEqual(client.buildSmartPasteRequest(manualState, null).request.trigger, { source: "manual" });
+  assert.deepStrictEqual(client.buildSmartPasteRequest(manualState, { source: "wand", x: 5, y: 6 }).request.trigger, { source: "wand", x: 5, y: 6 });
 
   // Paste on click gate
   const gate = require("./helpers/loadAppModule")({

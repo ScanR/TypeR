@@ -105,7 +105,7 @@ export const buildSmartPasteRequest = (state, trigger, options = {}) => {
   return {
     lineIndexes: picked.map((entry) => entry.index),
     request: {
-      trigger: trigger || { source: "manual" },
+      trigger: trigger && trigger.source !== "manual" ? trigger : manualTrigger(),
       lines,
       roleStyles: roleStylesFor(state),
       settings: {
@@ -237,6 +237,8 @@ export const recentSelectionTrigger = (maxAge = 4000) => (
     ? lastTrigger.trigger
     : null
 );
+// A manual Paste, with the tool of the last selection (see captureSource)
+const manualTrigger = () => (lastTrigger ? { source: "manual", lastSource: lastTrigger.trigger.source } : { source: "manual" });
 
 let busy = false;
 let lastFinishedAt = 0;

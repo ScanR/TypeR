@@ -16,7 +16,8 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
   - break the lines to follow the bubble's silhouette and centre the ink optically, all lines inside the outline;
   - write white text without a stroke in a black bubble;
   - use the style marked *Shout* or *Narration* (style editor, "Bubble type") of the current folder for a spiky
-    bubble or a rectangle; a script prefix always wins;
+    bubble or, on a Magic Wand selection only, a rectangular box (a rectangle marquee or a lasso keeps the line's
+    style); a script prefix always wins;
   - split a double or triple bubble and paste the next lines in its other chambers ("Distribute lines");
   - optionally paint the bubble under the text (Auto clean): one `TypeR Clean` layer per document, under the
     texts, only on solid white or black;

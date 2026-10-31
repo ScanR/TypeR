@@ -264,15 +264,38 @@ const linesInside = (session) => {
   assert.strictEqual(locked.sessions[0].role, null, "a prefix style is never replaced");
   assert.deepStrictEqual(styleForKind({ style: 1, styleLocked: false }, "regular", { shout: 2 }), { style: 1, role: null });
 
-  // Rectangle: a narration box
+  // Rectangle: laid out like a narration box, but it keeps the line's style
   const rect = { left: 100, top: 100, right: 500, bottom: 260 };
   const narration = style("narration", 22, "Caption");
   const box = await prepareSmartPaste({
     trigger: { source: "rectangle" }, lines: [line("Pendant ce temps, à l'autre bout de la ville...")], roleStyles: { narration }, settings: {},
   }, adapterFor({ source: "rectangle", click: null, selectionBounds: rect, rawPath: null, fill: white }));
   assert.strictEqual(box.sessions[0].plan.kind, "narration");
-  assert.strictEqual(box.sessions[0].role, "narration");
+  assert.strictEqual(box.sessions[0].role, null, "a rectangle never takes the narration style");
+  assert.notStrictEqual(box.sessions[0].text.params.layerText.textStyleRange[0].textStyle.fontPostScriptName, "Caption");
   linesInside(box.sessions[0]);
+
+  // Narration is detected on Magic Wand selections only
+  const caption = [[100, 100], [500, 100], [500, 260], [100, 260]];
+  const captionInput = { click: { x: 300, y: 180 }, selectionBounds: rect, rawPath: pathOf([polygonNodes(caption)]), fill: white };
+  const wandBox = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Pendant ce temps, à l'autre bout de la ville...")], roleStyles: { narration }, settings: {},
+  }, adapterFor({ ...captionInput, source: "wand" }));
+  assert.strictEqual(wandBox.sessions[0].plan.kind, "narration");
+  assert.strictEqual(wandBox.sessions[0].role, "narration");
+  assert.strictEqual(wandBox.sessions[0].text.params.layerText.textStyleRange[0].textStyle.fontPostScriptName, "Caption");
+  const lassoBox = await prepareSmartPaste({
+    trigger: { source: "lasso" }, lines: [line("Pendant ce temps, à l'autre bout de la ville...")], roleStyles: { narration }, settings: {},
+  }, adapterFor({ ...captionInput, source: "lasso", click: null }));
+  assert.strictEqual(lassoBox.sessions[0].plan.kind, "narration");
+  assert.strictEqual(lassoBox.sessions[0].role, null, "a lasso never takes the narration style");
+
+  // A manual Paste in a square selection: the last selection's tool decides
+  const squarePath = { pathContents: { pathComponents: [{ subpathListKey: [{ points: caption.map(([x, y]) => ({ anchor: { horizontal: x, vertical: y } })) }] }] } };
+  assert.strictEqual(bubblePlan.captureSource({ source: "manual", lastSource: "wand" }, squarePath), "wand");
+  assert.strictEqual(bubblePlan.captureSource({ source: "manual", lastSource: "rectangle" }, squarePath), "rectangle");
+  assert.strictEqual(bubblePlan.captureSource({ source: "manual" }, squarePath), "rectangle");
+  assert.strictEqual(bubblePlan.captureSource({ source: "rectangle" }, squarePath), "rectangle");
 
   // Double bubble: two lines, one per chamber, clicked chamber first
   const outline = peanut([400, 500], [640, 500], 160);

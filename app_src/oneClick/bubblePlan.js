@@ -354,7 +354,8 @@ export const buildBubblePlan = (input, options = {}) => {
 
 const rectPolygon = (b) => [[b.left, b.top], [b.right, b.top], [b.right, b.bottom], [b.left, b.bottom]];
 
-// A rectangle marquee is a narration box: the text fills the rectangle
+// A rectangle marquee is laid out like a narration box: the text fills the
+// rectangle (it keeps the line's style, see styleForKind)
 export const buildRectanglePlan = (input, options = {}) => {
   const b = input.selectionBounds;
   const width = b.right - b.left;
@@ -446,9 +447,11 @@ export const isAxisRectangle = (rawPath) => {
 };
 
 // The source of a capture: the trigger's, or for a manual Paste a rectangle
-// when the selection is one, the wand route otherwise
+// when the selection is one, the wand route otherwise. A Magic Wand click in a
+// square box gives a marquee's outline: the user's last selection tells them apart.
 export const captureSource = (trigger, rawPath) => {
   const source = trigger && trigger.source;
   if (source === "wand" || source === "rectangle" || source === "lasso") return source;
-  return rawPath && isAxisRectangle(rawPath) ? "rectangle" : "wand";
+  if (!rawPath || !isAxisRectangle(rawPath)) return "wand";
+  return trigger && trigger.lastSource === "wand" ? "wand" : "rectangle";
 };

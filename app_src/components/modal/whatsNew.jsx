@@ -374,12 +374,12 @@ export const getChapters = ({ inWalkthrough = false } = {}) => [
       {
         id: "narration",
         line: 11,
-        text: locale.whatsNewBubblesStep7 || "Box 10 is a narration box: paste the last line into it.",
+        text: locale.whatsNewBubblesStep7 || "Box 10 is a narration box: select it with the Magic Wand and paste the last line into it.",
         paste: true,
         result: (env) => (env.usedStyleId(11) && env.narrationStyle && env.usedStyleId(11) === env.narrationStyle.id
           ? locale.whatsNewBubblesResult7 || "TypeR recognized a narration box and used the Narration style."
           : locale.whatsNewBubblesResult7Missed ||
-            "The Narration style was not used: check that it is in the same folder as the current style, then try again."),
+            "The Narration style was not used: select the box with the Magic Wand, check that the style is in the same folder as the current style, then try again."),
       },
     ],
   },

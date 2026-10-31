@@ -23,7 +23,8 @@
   as little as possible otherwise, down to a minimum size (85% by default), the lines follow the bubble's silhouette, the ink is centred
   inside the outline, and one French or English hyphen is allowed only as a last resort.
 - Black bubbles get white text without a stroke. A style can be marked as the Shout or Narration style of its
-  folder; spiky bubbles and rectangles then use it, unless the script line has its own prefix style.
+  folder; spiky bubbles and narration boxes selected with the Magic Wand then use it, unless the script line has
+  its own prefix style. A rectangle marquee or a lasso keeps the line's style.
 - Double and triple bubbles receive the next script lines in their other chambers, in one history state.
 - Optional Auto clean paints the bubble under the text on a `TypeR Clean` layer (solid white or black only).
 - Conditional refont rules give the text between two markers another style's font.
