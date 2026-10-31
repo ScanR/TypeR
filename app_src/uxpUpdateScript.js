@@ -71,8 +71,12 @@ const windowsInstalledCheck = [
   "if($entry.Count -ne 1){throw 'Updated plugin is not registered'};",
   "$expected=@(Get-ChildItem -LiteralPath $source -File -Recurse);",
   "if(@(Get-ChildItem -LiteralPath $target -File -Recurse).Count -ne $expected.Count){throw 'Incomplete installed plugin'};",
-  "foreach($file in $expected){$dest=Join-Path $target $file.FullName.Substring($source.Length+1);",
-  "if([Convert]::ToBase64String([IO.File]::ReadAllBytes($file.FullName)) -cne [Convert]::ToBase64String([IO.File]::ReadAllBytes($dest))){throw 'Installed file differs from package'}}; exit 0",
+  // Enumerated FullName may expand an 8.3 parent path (RUNNER~1). Compare by
+  // child names instead of slicing it using the unexpanded source length.
+  "function Compare-PluginFiles($from,$to){foreach($item in Get-ChildItem -LiteralPath $from){$dest=Join-Path $to $item.Name;",
+  "if($item.PSIsContainer){Compare-PluginFiles $item.FullName $dest}else{",
+  "if([Convert]::ToBase64String([IO.File]::ReadAllBytes($item.FullName)) -cne [Convert]::ToBase64String([IO.File]::ReadAllBytes($dest))){throw 'Installed file differs from package'}}}};",
+  "Compare-PluginFiles $source $target; exit 0",
   "} catch {Write-Output $_.Exception.Message; exit 1}",
 ].join(" ");
 

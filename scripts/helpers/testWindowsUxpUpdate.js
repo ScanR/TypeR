@@ -6,7 +6,7 @@ const path = require("path");
 
 module.exports = (script, options) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "typer update é-"));
-  const run = (answers) => {
+  const run = (answers, shortPath = false) => {
     const dir = fs.mkdtempSync(path.join(root, "case-"));
     const appData = path.join(dir, "roaming");
     const plugins = path.join(appData, "Adobe", "UXP", "Plugins", "External");
@@ -69,7 +69,10 @@ module.exports = (script, options) => {
     // An environment reference keeps this fixture's accented user path out of
     // the ASCII batch, as the real fixed Program Files UPI path is.
     fs.writeFileSync(batch, script.buildWindowsUpdateScript({ ...options, upia: "%TYPER_TEST_UPIA%" }));
-    childProcess.execFileSync("powershell.exe", ["-NoProfile", "-Command", "& $env:TYPER_TEST_SCRIPT; exit $LASTEXITCODE"], {
+    const launch = shortPath
+      ? "$script=(New-Object -ComObject Scripting.FileSystemObject).GetFile($env:TYPER_TEST_SCRIPT).ShortPath; & $script; exit $LASTEXITCODE"
+      : "& $env:TYPER_TEST_SCRIPT; exit $LASTEXITCODE";
+    childProcess.execFileSync("powershell.exe", ["-NoProfile", "-Command", launch], {
       encoding: "utf8", timeout: 60000, windowsHide: true,
       env: { ...process.env, APPDATA: appData, TYPER_TEST_CASE: dir, TYPER_TEST_UPIA: upia,
         TYPER_TEST_NODE: process.execPath, TYPER_TEST_FAKE_JS: fake, TYPER_TEST_SCRIPT: batch },
@@ -97,6 +100,9 @@ module.exports = (script, options) => {
     result = run([{}, { installs: true }]);
     assert.strictEqual(result.status, script.UPDATE_STATUS_RESTART, "verified silent installation needs a restart if the old plugin was not removed: " + JSON.stringify(result));
     assert.strictEqual(result.registry, result.after);
+    result = run([{}, { installs: true }], true);
+    assert.strictEqual(result.status, script.UPDATE_STATUS_RESTART, "8.3 paths must verify the same installed files: " + JSON.stringify(result));
+    assert.strictEqual(result.code, "new code");
     result = run([{ removes: true }, { installs: true }]);
     assert.strictEqual(result.status, null, "a verified swap lets Photoshop reload the plugin");
     assert.strictEqual(result.code, "new code");
