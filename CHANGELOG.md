@@ -43,6 +43,7 @@
 
 ### Workspace and typesetting
 
+- macOS (UXP): TypeR detects that Photoshop lacks Input Monitoring and offers to open the right pane, once at startup and in Settings > Shortcuts.
 - Simplify the settings: the guide and What's new open from Help, the Middle Eastern style fields follow the right-to-left text direction, the style list always scrolls to the selected style, and turning tips back on replays them. The page line color now belongs to themes, and the cache section only shows where a cache exists.
 - Add a shortcut to assign that turns the selected style's stroke on or off, keeping its size and color. A style with an active stroke shows a frame of that color in the list.
 - Fix the + and - size buttons on text layers resized with Ctrl+T: + made the text smaller, and now both change the displayed size by one step and keep the line breaks.

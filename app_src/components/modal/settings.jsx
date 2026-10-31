@@ -9,6 +9,7 @@ import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 import config from "../../config";
 import { reloadApp, backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig, getUserFonts } from "../../utils";
 import { readUxpMigrationState } from "../../uxpMigration";
+import { openKeyboardAccessSettings, readKeyboardAccess } from "../../keyboardAccess";
 import { useContext, defaultUiLayout, normalizeUiLayout, normalizeSmartPasteMinScale } from "../../context";
 import { normalizeRefontRules } from "../../oneClick/refont";
 import { sanitizeTextShapeRTuning } from "../../textShapeR";
@@ -268,6 +269,18 @@ const SettingsModal = React.memo(function SettingsModal() {
   const layoutDragInfo = React.useRef(null);
 
   const [cacheInfo, setCacheInfo] = React.useState(getTypeRCacheInfo);
+  const [keyboardAccess, setKeyboardAccess] = React.useState("unknown");
+
+  // UXP on macOS: Input Monitoring for Photoshop, read again on each tab change
+  React.useEffect(() => {
+    let active = true;
+    readKeyboardAccess().then((value) => {
+      if (active) setKeyboardAccess(value);
+    });
+    return () => {
+      active = false;
+    };
+  }, [activeTab]);
 
   React.useEffect(() => {
     setShortcutDraft({ ...context.state.shortcut });
@@ -2357,6 +2370,16 @@ const SettingsModal = React.memo(function SettingsModal() {
                 {locale.settingsShortcutsHint || "Click a shortcut and press the new key combination."}
               </div>
             </div>
+            {keyboardAccess === "missing" && (
+              <div className="settings-group">
+                <div className="field-descr">{locale.settingsKeyboardAccessText}</div>
+                <div className="field">
+                  <button type="button" className="topcoat-button--large" onClick={openKeyboardAccessSettings}>
+                    {locale.settingsKeyboardAccessOpen}
+                  </button>
+                </div>
+              </div>
+            )}
             {shortcutGroups.map((group) => (
               <div className="settings-group" key={group.id}>
                 <div className="settings-group-title">{group.label}</div>

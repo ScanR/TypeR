@@ -37,6 +37,7 @@ let timer = null;
 let mouseListener = null;
 let lastMouseLine = "";
 let started = false;
+let accessPath = null;
 
 const shellQuote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
 
@@ -201,6 +202,7 @@ async function start(onMouseLine) {
     await files.ensureFolder(folder);
     statePath = files.joinPath(folder, "state");
     await files.writeText(statePath, "a");
+    accessPath = statePath + ".access";
   } catch (error) {
     started = false;
     console.error("TypeR keyboard helper:", (error && error.message) || error);
@@ -256,4 +258,11 @@ function stop() {
   timer = null;
 }
 
-module.exports = { start, stop, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };
+// macOS Input Monitoring as the reader last reported it (typer-keys.m)
+function access() {
+  const value = accessPath ? readState(accessPath) : null;
+  if (value === "1") return "granted";
+  return value === "0" ? "missing" : "unknown";
+}
+
+module.exports = { start, stop, access, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };

@@ -12,8 +12,10 @@
 // Without macOS's Input Monitoring permission for Photoshop, which starts this
 // helper, CGEventSourceKeyState leaves out every key that types a character
 // (modifiers, Return, Tab and function keys still show). The user has to add
-// Photoshop by hand: CGRequestListenEventAccess shows nothing from here, and
-// the count of key presses is no way around it, as it comes half a second late.
+// Photoshop by hand: neither CGRequestListenEventAccess nor IOHIDRequestAccess
+// puts it in the list from here, and the count of key presses is no way around
+// it, as it comes half a second late. "<state file>.access" holds 1 or 0, so
+// the panel can tell the user and open the right pane.
 // The file holds "<state>|<beat>": the beat moves on every write and at
 // least once a second, so the plugin can tell a quiet keyboard from a dead
 // helper (uxp-src/host/keysHelper.js restarts it).
@@ -207,11 +209,26 @@ int main(int argc, const char **argv) {
   int mouseWasDown[2] = {0, 0};
   unsigned long presses = 0;
   int tick = 0;
+  char accessPath[4096];
+  snprintf(accessPath, sizeof(accessPath), "%s.access", statePath);
+  int access = -1;
   @autoreleasepool {
     for (;;) {
       @autoreleasepool {
+        if ((tick % 40) == 0) {
+          int now = CGPreflightListenEventAccess() ? 1 : 0;
+          if (now != access) {
+            // Started without the permission, this process keeps seeing no
+            // letter even once it is granted: the plugin starts a new reader
+            int granted = access == 0 && now == 1;
+            access = now;
+            writeAtomically(accessPath, access ? "1" : "0");
+            if (granted) break;
+          }
+        }
         // Never outlive the Photoshop that started us
-        if (photoshop > 0 && (++tick % 20) == 0 && kill(photoshop, 0) != 0) break;
+        if (photoshop > 0 && (tick % 20) == 19 && kill(photoshop, 0) != 0) break;
+        tick++;
         NSMutableString *state = [NSMutableString stringWithString:@"a"];
         int front = photoshopFrontmost(photoshop);
         int command = isKeyDown(kVK_Command) || isKeyDown(kVK_RightCommand);

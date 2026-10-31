@@ -15,7 +15,7 @@ const files = require("./files");
 const keyboard = require("./keyboard");
 const keysHelper = require("./keysHelper");
 const services = require("./services");
-const { runJsx } = require("./jsx");
+const { runJsx, systemCall } = require("./jsx");
 const { parseCall, callTimeout, createCallQueue } = require("./evalScript");
 
 if (crashTrace) {
@@ -308,6 +308,8 @@ const requests = {
   },
   flushMirror: () => mirror.flush(),
   openUrl: (url) => uxp.shell.openExternal(String(url)),
+  keyboardAccess: () => keysHelper.access(),
+  openKeyboardAccess: () => systemCall('open "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"'),
   log: (...args) => log("panel:", ...args),
 };
 Object.assign(requests, services.requests);

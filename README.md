@@ -175,7 +175,7 @@ Both versions can stay installed, but do not open both panels at the same time: 
 
 Global shortcuts (such as `Cmd + Ctrl` for Paste) need to read the keyboard while the canvas has the focus. UXP cannot, so the plugin starts a small keyboard reader that reports the pressed keys while Photoshop is in front, and stops with Photoshop.
 
-On macOS, add Photoshop to **System Settings → Privacy & Security → Input Monitoring**. Without it, macOS only shows the reader the modifiers and keys such as Enter, Tab or the function keys: shortcuts with a letter, digit or symbol do not run, and Photoshop shortcuts such as `Cmd + Shift + Z` also run the TypeR shortcut they start with.
+On macOS, add Photoshop to **System Settings → Privacy & Security → Input Monitoring**. macOS gives no way to add it automatically, so TypeR detects the missing permission and offers to open that pane, also from **Settings → Shortcuts**. Without it, macOS only shows the reader the modifiers and keys such as Enter, Tab or the function keys: shortcuts with a letter, digit or symbol do not run, and Photoshop shortcuts such as `Cmd + Shift + Z` also run the TypeR shortcut they start with.
 
 ### Updates
 

@@ -32,7 +32,10 @@ runtime around it differs:
   executable: `typer-keys.m` (macOS, packed as `typer-keys.json`) and `typer-keys.cs` (Windows, a
   .NET Framework 4.8 Windows application packed as `typer-keys-win.json`). On macOS the reader counts
   as Photoshop for privacy: without Input Monitoring for Photoshop, it only sees modifiers and keys
-  such as Return, Tab or function keys. `CGRequestListenEventAccess` shows no dialog from it.
+  such as Return, Tab or function keys. Asking from it does not add Photoshop to that list, so it
+  reports the permission in `<state file>.access` and the panel offers to open the pane
+  (`app_src/keyboardAccess.js`). Once it is granted the reader exits and the plugin starts a new one,
+  which sees every key: Photoshop needs no restart.
 - `webpack.uxp.config.js`, `scripts/buildUxp.js` — build and packaging.
 
 ## How a host call travels
