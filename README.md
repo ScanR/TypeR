@@ -67,7 +67,7 @@ TypeR is a panel built for typesetters working on translated manga and comics. I
 Paste reads the outline of the selected bubble instead of its bounding rectangle.
 
 - The lines follow the bubble's silhouette and the ink is centered inside the outline, without the tail.
-- The style's size is kept when the text fits. Otherwise it shrinks as little as possible, down to a minimum you set (85% by default), and one French or English hyphen is allowed as a last resort.
+- The style's size is kept when the text fits. Otherwise it shrinks as little as possible, down to a minimum you set (75% by default), and one French or English hyphen is allowed as a last resort.
 - Black bubbles get white text without a stroke.
 - Double and triple bubbles receive the next script lines in their other chambers, in one history state.
 - A style can be marked as the *Shout* or *Narration* style of its folder: spiky bubbles and narration boxes selected with the Magic Wand then use it. A script prefix always wins.

@@ -46,7 +46,7 @@ const normalizeAutoCenterMode = (value) => (AUTO_CENTER_MODES.indexOf(value) !==
 // Smart paste: the style size is a ceiling the fit may shrink down to this
 // fraction of it. Stored and imported values are untrusted, so anything that
 // is not a finite number falls back to the default.
-const SMART_PASTE_MIN_SCALE_DEFAULT = 0.85;
+const SMART_PASTE_MIN_SCALE_DEFAULT = 0.75;
 const normalizeSmartPasteMinScale = (value) => {
   const num = typeof value === "number"
     ? value

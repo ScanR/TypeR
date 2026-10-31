@@ -13,7 +13,7 @@ const { serializeStyle, validateImportData } = load("app_src/librarySerializatio
   assert.strictEqual(initial.pasteOnClick, false);
   assert.strictEqual(initial.smartPasteAutoClean, false);
   assert.strictEqual(initial.smartPasteDistribute, true);
-  assert.strictEqual(initial.smartPasteMinScale, 0.85);
+  assert.strictEqual(initial.smartPasteMinScale, 0.75);
   assert.strictEqual(initial.smartPasteHyphenation, "auto");
   assert.deepStrictEqual(initial.refontRules, []);
   assert.strictEqual(initial.notice, null);
@@ -46,10 +46,10 @@ const { serializeStyle, validateImportData } = load("app_src/librarySerializatio
   assert.strictEqual(initial.smartPasteDistribute, true);
 }
 
-// Minimum scale: clamped to [0.5, 1], anything else falls back to 0.85
+// Minimum scale: clamped to [0.5, 1], anything else falls back to 0.75
 for (const [stored, expected] of [
   [0.5, 0.5], [1, 1], [0.2, 0.5], [3, 1], [-1, 0.5], ["0.8", 0.8], [0.754, 0.75],
-  ["abc", 0.85], ["", 0.85], [null, 0.85], [true, 0.85], [{}, 0.85], [NaN, 0.85], [Infinity, 0.85],
+  ["abc", 0.75], ["", 0.75], [null, 0.75], [true, 0.75], [{}, 0.75], [NaN, 0.75], [Infinity, 0.75],
 ]) {
   assert.strictEqual(loadContext({ smartPasteMinScale: stored }).initial.smartPasteMinScale, expected, `minScale ${String(stored)}`);
 }
@@ -110,7 +110,7 @@ for (const bad of ["FR", "de", 1, null, true, { mode: "fr" }, "toString"]) {
   const badTypes = reducer(initial, { type: "import", data: { smartPaste: "nope", pasteOnClick: "yes", smartPasteMinScale: "x", refontRules: {} } });
   assert.strictEqual(badTypes.smartPaste, true);
   assert.strictEqual(badTypes.pasteOnClick, false);
-  assert.strictEqual(badTypes.smartPasteMinScale, 0.85);
+  assert.strictEqual(badTypes.smartPasteMinScale, 0.75);
   assert.deepStrictEqual(badTypes.refontRules, []);
 
   const untouched = reducer(initial, { type: "import", data: {} });
@@ -139,7 +139,7 @@ for (const bad of ["FR", "de", 1, null, true, { mode: "fr" }, "toString"]) {
 
   assert.strictEqual(reducer(initial, { type: "setSmartPasteMinScale", value: 0.55 }).smartPasteMinScale, 0.55);
   assert.strictEqual(reducer(initial, { type: "setSmartPasteMinScale", value: 0.1 }).smartPasteMinScale, 0.5);
-  assert.strictEqual(reducer(initial, { type: "setSmartPasteMinScale", value: "bogus" }).smartPasteMinScale, 0.85);
+  assert.strictEqual(reducer(initial, { type: "setSmartPasteMinScale", value: "bogus" }).smartPasteMinScale, 0.75);
 
   assert.strictEqual(reducer(initial, { type: "setSmartPasteHyphenation", value: "off" }).smartPasteHyphenation, "off");
   assert.strictEqual(reducer(initial, { type: "setSmartPasteHyphenation", value: "es" }).smartPasteHyphenation, "auto");

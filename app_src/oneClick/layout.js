@@ -335,7 +335,7 @@ export const planText = async (plan, payload, context) => {
     // The largest size that fits: step down 2% at a time, then halve the
     // last step down to half a percent. Shrinking the least keeps the sizes
     // of a page consistent, so a better silhouette never buys a smaller size.
-    const minPx = maxPx * (policy.minScale || 0.85);
+    const minPx = maxPx * (policy.minScale || 0.75);
     const step = maxPx * 0.02;
     const tolerance = Math.max(0.1, maxPx * 0.005);
     let failed = maxPx;
