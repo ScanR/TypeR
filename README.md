@@ -93,7 +93,7 @@ SFX: BOOM!
 
 `Page 12`, `Page 12 :`, `Page 12 : title`, `Page 12 - title`, `[Page 12]` and `## Page 12` are all recognized. Import `.psd`, `.png`, `.jpg` or `.jpeg` pages and TypeR opens the matching one as you advance. It can also save and close the previous PSD to keep long chapters manageable.
 
-Work tabs keep separate series in one panel, and can be reordered by dragging them. Saved work states restore a script, its pages, the current line and the active style. Bold and italic Markdown or rich text carry over to Photoshop.
+Work tabs keep separate series in one panel, name themselves after their PSD folder or chapter until you rename them, and can be reordered by dragging them. Saved work states restore a script, its pages, the current line and the active style. Bold and italic Markdown or rich text carry over to Photoshop.
 
 ### Styles that follow your script
 

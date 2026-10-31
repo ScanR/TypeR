@@ -16,6 +16,7 @@ import { getStoredSelectionLineIndex } from "./multiBubbleHistory";
 import { collectDescendantIds, getAutomaticTagStyles } from "./folderUtils";
 import { perfMeasure } from "./perfDebug";
 import { TAB_FIELDS, createTab, migrateTabStorage, moveTab } from "./tabStorage";
+import { applyAutoTabNames, getNextDefaultTabName } from "./tabNames";
 import { getInterfaceLanguage } from "./interfaceLanguage";
 import { loadTextShapeREngine } from "./textShapeREngineLoader";
 import {
@@ -135,6 +136,14 @@ const persistedFields = storeFields.filter((field) => !tabFields.includes(field)
 // The textarea always reads "\r" as a line break while the rows split on "\n"
 // only: a stray one would put them a row apart for the rest of the script.
 const normalizeLineBreaks = (text) => String(text).replace(/\r\n?/g, "\n");
+
+const getTabNameOptions = (state) => ({
+  label: locale.tabDefaultName || "Tab",
+  ignorePrefixes: state.ignoreLinePrefixes || [],
+  stylePrefixes: (state.styles || []).reduce((prefixes, style) => (
+    style.prefixesDisabled ? prefixes : prefixes.concat(style.prefixes || [])
+  ), []),
+});
 
 const loadTabIntoState = (state, tab) => {
   state.currentTabId = tab.id;
@@ -332,7 +341,7 @@ const tabStorage = migrateTabStorage(
   storage.data,
   (locale.tabDefaultName || "Tab") + " 1"
 );
-initialState.tabs = tabStorage.tabs;
+initialState.tabs = applyAutoTabNames(tabStorage.tabs, getTabNameOptions(initialState));
 initialState.currentTabId = tabStorage.currentTabId;
 const activeTab = initialState.tabs.find((tab) => tab.id === initialState.currentTabId) || initialState.tabs[0];
 loadTabIntoState(initialState, activeTab);
@@ -1420,9 +1429,12 @@ const baseReducer = (state, action) => {
     }
 
     case "addTab": {
-      const name = action.name || (locale.tabDefaultName || "Tab") + " " + (state.tabs.length + 1);
+      const name = action.name || getNextDefaultTabName(state.tabs, locale.tabDefaultName || "Tab");
       // A caller that needs the new tab id right away passes its own
-      const tab = action.id ? createTab(name, action.data, () => action.id) : createTab(name, action.data);
+      const tab = {
+        ...(action.id ? createTab(name, action.data, () => action.id) : createTab(name, action.data)),
+        autoName: !action.name,
+      };
       newState.tabs = state.tabs.concat(tab);
       // A new tab must be reachable, even with the tab bar hidden
       if (state.uiLayout?.visible?.tabBar === false) {
@@ -1443,7 +1455,8 @@ const baseReducer = (state, action) => {
     case "renameTab": {
       const name = (action.name || "").trim();
       if (!name) break;
-      newState.tabs = state.tabs.map((tab) => (tab.id === action.id ? { ...tab, name } : tab));
+      // Opening the rename field and leaving it unchanged is not a choice of name
+      newState.tabs = state.tabs.map((tab) => (tab.id === action.id && tab.name !== name ? { ...tab, name, autoName: false } : tab));
       break;
     }
 
@@ -1788,6 +1801,11 @@ const baseReducer = (state, action) => {
         newState.tabs = tabs;
       }
     }
+  }
+
+  // Phase 5.6: Tabs the user never renamed follow their script and pages
+  if (newState.tabs && newState.tabs !== state.tabs) {
+    newState.tabs = applyAutoTabNames(newState.tabs, getTabNameOptions(newState));
   }
 
   // Phase 6: Storage - only write if a stored field actually changed

@@ -51,6 +51,7 @@
 - Preview fonts in the style editor: the font and weight lists show each entry in its own font, and the font list has a search field (word order, spaces and accents are optional).
 - Keep every script tab and the active tab when the tab bar is hidden. The separate multi-tab switch is gone: Settings > Appearance hides the tab bar.
 - Reorder the script tabs by dragging them.
+- Name the script tabs by themselves: a tab takes the name of its PSD folder (`105`, `starblo 39`), otherwise the chapter heading of its script (`Chapitre 105`), otherwise its first sentence, and follows its content until it is renamed by hand. New empty tabs use the first free number. Tabs named by hand are never changed.
 - Keep the script's page and line highlights on their text: they no longer drift by one or more rows after the panel is resized, on bold or italic lines close to the wrap limit, or on scripts containing stray carriage returns.
 - Recognize complete page headings, including `Page 12 :`, `Page 12 : title`, `Page 12 - title`, `[Page 12]` and Markdown headings. Mentions of a page inside dialogue remain dialogue.
 - Serialize PSD navigation and record the opened page only after Photoshop confirms success.
