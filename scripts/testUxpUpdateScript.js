@@ -18,7 +18,8 @@ const options = {
 };
 
 // Windows: cmd.exe reads a batch file in the console's code page, so the script
-// must stay ASCII whatever the account name. Nothing runs it here.
+// must stay ASCII whatever the account name. Windows also runs the real batch
+// against a stand-in installer, including the exit-0/no-output regression.
 const batch = script.buildWindowsUpdateScript(options);
 assert.ok(/^[\x00-\x7f]*$/.test(batch), "The Windows script is pure ASCII");
 assert.ok(batch.indexOf("Clément") === -1, "The Windows script holds no user path");
@@ -30,7 +31,8 @@ assert.ok(/^[\x00-\x7f]*$/.test(script.windowsUpdateCommand()));
 assert.ok(script.windowsUpdateCommand().indexOf("%APPDATA%\\TypeR\\UXP\\update\\typer-update.cmd") !== -1);
 
 if (process.platform === "win32") {
-  console.log("UXP update script tests passed (Windows: text only)");
+  require("./helpers/testWindowsUxpUpdate")(script, options);
+  console.log("UXP update script tests passed (Windows: executed batch)");
   process.exit(0);
 }
 

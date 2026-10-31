@@ -86,7 +86,9 @@ const UxpMigrationModal = React.memo(function UxpMigrationModal() {
     <div className="app-modal-header hostBrdBotContrast">
       <div className="app-modal-title">
         {phase === "done"
-          ? (locale.uxpMigrationDoneTitle || "The new TypeR is installed")
+          ? (method === "manual"
+            ? (locale.uxpMigrationRestartTitle || "Restart Photoshop to use TypeR")
+            : (locale.uxpMigrationDoneTitle || "The new TypeR is installed"))
           : phase === "notice"
             ? (locale.uxpMigrationNoticeTitle || "The new TypeR (UXP) is installed")
             : (locale.uxpMigrationTitle || "Meet the new TypeR (UXP)")}
@@ -126,7 +128,7 @@ const UxpMigrationModal = React.memo(function UxpMigrationModal() {
         <div className="app-modal-body">
           <div className="app-modal-body-inner article-format uxp-migration">
             <FiCheckCircle size={40} className="uxp-migration-icon m-done" />
-            <p>
+            <p className={method === "manual" ? "uxp-migration-lead" : undefined}>
               {method === "manual"
                 ? (locale.uxpMigrationDoneRestart || "Restart Photoshop, then open it from the Plugins > TypeR menu. Your styles, profiles and settings are copied over the first time it starts.")
                 : (locale.uxpMigrationDoneText || "Open it from the Plugins > TypeR menu. Your styles, profiles and settings are copied over the first time it starts.")}

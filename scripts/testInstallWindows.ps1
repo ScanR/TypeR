@@ -196,6 +196,7 @@ try {
         $Registry = Get-Content -LiteralPath $UxpRegistry -Raw | ConvertFrom-Json
         Assert ($Registry.schema -eq 7 -and $Registry.plugins.Count -eq 2 -and $Registry.plugins[0].extra.Count -eq 2) 'Other registry content changed'
         Assert ($Registry.plugins[1].versionString -eq '3.0.0') 'Version not registered'
+        Assert ($Registry.plugins[1].path -ceq '$localPlugins\External\com.scanr.typer_3.0.0') 'Photoshop cannot resolve a Windows registration with forward slashes'
     }
     Test 'Same-version direct update replaces code, removes stale files, keeps backup' {
         New-Plugin $Direct

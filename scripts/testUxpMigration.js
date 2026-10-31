@@ -164,6 +164,10 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
         Buffer,
         fs: {
           writeFileSync: (file, data) => files.set(file, data),
+          readFileSync: (file, encoding) => {
+            if (!files.has(file)) throw new Error("Missing " + file);
+            return encoding ? String(files.get(file)) : files.get(file);
+          },
           unlinkSync: (file) => files.delete(file),
           existsSync: (file) => file === migration.upiaPath(platform === "win32" ? "win" : "mac", {}),
           readdirSync: () => plugins,
@@ -171,7 +175,14 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
         childProcess: {
           execFile: (file, args, options, callback) => {
             calls.push({ file, args, options, packageWritten: files.has(args[1]) });
-            if (installs) plugins = ["com.scanr.typer_3.0.0"];
+            if (installs) {
+              plugins = ["com.scanr.typer_3.0.0"];
+              const hostPlatform = platform === "win32" ? "win" : "mac";
+              const payload = manual.readPluginPackage(typerPackage);
+              const root = migration.uxpPluginsFolder(hostPlatform, "/Users/me", {}) + "/" + plugins[0];
+              payload.files.forEach((entry) => files.set(root + "/" + entry.name, Buffer.from(entry.data)));
+              files.set(migration.uxpRegistryPath(hostPlatform, "/Users/me", {}), manual.registerPlugin("", payload.manifest, platform));
+            }
             setTimeout(() => callback(exitError || null, stdout || "", ""), 0);
           },
         },
@@ -185,8 +196,12 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   assert.strictEqual(good.calls[0].file, migration.upiaPath("mac"));
   assert.strictEqual(good.calls[0].args[0], "--install");
   assert.ok(good.calls[0].args[1].startsWith("/tmp/TypeR-UXP-") && good.calls[0].packageWritten, "the package goes to the temporary folder");
-  assert.strictEqual(good.files.size, 0, "the temporary package is removed");
+  assert.ok(!good.files.has(good.calls[0].args[1]), "the temporary package is removed");
   assert.deepStrictEqual(migration.readUxpEnvironment(good.node), { installerAvailable: true, uxpInstalled: true });
+  const silentGood = fakeNode({ installs: true });
+  assert.strictEqual(await migration.runUxpInstaller(silentGood.node, typerPackage), "creativeCloud", "a quiet installer is accepted only when the actual package is installed");
+  const windowsGood = fakeNode({ installs: true, platform: "win32" });
+  assert.strictEqual(await migration.runUxpInstaller(windowsGood.node, typerPackage), "creativeCloud");
   const failed = fakeNode({ installs: false, exitError: Object.assign(new Error("Command failed"), { code: 1 }) });
   await assert.rejects(migration.runUxpInstaller(failed.node, typerPackage), (error) => error.code === "installer");
   await assert.rejects(migration.runUxpInstaller(null, typerPackage), (error) => error.code === "node");
@@ -203,6 +218,9 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   assert.deepStrictEqual(JSON.parse(manual.registerPlugin("", { id: "com.scanr.typer", name: "TypeR", version: "3.1.0", host: { minVersion: "26.0.0" } })), {
     plugins: [{ hostMinVersion: "26.0.0", name: "TypeR", path: "$localPlugins/External/com.scanr.typer_3.1.0", pluginId: "com.scanr.typer", status: "enabled", type: "uxp", versionString: "3.1.0" }],
   }, "the entry Creative Cloud's installer writes");
+  const windowsRegistry = JSON.parse(manual.registerPlugin("", { id: "com.scanr.typer", version: "3.1.0" }, "win32"));
+  assert.strictEqual(windowsRegistry.plugins[0].path, "$localPlugins\\External\\com.scanr.typer_3.1.0", "Photoshop Windows requires backslashes when resolving $localPlugins");
+  assert.strictEqual(manual.registeredPluginFolder(JSON.stringify(windowsRegistry)), "com.scanr.typer_3.1.0");
   const registered = JSON.parse(manual.registerPlugin(JSON.stringify({ extra: 1, plugins: [otherPlugin, { pluginId: "com.scanr.typer", path: "$localPlugins/External/com.scanr.typer_3.0.0" }] }), { id: "com.scanr.typer", name: "TypeR", version: "3.1.0", host: { minVersion: "26.0.0" } }));
   assert.strictEqual(registered.extra, 1);
   assert.deepStrictEqual(registered.plugins.map((plugin) => plugin.pluginId), ["com.other.plugin", "com.scanr.typer"], "other plugins are kept, the old entry replaced");
@@ -224,17 +242,17 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   assert.strictEqual(migration.hasTypeRPlugin(["com.scanr.typer_3.1.0.installing"]), false, "an interrupted installation is not an installation");
 
   const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "typer-manual-install-"));
-  const realNode = ({ output, exitError, home, hasInstaller }) => {
+  const realNode = ({ output, exitError, home, hasInstaller, platform = "darwin" }) => {
     const calls = [];
-    const upia = migration.upiaPath("mac");
+    const upia = migration.upiaPath(platform === "win32" ? "win" : "mac");
     return {
       calls,
       node: {
         fs: { ...fs, existsSync: (file) => (file === upia ? !!hasInstaller : fs.existsSync(file)) },
         path,
         Buffer,
-        os: { platform: () => "darwin", homedir: () => home, tmpdir: () => os.tmpdir() },
-        env: {},
+        os: { platform: () => platform, homedir: () => home, tmpdir: () => os.tmpdir() },
+        env: platform === "win32" ? { APPDATA: path.join(home, "roaming") } : {},
         childProcess: {
           execFile: (file, args, options, callback) => {
             calls.push(args);
@@ -272,6 +290,25 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   assert.strictEqual(await migration.runUxpInstaller(failingNode.node, fullPackage), "manual");
   assert.strictEqual(failingNode.calls.length, 1);
   assert.ok(fs.existsSync(installedFolder(failing)));
+
+  // Reproduced on Windows: exit 0, empty output and no installed files. Also
+  // reject a success message with no files: only disk/registration count.
+  for (const output of ["", "Installation Successful"]) {
+    const silentHome = path.join(sandbox, output ? "lying" : "silent");
+    const silentNode = realNode({ home: silentHome, hasInstaller: true, output });
+    assert.strictEqual(await migration.runUxpInstaller(silentNode.node, fullPackage), "manual");
+    assert.strictEqual(silentNode.calls.length, 1);
+    assert.strictEqual(fs.readFileSync(path.join(installedFolder(silentHome), "web", "index.js"), "utf8"), "// panel");
+  }
+  if (process.platform === "win32") {
+    const windowsHome = path.join(sandbox, "windows");
+    const windowsNode = realNode({ home: windowsHome, hasInstaller: true, platform: "win32" });
+    assert.strictEqual(await migration.runUxpInstaller(windowsNode.node, fullPackage), "manual");
+    const registration = JSON.parse(fs.readFileSync(migration.uxpRegistryPath("win", windowsHome, windowsNode.node.env), "utf8"));
+    assert.strictEqual(registration.plugins[0].path, "$localPlugins\\External\\com.scanr.typer_3.1.0", "the actual Windows fallback supplies its platform to the shared registry writer");
+    const installed = path.join(migration.uxpPluginsFolder("win", windowsHome, windowsNode.node.env), "com.scanr.typer_3.1.0", "web", "index.js");
+    assert.strictEqual(fs.readFileSync(installed, "utf8"), "// panel");
+  }
 
   // The test mode skips Creative Cloud's installer
   const forcedHome = path.join(sandbox, "forced");

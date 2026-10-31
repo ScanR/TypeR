@@ -418,7 +418,7 @@ function Get-TypeRRegistryJson($Manifest, [string]$Folder, [string]$RegistryPath
     $Entry = [ordered]@{
         hostMinVersion = [string]$Manifest.host.minVersion
         name = [string]$Manifest.name
-        path = '$localPlugins/External/' + $Folder
+        path = '$localPlugins\External\' + $Folder
         pluginId = [string]$Manifest.id
         status = 'enabled'
         type = 'uxp'

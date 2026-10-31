@@ -46,14 +46,15 @@ const parseRegistry = (registryText) => {
 
 // PS.json with this plugin registered. Other plugins are kept, and an
 // unreadable file is an error: replacing it would unregister them.
-export const registerPlugin = (registryText, manifest) => {
+export const registerPlugin = (registryText, manifest, platform = "darwin") => {
   const registry = parseRegistry(registryText);
   const others = (registry.plugins || []).filter((plugin) => !plugin || plugin.pluginId !== manifest.id);
   const host = [].concat(manifest.host || [])[0] || {};
   const entry = {
     hostMinVersion: host.minVersion,
     name: manifest.name,
-    path: "$localPlugins/External/" + pluginFolderName(manifest),
+    // Photoshop's Windows registry reader does not resolve $localPlugins/.
+    path: (platform === "win32" ? "$localPlugins\\External\\" : "$localPlugins/External/") + pluginFolderName(manifest),
     pluginId: manifest.id,
     status: "enabled",
     type: "uxp",
@@ -85,7 +86,7 @@ export const stalePluginFolders = (folderNames, registryText, ownFolder) => {
 // plugin, and the registry is written last.
 export const installPluginFiles = async (bytes, io) => {
   const { manifest, files } = readPluginPackage(bytes);
-  const registry = registerPlugin(await io.readRegistry(), manifest);
+  const registry = registerPlugin(await io.readRegistry(), manifest, io.platform);
   const target = io.join(io.pluginsFolder, pluginFolderName(manifest));
   const staging = target + STAGING_SUFFIX;
   await io.removeTree(staging);

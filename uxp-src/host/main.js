@@ -129,7 +129,44 @@ function readLocaleStrings() {
 
 function nativeAlert(data) {
   if (!data) return "";
-  return ps.app.showAlert(String(data.text || "")).then(() => "");
+  if (data.isError) return ps.app.showAlert(String(data.text || "")).then(() => "");
+  // Photoshop's showAlert uses its warning icon even for successful updates.
+  // Keep informational messages in a UXP dialog with their own title and icon.
+  const strings = readLocaleStrings();
+  const dialog = document.createElement("dialog");
+  const form = document.createElement("form");
+  form.method = "dialog";
+  const content = document.createElement("div");
+  content.style.display = "flex";
+  content.style.alignItems = "flex-start";
+  const icon = document.createElement("sp-icon");
+  const success = !!strings.successTitle && data.title === strings.successTitle;
+  icon.setAttribute("name", success ? "ui:SuccessMedium" : "ui:InfoMedium");
+  icon.setAttribute("size", "l");
+  icon.style.marginRight = "12px";
+  icon.style.flexShrink = "0";
+  const body = document.createElement("sp-body");
+  body.textContent = String(data.text || "");
+  body.style.whiteSpace = "pre-wrap";
+  content.appendChild(icon);
+  content.appendChild(body);
+  const footer = document.createElement("footer");
+  const accept = document.createElement("sp-button");
+  accept.setAttribute("variant", "cta");
+  accept.textContent = strings.ok || "OK";
+  accept.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") dialog.close();
+  });
+  footer.appendChild(accept);
+  form.appendChild(content);
+  form.appendChild(footer);
+  dialog.appendChild(form);
+  document.body.appendChild(dialog);
+  return dialog
+    .uxpShowModal({ title: data.title || "TypeR", resize: "none", size: { width: 480, height: 240 } })
+    .then(() => "", () => "")
+    .finally(() => dialog.remove());
 }
 
 function nativeConfirm(data) {

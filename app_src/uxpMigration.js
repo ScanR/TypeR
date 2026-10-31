@@ -13,7 +13,7 @@ import { findNewerReleases, pickUpdateDownloadUrl } from "./updateLogic";
 import { makeBuffer } from "./nodeCompat";
 import { fetchBody } from "./network";
 import { isLoopbackHttpUrl } from "./updateTestMode";
-import { UXP_PLUGIN_ID, installPluginFiles, isPluginFolder } from "./uxpManualInstall";
+import { UXP_PLUGIN_ID, installPluginFiles, isPluginFolder, pluginFolderName, readPluginPackage } from "./uxpManualInstall";
 import { legacyManifestWithName } from "./legacyPanelName";
 
 export { UXP_PLUGIN_ID };
@@ -203,6 +203,34 @@ export const syncLegacyPanelName = (node, extensionRoot) => {
   }
 };
 
+// UPI can return 0 and no output without doing anything. Verify the registered
+// version and every package file, rather than accepting its exit code alone.
+const hasInstalledPackage = (node, bytes) => {
+  try {
+    const { manifest, files } = readPluginPackage(bytes);
+    const platform = nodePlatform(node);
+    const home = node.os.homedir();
+    const registry = JSON.parse(node.fs.readFileSync(uxpRegistryPath(platform, home, node.env), "utf8").replace(/^\uFEFF/, ""));
+    const folder = pluginFolderName(manifest);
+    const registeredPath = "$localPlugins/External/" + folder;
+    const entry = (registry.plugins || []).find((plugin) => plugin && plugin.pluginId === manifest.id &&
+      plugin.versionString === manifest.version && plugin.status === "enabled" && plugin.type === "uxp" &&
+      String(plugin.path || "").replace(/\\/g, "/") === registeredPath);
+    if (!entry || (platform === "win" && entry.path !== registeredPath.replace(/\//g, "\\"))) return false;
+    const root = node.path.join(uxpPluginsFolder(platform, home, node.env), folder);
+    for (const file of files) {
+      const actual = node.fs.readFileSync(node.path.join(root, ...file.name.split("/")));
+      if (actual.length !== file.data.length) return false;
+      for (let index = 0; index < actual.length; index += 1) {
+        if (actual[index] !== file.data[index]) return false;
+      }
+    }
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
 // Hands the package to Creative Cloud's plugin installer, which adds the
 // plugin to the running Photoshop. The package goes to the temporary folder:
 // macOS asks Creative Cloud for access to Desktop or Downloads otherwise.
@@ -215,12 +243,12 @@ const runCreativeCloudInstaller = (node, bytes) => new Promise((resolve) => {
     resolve(false);
     return;
   }
-  node.childProcess.execFile(upiaPath(nodePlatform(node), node.env), ["--install", file], { timeout: INSTALLER_TIMEOUT_MS, windowsHide: true }, (error, stdout) => {
+  node.childProcess.execFile(upiaPath(nodePlatform(node), node.env), ["--install", file], { timeout: INSTALLER_TIMEOUT_MS, windowsHide: true }, (error, stdout, stderr) => {
     try {
       node.fs.unlinkSync(file);
     } catch (cleanup) {}
-    const output = String(stdout || "");
-    resolve(!/fail/i.test(output) && (!error || /success/i.test(output)));
+    const output = String(stdout || "") + String(stderr || "");
+    resolve(!/fail/i.test(output) && (!error || /success/i.test(output)) && hasInstalledPackage(node, bytes));
   });
 });
 
@@ -250,6 +278,7 @@ const nodeInstallIo = (node) => {
     }
   };
   return {
+    platform: node.os.platform(),
     pluginsFolder: uxpPluginsFolder(platform, home, node.env),
     join: path.join,
     removeTree,

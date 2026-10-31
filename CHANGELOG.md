@@ -4,6 +4,9 @@
 
 ### UXP plugin
 
+- Fix Windows UXP registration paths so Photoshop loads the plugin after installation, migration and updates. Verify Creative Cloud's actual installed files and registration instead of treating a silent exit code 0 as success; use the fallback installer promptly when nothing was installed.
+- Make the required Photoshop restart prominent after a fallback migration, and show successful UXP updates with a success icon instead of Photoshop's warning alert.
+
 - On Windows, update existing TypeR copies in custom Photoshop `Plug-ins` folders, verify every installed file, and restore backups after failed or interrupted installations. The standalone updater detects these copies too. Close Photoshop before installing or updating.
 
 - Add the new TypeR, a UXP plugin for Photoshop 2025 and later (`TypeR-UXP.ccx`), which runs natively on Apple Silicon without Rosetta. It is the same application as the CEP extension, with the same features, layout and saved styles.

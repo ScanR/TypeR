@@ -457,6 +457,7 @@ async function removeUpdateFolder() {
 async function writePluginFiles(bytes, pluginsFolder, writeRegistry) {
   const { registry } = await files.getPluginInstallPaths();
   await installPluginFiles(bytes, {
+    platform: os.platform(),
     pluginsFolder,
     join: files.joinPath,
     removeTree: files.removeTree,
