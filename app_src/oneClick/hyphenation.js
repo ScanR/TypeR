@@ -4,13 +4,17 @@
 // license, see hyphen/LICENSE.txt), built on first use.
 
 import { frenchHyphenPoints } from "../textShapeR";
+import { detectLanguage } from "../textShapeRLanguage";
 import createHyphenator from "./hyphen/hyphenEngine";
 import englishPatterns from "./hyphen/enUsPatterns";
 
 let englishHyphenator = null;
 
-const englishPoints = (word) => {
-  if (!/^[A-Za-z]{8,}$/.test(word)) return [];
+const englishPoints = (source) => {
+  // "neighbor's": the letters before the apostrophe break on their own
+  const whole = /^([A-Za-z]{8,})(?:['’][A-Za-z]+)?$/.exec(source);
+  if (!whole) return [];
+  const word = whole[1];
   if (!englishHyphenator) englishHyphenator = createHyphenator(englishPatterns, { minWordLength: 8 });
   const sections = englishHyphenator(word).split("­");
   const points = [];
@@ -22,9 +26,12 @@ const englishPoints = (word) => {
   return points;
 };
 
-// "fr", "en" or "off"; "auto" follows the interface language
-export const resolveHyphenationLanguage = (setting, uiLanguage) => {
+// "fr", "en" or "off"; "auto" follows the script, which can be in another
+// language than the interface. The interface settles what the script does not.
+export const resolveHyphenationLanguage = (setting, uiLanguage, script) => {
   if (setting === "fr" || setting === "en" || setting === "off") return setting;
+  const language = detectLanguage(script);
+  if (language === "fr" || language === "en") return language;
   return /^fr/i.test(String(uiLanguage || "")) ? "fr" : "en";
 };
 

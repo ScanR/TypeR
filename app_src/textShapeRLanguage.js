@@ -101,4 +101,4 @@ const getLanguageBreakPoints = (language, word) => {
   return points;
 };
 
-export { getInterfaceHint, getLanguageBreakPoints, registerTextShapeRPatterns, resolveTextLanguage, setTextShapeRInterfaceLanguage };
+export { detectLanguage, getInterfaceHint, getLanguageBreakPoints, registerTextShapeRPatterns, resolveTextLanguage, setTextShapeRInterfaceLanguage };

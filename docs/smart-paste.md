@@ -10,7 +10,7 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
   - read the selection's outline (work path, 2 px tolerance) and keep the bubble's body, without its tail;
   - keep the style size when the text fits, otherwise shrink it as little as possible (the largest size that fits,
     to half a percent), down to the minimum size (75% by default), then allow one hyphen in a long word (French or
-    English, or off);
+    English, by default the script's language, or off);
   - set a line made only of punctuation at the style's punctuation scale (×2 or ×3, off by default); a small bubble
     shrinks it, down to the minimum size of the style's own size;
   - break the lines to follow the bubble's silhouette and centre the ink optically, all lines inside the outline;

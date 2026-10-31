@@ -112,7 +112,7 @@ export const buildSmartPasteRequest = (state, trigger, options = {}) => {
         autoClean: !!state.smartPasteAutoClean,
         distribute: state.smartPasteDistribute !== false,
         minScale: state.smartPasteMinScale > 0 ? state.smartPasteMinScale : 0.75,
-        hyphenation: resolveHyphenationLanguage(state.smartPasteHyphenation || "auto", uiLanguage(state)),
+        hyphenation: resolveHyphenationLanguage(state.smartPasteHyphenation || "auto", uiLanguage(state), (state.lines || []).map((line) => line.text).join("\n")),
         direction: state.direction,
         padding: state.internalPadding || 0,
         keepSize: options.preserveActiveTextSize === true,

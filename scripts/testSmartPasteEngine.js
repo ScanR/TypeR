@@ -507,9 +507,17 @@ const linesInside = (session) => {
   // Hyphenation
   assert.strictEqual(resolveHyphenationLanguage("auto", "fr_FR"), "fr");
   assert.strictEqual(resolveHyphenationLanguage("auto", "en_US"), "en");
+  assert.strictEqual(resolveHyphenationLanguage("auto", "en_US", "Il y a quelqu’un. Je ne sais pas qui."), "fr", "the script decides");
+  assert.strictEqual(resolveHyphenationLanguage("auto", "fr_FR", "I don't know what you are doing."), "en", "the script decides");
+  assert.strictEqual(resolveHyphenationLanguage("auto", "fr_FR", "Bonjour"), "fr", "the interface settles a script too short to tell");
+  assert.strictEqual(resolveHyphenationLanguage("en", "fr_FR", "Il y a quelqu’un."), "en", "a chosen language stays");
   assert.strictEqual(breakPointsFor("off"), null);
   assert.ok(breakPointsFor("en")("extraordinary").length > 0);
   assert.ok(breakPointsFor("fr")("malheureusement").length > 0);
+  assert.deepStrictEqual(breakPointsFor("fr")("quelqu’un"), [4], "a word breaks away from its apostrophe");
+  assert.ok(!breakPointsFor("fr")("l’amitiés").some((at) => at < 4), "never right after an elision");
+  assert.ok(breakPointsFor("en")("neighbor's").length > 0);
+  assert.deepStrictEqual(breakPointsFor("en")("cafétérias"), [], "not English letters");
 
   // Measurement metrics
   assert.deepStrictEqual(metricFromBounds({ left: 568, right: 632, top: 818, bottom: 858 }, { width: 1200, height: 1700 }), { left: -0.515625, right: 0.515625, top: -0.515625, bottom: 0.140625 });

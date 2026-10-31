@@ -132,7 +132,7 @@ const protectedCharacters = (source, styles, data) => {
   return out;
 };
 
-const LONG_WORD = /[A-Za-zÀ-ɏœŒ]{8,}/g;
+const LONG_WORD = /[A-Za-zÀ-ɏœŒ]+(?:['’][A-Za-zÀ-ɏœŒ]+)*/g;
 
 // The whole-word text, plus up to two variants that each insert one hyphen
 // in a long word (only when hyphenation is allowed)
@@ -145,6 +145,7 @@ const textVariants = (source, styles, data, maxHyphenVariants) => {
   while ((match = LONG_WORD.exec(source)) !== null) {
     const start = match.index;
     const word = match[0];
+    if (word.length < 8) continue;
     let locked = false;
     for (let i = start; i < start + word.length; i++) {
       if (styles[i] && styles[i].noBreak) { locked = true; break; }

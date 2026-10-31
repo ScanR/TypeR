@@ -26,6 +26,7 @@
   folder; spiky bubbles and narration boxes selected with the Magic Wand then use it, unless the script line has
   its own prefix style. A rectangle marquee or a lasso keeps the line's style.
 - Double and triple bubbles receive the next script lines in their other chambers, in one history state. Every chamber gets its line, centred, even if it has to overflow: the style size comes before the padding, which no longer applies along the invisible limit between two chambers.
+- Automatic hyphenation follows the script's language instead of the interface's, and a word with an apostrophe can break ("quel-qu'un").
 - Optional Auto clean paints the bubble under the text on a `TypeR Clean` layer (solid white or black only).
 - Conditional refont rules give the text between two markers another style's font.
 - A bubble too small for the padding keeps the text inside it: the padding gives way, then the margin. When the text still cannot be placed, the classic paste runs and a short notice explains why.

@@ -1594,7 +1594,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                       <div className="field-label">{locale.settingsSmartPasteHyphenationLabel || "Hyphenation"}</div>
                       <div className="field-input">
                         <select value={smartPasteHyphenation} onChange={changeSmartPasteHyphenation} className="topcoat-textarea">
-                          <option value="auto">{locale.settingsHyphenationAuto || "Automatic (interface language)"}</option>
+                          <option value="auto">{locale.settingsHyphenationAuto || "Automatic (script language)"}</option>
                           <option value="fr">{locale.settingsHyphenationFr || "French"}</option>
                           <option value="en">{locale.settingsHyphenationEn || "English"}</option>
                           <option value="off">{locale.settingsHyphenationOff || "Off"}</option>

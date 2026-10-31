@@ -940,10 +940,13 @@ const computeSyllableSplits = (body, punctuation, indexOffset, minPrefix) => {
 const computeHyphenSplits = (word) => {
   const { body, punctuation } = splitTrailingPunctuation(word);
   if (!body || body.length < 8) return [];
-  if (hasMarkdownSyntax(body) || /[-'’\s]/.test(body)) return [];
+  if (hasMarkdownSyntax(body) || /[-\s]/.test(body)) return [];
 
   const positions = [];
   for (let index = 3; index <= body.length - 3; index++) {
+    // "quel-qu’un" but not "l’a-mitié": two letters at least on each side,
+    // up to the apostrophe
+    if (/['’].?$/.test(body.slice(0, index)) || /^.?['’]/.test(body.slice(index))) continue;
     const syllablePenalty = getSyllableSplitPenalty(body, index);
     // Only clean syllable boundaries (0-1.5) become visible hyphenations;
     // merge-plausible-but-ugly cuts (6+) are reserved for dehyphenation
