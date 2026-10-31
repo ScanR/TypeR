@@ -48,4 +48,15 @@ assert.strictEqual(layout.normalizeUiLayout({ footerModeIcons: "yes" }).footerMo
 const icons = layout.normalizeUiLayout({ footerModeIcons: true });
 assert.deepStrictEqual(layout.normalizeUiLayout(JSON.parse(JSON.stringify(icons))), icons);
 
+// Small panels hide the footer buttons: the right-click menu still creates styles and folders,
+// from the empty part of the list and from the whole folder, not only its header
+const stylesBlock = require("fs").readFileSync(require("path").join(__dirname, "../app_src/components/stylesBlock/stylesBlock.jsx"), "utf8");
+const footerButtons = require("fs").readFileSync(require("path").join(__dirname, "../app_src/components/stylesBlock/stylesBlock.scss"), "utf8");
+assert(/@media \(max-height: 450px\) \{\s*\.style-btn-list \{\s*display: none;/.test(footerButtons), "small panels hide the footer buttons");
+assert(/onClick=\{addContextStyle\}[\s\S]*?locale\.addStyle/.test(stylesBlock), "the menu adds a style");
+assert(/onClick=\{addContextFolder\}[\s\S]*?locale\.addFolder/.test(stylesBlock), "the menu adds a folder");
+assert(/modal: "editStyle", data: \{ create: true, folder: styleContextMenu\?\.folderId \|\| "" \}/.test(stylesBlock), "a new style goes in the folder under the cursor");
+assert(/className="folders-list" onContextMenu=\{\(e\) => openFolderContextMenu\(e, null\)\}/.test(stylesBlock), "the empty part of the list opens the menu");
+assert(/if \(!e\.currentTarget\.contains\(e\.target\)\) return;/.test(stylesBlock), "the export dialog portal does not open the menu");
+
 console.log("ui layout tests passed");

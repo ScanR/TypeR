@@ -56,6 +56,8 @@ const StylesBlock = React.memo(function StylesBlock() {
   }, [context.dispatch]);
 
   const openFolderContextMenu = React.useCallback((e, folderId) => {
+    // The export dialog is a portal: its events bubble here through the React tree
+    if (!e.currentTarget.contains(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
     setStyleContextMenu({ type: "folder", folderId: folderId || null, x: e.clientX, y: e.clientY });
@@ -108,6 +110,19 @@ const StylesBlock = React.memo(function StylesBlock() {
       if (ok) context.dispatch({ type: "deleteStyle", id: styleId });
     });
   }, [styleContextMenu, context.dispatch, closeStyleContextMenu]);
+
+  // The folder under the cursor receives a new style. A new folder stays at the
+  // root like the footer button, which small panels hide: their list can be full,
+  // and the header of each folder already has its subfolder button.
+  const addContextStyle = React.useCallback(() => {
+    context.dispatch({ type: "setModal", modal: "editStyle", data: { create: true, folder: styleContextMenu?.folderId || "" } });
+    closeStyleContextMenu();
+  }, [styleContextMenu, context.dispatch, closeStyleContextMenu]);
+
+  const addContextFolder = React.useCallback(() => {
+    context.dispatch({ type: "setModal", modal: "editFolder", data: { create: true } });
+    closeStyleContextMenu();
+  }, [context.dispatch, closeStyleContextMenu]);
 
   // Fonts are fetched once at panel startup: enumerating app.fonts blocks
   // Photoshop, and refreshing on focus used to swallow clicks on style items
@@ -177,7 +192,7 @@ const StylesBlock = React.memo(function StylesBlock() {
           </button>
         </div>
       )}
-      <div className="folders-list">
+      <div className="folders-list" onContextMenu={(e) => openFolderContextMenu(e, null)}>
         {hasContent ? (
           <React.Fragment>
             {unsortedStyles.length > 0 && (
@@ -226,7 +241,7 @@ const StylesBlock = React.memo(function StylesBlock() {
           role="menu"
           style={{
             left: Math.max(4, Math.min(styleContextMenu.x, window.innerWidth - 196)),
-            top: Math.max(4, Math.min(styleContextMenu.y, window.innerHeight - (styleContextMenu.type === "style" ? 146 : 42))),
+            top: Math.max(4, Math.min(styleContextMenu.y, window.innerHeight - (styleContextMenu.type === "style" ? 216 : 116))),
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
@@ -247,6 +262,19 @@ const StylesBlock = React.memo(function StylesBlock() {
                 <FiPlusSquare size={15} />
                 <span>{locale.duplicateStyle}</span>
               </button>
+            </React.Fragment>
+          )}
+          <div className="style-context-menu-separator hostBrdTopContrast" />
+          <button type="button" role="menuitem" onClick={addContextStyle}>
+            <FiPlus size={15} />
+            <span>{locale.addStyle}</span>
+          </button>
+          <button type="button" role="menuitem" onClick={addContextFolder}>
+            <FiFolderPlus size={15} />
+            <span>{locale.addFolder}</span>
+          </button>
+          {styleContextMenu.type === "style" && (
+            <React.Fragment>
               <div className="style-context-menu-separator hostBrdTopContrast" />
               <button type="button" role="menuitem" className="m-danger" onClick={deleteContextStyle}>
                 <FiTrash2 size={15} />
@@ -557,12 +585,12 @@ const FolderItem = React.memo(function FolderItem(props) {
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleStyleDrop}
+      onContextMenu={(e) => props.onOpenFolderContextMenu(e, props.data.id || null)}
     >
       <div
         className="folder-header"
         style={{ paddingLeft: props.depth ? props.depth * 12 + 4 : 4 }}
         onClick={toggleFolder}
-        onContextMenu={(e) => props.onOpenFolderContextMenu(e, props.data.id || null)}
         draggable={!!props.data.id}
         onDragStart={startFolderDrag}
         onDragEnd={endFolderDrag}
