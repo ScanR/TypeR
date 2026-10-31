@@ -4,6 +4,7 @@
 ::   install_uxp_win.cmd              installs TypeR-UXP.ccx next to this script,
 ::                                    or the latest release when there is none
 ::   install_uxp_win.cmd path\x.ccx   installs that package
-:: Double-clicking TypeR-UXP.ccx does the same through Creative Cloud.
-cd /d "%~dp0"
-PowerShell -NoProfile -ExecutionPolicy Bypass -File "install.ps1" -Uxp %*
+:: Close Photoshop first. Existing copies are backed up and verified on update.
+cd /d "%~dp0" || exit /b 1
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" -Uxp %*
+exit /b %errorlevel%

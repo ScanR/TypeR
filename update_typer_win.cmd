@@ -3,9 +3,10 @@ setlocal
 
 set "TYPER_UPDATE_SCRIPT=%~f0"
 set "TYPER_UPDATE_DIR=%~dp0"
+set "TYPER_UPDATE_SILENT="
 if /I "%~1"=="--silent" set "TYPER_UPDATE_SILENT=1"
 
-PowerShell -NoProfile -ExecutionPolicy Bypass -Command "$content = Get-Content -LiteralPath $env:TYPER_UPDATE_SCRIPT; $marker = ($content | Select-String -SimpleMatch '# POWERSHELL' | Select-Object -Last 1).LineNumber; if (-not $marker) { throw 'Embedded updater not found.' }; & ([ScriptBlock]::Create(($content[$marker..($content.Length - 1)] -join [Environment]::NewLine)))"
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "$content = Get-Content -LiteralPath $env:TYPER_UPDATE_SCRIPT; $marker = ($content | Select-String -SimpleMatch '# POWERSHELL' | Select-Object -Last 1).LineNumber; if (-not $marker) { throw 'Embedded updater not found.' }; & ([ScriptBlock]::Create(($content[$marker..($content.Length - 1)] -join [Environment]::NewLine)))"
 set "UPDATE_EXIT_CODE=%ERRORLEVEL%"
 
 if /I "%~1"=="--silent" exit /b %UPDATE_EXIT_CODE%
@@ -160,7 +161,12 @@ try {
 
     # What is installed gets updated. Without the plugin, a Photoshop that can run
     # it gets the installer's menu, which recommends it; a scripted run stays on Legacy.
-    $UxpInstalled = @(Get-ChildItem -LiteralPath $UxpPlugins -Filter 'com.scanr.typer_*' -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.installing' }).Count -gt 0
+    $env:TYPER_INSTALL_PROBE = 'installed'
+    $global:LASTEXITCODE = 0
+    $Installed = @(& $Installer -Silent)
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $env:TYPER_INSTALL_PROBE = $null
+    $UxpInstalled = $Installed -contains 'installed=uxp'
     $Editions = @('legacy')
     if ($UxpInstalled) {
         $Editions = if (Test-Path -LiteralPath (Join-Path $TargetDir 'CSXS\manifest.xml') -PathType Leaf) { @('legacy', 'uxp') } else { @('uxp') }
@@ -180,7 +186,10 @@ try {
     # install.ps1 reports a failure through its exit code, not an exception
     foreach ($Edition in $Editions) {
         $global:LASTEXITCODE = 0
-        if ($Edition -eq 'uxp') { & $Installer -Uxp -Silent $UxpPackage } else { & $Installer -Legacy -Silent }
+        if ($Edition -eq 'uxp') {
+            if (Test-Path -LiteralPath $UxpPackage -PathType Leaf) { & $Installer -Uxp -Silent $UxpPackage }
+            else { & $Installer -Uxp -Silent }
+        } else { & $Installer -Legacy -Silent }
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         if ($Edition -eq 'legacy') { Write-Host (Format-VersionMessage $Success $PackageVersion) -ForegroundColor Green }
     }

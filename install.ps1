@@ -1,7 +1,7 @@
 ﻿# install.ps1 [-Uxp | -Legacy] [-Silent] [TypeR-UXP.ccx]
 # Without -Uxp or -Legacy an interactive console asks which version to install;
 # a scripted installation (updates, tests) installs the Legacy version.
-param([switch]$Silent, [switch]$Uxp, [switch]$Legacy, [Parameter(Position = 0)][string]$Package)
+param([switch]$Silent, [switch]$Uxp, [switch]$Legacy, [Parameter(Position = 0)][string]$Package, [string[]]$PhotoshopPath)
 $ErrorActionPreference = "Stop"
 
 # Encodage pour les accents dans la console
@@ -18,7 +18,7 @@ try {
 # --- 1. Définition robuste du dossier du script ---
 # $PSScriptRoot est une variable native fiable, contrairement à %~dp0
 $ScriptDir = if ($env:TYPER_INSTALL_SOURCE) { [IO.Path]::GetFullPath($env:TYPER_INSTALL_SOURCE).TrimEnd("\") } else { $PSScriptRoot }
-Set-Location -Path $ScriptDir
+Set-Location -LiteralPath $ScriptDir
 
 # --- 2. Extraction de la version (plus précis que findstr) ---
 $ManifestPath = Join-Path $ScriptDir "CSXS\manifest.xml"
@@ -60,7 +60,7 @@ $msg_uxp_download = "Downloading the new TypeR (UXP)..."
 $msg_uxp_installing = "Installing the new TypeR (UXP)..."
 $msg_uxp_complete = "TypeR is installed: in Photoshop, open it from the menu [Plugins] > [TypeR]. If TypeR was already installed, restart Photoshop."
 $msg_uxp_complete_manual = "TypeR is installed: restart Photoshop if it is open, then open TypeR from the menu [Plugins] > [TypeR]."
-$msg_uxp_failed = "The installation failed. Close Photoshop and run this script again."
+$msg_uxp_failed = "Installation failed. See the error above; no success was confirmed."
 
 if ($Lang -eq "fr") {
     $msg_close    = "Photoshop est ouvert : fermez-le d'abord."
@@ -90,7 +90,7 @@ if ($Lang -eq "fr") {
     $msg_uxp_installing = "Installation du nouveau TypeR (UXP)..."
     $msg_uxp_complete = "TypeR est installé : dans Photoshop, ouvrez-le depuis le menu [Plug-ins] > [TypeR]. Si TypeR était déjà installé, redémarrez Photoshop."
     $msg_uxp_complete_manual = "TypeR est installé : redémarrez Photoshop s'il est ouvert, puis ouvrez TypeR depuis le menu [Plug-ins] > [TypeR]."
-    $msg_uxp_failed = "L'installation a échoué. Fermez Photoshop et relancez ce script."
+    $msg_uxp_failed = "L'installation a échoué. Consultez l'erreur ci-dessus ; aucun succès n'a été confirmé."
 }
 elseif ($Lang -eq "es") {
     $msg_close    = "Photoshop está abierto: ciérralo primero."
@@ -120,7 +120,7 @@ elseif ($Lang -eq "es") {
     $msg_uxp_installing = "Instalando el nuevo TypeR (UXP)..."
     $msg_uxp_complete = "TypeR está instalado: en Photoshop, ábrelo desde el menú [Plugins] > [TypeR]. Si TypeR ya estaba instalado, reinicia Photoshop."
     $msg_uxp_complete_manual = "TypeR está instalado: reinicia Photoshop si está abierto y abre TypeR desde el menú [Plugins] > [TypeR]."
-    $msg_uxp_failed = "La instalación falló. Cierra Photoshop y vuelve a ejecutar este script."
+    $msg_uxp_failed = "La instalación falló. Consulta el error anterior."
 }
 elseif ($Lang -eq "pt") {
     $msg_close    = "O Photoshop está aberto: feche-o primeiro."
@@ -150,7 +150,7 @@ elseif ($Lang -eq "pt") {
     $msg_uxp_installing = "Instalando o novo TypeR (UXP)..."
     $msg_uxp_complete = "O TypeR está instalado: no Photoshop, abra-o pelo menu [Plug-ins] > [TypeR]. Se o TypeR já estava instalado, reinicie o Photoshop."
     $msg_uxp_complete_manual = "O TypeR está instalado: reinicie o Photoshop se estiver aberto e abra o TypeR pelo menu [Plug-ins] > [TypeR]."
-    $msg_uxp_failed = "A instalação falhou. Feche o Photoshop e execute este script novamente."
+    $msg_uxp_failed = "A instalação falhou. Consulte o erro acima."
 }
 
 # Whether the console can draw: colors and the arrow menu need a real one
@@ -198,37 +198,57 @@ function Get-TypeRPhotoshops {
         foreach ($Item in ($env:TYPER_PHOTOSHOP_VERSIONS -split ';')) {
             if ($Item) {
                 $Parts = $Item -split '=', 2
-                $Found += [PSCustomObject]@{ Name = $Parts[0]; Version = $Parts[1] }
+                $Found += [PSCustomObject]@{ Name = $Parts[0]; Version = $Parts[1]; Path = $null }
             }
         }
         return $Found
     }
     if ($env:OS -ne 'Windows_NT') { return $Found }
     $Candidates = @()
+    foreach ($Folder in $PhotoshopPath) {
+        $Executable = [IO.Path]::Combine([IO.Path]::GetFullPath($Folder), 'Photoshop.exe')
+        if (-not (Test-Path -LiteralPath $Executable -PathType Leaf -ErrorAction SilentlyContinue)) { throw "Photoshop.exe not found: $Executable" }
+        $Candidates += $Executable
+    }
+    foreach ($Photoshop in @($script:DetectedPhotoshops)) {
+        if ($Photoshop.Path) { $Candidates += [IO.Path]::Combine($Photoshop.Path, 'Photoshop.exe') }
+    }
+    # Running applications and uninstall records also cover custom/portable paths.
+    $Candidates += @(Get-Process -Name Photoshop -ErrorAction SilentlyContinue | ForEach-Object { if ($_.Path) { $_.Path } })
     foreach ($Key in 'HKLM:\SOFTWARE\Adobe\Photoshop', 'HKLM:\SOFTWARE\WOW6432Node\Adobe\Photoshop') {
         foreach ($Child in @(Get-ChildItem -Path $Key -ErrorAction SilentlyContinue)) {
             $Folder = (Get-ItemProperty -Path $Child.PSPath -ErrorAction SilentlyContinue).ApplicationPath
-            # Not Join-Path: it fails on a drive that no longer exists, which an old
-            # installation can leave in the registry
+            # Develop's fix: build candidates without consulting the drive.
+            # Missing installations are filtered below with Test-Path.
             if ($Folder) { $Candidates += ([string]$Folder).TrimEnd('\') + '\Photoshop.exe' }
         }
     }
     $AppPath = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Photoshop.exe' -ErrorAction SilentlyContinue
     if ($AppPath -and $AppPath.'(default)') { $Candidates += $AppPath.'(default)'.Trim('"') }
+    foreach ($Key in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*') {
+        foreach ($App in @(Get-ItemProperty -Path $Key -ErrorAction SilentlyContinue)) {
+            if ($App.DisplayName -like '*Photoshop*' -and $App.InstallLocation -and (Test-Path -LiteralPath $App.InstallLocation -PathType Container -ErrorAction SilentlyContinue)) {
+                $Candidates += Join-Path $App.InstallLocation 'Photoshop.exe'
+            }
+        }
+    }
     # Installations that left nothing in the registry, on any drive
     foreach ($Drive in @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
-        foreach ($Folder in 'Program Files', 'Program Files (x86)') {
-            $Pattern = Join-Path $Drive.Root "$Folder\Adobe\Adobe Photoshop*\Photoshop.exe"
+        foreach ($Folder in 'Program Files\Adobe', 'Program Files (x86)\Adobe', 'Adobe', '') {
+            $Pattern = Join-Path $Drive.Root "$Folder\Adobe Photoshop*\Photoshop.exe"
             $Candidates += @(Get-Item -Path $Pattern -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
         }
     }
     foreach ($Candidate in @($Candidates | Sort-Object -Unique)) {
-        if (-not (Test-Path -LiteralPath $Candidate -PathType Leaf)) { continue }
-        $Info = (Get-Item -LiteralPath $Candidate).VersionInfo
+        if (-not (Test-Path -LiteralPath $Candidate -PathType Leaf -ErrorAction SilentlyContinue)) { continue }
+        $Item = Get-Item -LiteralPath $Candidate -ErrorAction SilentlyContinue
+        if (-not $Item) { continue }
+        $Info = $Item.VersionInfo
         $Version = if ([string]$Info.ProductVersion -match '^\d+(\.\d+)*') { $Matches[0] } elseif ($Info.ProductMajorPart) { [string]$Info.ProductMajorPart } else { '' }
         $Name = (Split-Path -Leaf (Split-Path -Parent $Candidate)) -replace '^Adobe ', ''
-        $Found += [PSCustomObject]@{ Name = $Name; Version = $Version }
+        $Found += [PSCustomObject]@{ Name = $Name; Version = $Version; Path = $Item.DirectoryName }
     }
+    $script:DetectedPhotoshops = $Found
     return $Found
 }
 
@@ -239,7 +259,7 @@ $PhotoshopList = ''
 function Update-TypeRRecommendation {
     $Names = @()
     $Newest = 0
-    # The search never stops an installation: at worst, no recommendation
+    # A detection error must not prevent opening the edition menu (develop).
     $Photoshops = @()
     try { $Photoshops = @(Get-TypeRPhotoshops) } catch { Write-Verbose $_.Exception.Message }
     foreach ($Photoshop in $Photoshops) {
@@ -343,13 +363,14 @@ function Read-TypeREditionFromPrompt {
 }
 
 # --- 4. Choix de la version : UXP ou Legacy (CEP) ---
+if ($Uxp -and $Legacy) { throw 'Choose either -Uxp or -Legacy.' }
 if ($env:TYPER_INSTALL_PROBE -eq 'recommendation') {
     Update-TypeRRecommendation
     Write-Output "recommended=$Recommended"
     Write-Output "photoshops=$PhotoshopList"
     return
 }
-$Edition = if ($Uxp) { 'uxp' } elseif ($Legacy) { 'legacy' } else { $null }
+$Edition = if ($env:TYPER_INSTALL_PROBE -eq 'installed') { 'probe' } elseif ($Uxp) { 'uxp' } elseif ($Legacy) { 'legacy' } else { $null }
 if (-not $Edition) {
     $Edition = 'legacy'
     if ($Interactive) {
@@ -415,40 +436,336 @@ function Get-TypeRRegistryJson($Manifest, [string]$Folder, [string]$RegistryPath
     return '{' + ($Members -join ',') + '}'
 }
 
-# Without Creative Cloud's plugin installer, or when it fails: the package is
-# extracted where it would have put it and registered in PS.json, which
-# Photoshop reads at its start
-function Install-TypeRPluginManually([string]$PackagePath) {
+# Use .NET directly, also in Windows PowerShell 5.1 with a mixed PSModulePath.
+function Get-TypeRFileHash([string]$FilePath) {
+    $Stream = [IO.File]::OpenRead($FilePath)
+    $Algorithm = [Security.Cryptography.SHA256]::Create()
+    try { return [BitConverter]::ToString($Algorithm.ComputeHash($Stream)).Replace('-', '').ToLowerInvariant() }
+    finally { $Algorithm.Dispose(); $Stream.Dispose() }
+}
+
+function Assert-TypeRPhotoshopClosed {
+    while (Get-Process -Name Photoshop -ErrorAction SilentlyContinue) {
+        if (-not $Interactive) { throw $msg_close }
+        Write-Host "  $msg_close" -ForegroundColor Yellow
+        Read-Host -Prompt $msg_pause | Out-Null
+    }
+}
+
+function ConvertTo-TypeRVersion([string]$Value) {
+    if ($Value -notmatch '^\d+(\.\d+){0,3}$') { throw "Invalid Photoshop version: $Value" }
+    $Parts = @($Value -split '\.')
+    while ($Parts.Count -lt 4) { $Parts += '0' }
+    return [version]($Parts -join '.')
+}
+
+# Refuse junctions, drive roots and our source directory before any mutation.
+function Assert-TypeRSafePath([string]$Path) {
+    $Full = [IO.Path]::GetFullPath($Path).TrimEnd('\')
+    if ($Full -eq [IO.Path]::GetPathRoot($Full).TrimEnd('\') -or $Full -eq $ScriptDir) { throw "Unsafe installation path: $Full" }
+    $Ancestor = $Full
+    while ($Ancestor) {
+        if (Test-Path -LiteralPath $Ancestor) {
+            if ((Get-Item -LiteralPath $Ancestor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Installation path contains a link: $Ancestor" }
+        }
+        $Ancestor = Split-Path -Parent $Ancestor
+    }
+    return $Full
+}
+
+function Remove-TypeRDirectory([string]$Path, [string]$Parent) {
+    $Full = Assert-TypeRSafePath $Path
+    $Allowed = [IO.Path]::GetFullPath($Parent).TrimEnd('\') + '\'
+    if (-not $Full.StartsWith($Allowed, [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe removal: $Full" }
+    if (Test-Path -LiteralPath $Full) { Remove-Item -LiteralPath $Full -Recurse -Force }
+}
+
+function Write-TypeRAtomicBytes([string]$Path, [byte[]]$Bytes) {
+    $null = Assert-TypeRSafePath $Path
+    $Temporary = $Path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        $Stream = [IO.File]::Open($Temporary, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try { $Stream.Write($Bytes, 0, $Bytes.Length); $Stream.Flush($true) } finally { $Stream.Dispose() }
+        if (Test-Path -LiteralPath $Path) { [IO.File]::Replace($Temporary, $Path, [NullString]::Value) }
+        else { [IO.File]::Move($Temporary, $Path) }
+    } finally {
+        if (Test-Path -LiteralPath $Temporary) { Remove-Item -LiteralPath $Temporary -Force }
+    }
+}
+
+function Save-TypeRTransaction($Transaction, [string]$Journal) {
+    $Bytes = (New-Object Text.UTF8Encoding($false)).GetBytes((ConvertTo-Json $Transaction -Depth 20))
+    Write-TypeRAtomicBytes $Journal $Bytes
+}
+
+function Get-TypeRWorkspace([string]$Target, [string]$Id) {
+    if ($Target.StartsWith($UxpPlugins.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+        return Join-Path $UxpRoot ('.typer-install-' + $Id)
+    }
+    $Ancestor = Split-Path -Parent $Target
+    while ($Ancestor) {
+        if ((Split-Path -Leaf $Ancestor) -eq 'Plug-ins') {
+            return Join-Path (Split-Path -Parent $Ancestor) ('.typer-install-' + $Id)
+        }
+        $Ancestor = Split-Path -Parent $Ancestor
+    }
+    throw "Unsupported plugin location: $Target"
+}
+
+# Only the matching manifest ID identifies a TypeR installation; its folder
+# name is not sufficient. Do not recurse through directory links.
+function Get-TypeRPluginDirectories([string]$Root, [int]$Depth = 0) {
+    if (-not (Test-Path -LiteralPath $Root -PathType Container -ErrorAction SilentlyContinue)) { return }
+    $null = Assert-TypeRSafePath $Root
+    foreach ($Directory in @(Get-ChildItem -LiteralPath $Root -Directory -Force)) {
+        if ($Directory.Name -like '*.installing') { continue }
+        if ($Directory.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+        $File = Join-Path $Directory.FullName 'manifest.json'
+        if (Test-Path -LiteralPath $File -PathType Leaf) {
+            $null = Assert-TypeRSafePath $File
+            try { $Manifest = [IO.File]::ReadAllText($File) | ConvertFrom-Json }
+            catch { throw "Cannot read plugin manifest: $File. $($_.Exception.Message)" }
+            if ($Manifest.id -eq 'com.scanr.typer') { $Directory.FullName }
+        } elseif ($Depth -gt 0) {
+            Get-TypeRPluginDirectories $Directory.FullName ($Depth - 1)
+        }
+    }
+}
+
+# Shared by the updater probe and tests; identify copies by manifest, including
+# custom Photoshop Plug-ins folders, not just versioned external folder names.
+function Get-TypeRInstalledPluginPaths {
+    Get-TypeRPluginDirectories $UxpPlugins
+    foreach ($Photoshop in @(Get-TypeRPhotoshops)) {
+        if ($Photoshop.Path) { Get-TypeRPluginDirectories (Join-Path $Photoshop.Path 'Plug-ins') 2 }
+    }
+}
+
+# Validate every ZIP path before extracting anything. Hashes are used again
+# after staging and after the swap, even when version strings are identical.
+function Expand-TypeRPackage([string]$PackagePath, [string]$Destination) {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $Archive = [IO.Compression.ZipFile]::OpenRead($PackagePath)
     try {
-        $Entry = $Archive.GetEntry('manifest.json')
-        if (-not $Entry) { throw 'Not a TypeR package' }
-        $Reader = New-Object IO.StreamReader($Entry.Open(), [Text.Encoding]::UTF8)
+        $Names = @{}
+        $Total = [long]0
+        foreach ($Entry in $Archive.Entries) {
+            $Name = $Entry.FullName.Replace('\', '/')
+            $Segments = $Name.TrimEnd('/') -split '/'
+            if (-not $Name -or $Name.StartsWith('/') -or $Name -match '[:\x00-\x1f<>"|?*]' -or $Segments -contains '..' -or $Segments -contains '.' -or $Segments -contains '' -or $Names.ContainsKey($Name.TrimEnd('/'))) { throw "Unsafe or duplicate package path: $Name" }
+            foreach ($Segment in $Segments) {
+                if ($Segment -match '[. ]$|^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)') { throw "Unsafe package path: $Name" }
+            }
+            if ((($Entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000) { throw "Package contains a link: $Name" }
+            $Names[$Name.TrimEnd('/')] = $true
+            $Total += $Entry.Length
+            if ($Total -gt 1GB -or $Archive.Entries.Count -gt 10000) { throw 'TypeR package is too large.' }
+        }
+        $ManifestEntry = $Archive.GetEntry('manifest.json')
+        if (-not $ManifestEntry -or $ManifestEntry.Length -gt 1MB) { throw 'Not a TypeR package: missing or invalid manifest.json' }
+        $Reader = New-Object IO.StreamReader($ManifestEntry.Open(), [Text.Encoding]::UTF8)
         try { $Manifest = $Reader.ReadToEnd() | ConvertFrom-Json } finally { $Reader.Dispose() }
-    } finally {
-        $Archive.Dispose()
+        if ($Manifest.id -ne 'com.scanr.typer' -or [string]$Manifest.version -notmatch '^\d+\.\d+\.\d+([+-][0-9A-Za-z.-]+)?$' -or $Manifest.host.app -ne 'PS' -or [string]$Manifest.host.minVersion -notmatch '^\d+(\.\d+){0,3}$' -or -not $Manifest.main) { throw 'Invalid TypeR manifest.' }
+        foreach ($Required in @('manifest.json', 'host.js', 'index.html', [string]$Manifest.main)) {
+            $Entry = $Archive.GetEntry($Required)
+            if (-not $Entry -or $Entry.Length -eq 0 -or $Required.EndsWith('/')) { throw "Incomplete TypeR package: $Required" }
+        }
+        $Inventory = @{}
+        $null = New-Item -ItemType Directory -Path $Destination
+        foreach ($Entry in $Archive.Entries) {
+            $Name = $Entry.FullName.Replace('\', '/')
+            $File = [IO.Path]::GetFullPath((Join-Path $Destination $Name))
+            if (-not $File.StartsWith($Destination.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe package path: $Name" }
+            if ($Name.EndsWith('/')) { $null = New-Item -ItemType Directory -Path $File -Force; continue }
+            $null = New-Item -ItemType Directory -Path (Split-Path -Parent $File) -Force
+            $InputStream = $Entry.Open()
+            $OutputStream = [IO.File]::Open($File, [IO.FileMode]::CreateNew)
+            $Hash = [Security.Cryptography.SHA256]::Create()
+            try {
+                $Buffer = New-Object byte[] 65536
+                while (($Count = $InputStream.Read($Buffer, 0, $Buffer.Length)) -gt 0) {
+                    $OutputStream.Write($Buffer, 0, $Count)
+                    $null = $Hash.TransformBlock($Buffer, 0, $Count, $Buffer, 0)
+                }
+                $null = $Hash.TransformFinalBlock((New-Object byte[] 0), 0, 0)
+                if ($OutputStream.Length -ne $Entry.Length) { throw "Incomplete package file: $Name" }
+                $Inventory[$Name] = [BitConverter]::ToString($Hash.Hash).Replace('-', '').ToLowerInvariant()
+            } finally { $Hash.Dispose(); $OutputStream.Dispose(); $InputStream.Dispose() }
+        }
+        return [PSCustomObject]@{ Manifest = $Manifest; Inventory = $Inventory; Root = $Destination }
+    } finally { $Archive.Dispose() }
+}
+
+function Assert-TypeRInstalledFiles([string]$Root, $Inventory) {
+    $null = Assert-TypeRSafePath $Root
+    $Count = 0
+    foreach ($Item in Get-ChildItem -LiteralPath $Root -Recurse -Force) {
+        if ($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Installed plugin contains a link: $($Item.FullName)" }
+        if ($Item.PSIsContainer) { continue }
+        $Relative = $Item.FullName.Substring($Root.Length + 1).Replace('\', '/')
+        if (-not $Inventory.ContainsKey($Relative) -or (Get-TypeRFileHash $Item.FullName) -ne $Inventory[$Relative]) { throw "Installed file verification failed: $($Item.FullName)" }
+        $Count++
     }
-    if ($Manifest.id -ne 'com.scanr.typer' -or [string]$Manifest.version -notmatch '^[0-9A-Za-z][0-9A-Za-z.+-]*$') { throw 'Not a TypeR package' }
-    $Folder = $Manifest.id + '_' + $Manifest.version
-    $RegistryJson = Get-TypeRRegistryJson $Manifest $Folder $UxpRegistry
-    $Target = Join-Path $UxpPlugins $Folder
-    $Staging = $Target + '.installing'
-    if (Test-Path -LiteralPath $Staging) { Remove-Item -LiteralPath $Staging -Recurse -Force }
-    New-Item -ItemType Directory -Path $UxpPlugins -Force | Out-Null
+    if ($Count -ne $Inventory.Count) { throw "Installed plugin is incomplete: $Root" }
+}
+
+function Restore-TypeRTransaction($Transaction, [string]$Journal) {
+    # Validate the complete recovery plan before removing or moving anything.
+    if ([string]$Transaction.Id -notmatch '^[a-f0-9]{32}$' -or $Transaction.RegistryPath -ne $UxpRegistry) { throw "Invalid recovery journal: $Journal" }
+    foreach ($Operation in $Transaction.Operations) {
+        $Target = Assert-TypeRSafePath $Operation.Target
+        $Workspace = Assert-TypeRSafePath $Operation.Workspace
+        $Expected = Get-TypeRWorkspace $Target $Transaction.Id
+        if ($Workspace -ne $Expected -or $Operation.Backup -ne (Join-Path $Workspace ('backup-' + $Operation.Index)) -or $Operation.Stage -ne (Join-Path $Workspace ('stage-' + $Operation.Index))) { throw "Invalid recovery paths: $Journal" }
+    }
+    if ($Transaction.RegistryPending) {
+        $Current = if (Test-Path -LiteralPath $UxpRegistry) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($UxpRegistry)) } else { $null }
+        if ($Current -ne $Transaction.RegistryBefore -and $Current -ne $Transaction.RegistryAfter) { throw "PS.json changed outside the installer. Recovery retained: $Journal" }
+        if ($Current -ne $Transaction.RegistryBefore -or [bool](Test-Path -LiteralPath $UxpRegistry) -ne $Transaction.RegistryExisted) {
+            if ($Transaction.RegistryExisted) { Write-TypeRAtomicBytes $UxpRegistry ([Convert]::FromBase64String($Transaction.RegistryBefore)) }
+            elseif (Test-Path -LiteralPath $UxpRegistry) { Remove-Item -LiteralPath $UxpRegistry -Force }
+        }
+    }
+    $Operations = @($Transaction.Operations)
+    [array]::Reverse($Operations)
+    foreach ($Operation in $Operations) {
+        if (Test-Path -LiteralPath $Operation.Backup) {
+            Remove-TypeRDirectory $Operation.Target (Split-Path -Parent $Operation.Target)
+            [IO.Directory]::Move($Operation.Backup, $Operation.Target)
+        } elseif (-not $Operation.HadTarget -and $Operation.Pending -and -not (Test-Path -LiteralPath $Operation.Stage)) {
+            Remove-TypeRDirectory $Operation.Target (Split-Path -Parent $Operation.Target)
+        }
+    }
+    # Remove the journal only after every original copy is restored.
+    Remove-Item -LiteralPath $Journal -Force
+    foreach ($Workspace in @($Operations.Workspace | Sort-Object -Unique)) {
+        Remove-TypeRDirectory $Workspace (Split-Path -Parent $Workspace)
+    }
+}
+
+function Install-TypeRPluginManually([string]$PackagePath) {
+    Assert-TypeRPhotoshopClosed
+    $Control = Assert-TypeRSafePath (Join-Path $UxpRoot '.typer-installer')
+    $null = New-Item -ItemType Directory -Path $Control -Force
+    $Lock = $null
+    $Journal = Join-Path $Control 'pending.json'
+    $Transaction = $null
+    $Committed = $false
+    $Extracted = Join-Path $Control ('package-' + [Guid]::NewGuid().ToString('N'))
     try {
-        [IO.Compression.ZipFile]::ExtractToDirectory($PackagePath, $Staging)
-        if (Test-Path -LiteralPath $Target) { Remove-Item -LiteralPath $Target -Recurse -Force }
-        Move-Item -LiteralPath $Staging -Destination $Target
+        try { $Lock = [IO.File]::Open((Join-Path $Control 'install.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None) }
+        catch { throw 'Another TypeR installation is running. Wait for it to finish.' }
+        if (Test-Path -LiteralPath $Journal) {
+            $Previous = [IO.File]::ReadAllText($Journal) | ConvertFrom-Json
+            if ([string]$Previous.Id -notmatch '^[a-f0-9]{32}$' -or $Previous.RegistryPath -ne $UxpRegistry) { throw "Invalid recovery journal: $Journal" }
+            if ($Previous.State -eq 'committed') { Move-Item -LiteralPath $Journal -Destination (Join-Path $Control ($Previous.Id + '.json')) }
+            else { Restore-TypeRTransaction $Previous $Journal }
+        }
+        $Payload = Expand-TypeRPackage $PackagePath $Extracted
+        Assert-TypeRInstalledFiles $Extracted $Payload.Inventory
+        $Photoshops = @(Get-TypeRPhotoshops)
+        $Minimum = ConvertTo-TypeRVersion $Payload.Manifest.host.minVersion
+        $Compatible = @($Photoshops | Where-Object { $_.Version -and (ConvertTo-TypeRVersion $_.Version) -ge $Minimum })
+        if (-not $Compatible.Count) { throw "No compatible Photoshop found. TypeR requires Photoshop $Minimum or later." }
+        $Direct = @()
+        foreach ($Photoshop in $Compatible) {
+            if ($Photoshop.Path) { $Direct += @(Get-TypeRPluginDirectories (Join-Path $Photoshop.Path 'Plug-ins') 2) }
+        }
+        $External = @(Get-TypeRPluginDirectories $UxpPlugins)
+        # Read/validate PS.json even for a direct install, so a registered stale
+        # copy cannot be silently overlooked.
+        $Folder = $Payload.Manifest.id + '_' + $Payload.Manifest.version
+        $RegistryJson = Get-TypeRRegistryJson $Payload.Manifest $Folder $UxpRegistry
+        $Before = if (Test-Path -LiteralPath $UxpRegistry) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($UxpRegistry)) } else { $null }
+        $Registered = $false
+        if ($Before) {
+            $Registry = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Before)).TrimStart([char]0xfeff) | ConvertFrom-Json
+            foreach ($Plugin in @($Registry.plugins)) {
+                if ($Plugin.pluginId -eq $Payload.Manifest.id) {
+                    $Registered = $true
+                    $Relative = ([string]$Plugin.path).Replace('\', '/')
+                    if (-not $Relative.StartsWith('$localPlugins/External/')) { throw "Unsupported registered TypeR path: $Relative" }
+                    $RegisteredPath = Assert-TypeRSafePath (Join-Path (Split-Path -Parent $UxpPlugins) $Relative.Substring('$localPlugins/'.Length))
+                    if (-not $RegisteredPath.StartsWith($UxpPlugins.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe registered TypeR path: $Relative" }
+                    if (Test-Path -LiteralPath $RegisteredPath) {
+                        if ($External -notcontains $RegisteredPath) { throw "Registered TypeR manifest is missing or belongs to another plugin: $RegisteredPath" }
+                    }
+                }
+            }
+        }
+        $UseExternal = (-not $Direct.Count) -or $External.Count -gt 0 -or $Registered
+        $Targets = @($Direct | Sort-Object -Unique)
+        $Retire = @()
+        if ($UseExternal) {
+            $Target = Assert-TypeRSafePath (Join-Path $UxpPlugins $Folder)
+            if ((Test-Path -LiteralPath $Target) -and $External -notcontains $Target) { throw "Installation target belongs to another plugin: $Target" }
+            $Targets += $Target
+            $Retire = @($External | Where-Object { $_ -ne $Target })
+        }
+        $Transaction = [PSCustomObject]@{
+            Id = [Guid]::NewGuid().ToString('N'); State = 'preparing'; Operations = @()
+            RegistryPath = $UxpRegistry; RegistryBefore = $Before; RegistryExisted = [bool](Test-Path -LiteralPath $UxpRegistry)
+            RegistryAfter = [Convert]::ToBase64String((New-Object Text.UTF8Encoding($false)).GetBytes($RegistryJson))
+            RegistryPending = $false
+        }
+        Save-TypeRTransaction $Transaction $Journal
+        foreach ($Target in @($Targets) + @($Retire)) {
+            $Target = Assert-TypeRSafePath $Target
+            $Index = $Transaction.Operations.Count
+            $Workspace = Get-TypeRWorkspace $Target $Transaction.Id
+            $null = Assert-TypeRSafePath $Workspace
+            $Operation = [PSCustomObject]@{
+                Index = $Index; Target = $Target; Workspace = $Workspace
+                Stage = Join-Path $Workspace ('stage-' + $Index); Backup = Join-Path $Workspace ('backup-' + $Index)
+                HadTarget = [bool](Test-Path -LiteralPath $Target); Pending = $false; Retire = ($Retire -contains $Target)
+            }
+            $Transaction.Operations += $Operation
+            Save-TypeRTransaction $Transaction $Journal
+            $null = New-Item -ItemType Directory -Path (Split-Path -Parent $Target), $Workspace -Force
+            if (-not $Operation.Retire) {
+                Copy-Item -LiteralPath $Extracted -Destination $Operation.Stage -Recurse
+                Assert-TypeRInstalledFiles $Operation.Stage $Payload.Inventory
+            }
+        }
+        # Recheck after downloading/staging, immediately before touching plugins.
+        Assert-TypeRPhotoshopClosed
+        foreach ($Operation in $Transaction.Operations) {
+            $Operation.Pending = $true
+            Save-TypeRTransaction $Transaction $Journal
+            if ($Operation.HadTarget) { [IO.Directory]::Move($Operation.Target, $Operation.Backup) }
+            if (-not $Operation.Retire) { [IO.Directory]::Move($Operation.Stage, $Operation.Target) }
+        }
+        foreach ($Target in $Targets) { Assert-TypeRInstalledFiles $Target $Payload.Inventory }
+        Assert-TypeRPhotoshopClosed
+        if ($UseExternal) {
+            $Current = if (Test-Path -LiteralPath $UxpRegistry) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($UxpRegistry)) } else { $null }
+            if ($Current -ne $Before) { throw 'PS.json changed during installation. Please retry.' }
+            $null = New-Item -ItemType Directory -Path (Split-Path -Parent $UxpRegistry) -Force
+            $Transaction.RegistryPending = $true
+            Save-TypeRTransaction $Transaction $Journal
+            Write-TypeRAtomicBytes $UxpRegistry ([Convert]::FromBase64String($Transaction.RegistryAfter))
+            if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($UxpRegistry)) -ne $Transaction.RegistryAfter) { throw 'Plugin registration verification failed.' }
+        }
+        $Transaction.State = 'committed'
+        Save-TypeRTransaction $Transaction $Journal
+        $Committed = $true
+        # Keep backups outside Photoshop's plugin search folders.
+        try { Move-Item -LiteralPath $Journal -Destination (Join-Path $Control ($Transaction.Id + '.json')) }
+        catch { Write-Warning "Installation verified; history retained at $Journal" }
+        foreach ($Target in $Targets) { Write-Host "  TypeR $($Payload.Manifest.version): $Target" }
+        foreach ($Workspace in @($Transaction.Operations.Workspace | Sort-Object -Unique)) { Write-Host "  Backup: $Workspace" }
+    } catch {
+        $Failure = $_
+        if ($Transaction -and -not $Committed -and (Test-Path -LiteralPath $Journal)) {
+            try { Restore-TypeRTransaction $Transaction $Journal }
+            catch { throw "$($Failure.Exception.Message) Recovery incomplete: $($_.Exception.Message). Keep backups and relaunch the installer: $Journal" }
+        }
+        throw $Failure
     } finally {
-        if (Test-Path -LiteralPath $Staging) { Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue }
+        try {
+            if (Test-Path -LiteralPath $Extracted) { Remove-TypeRDirectory $Extracted $Control }
+        } finally { if ($Lock) { $Lock.Dispose() } }
     }
-    New-Item -ItemType Directory -Path (Split-Path -Parent $UxpRegistry) -Force | Out-Null
-    # Without a byte order mark, and renamed over the old file so that it is
-    # never left half written
-    $Temporary = $UxpRegistry + '.tmp'
-    [IO.File]::WriteAllText($Temporary, $RegistryJson, (New-Object Text.UTF8Encoding($false)))
-    Move-Item -LiteralPath $Temporary -Destination $UxpRegistry -Force
 }
 
 # A Legacy panel still installed is called "TypeR (old)" in Photoshop from its
@@ -469,56 +786,34 @@ function Rename-TypeRLegacyPanel {
     }
 }
 
-# --- 5. Version UXP : le paquet .ccx (à côté de ce script, sinon la dernière
-# version publiée), installé par l'installeur de plugins de Creative Cloud,
-# ou à la main sans lui ---
+# --- 5. UXP: install directly and verify actual files, never trust UPIA's
+# exit code (it can report success without installing anything).
+if ($env:TYPER_INSTALL_PROBE -eq 'installed') {
+    $Installed = @(Get-TypeRInstalledPluginPaths | Sort-Object -Unique)
+    if ($Installed.Count) { Write-Output 'installed=uxp' }
+    foreach ($Path in $Installed) { Write-Output "plugin=$Path" }
+    return
+}
 if ($Edition -eq 'uxp') {
-    $CommonFiles = if ($env:CommonProgramW6432) { $env:CommonProgramW6432 } else { $env:CommonProgramFiles }
-    $Upia = if ($env:TYPER_INSTALL_UPIA) { $env:TYPER_INSTALL_UPIA } elseif ($CommonFiles) { Join-Path $CommonFiles 'Adobe\Adobe Desktop Common\RemoteComponents\UPI\UnifiedPluginInstallerAgent\UnifiedPluginInstallerAgent.exe' } else { $null }
-    $CreativeCloud = if ($env:TYPER_INSTALL_UPIA) { $Upia } elseif ($env:ProgramFiles) { Join-Path $env:ProgramFiles 'Adobe\Adobe Creative Cloud\ACC\Creative Cloud.exe' } else { $null }
-    $Source = if ($Package) { [IO.Path]::GetFullPath($Package) } else { Join-Path $PSScriptRoot 'TypeR-UXP.ccx' }
+    $Source = if ($Package) { [IO.Path]::GetFullPath($Package) } else { Join-Path $ScriptDir 'TypeR-UXP.ccx' }
     $Work = Join-Path ([IO.Path]::GetTempPath()) ('TypeR-UXP-' + [Guid]::NewGuid().ToString('N') + '.ccx')
     $CompleteMessage = $null
     try {
+        # Cache custom paths from running Photoshop before asking it to close.
+        $null = @(Get-TypeRPhotoshops)
+        Assert-TypeRPhotoshopClosed
         if (Test-Path -LiteralPath $Source -PathType Leaf) {
             Copy-Item -LiteralPath $Source -Destination $Work
         } else {
+            if ($Package) { throw "Package not found: $Source" }
             Write-Host "  $msg_uxp_download"
             [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
             $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx' -OutFile $Work
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx' -OutFile $Work -TimeoutSec 180
         }
         Write-Host "  $msg_uxp_installing"
-        # Creative Cloud's plugin installer can fail or hang without a working
-        # Creative Cloud session: after a limit, the package is installed by hand.
-        # The installer's exit code does not tell: a failure can still exit with 0
-        if ($Upia -and $env:TYPER_INSTALL_NO_UPIA -ne '1' -and (Test-Path -LiteralPath $Upia -PathType Leaf) -and $CreativeCloud -and (Test-Path -LiteralPath $CreativeCloud -PathType Leaf)) {
-            $Limit = if ($env:TYPER_INSTALL_UPIA_TIMEOUT) { [int]$env:TYPER_INSTALL_UPIA_TIMEOUT } else { 60 }
-            try {
-                $Start = New-Object Diagnostics.ProcessStartInfo
-                $Start.FileName = $Upia
-                $Start.Arguments = '--install "' + $Work + '"'
-                $Start.UseShellExecute = $false
-                $Start.CreateNoWindow = $true
-                $Start.RedirectStandardOutput = $true
-                $Start.RedirectStandardError = $true
-                $Process = [Diagnostics.Process]::Start($Start)
-                $Output = $Process.StandardOutput.ReadToEndAsync()
-                $Errors = $Process.StandardError.ReadToEndAsync()
-                if ($Process.WaitForExit($Limit * 1000)) {
-                    $Process.WaitForExit()
-                    if ($Process.ExitCode -eq 0 -and ($Output.Result + $Errors.Result) -notmatch 'fail') { $CompleteMessage = $msg_uxp_complete }
-                } else {
-                    $Process.Kill()
-                }
-            } catch {
-                # Whatever happened to the installer, the installation by hand comes next
-            }
-        }
-        if (-not $CompleteMessage) {
-            Install-TypeRPluginManually $Work
-            $CompleteMessage = $msg_uxp_complete_manual
-        }
+        Install-TypeRPluginManually $Work
+        $CompleteMessage = $msg_uxp_complete_manual
     } catch {
         Write-Host "  $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "  $msg_uxp_failed" -ForegroundColor Red
@@ -543,19 +838,6 @@ if (-not (Test-Path $ManifestPath)) {
     Write-Host "Placez ce script à côté des dossiers 'CSXS', 'app', 'icons', 'locale', 'themes'."
     if ($Interactive) { Read-Host "Appuyez sur Entrée pour quitter..." }
     exit 1
-}
-if ($Interactive -and (Get-Process -Name Photoshop -ErrorAction SilentlyContinue)) {
-    Write-Host "  $msg_close" -ForegroundColor Yellow
-    Read-Host -Prompt "  $msg_pause"
-}
-
-# Use .NET directly: Get-FileHash may be absent from older Windows PowerShell
-# or from child processes inheriting a PowerShell Core module search path.
-function Get-TypeRFileHash([string]$FilePath) {
-    $Stream = [IO.File]::OpenRead($FilePath)
-    $Algorithm = [Security.Cryptography.SHA256]::Create()
-    try { return [BitConverter]::ToString($Algorithm.ComputeHash($Stream)).Replace('-', '').ToLowerInvariant() }
-    finally { $Algorithm.Dispose(); $Stream.Dispose() }
 }
 $Folders = @('app', 'CSXS', 'icons', 'locale')
 $Inventory = Join-Path $ScriptDir 'app/package.sha256'
@@ -589,6 +871,7 @@ foreach ($Folder in $Folders) {
     }
 }
 if ($env:TYPER_INSTALL_VALIDATE_ONLY) { return }
+Assert-TypeRPhotoshopClosed
 $TargetDir = $CepTarget
 $TargetDir = [IO.Path]::GetFullPath($TargetDir).TrimEnd('\')
 if ($TargetDir -eq $ScriptDir -or $TargetDir -eq [IO.Path]::GetPathRoot($TargetDir).TrimEnd('\')) { throw 'Invalid installation target' }

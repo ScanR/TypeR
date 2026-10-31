@@ -1,7 +1,8 @@
 @echo off
 :: Force le dossier de travail à être celui où se trouve ce fichier
-cd /d "%~dp0"
+cd /d "%~dp0" || exit /b 1
 
 :: Lance le script PowerShell en contournant la politique de sécurité (ExecutionPolicy)
 :: et en passant le contrôle à PowerShell
-PowerShell -NoProfile -ExecutionPolicy Bypass -File "install.ps1" %*
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
+exit /b %errorlevel%

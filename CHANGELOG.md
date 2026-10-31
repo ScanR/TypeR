@@ -4,6 +4,8 @@
 
 ### UXP plugin
 
+- On Windows, update existing TypeR copies in custom Photoshop `Plug-ins` folders, verify every installed file, and restore backups after failed or interrupted installations. The standalone updater detects these copies too. Close Photoshop before installing or updating.
+
 - Add the new TypeR, a UXP plugin for Photoshop 2025 and later (`TypeR-UXP.ccx`), which runs natively on Apple Silicon without Rosetta. It is the same application as the CEP extension, with the same features, layout and saved styles.
 - Import the styles, profiles and settings of an installed CEP TypeR on first start, and keep the plugin's data outside Photoshop's version-specific folders.
 - Keep the global shortcuts through a small keyboard reader, which also reports mouse buttons 4 and 5 on macOS.

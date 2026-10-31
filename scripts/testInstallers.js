@@ -20,7 +20,9 @@ const runInstaller = (args, env) => spawnSync(
 );
 
 const recommendation = (versions) => {
-  const result = runInstaller([], { TYPER_INSTALL_PROBE: 'recommendation', TYPER_PHOTOSHOP_VERSIONS: versions });
+  // Windows PowerShell 5.1 drops empty environment values. A separator alone
+  // represents an explicitly empty fixture without searching the real machine.
+  const result = runInstaller([], { TYPER_INSTALL_PROBE: 'recommendation', TYPER_PHOTOSHOP_VERSIONS: windows && versions === '' ? ';' : versions });
   assert.strictEqual(result.status, 0, result.stderr + result.stdout);
   return /recommended=(.*)/.exec(result.stdout)[1].trim();
 };
@@ -58,8 +60,16 @@ try {
     return { result, installedByHand: fs.existsSync(path.join(uxpRoot, 'Plugins', 'External', 'com.scanr.typer_3.1.0', 'web', 'index.js')), registry: path.join(uxpRoot, 'PluginsInfo', 'v1', 'PS.json') };
   };
 
+  // Windows exercises the transaction and updater through isolated PowerShell
+  // fixtures, including a simulated open Photoshop. Never touch Adobe installs.
+  if (windows) {
+    const checked = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'testInstallWindows.ps1')], { encoding: 'utf8', env: process.env });
+    assert.strictEqual(checked.status, 0, checked.stderr + checked.stdout);
+    process.stdout.write(checked.stdout);
+  }
+
   // The installation by hand reads JSON with macOS's osascript: not on Linux
-  if (process.platform !== 'linux') {
+  if (process.platform === 'darwin') {
     const byHand = installUxp('by-hand', { TYPER_INSTALL_NO_UPIA: '1' });
     assert.strictEqual(byHand.result.status, 0, byHand.result.stderr + byHand.result.stdout);
     assert.strictEqual(byHand.installedByHand, true);
@@ -70,9 +80,11 @@ try {
   const brokenRoot = path.join(sandbox, 'broken', 'UXP');
   fs.mkdirSync(path.join(brokenRoot, 'PluginsInfo', 'v1'), { recursive: true });
   fs.writeFileSync(path.join(brokenRoot, 'PluginsInfo', 'v1', 'PS.json'), '{ not json');
-  const broken = runInstaller([windows ? '-Uxp' : '--uxp', packageFile], { TYPER_UXP_ROOT: brokenRoot, TYPER_INSTALL_TARGET: path.join(sandbox, 'broken', 'no-cep'), TYPER_INSTALL_NO_UPIA: '1' });
-  assert.notStrictEqual(broken.status, 0, 'a broken PS.json is an error');
-  assert.strictEqual(fs.readFileSync(path.join(brokenRoot, 'PluginsInfo', 'v1', 'PS.json'), 'utf8'), '{ not json', 'and it is left alone');
+  if (!windows) {
+    const broken = runInstaller(['--uxp', packageFile], { TYPER_UXP_ROOT: brokenRoot, TYPER_INSTALL_TARGET: path.join(sandbox, 'broken', 'no-cep'), TYPER_INSTALL_NO_UPIA: '1' });
+    assert.notStrictEqual(broken.status, 0, 'a broken PS.json is an error');
+    assert.strictEqual(fs.readFileSync(path.join(brokenRoot, 'PluginsInfo', 'v1', 'PS.json'), 'utf8'), '{ not json', 'and it is left alone');
+  }
 
   if (!windows) {
     // Stand-ins for Creative Cloud's plugin installer

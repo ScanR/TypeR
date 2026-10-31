@@ -193,6 +193,10 @@ TypeR checks for updates when it starts and installs them from the panel, or by 
 
 `-Uxp` / `-Legacy` on Windows and `--uxp` / `--legacy` on macOS skip the menu. `install_uxp_win.cmd` and `./install_uxp_mac.sh` install the new TypeR without asking.
 
+On Windows, close Photoshop before installing. The UXP installer updates existing TypeR copies inside Photoshop's `Plug-ins` folders as well as registered external copies, even when their version numbers match. It verifies every installed file before confirming success, preserves other plugins, and keeps backups outside Photoshop's plugin folders. An interrupted installation is recovered on the next run. Creative Cloud is not needed by this script. For a custom Photoshop location that is not detected, run `install_uxp_win.cmd -PhotoshopPath "E:\My Photoshop"`.
+
+Windows installer regression tests run with `npm test`, or directly with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/testInstallWindows.ps1`. They use disposable fixtures and do not change Adobe installations. If present, `Releases/TypeR-UXP.ccx` is also verified.
+
 </details>
 
 <details>
@@ -221,6 +225,8 @@ Keep the standalone updater from the archive and run it whenever you want to che
 - On macOS, run `chmod +x update_typer_mac.sh` once, then `./update_typer_mac.sh`.
 
 It downloads the latest `TypeR.zip` and updates the versions you have installed. If you only have Legacy and your Photoshop can run the new TypeR (2025 or later), it first asks which version you want, with the new one recommended. For Legacy, it validates the complete package before replacing files, preserves all `storage*` user data, and rolls back if installation fails. Reinstalling the same version can repair damaged files. Restart Photoshop afterwards.
+
+On Windows, the updater also detects UXP copies installed directly in Photoshop's `Plug-ins` folder. It uses the UXP package from the downloaded release and reports a failing installer exit code instead of announcing success. Close Photoshop before updating.
 
 </details>
 
