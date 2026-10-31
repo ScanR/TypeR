@@ -19,26 +19,27 @@ const {
 } = loaded.exports;
 
 const tipIds = Object.keys(FEATURE_TIPS);
-assert.ok(tipIds.includes("exportFolderFonts"), "The export folder tip must stay registered");
+assert.ok(tipIds.includes("styleContextMenu"), "The style context menu tip must stay registered");
+assert.ok(!tipIds.includes("exportFolderFonts"), "The folder export asks for its format in a dialog: no tip needed");
 
 // A tip shows once, then stays hidden
 let state = { showTips: true, seenFeatureTips: {}, activeFeatureTip: null };
-const shown = showFeatureTip(state, "exportFolderFonts");
-assert.strictEqual(shown.activeFeatureTip, "exportFolderFonts");
-assert.deepStrictEqual(shown.seenFeatureTips, { exportFolderFonts: true });
+const shown = showFeatureTip(state, "styleContextMenu");
+assert.strictEqual(shown.activeFeatureTip, "styleContextMenu");
+assert.deepStrictEqual(shown.seenFeatureTips, { styleContextMenu: true });
 state = { ...state, ...shown, activeFeatureTip: null };
-assert.strictEqual(showFeatureTip(state, "exportFolderFonts"), null, "A seen tip must not show again");
+assert.strictEqual(showFeatureTip(state, "styleContextMenu"), null, "A seen tip must not show again");
 
 // The toast has a single slot, next to the notice toast
 const footerSource = fs.readFileSync(path.join(rootDir, "app_src/components/footer/footer.jsx"), "utf8");
 assert.ok(footerSource.includes("<FeatureTip />"), "The footer must mount the tip toast");
 
 // Tips stay hidden when disabled, unknown, or when another one is on screen
-assert.strictEqual(showFeatureTip({ showTips: false }, "exportFolderFonts"), null);
+assert.strictEqual(showFeatureTip({ showTips: false }, "styleContextMenu"), null);
 assert.strictEqual(showFeatureTip({ showTips: true }, "unknownTip"), null);
-const otherId = tipIds.find((id) => id !== "exportFolderFonts");
+const otherId = tipIds.find((id) => id !== "styleContextMenu");
 if (otherId) {
-  const blocked = showFeatureTip({ showTips: true, activeFeatureTip: otherId }, "exportFolderFonts");
+  const blocked = showFeatureTip({ showTips: true, activeFeatureTip: otherId }, "styleContextMenu");
   assert.strictEqual(blocked.activeFeatureTip, undefined, "A new tip must not replace one that is still on screen");
   assert.strictEqual(blocked.seenFeatureTips, undefined, "A blocked tip must stay unseen so it can show later");
 }
@@ -56,16 +57,12 @@ assert.strictEqual(showFeatureTip(repeated, repeatedId).activeFeatureTip, repeat
 
 // Stored data is untrusted
 assert.deepStrictEqual(normalizeSeenFeatureTips(null), {});
-assert.deepStrictEqual(normalizeSeenFeatureTips(["exportFolderFonts"]), {});
+assert.deepStrictEqual(normalizeSeenFeatureTips(["styleContextMenu"]), {});
 assert.deepStrictEqual(
-  normalizeSeenFeatureTips({ exportFolderFonts: true, unknownTip: true, [otherId || "x"]: "yes" }),
-  { exportFolderFonts: true }
+  normalizeSeenFeatureTips({ styleContextMenu: true, unknownTip: true, exportFolderFonts: true, [otherId || "x"]: "yes" }),
+  { styleContextMenu: true }
 );
 
-// {mod} follows the platform
-assert.ok(formatFeatureTip("exportFolderFonts", {}, {}, false).includes("Ctrl"));
-assert.ok(formatFeatureTip("exportFolderFonts", {}, {}, true).includes("Cmd"));
-assert.ok(!formatFeatureTip("exportFolderFonts", {}, {}, true).includes("{mod}"));
 assert.ok(formatFeatureTip("keepSizePaste", {}, { keepSize: "Alt" }).includes("Alt"));
 assert.strictEqual(formatFeatureTip("unknownTip", {}), "");
 

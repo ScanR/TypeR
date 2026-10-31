@@ -298,12 +298,7 @@ const initialState = {
   styleSizeTipLastChangeAt: Math.max(0, Number(storage.data?.styleSizeTipLastChangeAt) || 0),
   styleSizeTipShown: storage.data?.styleSizeTipShown === true,
   styleSizeTipVisible: false,
-  // The export folder tip predates the shared tip system: keep a dismissal
-  // made with the old "Don't show again" button
-  seenFeatureTips: normalizeSeenFeatureTips({
-    ...(storage.data?.exportFolderFontTipDismissed === true ? { exportFolderFonts: true } : null),
-    ...storage.data?.seenFeatureTips,
-  }),
+  seenFeatureTips: normalizeSeenFeatureTips(storage.data?.seenFeatureTips),
   activeFeatureTip: null,
   // Per-session action counts behind tips that wait for a repeated action
   featureTipCounts: {},

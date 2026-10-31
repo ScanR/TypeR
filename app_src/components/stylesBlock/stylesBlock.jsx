@@ -11,6 +11,7 @@ import { CiExport } from "react-icons/ci";
 import config from "../../config";
 import { locale, nativeAlert, nativeConfirm, getActiveLayerText, setActiveLayerText, rgbToHex, getStyleObject, getUserFonts, refreshUserFonts } from "../../utils";
 import { useContext } from "../../context";
+import ExportFolderDialog from "../modal/exportFolderDialog";
 import { buildFolderTree } from "../../folderUtils";
 import { collectFontRefs, exportZipWithFonts } from "../../fontFileExport";
 import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPreview";
@@ -359,6 +360,7 @@ const FolderItem = React.memo(function FolderItem(props) {
   const [dropActive, setDropActive] = React.useState(false);
   const [styleDropTarget, setStyleDropTarget] = React.useState(null);
   const [folderDropEdge, setFolderDropEdge] = React.useState(null);
+  const [exportDialogOpen, setExportDialogOpen] = React.useState(false);
   const openFolder = React.useCallback((e) => {
     e.stopPropagation();
     props.dispatch({ type: "setModal", modal: "editFolder", data: props.data });
@@ -485,10 +487,8 @@ const FolderItem = React.memo(function FolderItem(props) {
   }, []);
 
   // File dialogs and writes return promises in the UXP plugin
-  const exportFolder = React.useCallback(async (e) => {
-    e.stopPropagation();
-    // Ctrl/Cmd+Click also bundles the folder's font files into a .zip
-    const withFonts = e.ctrlKey || e.metaKey;
+  const exportFolder = React.useCallback(async (withFonts) => {
+    setExportDialogOpen(false);
     const ext = withFonts ? "zip" : "json";
     const pathSelect = await window.cep.fs.showSaveDialogEx(false, false, [ext], props.data.name + "." + ext);
     if (!pathSelect?.data) return false;
@@ -515,10 +515,15 @@ const FolderItem = React.memo(function FolderItem(props) {
       return;
     }
     const written = await window.cep.fs.writeFile(pathSelect.data, JSON.stringify(exportedFolder));
-    if (!written || written.err) { nativeAlert(locale.saveError, locale.errorTitle, true); return; }
-    // Plain export done: surface the Ctrl+Click zip shortcut once in a while
-    props.dispatch({ type: "showFeatureTip", id: "exportFolderFonts" });
-  }, [props.data, props.stylesByFolder, props.dispatch]);
+    if (!written || written.err) nativeAlert(locale.saveError, locale.errorTitle, true);
+  }, [props.data, props.stylesByFolder]);
+
+  const openExportDialog = React.useCallback((e) => {
+    e.stopPropagation();
+    setExportDialogOpen(true);
+  }, []);
+
+  const closeExportDialog = React.useCallback(() => setExportDialogOpen(false), []);
 
   const duplicateFolder = React.useCallback((e) => {
     e.stopPropagation();
@@ -573,7 +578,7 @@ const FolderItem = React.memo(function FolderItem(props) {
               <button className="topcoat-icon-button--large--quiet" title={locale.addSubfolder || "Add subfolder"} onClick={addSubfolder}>
                 <FiFolderPlus size={14} />
               </button>
-              <button className="topcoat-icon-button--large--quiet" title={locale.exportFolder + " (" + (locale.exportFolderZipHint || "Ctrl+Click: .zip with font files") + ")"} onClick={exportFolder}>
+              <button className="topcoat-icon-button--large--quiet" title={locale.exportFolder} onClick={openExportDialog}>
                 <CiExport size={14} />
               </button>
               <button className="topcoat-icon-button--large--quiet" title={locale.editFolder} onClick={openFolder}>
@@ -588,6 +593,9 @@ const FolderItem = React.memo(function FolderItem(props) {
           )}
         </div>
       </div>
+      {exportDialogOpen && (
+        <ExportFolderDialog folderName={props.data.name} onChoose={exportFolder} onCancel={closeExportDialog} />
+      )}
       {isOpen && (
         <div className="folder-content">
           {!!childFolders.length && props.data.id && (

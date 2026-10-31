@@ -3,13 +3,8 @@
 // the related action, in a toast above the footer. `after` delays it
 // until the action has been done that many times in the session, so a tip
 // about a faster way to do something only shows to people who repeat it.
-// Placeholders are filled at render time: `{mod}` is the platform's Ctrl/Cmd
-// label (for handlers that accept both), the others come from `vars` below.
+// Placeholders are filled at render time from `vars` below.
 const FEATURE_TIPS = {
-  exportFolderFonts: {
-    key: "tipExportFolderFonts",
-    fallback: "Hold {mod} while clicking \"{exportFolder}\" to get a .zip that also contains the fonts' .ttf/.otf files.",
-  },
   applyStyleKeepSize: {
     key: "tipApplyStyleKeepSize",
     after: 3,
@@ -92,14 +87,10 @@ const showFeatureTip = (state, id) => {
   return result;
 };
 
-const isMacPlatform = () => typeof navigator !== "undefined" && /mac/i.test(navigator.platform || "");
-
-const formatFeatureTip = (id, localeStrings = {}, vars = {}, isMac = isMacPlatform()) => {
+const formatFeatureTip = (id, localeStrings = {}, vars = {}) => {
   const tip = FEATURE_TIPS[id];
   if (!tip) return "";
   const values = {
-    mod: isMac ? "Cmd" : "Ctrl",
-    exportFolder: localeStrings.exportFolder || "Export folder",
     delete: localeStrings.delete || "Delete",
     unsorted: localeStrings.noFolderTitle || "Unsorted",
     importPages: localeStrings.footerOpenRepo || "Import pages",
