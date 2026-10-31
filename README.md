@@ -188,12 +188,12 @@ TypeR checks for updates when it starts and installs them from the panel, or by 
 2. Close Photoshop.
 3. Run the installer and choose a version with the arrow keys and Enter:
    - Windows: double-click `install_win.cmd`.
-   - macOS: double-click `install_mac.command`. macOS blocks it the first time, because the script is not signed by Apple: click **Done**, open **System Settings → Privacy & Security**, click **Open Anyway** at the bottom, then confirm. You can also run `bash install_mac.sh` from Terminal in the extracted folder.
+   - macOS: double-click `install_mac.command`. macOS blocks it the first time, because the script is not signed by Apple: click **Done**, open **System Settings → Privacy & Security**, click **Open Anyway** at the bottom, then confirm. You can also run `bash install_mac.command` from Terminal in the extracted folder.
 4. Reopen Photoshop.
 
-`-Uxp` / `-Legacy` on Windows and `--uxp` / `--legacy` on macOS skip the menu. `install_uxp_win.cmd` and `./install_uxp_mac.sh` install the new TypeR without asking.
+`-Uxp` / `-Legacy` on Windows and `--uxp` / `--legacy` on macOS skip the menu. Everything else the installers need is in the `installer` folder, which must stay next to them.
 
-On Windows, close Photoshop before installing. The UXP installer updates existing TypeR copies inside Photoshop's `Plug-ins` folders as well as registered external copies, even when their version numbers match. It verifies every installed file before confirming success, preserves other plugins, and keeps backups outside Photoshop's plugin folders. An interrupted installation is recovered on the next run. Creative Cloud is not needed by this script. For a custom Photoshop location that is not detected, run `install_uxp_win.cmd -PhotoshopPath "E:\My Photoshop"`.
+On Windows, close Photoshop before installing. The UXP installer updates existing TypeR copies inside Photoshop's `Plug-ins` folders as well as registered external copies, even when their version numbers match. It verifies every installed file before confirming success, preserves other plugins, and keeps backups outside Photoshop's plugin folders. An interrupted installation is recovered on the next run. Creative Cloud is not needed by this script. For a custom Photoshop location that is not detected, run `install_win.cmd -Uxp -PhotoshopPath "E:\My Photoshop"`.
 
 Windows installer regression tests run with `npm test`, or directly with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/testInstallWindows.ps1`. They use disposable fixtures and do not change Adobe installations. If present, `Releases/TypeR-UXP.ccx` is also verified.
 
@@ -209,7 +209,7 @@ For Legacy, recent macOS versions ignore Finder's **Open using Rosetta** option,
 To repair an installation or recreate the launcher, close Photoshop and run from the extracted folder:
 
 ```sh
-bash fix_mac_rosetta.sh
+bash installer/fix_mac_rosetta.sh
 ```
 
 The script checks each installed Photoshop, installs Rosetta if needed, creates the launcher only for builds that require it, enables the CEP debug setting and removes the macOS download quarantine from TypeR files. If Photoshop is already open without Rosetta, the launcher offers to quit and reopen it.
@@ -219,10 +219,10 @@ The script checks each installed Photoshop, installs Rosetta if needed, creates 
 <details>
 <summary><strong>Update without opening TypeR</strong></summary>
 
-Keep the standalone updater from the archive and run it whenever you want to check for a stable update:
+Keep the extracted archive and run its standalone updater whenever you want to check for a stable update:
 
-- On Windows, double-click `update_typer_win.cmd`.
-- On macOS, run `chmod +x update_typer_mac.sh` once, then `./update_typer_mac.sh`.
+- On Windows, double-click `update_typer_win.cmd` in the `installer` folder.
+- On macOS, run `bash installer/update_typer_mac.sh` from the extracted folder.
 
 It downloads the latest `TypeR.zip` and updates the versions you have installed. If you only have Legacy and your Photoshop can run the new TypeR (2025 or later), it first asks which version you want, with the new one recommended. For Legacy, it validates the complete package before replacing files, preserves all `storage*` user data, and rolls back if installation fails. Reinstalling the same version can repair damaged files. Restart Photoshop afterwards.
 
@@ -281,7 +281,7 @@ A shortcut made of modifier keys only (`Win + Ctrl`, `Win + Shift`, `Win + Alt`)
 
 1. Close every Photoshop window and run the installer again. If you used the archive, extract it completely first.
 2. Restart Photoshop and look under **Plugins → TypeR → TypeR**, or **Window → Extensions → TypeR** for Legacy.
-3. Legacy on Apple Silicon: open Photoshop with the **Adobe Photoshop … (TypeR)** launcher in `~/Applications`, not the usual icon, and look under **Window → Extensions (Legacy)**. If the launcher is missing, close Photoshop and run `bash fix_mac_rosetta.sh`.
+3. Legacy on Apple Silicon: open Photoshop with the **Adobe Photoshop … (TypeR)** launcher in `~/Applications`, not the usual icon, and look under **Window → Extensions (Legacy)**. If the launcher is missing, close Photoshop and run `bash installer/fix_mac_rosetta.sh`.
 4. Check that you use a standard desktop Photoshop. Portable or light builds often remove or alter extension support.
 
 </details>
@@ -320,7 +320,7 @@ npm install
 npm run build
 ```
 
-Then install the extension with `install_win.cmd` on Windows or `./install_mac.sh` on macOS.
+Then install the extension with `install_win.cmd` on Windows or `bash install_mac.command` on macOS.
 
 | Command | Purpose |
 | --- | --- |

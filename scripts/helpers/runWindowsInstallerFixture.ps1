@@ -10,7 +10,7 @@ if (-not $Sandbox.StartsWith($Temp, [StringComparison]::OrdinalIgnoreCase) -or
     (Split-Path -Leaf $Sandbox) -notlike 'typer-release-safety-*' -or
     $Source -ne (Join-Path $Sandbox 'source') -or $Target -ne (Join-Path $Sandbox 'target') -or
     $env:TYPER_INSTALL_SKIP_DEBUG -ne '1') { throw 'Refusing a non-isolated installer fixture.' }
-$Installer = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'install.ps1'
+$Installer = Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'installer\install.ps1'
 $Tokens = $null; $Errors = $null
 $Ast = [Management.Automation.Language.Parser]::ParseFile($Installer, [ref]$Tokens, [ref]$Errors)
 if ($Errors.Count) { throw ($Errors | Out-String) }

@@ -28,7 +28,7 @@ esac
 locale_value() {
   key="$1"
   fallback="$2"
-  for locale_root in "$SCRIPT_DIR/locale" "$DEST_DIR/locale"; do
+  for locale_root in "$SCRIPT_DIR/../locale" "$DEST_DIR/locale"; do
     if [ -n "$LOCALE_FOLDER" ] && [ -f "$locale_root/$LOCALE_FOLDER/messages.properties" ]; then
       value="$(awk -v prefix="$key=" 'index($0, prefix) == 1 { print substr($0, length(prefix) + 1); exit }' "$locale_root/$LOCALE_FOLDER/messages.properties")"
       if [ -n "$value" ]; then printf '%s' "$value"; return; fi

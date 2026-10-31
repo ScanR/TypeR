@@ -85,10 +85,10 @@ msg() {
     es:quarantine) printf '%s' "Bloqueo de descarga de macOS eliminado de los archivos de TypeR." ;;
     pt:quarantine) printf '%s' "Bloqueio de download do macOS removido dos arquivos do TypeR." ;;
     *:quarantine) printf '%s' "Removed the macOS download quarantine from TypeR files." ;;
-    fr:not_installed) printf '%s' "TypeR n'est pas encore installé : lancez ./install_mac.sh." ;;
-    es:not_installed) printf '%s' "TypeR aún no está instalado: ejecuta ./install_mac.sh." ;;
-    pt:not_installed) printf '%s' "O TypeR ainda não está instalado: execute ./install_mac.sh." ;;
-    *:not_installed) printf '%s' "TypeR is not installed yet: run ./install_mac.sh." ;;
+    fr:not_installed) printf '%s' "TypeR n'est pas encore installé : lancez install_mac.command." ;;
+    es:not_installed) printf '%s' "TypeR aún no está instalado: ejecuta install_mac.command." ;;
+    pt:not_installed) printf '%s' "O TypeR ainda não está instalado: execute install_mac.command." ;;
+    *:not_installed) printf '%s' "TypeR is not installed yet: run install_mac.command." ;;
     fr:done) printf '%s' "Terminé. Ouvrez Photoshop avec le lanceur, puis [Fenêtre] > [Extensions (héritées)] > [TypeR]." ;;
     es:done) printf '%s' "Listo. Abre Photoshop con el lanzador y luego [Ventana] > [Extensiones (heredadas)] > [TypeR]." ;;
     pt:done) printf '%s' "Concluído. Abra o Photoshop pelo atalho e depois [Janela] > [Extensões (herdadas)] > [TypeR]." ;;

@@ -145,7 +145,7 @@ a local release holding the `.ccx` and writes `.typer-update-test.json` (`forceU
 the installed Legacy extension. The Legacy panel then offers the switch whatever the Photoshop version
 or the installed plugins. Ctrl+C removes the test file.
 
-The standalone updaters (`update_typer_mac.sh`, `update_typer_win.cmd`) follow the same goal. They download
+The standalone updaters (`installer/update_typer_mac.sh`, `installer/update_typer_win.cmd`) follow the same goal. They download
 `TypeR.zip`, which holds the plugin, then update what is installed: the plugin, and Legacy too when both
 are there. Without the plugin, a Photoshop that can run it gets the installers' menu, with UXP
 recommended; Q leaves everything as it was. An older Photoshop, or a scripted run (no console, or
@@ -191,7 +191,7 @@ installer (UPIA) when it is there and works. Its exit code does not tell: a fail
 with 0, so its output is read too. The two install scripts also skip it when the Creative Cloud app
 itself is missing, since UPIA can be left behind without it, and stop waiting for it after a minute
 (`TYPER_INSTALL_UPIA_TIMEOUT`, in seconds). Otherwise, they install the package by hand
-(`app_src/uxpManualInstall.js`, `install_mac.sh`, `install.ps1`):
+(`app_src/uxpManualInstall.js`, `installer/install_mac.sh`, `installer/install.ps1`):
 
 1. Extract the `.ccx`, a plain zip, to `Plugins/External/com.scanr.typer_<version>`, through a
    `.installing` staging folder.
@@ -222,12 +222,16 @@ TypeR does not use that folder: it can need administrator rights on Windows, is 
 version, and the panel's updates would not reach it. It remains the thing to try by hand if a build
 ignores `PS.json`.
 
-Test it with Creative Cloud installed: `TYPER_INSTALL_NO_UPIA=1 ./install_uxp_mac.sh`
+Test it with Creative Cloud installed: `TYPER_INSTALL_NO_UPIA=1 bash install_mac.command --uxp`
 (`$env:TYPER_INSTALL_NO_UPIA='1'` on Windows; `TYPER_UXP_ROOT` installs to another folder), or
 `npm run test:uxp-migration -- --manual` for the Legacy panel's switch. `forceManualPluginInstall` in
 the update test file does the same for the panels.
 
 ## The installers' menu
+
+The archive has one file to run per system at its root, `install_win.cmd` and `install_mac.command`. They
+only start `installer/install.ps1` and `installer/install_mac.sh`, which read the package from the
+parent of their folder. That folder also holds the standalone updaters and `fix_mac_rosetta.sh`.
 
 `get.sh` and `get.ps1` download the latest `TypeR.zip`, check it against `TypeR.zip.sha256` when the
 release has one, and start its installer. They are read from `master`, so they work as soon as they are

@@ -16,8 +16,9 @@ try {
 } catch { $Interactive = $false }
 
 # --- 1. Définition robuste du dossier du script ---
-# $PSScriptRoot est une variable native fiable, contrairement à %~dp0
-$ScriptDir = if ($env:TYPER_INSTALL_SOURCE) { [IO.Path]::GetFullPath($env:TYPER_INSTALL_SOURCE).TrimEnd("\") } else { $PSScriptRoot }
+# $PSScriptRoot est une variable native fiable, contrairement à %~dp0 ;
+# l'archive est le parent du dossier installer
+$ScriptDir = if ($env:TYPER_INSTALL_SOURCE) { [IO.Path]::GetFullPath($env:TYPER_INSTALL_SOURCE).TrimEnd("\") } else { Split-Path -Parent $PSScriptRoot }
 Set-Location -LiteralPath $ScriptDir
 
 # --- 2. Extraction de la version (plus précis que findstr) ---
@@ -835,7 +836,7 @@ if ($Edition -eq 'uxp') {
 # --- 6. Version Legacy (CEP) ---
 if (-not (Test-Path $ManifestPath)) {
     Write-Host "[ERREUR] Fichier introuvable : $ManifestPath" -ForegroundColor Red
-    Write-Host "Placez ce script à côté des dossiers 'CSXS', 'app', 'icons', 'locale', 'themes'."
+    Write-Host "Extrayez toute l'archive : le dossier 'installer' doit rester à côté de 'CSXS', 'app', 'icons' et 'locale'."
     if ($Interactive) { Read-Host "Appuyez sur Entrée pour quitter..." }
     exit 1
 }

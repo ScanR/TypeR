@@ -20,9 +20,9 @@ main() {
 
   # Under "curl | bash" the standard input is the script: the menu reads the terminal
   if (exec </dev/tty) 2>/dev/null; then
-    bash "$work/package/install_mac.sh" "$@" </dev/tty
+    bash "$work/package/installer/install_mac.sh" "$@" </dev/tty
   else
-    bash "$work/package/install_mac.sh" "$@"
+    bash "$work/package/installer/install_mac.sh" "$@"
   fi
 }
 

@@ -34,7 +34,7 @@
         # A separate process: the installer ends with "exit", and it gets a
         # console of its own instead of the pipe of "irm | iex"
         $Shell = (Get-Process -Id $PID).Path
-        & $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Package 'install.ps1')
+        & $Shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Package 'installer\install.ps1')
     } catch {
         Write-Host $_.Exception.Message -ForegroundColor Red
     } finally {

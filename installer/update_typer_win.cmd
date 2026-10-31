@@ -35,7 +35,7 @@ $LocaleFolders = @{
 }
 $Language = $Host.CurrentCulture.TwoLetterISOLanguageName.ToLowerInvariant()
 $LocaleFolder = $LocaleFolders[$Language]
-$LocaleRoots = @((Join-Path $ScriptDir "locale"), (Join-Path $TargetDir "locale"))
+$LocaleRoots = @((Join-Path (Split-Path -Parent $ScriptDir) "locale"), (Join-Path $TargetDir "locale"))
 $LocaleFiles = @()
 foreach ($LocaleRoot in $LocaleRoots) {
     if ($LocaleFolder) { $LocaleFiles += Join-Path $LocaleRoot "$LocaleFolder\messages.properties" }

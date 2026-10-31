@@ -15,7 +15,7 @@ const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'typer-installers-'));
 
 const runInstaller = (args, env) => spawnSync(
   windows ? 'powershell.exe' : 'bash',
-  windows ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'install.ps1'), ...args] : [path.join(root, 'install_mac.sh'), ...args],
+  windows ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'installer', 'install.ps1'), ...args] : [path.join(root, 'installer', 'install_mac.sh'), ...args],
   { encoding: 'utf8', input: '', env: { ...process.env, TYPER_INSTALL_SOURCE: root, ...env } },
 );
 
@@ -121,8 +121,8 @@ try {
       // The standalone updater, on a complete release archive. Its scripts sit
       // next to a stale plugin, which must not be the one installed.
       const updaterDir = path.join(sandbox, 'updater');
-      fs.mkdirSync(updaterDir);
-      for (const name of ['update_typer_mac.sh', 'install_mac.sh']) fs.copyFileSync(path.join(root, name), path.join(updaterDir, name));
+      fs.mkdirSync(path.join(updaterDir, 'installer'), { recursive: true });
+      for (const name of ['update_typer_mac.sh', 'install_mac.sh']) fs.copyFileSync(path.join(root, 'installer', name), path.join(updaterDir, 'installer', name));
       fs.writeFileSync(path.join(updaterDir, 'TypeR-UXP.ccx'), zipSync({
         'manifest.json': strToU8(JSON.stringify({ id: 'com.scanr.typer', name: 'TypeR', version: '1.0.0', host: { app: 'PS', minVersion: '26.0.0' } })),
       }));
@@ -155,7 +155,29 @@ while True:
 sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
 `;
 
-      const LEGACY_MANIFEST = '<Menu>TypeR</Menu> Version="3.0.0"';
+      const LEGACY_MANIFEST = '<Menu>TypeR</Menu><Extension Id="typer" Version="3.0.0" />';
+      // The extracted archive, run without any path given: the double-click
+      // file finds the installer, and the installer the files around its folder
+      const extracted = path.join(sandbox, 'extracted');
+      for (const [name, bytes] of Object.entries(released)) {
+        fs.mkdirSync(path.dirname(path.join(extracted, name)), { recursive: true });
+        fs.writeFileSync(path.join(extracted, name), bytes);
+      }
+      fs.cpSync(path.join(root, 'installer'), path.join(extracted, 'installer'), { recursive: true });
+      fs.copyFileSync(commandFile, path.join(extracted, 'install_mac.command'));
+      fs.copyFileSync(packageFile, path.join(extracted, 'TypeR-UXP.ccx'));
+      const runExtracted = (args, name) => spawnSync(path.join(extracted, 'install_mac.command'), args, {
+        encoding: 'utf8',
+        input: '',
+        env: { ...process.env, TYPER_INSTALL_SOURCE: undefined, TYPER_INSTALL_NO_UPIA: '1', TYPER_INSTALL_SKIP_DEBUG: '1', TYPER_INSTALL_TARGET: path.join(sandbox, name, 'cep'), TYPER_UXP_ROOT: path.join(sandbox, name, 'UXP') },
+      });
+      let fromArchive = runExtracted(['--legacy'], 'archive-legacy');
+      assert.strictEqual(fromArchive.status, 0, fromArchive.stderr + fromArchive.stdout);
+      assert.ok(fs.existsSync(path.join(sandbox, 'archive-legacy', 'cep', 'app', 'index.js')));
+      fromArchive = runExtracted(['--uxp'], 'archive-uxp');
+      assert.strictEqual(fromArchive.status, 0, fromArchive.stderr + fromArchive.stdout);
+      assert.ok(fs.existsSync(path.join(sandbox, 'archive-uxp', 'UXP', 'Plugins', 'External', 'com.scanr.typer_3.1.0', 'web', 'index.js')), 'offline, from the package of the archive');
+
       let machines = 0;
       // A computer with Legacy and/or the plugin 3.0.0; `run` starts the updater on it
       const machine = ({ legacy, plugin }) => {
@@ -182,7 +204,7 @@ sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
           TYPER_INSTALL_NO_UPIA: '1',
           TYPER_PHOTOSHOP_VERSIONS: 'Photoshop 2026=27.7.0',
         };
-        const updater = path.join(updaterDir, 'update_typer_mac.sh');
+        const updater = path.join(updaterDir, 'installer', 'update_typer_mac.sh');
         return {
           run: (extraEnv) => spawnSync('bash', [updater], { encoding: 'utf8', input: '', env: { ...env, ...extraEnv } }),
           // In a real terminal, the keys are typed once the menu is on screen
@@ -242,7 +264,7 @@ sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
     // The one command install, from a local copy of a release
     const release = path.join(sandbox, 'release');
     fs.mkdirSync(release);
-    const zip = Buffer.from(zipSync({ 'install_mac.sh': strToU8('#!/bin/bash\necho "installer ran: $*"\n') }));
+    const zip = Buffer.from(zipSync({ 'installer/install_mac.sh': strToU8('#!/bin/bash\necho "installer ran: $*"\n') }));
     fs.writeFileSync(path.join(release, 'TypeR.zip'), zip);
     const runGet = () => spawnSync('bash', [path.join(root, 'get.sh'), '--uxp'], { encoding: 'utf8', input: '', env: { ...process.env, TYPER_RELEASE_URL: 'file://' + release } });
     let get = runGet();
@@ -259,19 +281,23 @@ sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
     assert.match(get.stderr, /damaged/);
   }
 
+  // At the root of the archive, one file to run per system
+  const released = /\[('app'.*?)\]\.forEach\(walk\)/.exec(fs.readFileSync(path.join(__dirname, 'buildRelease.js'), 'utf8'))[1];
+  assert.deepStrictEqual(released.match(/'[^']*'/g).filter((name) => /\.(cmd|command|sh|ps1)'$/.test(name)).sort(), ["'install_mac.command'", "'install_win.cmd'"]);
+
   // Both the bash installer's messages and the PowerShell ones exist in every language
-  const macText = fs.readFileSync(path.join(root, 'install_mac.sh'), 'utf8');
+  const macText = fs.readFileSync(path.join(root, 'installer', 'install_mac.sh'), 'utf8');
   for (const name of ['TITLE', 'UXP_NAME', 'LEGACY_NAME', 'RECOMMENDED', 'KEYS', 'CANCELLED', 'PS_FOUND', 'PS_NONE', 'UXP_TOO_OLD']) {
     for (const language of ['EN', 'FR', 'ES', 'PT']) assert.ok(macText.includes(`MSG_${name}_${language}=`), name + ' ' + language);
   }
-  const winBytes = fs.readFileSync(path.join(root, 'install.ps1'));
+  const winBytes = fs.readFileSync(path.join(root, 'installer', 'install.ps1'));
   assert.deepStrictEqual([...winBytes.subarray(0, 3)], [0xef, 0xbb, 0xbf], 'Windows PowerShell 5.1 misreads accents without a byte order mark');
   const winText = winBytes.toString('utf8');
   for (const name of ['title', 'uxp_name', 'legacy_name', 'recommended', 'keys', 'cancelled', 'ps_found', 'ps_none', 'uxp_too_old']) {
     assert.strictEqual(winText.split(`$msg_${name} = `).length - 1, 4, name);
   }
   assert.ok(/^[\x00-\x7f]*$/.test(fs.readFileSync(path.join(root, 'get.ps1'), 'utf8')), 'get.ps1 stays ASCII');
-  assert.ok(/^[\x00-\x7f]*$/.test(fs.readFileSync(path.join(root, 'update_typer_win.cmd'), 'utf8')), 'update_typer_win.cmd stays ASCII');
+  assert.ok(/^[\x00-\x7f]*$/.test(fs.readFileSync(path.join(root, 'installer', 'update_typer_win.cmd'), 'utf8')), 'update_typer_win.cmd stays ASCII');
   console.log('TypeR installer tests passed');
 } finally {
   fs.rmSync(sandbox, { recursive: true, force: true });

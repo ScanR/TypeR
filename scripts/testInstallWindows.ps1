@@ -3,7 +3,7 @@
 $ErrorActionPreference = 'Stop'
 $ScriptDir = Split-Path -Parent $PSScriptRoot
 $Tokens = $null; $ParseErrors = $null
-$Ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $ScriptDir 'install.ps1'), [ref]$Tokens, [ref]$ParseErrors)
+$Ast = [Management.Automation.Language.Parser]::ParseFile((Join-Path $ScriptDir 'installer\install.ps1'), [ref]$Tokens, [ref]$ParseErrors)
 if ($ParseErrors.Count) { throw ($ParseErrors | Out-String) }
 foreach ($Node in $Ast.FindAll({ param($N) $N -is [Management.Automation.Language.FunctionDefinitionAst] }, $false)) {
     . ([scriptblock]::Create($Node.Extent.Text))
@@ -73,7 +73,7 @@ function Invoke-UpdaterFixture([bool]$Installed, [bool]$LegacyInstalled, [string
     $Updater = Join-Path $Fixture 'updater'
     $Release = Join-Path $Fixture 'release'
     $null = New-Item -ItemType Directory -Path $Updater, $Release
-    Copy-Item -LiteralPath (Join-Path $ScriptDir 'update_typer_win.cmd') -Destination $Updater
+    Copy-Item -LiteralPath (Join-Path $ScriptDir 'installer\update_typer_win.cmd') -Destination $Updater
     Write-Text (Join-Path $Updater 'TypeR-UXP.ccx') 'stale package next to updater'
     Write-Text (Join-Path $Release 'CSXS\manifest.xml') '<ExtensionManifest><Extension Id="typer" Version="3.0.0" /></ExtensionManifest>'
     foreach ($Folder in 'app', 'icons', 'locale') { Write-Text (Join-Path $Release ($Folder + '\fixture')) 'fixture' }

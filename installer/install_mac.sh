@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # —————————————————————————————————————————————————————————————
-# Répertoire du script (pour pointer sur manifest.xml)
+# Dossier de l'archive, parent de installer/ (pour pointer sur manifest.xml)
 # —————————————————————————————————————————————————————————————
-SRCDIR=$(cd "${TYPER_INSTALL_SOURCE:-$(dirname "$0")}" && pwd)
+SRCDIR=$(cd "${TYPER_INSTALL_SOURCE:-$(dirname "$0")/..}" && pwd)
 
 # —————————————————————————————————————————————————————————————
 # Récupération de la version depuis CSXS/manifest.xml
@@ -177,7 +177,6 @@ done
 # Sans choix, une console interactive affiche le menu ; une installation
 # scriptée (mise à jour, tests) installe la version Legacy.
 # —————————————————————————————————————————————————————————————
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 EDITION=""
 SILENT=0
 UXP_PACKAGE=""
@@ -371,7 +370,7 @@ UXP_PLUGINS="$UXP_ROOT/Plugins/External"
 UXP_REGISTRY="$UXP_ROOT/PluginsInfo/v1/PS.json"
 
 # —————————————————————————————————————————————————————————————
-# Version UXP : le paquet .ccx (à côté de ce script, sinon la dernière
+# Version UXP : le paquet .ccx (celui de l'archive, sinon la dernière
 # version publiée), installé par l'installeur de plugins de Creative Cloud.
 # Sans lui, ou s'il échoue, le paquet est extrait là où il l'aurait mis et
 # inscrit dans PS.json, que Photoshop lit à son démarrage (dans une sous-coque
@@ -444,7 +443,7 @@ rename_legacy_panel() {
 if [ "$EDITION" = uxp ]; then
   UPIA="${TYPER_INSTALL_UPIA:-/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent}"
   CREATIVE_CLOUD="/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud.app"
-  PACKAGE="${UXP_PACKAGE:-$SCRIPT_DIR/TypeR-UXP.ccx}"
+  PACKAGE="${UXP_PACKAGE:-$SRCDIR/TypeR-UXP.ccx}"
   WORK="$(mktemp -d)"
   trap 'status=$?; rm -rf "$WORK"; on_exit "$status"' EXIT
   # The installer reads the package from a temporary folder: macOS would ask

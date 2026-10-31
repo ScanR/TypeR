@@ -285,7 +285,7 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
     const packageFile = path.join(sandbox, "TypeR-UXP.ccx");
     fs.writeFileSync(packageFile, fullPackage);
     const scriptRoot = path.join(sandbox, "script", "UXP");
-    const runScript = (args) => childProcess.spawnSync("bash", [path.resolve(__dirname, "../install_mac.sh"), "--uxp", ...args], {
+    const runScript = (args) => childProcess.spawnSync("bash", [path.resolve(__dirname, "../installer/install_mac.sh"), "--uxp", ...args], {
       encoding: "utf8",
       env: { ...process.env, TYPER_UXP_ROOT: scriptRoot, TYPER_INSTALL_NO_UPIA: "1", TYPER_INSTALL_TARGET: path.join(sandbox, "no-cep"), TYPER_INSTALL_SOURCE: path.resolve(__dirname, "..") },
     });

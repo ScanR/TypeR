@@ -23,12 +23,10 @@ function run(cmd, args = [], options = {}) {
       console.log("▶ install_win.cmd");
       await run("cmd", ["/c", "install_win.cmd", "-Legacy"], { cwd });
     } else if (process.platform === "darwin") {
-      const macScript = resolve(cwd, "install_mac.sh");
-      if (!existsSync(macScript)) throw new Error("install_mac.sh introuvable à la racine du projet.");
-      console.log("▶ chmod +x install_mac.sh");
-      await run("chmod", ["+x", "install_mac.sh"], { cwd });
-      console.log("▶ ./install_mac.sh");
-      await run("./install_mac.sh", ["--legacy"], { cwd });
+      const macScript = resolve(cwd, "installer/install_mac.sh");
+      if (!existsSync(macScript)) throw new Error("installer/install_mac.sh introuvable.");
+      console.log("▶ installer/install_mac.sh");
+      await run("bash", ["installer/install_mac.sh", "--legacy"], { cwd });
     } else {
       throw new Error(`OS non pris en charge: ${process.platform}`);
     }
