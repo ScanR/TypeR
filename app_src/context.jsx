@@ -15,7 +15,7 @@ import { getDefaultShortcuts, migrateShortcutDefaults } from "./shortcutCommands
 import { getStoredSelectionLineIndex } from "./multiBubbleHistory";
 import { collectDescendantIds, getAutomaticTagStyles } from "./folderUtils";
 import { perfMeasure } from "./perfDebug";
-import { TAB_FIELDS, createTab, migrateTabStorage } from "./tabStorage";
+import { TAB_FIELDS, createTab, migrateTabStorage, moveTab } from "./tabStorage";
 import { getInterfaceLanguage } from "./interfaceLanguage";
 import { loadTextShapeREngine } from "./textShapeREngineLoader";
 import {
@@ -1445,6 +1445,11 @@ const baseReducer = (state, action) => {
       const name = (action.name || "").trim();
       if (!name) break;
       newState.tabs = state.tabs.map((tab) => (tab.id === action.id ? { ...tab, name } : tab));
+      break;
+    }
+
+    case "moveTab": {
+      newState.tabs = moveTab(state.tabs, action.id, action.slot);
       break;
     }
 

@@ -47,6 +47,7 @@
 - Add contextual alternates and the single-line composer to the style editor, and turn on standard and contextual ligatures for new styles.
 - Preview fonts in the style editor: the font and weight lists show each entry in its own font, and the font list has a search field (word order, spaces and accents are optional).
 - Keep every script tab and the active tab when multi-tab mode is hidden.
+- Reorder the script tabs by dragging them.
 - Keep the script's page and line highlights on their text: they no longer drift by one or more rows after the panel is resized, on bold or italic lines close to the wrap limit, or on scripts containing stray carriage returns.
 - Recognize complete page headings, including `Page 12 :`, `Page 12 : title`, `Page 12 - title`, `[Page 12]` and Markdown headings. Mentions of a page inside dialogue remain dialogue.
 - Serialize PSD navigation and record the opened page only after Photoshop confirms success.

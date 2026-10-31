@@ -442,7 +442,7 @@ export const getChapters = ({ inWalkthrough = false } = {}) => [
         spot: () => (session.leftPracticeTab
           ? [tabOf(session.practiceTabId)]
           : [tabOf(session.previousTabId !== session.practiceTabId && session.previousTabId), { selector: ".tab-bar-tab:not(.m-active)" }]),
-        result: locale.whatsNewWorkflowResult1 || "Double-click a tab to rename it. The + button opens a new one.",
+        result: locale.whatsNewWorkflowResult1 || "Double-click a tab to rename it. Drag it to change the order. The + button opens a new one.",
       },
       {
         id: "presets",

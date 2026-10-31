@@ -14,6 +14,7 @@
   }
 }
 .tab-bar-tab {
+  position: relative;
   display: flex;
   align-items: center;
   flex: 0 1 auto;
@@ -33,6 +34,29 @@
   &.m-active {
     opacity: 1;
     box-shadow: inset 0 2px 0 #288edf;
+  }
+  &.m-dragging {
+    opacity: 0.4;
+  }
+  &.m-drop-before::before,
+  &.m-drop-after::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #288edf;
+    pointer-events: none;
+  }
+  &.m-drop-before::before,
+  [dir="rtl"] &.m-drop-after::before {
+    left: 0;
+    right: auto;
+  }
+  &.m-drop-after::before,
+  [dir="rtl"] &.m-drop-before::before {
+    left: auto;
+    right: 0;
   }
 }
 .tab-bar-name {

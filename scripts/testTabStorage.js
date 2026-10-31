@@ -15,7 +15,7 @@ new Function("require", "module", "exports", transformed)(
   storageModule.exports
 );
 
-const { migrateTabStorage } = storageModule.exports;
+const { migrateTabStorage, moveTab } = storageModule.exports;
 
 const legacyStorage = {
   text: "Script kept from master",
@@ -64,5 +64,18 @@ const clearedLegacyText = migrateTabStorage({
   text: "",
 }, "Tab 1");
 assert.strictEqual(clearedLegacyText.tabs[0].text, "", "An intentionally cleared legacy text must beat a stale tab");
+
+// A slot is a gap of the current list: 0 is before the first tab
+const orderTabs = [{ id: "a" }, { id: "b" }, { id: "c" }];
+const movedOrder = (id, slot) => moveTab(orderTabs, id, slot).map((tab) => tab.id).join("");
+assert.strictEqual(movedOrder("a", 3), "bca", "A tab must move to the end");
+assert.strictEqual(movedOrder("a", 2), "bac", "A tab moved right must land in its gap");
+assert.strictEqual(movedOrder("c", 0), "cab", "A tab must move to the start");
+assert.strictEqual(movedOrder("c", 1), "acb", "A tab moved left must land in its gap");
+assert.strictEqual(moveTab(orderTabs, "b", 1), orderTabs, "The gap before a tab must leave the list untouched");
+assert.strictEqual(moveTab(orderTabs, "b", 2), orderTabs, "The gap after a tab must leave the list untouched");
+assert.strictEqual(moveTab(orderTabs, "missing", 0), orderTabs, "An unknown tab must leave the list untouched");
+assert.strictEqual(moveTab(orderTabs, "a", 3)[2], orderTabs[0], "A moved tab must keep its contents");
+assert.strictEqual(orderTabs[0].id, "a", "Moving a tab must not mutate the list");
 
 console.log("tab storage migration tests passed");

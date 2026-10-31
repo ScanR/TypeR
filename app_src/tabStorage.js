@@ -77,4 +77,16 @@ const migrateTabStorage = (storedData, defaultName, createId) => {
   return { tabs, currentTabId, migrated };
 };
 
-export { TAB_FIELDS, createTab, migrateTabStorage };
+// Slots count the gaps of the current list: 0 is before the first tab,
+// tabs.length after the last. Returns the same array when nothing moves.
+const moveTab = (tabs, id, slot) => {
+  const from = tabs.findIndex((tab) => tab.id === id);
+  if (from < 0) return tabs;
+  const to = slot > from ? slot - 1 : slot;
+  if (to === from) return tabs;
+  const moved = tabs.filter((tab) => tab.id !== id);
+  moved.splice(to, 0, tabs[from]);
+  return moved;
+};
+
+export { TAB_FIELDS, createTab, migrateTabStorage, moveTab };

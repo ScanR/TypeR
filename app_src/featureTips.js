@@ -34,7 +34,7 @@ const FEATURE_TIPS = {
   },
   renameTab: {
     key: "tipRenameTab",
-    fallback: "Double-click a tab to rename it.",
+    fallback: "Double-click a tab to rename it. Drag it to change the order.",
   },
   pageSync: {
     key: "tipPageSync",
