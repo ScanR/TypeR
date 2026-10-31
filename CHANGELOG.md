@@ -15,6 +15,7 @@
 - A Finder `.DS_Store` file no longer breaks a release build or the Legacy installation on macOS.
 - The installers no longer call Creative Cloud's plugin installer when the Creative Cloud app is missing, and stop waiting for it after a minute. On Windows, an installer that cannot start now falls back to the direct installation instead of failing.
 - The Legacy panel first offers the switch to the new TypeR (UXP), before What's new, when Photoshop can run it (2025 or later): one click installs it, and it imports the styles, profiles and settings.
+- The standalone updaters (`update_typer_mac.sh`, `update_typer_win.cmd`) update the new TypeR when it is installed, instead of installing Legacy next to it, and otherwise offer it when Photoshop can run it. On Windows, a failed update no longer reports success.
 - Once the new TypeR is installed, the Legacy panel is called "TypeR (old)" in Photoshop from its next start, and says at each start, before What's new, that the new version opens from Plug-ins > TypeR.
 
 ### Smart paste

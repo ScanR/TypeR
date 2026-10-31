@@ -3,6 +3,7 @@ setlocal
 
 set "TYPER_UPDATE_SCRIPT=%~f0"
 set "TYPER_UPDATE_DIR=%~dp0"
+if /I "%~1"=="--silent" set "TYPER_UPDATE_SILENT=1"
 
 PowerShell -NoProfile -ExecutionPolicy Bypass -Command "$content = Get-Content -LiteralPath $env:TYPER_UPDATE_SCRIPT; $marker = ($content | Select-String -SimpleMatch '# POWERSHELL' | Select-Object -Last 1).LineNumber; if (-not $marker) { throw 'Embedded updater not found.' }; & ([ScriptBlock]::Create(($content[$marker..($content.Length - 1)] -join [Environment]::NewLine)))"
 set "UPDATE_EXIT_CODE=%ERRORLEVEL%"
@@ -24,6 +25,8 @@ $TargetDir = if ($env:TYPER_UPDATE_TARGET) {
 } else {
     Join-Path $env:APPDATA "Adobe\CEP\extensions\typertools"
 }
+$UxpRoot = if ($env:TYPER_UXP_ROOT) { $env:TYPER_UXP_ROOT } else { Join-Path $env:APPDATA "Adobe\UXP" }
+$UxpPlugins = Join-Path $UxpRoot "Plugins\External"
 
 $LocaleFolders = @{
     ar = "ar_AE"; de = "de_DE"; es = "es_SP"; fr = "fr_FR"; pt = "pt_BR"
@@ -150,8 +153,37 @@ try {
     $env:TYPER_INSTALL_SOURCE = $PackageRoot
     $env:TYPER_INSTALL_TARGET = $TargetDir
     $env:TYPER_INSTALL_SKIP_DEBUG = $env:TYPER_UPDATE_SKIP_DEBUG
-    & (Join-Path $ScriptDir 'install.ps1') -Silent
-    Write-Host (Format-VersionMessage $Success $PackageVersion) -ForegroundColor Green
+    $Installer = Join-Path $ScriptDir 'install.ps1'
+    # The plugin of this release, never a TypeR-UXP.ccx left next to this script.
+    # An older release without one: the installer downloads the latest.
+    $UxpPackage = Join-Path $PackageRoot 'TypeR-UXP.ccx'
+
+    # What is installed gets updated. Without the plugin, a Photoshop that can run
+    # it gets the installer's menu, which recommends it; a scripted run stays on Legacy.
+    $UxpInstalled = @(Get-ChildItem -LiteralPath $UxpPlugins -Filter 'com.scanr.typer_*' -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -notlike '*.installing' }).Count -gt 0
+    $Editions = @('legacy')
+    if ($UxpInstalled) {
+        $Editions = if (Test-Path -LiteralPath (Join-Path $TargetDir 'CSXS\manifest.xml') -PathType Leaf) { @('legacy', 'uxp') } else { @('uxp') }
+    } elseif (-not $env:TYPER_UPDATE_SILENT) {
+        $env:TYPER_INSTALL_PROBE = 'recommendation'
+        $Recommendation = @(& $Installer)
+        if ($Recommendation -contains 'recommended=uxp') {
+            $env:TYPER_INSTALL_PROBE = 'choice'
+            $global:LASTEXITCODE = 0
+            $Choice = @(& $Installer)
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if ($Choice -contains 'edition=uxp') { $Editions = @('uxp') }
+        }
+        $env:TYPER_INSTALL_PROBE = $null
+    }
+
+    # install.ps1 reports a failure through its exit code, not an exception
+    foreach ($Edition in $Editions) {
+        $global:LASTEXITCODE = 0
+        if ($Edition -eq 'uxp') { & $Installer -Uxp -Silent $UxpPackage } else { & $Installer -Legacy -Silent }
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if ($Edition -eq 'legacy') { Write-Host (Format-VersionMessage $Success $PackageVersion) -ForegroundColor Green }
+    }
 } catch {
     if ($InstallStarted) {
         foreach ($Folder in $CopiedFolders) {

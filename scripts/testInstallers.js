@@ -105,6 +105,128 @@ try {
     assert.strictEqual(commandRun.status, 0, commandRun.stderr);
     assert.match(commandRun.stdout, /edition=legacy/);
 
+    if (process.platform === 'darwin') {
+      // The standalone updater, on a complete release archive. Its scripts sit
+      // next to a stale plugin, which must not be the one installed.
+      const updaterDir = path.join(sandbox, 'updater');
+      fs.mkdirSync(updaterDir);
+      for (const name of ['update_typer_mac.sh', 'install_mac.sh']) fs.copyFileSync(path.join(root, name), path.join(updaterDir, name));
+      fs.writeFileSync(path.join(updaterDir, 'TypeR-UXP.ccx'), zipSync({
+        'manifest.json': strToU8(JSON.stringify({ id: 'com.scanr.typer', name: 'TypeR', version: '1.0.0', host: { app: 'PS', minVersion: '26.0.0' } })),
+      }));
+      const { REQUIRED_PACKAGE_FILES } = require('./helpers/loadAppModule')()('app_src/releasePackage.js');
+      const released = Object.fromEntries(REQUIRED_PACKAGE_FILES.map((name) => [name, strToU8('new ' + name)]));
+      released['CSXS/manifest.xml'] = strToU8('<ExtensionManifest ExtensionBundleId="com.scanr.typer" ExtensionBundleVersion="3.1.0"><Menu>TypeR</Menu><ExtensionList><Extension Id="typer" Version="3.1.0" /></ExtensionList></ExtensionManifest>');
+      released['app/package.sha256'] = strToU8(Object.keys(released).sort().map((name) => crypto.createHash('sha256').update(released[name]).digest('hex') + '  ' + name).join('\n') + '\n');
+      const archive = path.join(sandbox, 'release-3.1.0.zip');
+      fs.writeFileSync(archive, zipSync({ ...released, 'TypeR-UXP.ccx': fs.readFileSync(packageFile) }));
+
+      const TERMINAL_DRIVER = `
+import os, pty, sys
+pid, terminal = pty.fork()
+if pid == 0:
+    os.execvp(sys.argv[2], sys.argv[2:])
+keys = sys.argv[1].encode()
+output = b""
+while True:
+    try:
+        chunk = os.read(terminal, 4096)
+    except OSError:
+        break
+    if not chunk:
+        break
+    sys.stdout.buffer.write(chunk)
+    output += chunk
+    if keys and "\u2191".encode() in output:
+        os.write(terminal, keys)
+        keys = b""
+sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
+`;
+
+      const LEGACY_MANIFEST = '<Menu>TypeR</Menu> Version="3.0.0"';
+      let machines = 0;
+      // A computer with Legacy and/or the plugin 3.0.0; `run` starts the updater on it
+      const machine = ({ legacy, plugin }) => {
+        const home = path.join(sandbox, 'machine-' + ++machines);
+        const cep = path.join(home, 'cep');
+        const uxpRoot = path.join(home, 'UXP');
+        if (legacy) {
+          fs.mkdirSync(path.join(cep, 'CSXS'), { recursive: true });
+          fs.writeFileSync(path.join(cep, 'CSXS', 'manifest.xml'), LEGACY_MANIFEST);
+        }
+        if (plugin) {
+          fs.mkdirSync(path.join(uxpRoot, 'Plugins', 'External', 'com.scanr.typer_3.0.0'), { recursive: true });
+        } else {
+          // An interrupted installation is not an installation
+          fs.mkdirSync(path.join(uxpRoot, 'Plugins', 'External', 'com.scanr.typer_3.1.0.installing'), { recursive: true });
+        }
+        const env = {
+          ...process.env,
+          TERM: 'xterm',
+          TYPER_UPDATE_ARCHIVE: archive,
+          TYPER_UPDATE_TARGET: cep,
+          TYPER_UPDATE_SKIP_DEBUG: '1',
+          TYPER_UXP_ROOT: uxpRoot,
+          TYPER_INSTALL_NO_UPIA: '1',
+          TYPER_PHOTOSHOP_VERSIONS: 'Photoshop 2026=27.7.0',
+        };
+        const updater = path.join(updaterDir, 'update_typer_mac.sh');
+        return {
+          run: (extraEnv) => spawnSync('bash', [updater], { encoding: 'utf8', input: '', env: { ...env, ...extraEnv } }),
+          // In a real terminal, the keys are typed once the menu is on screen
+          runInTerminal: (keys, extraEnv) => spawnSync('python3', ['-I', '-c', TERMINAL_DRIVER, keys, 'bash', updater], { encoding: 'utf8', input: '', timeout: 30000, env: { ...env, ...extraEnv } }),
+          legacyManifest: () => {
+            const file = path.join(cep, 'CSXS', 'manifest.xml');
+            return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+          },
+          pluginUpdated: () => fs.existsSync(path.join(uxpRoot, 'Plugins', 'External', 'com.scanr.typer_3.1.0', 'web', 'index.js')),
+        };
+      };
+      const ok = (result) => assert.strictEqual(result.status, 0, result.stderr + result.stdout);
+
+      // On the plugin only: no Legacy added next to it
+      let computer = machine({ plugin: true });
+      ok(computer.run());
+      assert.strictEqual(computer.pluginUpdated(), true);
+      assert.strictEqual(computer.legacyManifest(), null, 'no Legacy appears');
+
+      // On both: both updated, and the Legacy panel keeps its "old" name
+      computer = machine({ legacy: true, plugin: true });
+      ok(computer.run());
+      assert.strictEqual(computer.pluginUpdated(), true);
+      assert.match(computer.legacyManifest(), /Version="3\.1\.0"/);
+      assert.match(computer.legacyManifest(), /<Menu>TypeR \(old\)<\/Menu>/);
+
+      // Legacy without a console: as before, whatever Photoshop can run
+      computer = machine({ legacy: true });
+      ok(computer.run());
+      assert.strictEqual(computer.pluginUpdated(), false);
+      assert.match(computer.legacyManifest(), /Version="3\.1\.0"/);
+
+      // Legacy in a console, Photoshop can run the plugin: Enter takes the recommended plugin
+      computer = machine({ legacy: true });
+      ok(computer.runInTerminal('\r'));
+      assert.strictEqual(computer.pluginUpdated(), true, 'Enter takes the plugin');
+      assert.match(computer.legacyManifest(), /<Menu>TypeR \(old\)<\/Menu>/, 'Legacy is kept as it was, renamed');
+      assert.match(computer.legacyManifest(), /Version="3\.0\.0"/);
+
+      // 2 keeps Legacy (the second Enter answers "Photoshop is open" if it is), and Q changes nothing
+      computer = machine({ legacy: true });
+      ok(computer.runInTerminal('2\r\r'));
+      assert.strictEqual(computer.pluginUpdated(), false);
+      assert.match(computer.legacyManifest(), /Version="3\.1\.0"/);
+      computer = machine({ legacy: true });
+      assert.strictEqual(computer.runInTerminal('q').status, 130);
+      assert.strictEqual(computer.pluginUpdated(), false);
+      assert.strictEqual(computer.legacyManifest(), LEGACY_MANIFEST);
+
+      // A Photoshop too old for the plugin: no question
+      computer = machine({ legacy: true });
+      ok(computer.runInTerminal('', { TYPER_PHOTOSHOP_VERSIONS: 'Photoshop 2024=25.12.0' }));
+      assert.strictEqual(computer.pluginUpdated(), false);
+      assert.match(computer.legacyManifest(), /Version="3\.1\.0"/);
+    }
+
     // The one command install, from a local copy of a release
     const release = path.join(sandbox, 'release');
     fs.mkdirSync(release);
@@ -137,6 +259,7 @@ try {
     assert.strictEqual(winText.split(`$msg_${name} = `).length - 1, 4, name);
   }
   assert.ok(/^[\x00-\x7f]*$/.test(fs.readFileSync(path.join(root, 'get.ps1'), 'utf8')), 'get.ps1 stays ASCII');
+  assert.ok(/^[\x00-\x7f]*$/.test(fs.readFileSync(path.join(root, 'update_typer_win.cmd'), 'utf8')), 'update_typer_win.cmd stays ASCII');
   console.log('TypeR installer tests passed');
 } finally {
   fs.rmSync(sandbox, { recursive: true, force: true });

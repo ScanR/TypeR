@@ -220,7 +220,7 @@ Keep the standalone updater from the archive and run it whenever you want to che
 - On Windows, double-click `update_typer_win.cmd`.
 - On macOS, run `chmod +x update_typer_mac.sh` once, then `./update_typer_mac.sh`.
 
-It downloads the latest `TypeR.zip`, validates the complete package before replacing files, preserves all `storage*` user data, and rolls back if installation fails. Reinstalling the same version can repair damaged files. Restart Photoshop afterwards.
+It downloads the latest `TypeR.zip` and updates the versions you have installed. If you only have Legacy and your Photoshop can run the new TypeR (2025 or later), it first asks which version you want, with the new one recommended. For Legacy, it validates the complete package before replacing files, preserves all `storage*` user data, and rolls back if installation fails. Reinstalling the same version can repair damaged files. Restart Photoshop afterwards.
 
 </details>
 

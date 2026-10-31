@@ -145,6 +145,13 @@ a local release holding the `.ccx` and writes `.typer-update-test.json` (`forceU
 the installed Legacy extension. The Legacy panel then offers the switch whatever the Photoshop version
 or the installed plugins. Ctrl+C removes the test file.
 
+The standalone updaters (`update_typer_mac.sh`, `update_typer_win.cmd`) follow the same goal. They download
+`TypeR.zip`, which holds the plugin, then update what is installed: the plugin, and Legacy too when both
+are there. Without the plugin, a Photoshop that can run it gets the installers' menu, with UXP
+recommended; Q leaves everything as it was. An older Photoshop, or a scripted run (no console, or
+`--silent` on Windows), updates Legacy as before. Their messages are the installers' ones. The plugin
+always comes from the downloaded archive, never from a `TypeR-UXP.ccx` left next to the script.
+
 ## Updating without a restart
 
 Creative Cloud's plugin installer (UPIA) leaves a running plugin alone: after `--install` of a newer

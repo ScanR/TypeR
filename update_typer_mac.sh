@@ -4,6 +4,7 @@ set -e
 RELEASE_URL="https://github.com/ScanR/TypeR/releases/latest/download/TypeR.zip"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEST_DIR="${TYPER_UPDATE_TARGET:-$HOME/Library/Application Support/Adobe/CEP/extensions/typertools}"
+UXP_PLUGINS="${TYPER_UXP_ROOT:-$HOME/Library/Application Support/Adobe/UXP}/Plugins/External"
 
 LANGUAGE_CODE="${LC_ALL:-${LC_MESSAGES:-}}"
 if [ -z "$LANGUAGE_CODE" ]; then
@@ -134,6 +135,33 @@ if [ -z "$PACKAGE_VERSION" ]; then
   exit 1
 fi
 
-TYPER_INSTALL_SOURCE="$PACKAGE_ROOT" TYPER_INSTALL_TARGET="$DEST_DIR" TYPER_INSTALL_SKIP_DEBUG="${TYPER_UPDATE_SKIP_DEBUG:-}" bash "$SCRIPT_DIR/install_mac.sh" --silent
-format_version_message "$SUCCESS" "$PACKAGE_VERSION"
-printf '\n'
+uxp_plugin_installed() {
+  for folder in "$UXP_PLUGINS"/com.scanr.typer_*; do
+    case "$folder" in *.installing) continue ;; esac
+    if [ -d "$folder" ]; then return 0; fi
+  done
+  return 1
+}
+
+export TYPER_INSTALL_SOURCE="$PACKAGE_ROOT" TYPER_INSTALL_TARGET="$DEST_DIR" TYPER_INSTALL_SKIP_DEBUG="${TYPER_UPDATE_SKIP_DEBUG:-}"
+INSTALLER="$SCRIPT_DIR/install_mac.sh"
+# The plugin of this release, never a TypeR-UXP.ccx left next to this script.
+# An older release without one: the installer downloads the latest.
+UXP_PACKAGE="$PACKAGE_ROOT/TypeR-UXP.ccx"
+
+update_legacy() {
+  bash "$INSTALLER" --silent
+  format_version_message "$SUCCESS" "$PACKAGE_VERSION"
+  printf '\n'
+}
+
+# What is installed gets updated. Without the plugin, a Photoshop that can run
+# it gets the installer's menu, which recommends it; a scripted run stays on Legacy.
+if uxp_plugin_installed; then
+  if [ -f "$DEST_DIR/CSXS/manifest.xml" ]; then update_legacy; fi
+  bash "$INSTALLER" --uxp "$UXP_PACKAGE"
+elif [ -t 0 ] && TYPER_INSTALL_PROBE=recommendation bash "$INSTALLER" | grep -q '^recommended=uxp$'; then
+  bash "$INSTALLER" "$UXP_PACKAGE"
+else
+  update_legacy
+fi
