@@ -20,7 +20,7 @@ state = reducer(state, { type: 'addTab', data: { text: 'Third script' } });
 assert.notStrictEqual(state.uiLayout.visible.tabBar, false);
 // Bubbles captured on one page must not be batched after switching page.
 state = reducer(state, { type: 'setLastOpenedImagePath', path: '/scans/01.psd' });
-state = reducer(state, { type: 'addSelection', selection: { left: 0, top: 0, right: 10, bottom: 10 } });
+state = reducer(state, { type: 'addSelectionBatch', entries: [{ selection: { left: 0, top: 0, right: 10, bottom: 10 } }] });
 assert.strictEqual(state.storedSelections.length, 1);
 state = reducer(state, { type: 'setLastOpenedImagePath', path: '/scans/01.psd' });
 assert.strictEqual(state.storedSelections.length, 1, 'reopening the same page keeps its bubbles');

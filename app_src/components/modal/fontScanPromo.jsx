@@ -17,7 +17,7 @@ const FontScanPromo = React.memo(function FontScanPromo() {
             <div className="fsr-promo-text">
                 <b>
                     {locale.fontScanTitle}
-                    <em className="fsr-promo-badge">{locale.badgeNew}</em>
+                    <em className="fsr-promo-badge">{locale.settingsNewBadge}</em>
                 </b>
                 <span>{locale.fontScanPromo}</span>
             </div>

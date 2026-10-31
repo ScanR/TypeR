@@ -42,14 +42,6 @@ function play(descriptor) {
   return result || {};
 }
 
-function playMany(descriptors) {
-  const results = batchPlay(descriptors.map((descriptor) => Object.assign({ _options: SILENT }, descriptor)), { synchronousExecution: true });
-  for (let i = 0; i < results.length; i++) {
-    if (results[i] && results[i]._obj === "error") throw new PhotoshopError(descriptors[i], results[i]);
-  }
-  return results;
-}
-
 function get(target) {
   return play({ _obj: "get", _target: target });
 }

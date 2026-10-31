@@ -6,17 +6,6 @@
     font-family: inherit;
   }
 
-  /* index.scss */
-  .topcoat-switch__input:checked+.topcoat-switch__toggle {
-    padding-left: 0;
-    padding-right: 30px;
-  }
-
-  .theme-icon {
-    margin-left: 0;
-    margin-right: 4px;
-  }
-
   /* textBlock.scss */
   .text-lines:before {
     left: auto;
@@ -57,88 +46,10 @@
     margin-left: 10px;
   }
 
-  .preview-top_action {
-    margin-right: auto;
-    margin-left: 0;
-  }
-
-  .preview-top_scale-reset {
-    margin-left: 0;
-    margin-right: -1px;
-  }
-
-  .preview-top_scale-input {
-    margin-left: 0;
-    margin-right: -1px;
-  }
-
-  .preview-mid_action {
-    border-left: 0;
-    border-right: 0;
-    margin-left: 0;
-    margin-right: 2px;
-  }
-
-  .preview-bot_auto-size {
-    margin-left: 0;
-    margin-right: 8px;
-  }
-
-  .preview-bot_auto-style {
-    margin-left: 0;
-    margin-right: 3px;
-  }
-
-  /* stylesBlock.scss */
-  .folder-toggle {
-    margin-left: 0;
-    margin-right: 12px;
-  }
-
-  .style-item-styles {
-    left: auto;
-    right: 0;
-  }
-
-  .style-item-style-color {
-    margin-left: 0;
-    margin-right: 8px;
-  }
-
-  .style-item-copy {
-    margin-left: 0;
-    margin-right: 4px;
-  }
-
-  .style-item-more {
-    margin-right: auto;
-    margin-left: 6px;
-  }
-
-  .style-item-controls {
-    right: auto;
-    left: -2px;
-  }
-
-  .style-add-btn {
-    margin-left: auto;
-    margin-right: 3px;
-  }
-
-  .folder-add-btn {
-    right: auto;
-    left: calc(100% + 4px);
-  }
-
   /* modal.scss */
   .app-modal {
     left: auto;
     right: 0;
-  }
-
-  .app-modal-close {
-    right: auto;
-    left: 8px;
   }
 
   .app-modal-body-inner {
@@ -146,104 +57,4 @@
     padding-right: 16px;
   }
 
-  .edit-style-prefix-btn {
-    margin-left: 0;
-    margin-right: 6px;
-  }
-
-  /* editStyle.scss */
-  .edit-style-prefix-input {
-    padding-left: 0;
-    padding-right: 6px;
-  }
-
-  .edit-style-prefix-remove {
-    margin-left: 0;
-    margin-right: 8px;
-  }
-
-  .edit-style-color-block {
-    border-left: none;
-    border-right: 1px solid rgba(0, 0, 0, .3);
-  }
-
-  .edit-style-color-btn {
-    right: auto;
-    left: 68px;
-  }
-
-  .edit-style-stroke-opacity {
-    margin-left: 0;
-    margin-right: 8px;
-  }
-
-  .edit-style-stroke-color-btn {
-    margin-left: 0;
-    margin-right: 15px;
-  }
-
-  .edit-style-fake-radio {
-    right: auto;
-    left: 6px;
-  }
-
-  .edit-style-item-delete {
-    left: auto;
-    right: 0;
-  }
-
-  .edit-style-item-clone {
-    left: auto;
-    right: auto;
-  }
-
-  .edit-style-item-delete:hover {
-    left: auto;
-    right: 2px;
-  }
-
-  .edit-style-prefix-submit {
-    margin-right: 0;
-    margin-left: 8px;
-  }
-
-  .edit-style-error {
-    left: auto;
-    right: 0;
-  }
-
-  /* editFolder.scss */
-  .edit-folder-style-remove {
-    margin-right: 0;
-    margin-left: 6px;
-  }
-
-  .edit-folder-style-add {
-    margin-left: 0;
-    margin-right: 4px;
-  }
-
-  /* footer.scss */
-  .footer-auto-close-psd,
-  .footer-auto-scroll-style,
-  .footer-desync-repo {
-    margin-left: 0 !important;
-    margin-right: auto !important;
-  }
-
-  .footer-repo {
-    margin-left: 0;
-    margin-right: 8px;
-  }
-
-  .footer-check-updates,
-  .footer-import-style-folder {
-    margin-left: 0;
-    margin-right: auto;
-  }
-
-  .footer-update-icon {
-    margin-left: 0;
-    margin-right: 5px;
-  }
 }

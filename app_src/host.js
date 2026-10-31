@@ -144,30 +144,6 @@ var _hostState = {
 // How long the fast path-based shape scan stays disabled after 3 failures
 var _PATH_SCAN_RETRY_MS = 3 * 60 * 1000;
 
-// Bubble detection and outline sampling fire dozens of selection, channel
-// and modify operations, and Photoshop records every one of them as a
-// history state: on a full-resolution page each state holds a snapshot, so
-// repeated detections wipe the user's undo stack and keep the scratch file
-// churning until the whole session crawls. suspendHistory collapses each
-// scan into a single history state.
-function _withSuspendedHistory(name, fn) {
-  var result = null;
-  _hostState.suspendedRun = function () {
-    try {
-      result = fn();
-    } catch (runError) {
-      result = null;
-    }
-  };
-  try {
-    app.activeDocument.suspendHistory(name, "_hostState.suspendedRun()");
-  } catch (suspendError) {
-    _hostState.suspendedRun();
-  }
-  _hostState.suspendedRun = null;
-  return result;
-}
-
 // Shape detection reads pixels through temporary channels, paths and selections.
 // Grouping those operations still retains a full scan in Photoshop history.
 // Roll back and delete only that new state, never the user's undo/redo states.
@@ -3048,48 +3024,6 @@ function _recentreOnBox(oldBox) {
   var offsetX = oldBox.xMid - newBox.xMid;
   var offsetY = oldBox.yMid - newBox.yMid;
   if (offsetX || offsetY) _moveLayer(offsetX, offsetY);
-}
-
-function _changeSize_alt() {
-  var increasing = _hostState.changeActiveLayerTextSize.value > 0;
-  _forEachSelectedLayer(function () {
-    var a = new ActionReference();
-    a.putProperty(charID.Property, charID.Text);
-    a.putEnumerated(charID.Layer, charID.Ordinal, charID.Target);
-    var currentLayer = executeActionGet(a);
-    if (currentLayer.hasKey(charID.Text)) {
-      var settings = currentLayer.getObjectValue(charID.Text);
-      var textStyleRange = settings.getList(charID.TextStyleRange);
-      var sizes = [];
-      var units = [];
-      var proceed = true;
-      for (var i = 0; i < textStyleRange.count; i++) {
-        var style = textStyleRange.getObjectValue(i).getObjectValue(charID.TextStyle);
-        sizes[i] = style.getDouble(charID.Size);
-        units[i] = style.getUnitDoubleType(charID.Size);
-        if (i > 0 && (sizes[i] !== sizes[i - 1] || units[i] !== units[i - 1])) {
-          proceed = false;
-          break;
-        }
-      }
-      var amount = 0.2; // mm
-      if (units[0] === charID.PixelUnit) amount = 1; // pixel
-      else if (units[0] === 592473716) amount = 0.5; // point
-      if (!increasing) amount *= -1;
-      if (proceed) {
-        var aa = new ActionDescriptor();
-        var d = new ActionReference();
-        d.putProperty(charID.Property, charID.TextStyle);
-        d.putEnumerated(charID.TextLayer, charID.Ordinal, charID.Target);
-        aa.putReference(charID.Null, d);
-        var e = new ActionDescriptor();
-        e.putUnitDouble(charID.Size, units[0], sizes[0] + amount);
-        aa.putObject(charID.To, charID.TextStyle, e);
-        executeAction(charID.Set, aa, DialogModes.NO);
-      }
-    }
-  });
-  _hostState.changeActiveLayerTextSize.result = "";
 }
 
 /* ======================================================== */

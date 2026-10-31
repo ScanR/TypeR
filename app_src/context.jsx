@@ -393,12 +393,6 @@ const baseReducer = (state, action) => {
   let forceStylePrefixRefresh = false;
   const newState = Object.assign({}, state);
   switch (action.type) {
-    case "removeFirstTime": {
-      newState.notFirstTime = true;
-      newState.modalType = "help";
-      break;
-    }
-
     case "showFirstRunWalkthrough": {
       newState.notFirstTime = true;
       // A new user starts with the basics, not with what changed since 2.5
@@ -870,12 +864,6 @@ const baseReducer = (state, action) => {
       break;
     }
 
-    case "setFolders": {
-      newState.folders = normalizeFolders(action.data || []);
-      newState.openFolders = state.openFolders.filter((id) => id === "unsorted" || newState.folders.find((folder) => folder.id === id));
-      break;
-    }
-
     case "reorderFolders": {
       const parentId = action.parentId === undefined || action.parentId === null || action.parentId === "" ? null : action.parentId;
       const orderIds = action.order || [];
@@ -964,17 +952,6 @@ const baseReducer = (state, action) => {
         newState.styles = state.styles.concat(newStyle);
         newState.currentStyleId = newStyleId;
       }
-      break;
-    }
-
-    case "setStyles": {
-      newState.styles = (action.data || []).map((style) => {
-        const normalizedStyle = {
-          ...style,
-          sizePresets: normalizeStyleSizePresets(style),
-        };
-        return { ...normalizedStyle, ...normalizeStyleSizePresetWidthConfig(normalizedStyle) };
-      });
       break;
     }
 
@@ -1299,31 +1276,6 @@ const baseReducer = (state, action) => {
 
     case "resetShortcut": {
       newState.shortcut = { ...defaultShortcut };
-      break;
-    }
-
-    case "addSelection": {
-      if (action.selection) {
-        const selectionWithStyle = {
-          ...action.selection,
-          styleId: state.currentStyleId,
-          capturedAt: Date.now(),
-        };
-        if (typeof action.lineIndex === "number") {
-          selectionWithStyle.lineIndex = action.lineIndex;
-          const line = state.lines[action.lineIndex];
-          if (line && !line.ignore && state.currentStyleId) {
-            newState.usedLineStyles = {
-              ...(newState.usedLineStyles || state.usedLineStyles || {}),
-              [action.lineIndex]: {
-                rawText: line.rawText,
-                styleId: state.currentStyleId,
-              },
-            };
-          }
-        }
-        newState.storedSelections = [...state.storedSelections, selectionWithStyle];
-      }
       break;
     }
 
