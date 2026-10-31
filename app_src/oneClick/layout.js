@@ -11,6 +11,7 @@
 import { compileGraph, composeText, probesForGraph } from "./textGraph";
 import { measureEdges } from "./measureSpec";
 import { solve, solverInternals } from "./solver";
+import { box, clipToSide, simplify } from "./geometry";
 
 export class NoPlacementError extends Error {
   constructor(message) {
@@ -66,10 +67,37 @@ const estimateLineMetrics = (graph, probes, spaces, cache) => {
   return estimated;
 };
 
+// Room kept between the text and the neck of a connected bubble
+const NECK_GAP = 2;
+
+// The padding keeps the text off the bubble's line. A neck is no line, only
+// the limit between two chambers: it is moved out so that the padding leaves
+// NECK_GAP there, or the neck would push the text off the chamber's centre.
+const layoutPolygon = (plan, pad) => {
+  const necks = plan.necks || (plan.neck ? [plan.neck] : []);
+  if (!necks.length || !plan.outline || !plan.click || pad <= NECK_GAP) return plan.cleanPolygon;
+  let out = plan.outline;
+  for (let i = 0; i < necks.length; i++) {
+    const a = necks[i][0];
+    const b = necks[i][1];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (!(length > 0)) return plan.cleanPolygon;
+    const side = dx * (plan.click.y - a[1]) - dy * (plan.click.x - a[0]) > 0 ? 1 : -1;
+    // The search erodes the polygon by a square of the padding
+    const nx = -dy / length;
+    const ny = dx / length;
+    const shift = (pad - NECK_GAP) * (Math.abs(nx) + Math.abs(ny)) * side;
+    out = clipToSide(out, [a[0] - nx * shift, a[1] - ny * shift], [b[0] - nx * shift, b[1] - ny * shift], side);
+    if (out.length < 3) return plan.cleanPolygon;
+  }
+  return simplify(out, 0.3);
+};
+
 const solverModel = (graph, plan, cache, probes, sizes, data) => {
   const selection = plan.selection;
-  const poly = plan.cleanPolygon;
-  if (!selection || !poly) throw new Error("Bubble layout is incomplete");
+  if (!selection || !plan.cleanPolygon) throw new Error("Bubble layout is incomplete");
   let maxLead = 0;
   let ascent = 0;
   let minXHeight = Infinity;
@@ -89,7 +117,9 @@ const solverModel = (graph, plan, cache, probes, sizes, data) => {
     if (/^[\s.,!?;:…-]+$/.test(graph.source)) ascent = Math.max(ascent, -metric.top);
   }
   const dim = Math.min(selection.width, selection.height);
-  const borderPad = Math.max(2, dim * 0.035, Number(data.padding) || 0);
+  const borderPad = data.noMargin ? 0 : Math.max(2, dim * 0.035, Number(data.padding) || 0);
+  const pad = borderPad + 0.75;
+  const poly = layoutPolygon(plan, pad);
   const geometricMax = Math.max(0.1, (selection.height - 2 * borderPad) / Math.max(0.05, minXHeight));
   const opts = {
     min: Math.max(0.1, sizes.min),
@@ -97,7 +127,9 @@ const solverModel = (graph, plan, cache, probes, sizes, data) => {
     step: Math.max(0.75, dim / 100),
     leading: maxLead || 1.2,
     ascent: ascent || 0.8,
-    pad: borderPad + 0.75,
+    pad,
+    // A neck is no wall: a word may use the room it was moved out by
+    wordRoom: poly === plan.cleanPolygon ? null : box(poly).width - 2 * pad,
     kind: plan.kind,
     connected: !!plan.connected,
     profileWords: (graph.source.match(/\S+/g) || []).length,
@@ -278,7 +310,7 @@ export const planText = async (plan, payload, context) => {
     const cache = initial.cache;
     const estimated = estimateLineMetrics(graph, probes, spaces, cache);
     const stylePx = (graph.baseSize * dpi) / 72;
-    const maxPx = policy.maxPx > 0 ? policy.maxPx : stylePx;
+    const maxPx = policy.maxPx > 0 ? policy.maxPx : policy.smallest ? stylePx * (policy.minScale || 0.75) : stylePx;
     // Native measurements outlive a pass: later sizes reuse them
     const known = new Map();
     const fitAt = async (size) => {
@@ -326,7 +358,7 @@ export const planText = async (plan, payload, context) => {
     }
     return { graph, pass: fitted, tier: "range" };
   };
-  const tiers = policy.fixed ? ["exact"] : ["exact", "range"];
+  const tiers = policy.fixed || policy.smallest ? ["exact"] : ["exact", "range"];
   let found = await tryGraph(false, tiers);
   let hyphenated = false;
   if (!found && typeof context.breakPoints === "function") {
@@ -347,4 +379,76 @@ export const planText = async (plan, payload, context) => {
     pad: pass.model.opts.pad,
     timing: { ...timing, total: now() - started },
   };
+};
+
+// How far the text may leave a chamber, as a share of its largest side
+const OVERFLOW_STEPS = [0.1, 0.25, 0.5, 1, 2];
+
+const overflowPlan = (plan, ratio) => {
+  const b = plan.selection;
+  const grow = Math.max(b.width, b.height) * ratio;
+  const left = b.xMid - b.width / 2 - grow;
+  const top = b.yMid - b.height / 2 - grow;
+  const right = b.xMid + b.width / 2 + grow;
+  const bottom = b.yMid + b.height / 2 + grow;
+  return {
+    ...plan,
+    neck: null,
+    necks: null,
+    cleanPolygon: [[left, top], [right, top], [right, bottom], [left, bottom]],
+    selection: { ...b, left, top, right, bottom, width: right - left, height: bottom - top },
+  };
+};
+
+// The ladders below try the same text several times: measure each request once
+const rememberedMeasure = (nativeMeasure) => {
+  const known = new Map();
+  return async (requests) => {
+    const keys = requests.map((request) => JSON.stringify(request.params));
+    const missing = requests.filter((request, i) => !known.has(keys[i]));
+    if (missing.length) {
+      const replies = await nativeMeasure(missing);
+      missing.forEach((request, i) => known.set(JSON.stringify(request.params), replies[i]));
+    }
+    return keys.map((key) => known.get(key));
+  };
+};
+
+// A bubble too small for the user's padding at the smallest size: a tighter
+// margin beats the classic paste, which ignores the bubble and the smaller size.
+export const planBubbleText = async (plan, payload, context) => {
+  const measure = rememberedMeasure(context.measure);
+  const steps = [payload, { ...payload, padding: 0 }, { ...payload, padding: 0, noMargin: true }];
+  for (let i = 0; i < steps.length; i++) {
+    try {
+      return await planText(plan, steps[i], { ...context, measure });
+    } catch (error) {
+      if (!(error instanceof NoPlacementError)) throw error;
+    }
+  }
+  throw new NoPlacementError();
+};
+
+// A chamber of a connected bubble is small and takes its line whatever
+// happens. The style size comes before the user's padding, the padding before
+// a smaller size. Then no margin at all, then overflowing as little as
+// possible at the smallest size the policy allows, on the chamber's centre.
+export const planChamberText = async (plan, payload, context) => {
+  const measure = rememberedMeasure(context.measure);
+  const bare = { ...payload, padding: 0, noMargin: true };
+  const smallest = { ...context.sizePolicy, smallest: true };
+  const steps = [
+    { plan, payload, breakPoints: null, sizePolicy: { ...context.sizePolicy, fixed: true } },
+    { plan, payload: { ...payload, padding: 0 } },
+    { plan, payload: bare },
+    ...OVERFLOW_STEPS.map((ratio) => ({ plan: overflowPlan(plan, ratio), payload: bare, sizePolicy: smallest })),
+  ];
+  for (let i = 0; i < steps.length; i++) {
+    try {
+      return await planText(steps[i].plan, steps[i].payload, { ...context, measure, ...steps[i] });
+    } catch (error) {
+      if (!(error instanceof NoPlacementError)) throw error;
+    }
+  }
+  throw new NoPlacementError();
 };

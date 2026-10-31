@@ -316,6 +316,36 @@ const linesInside = (session) => {
     trigger: { source: "wand" }, lines: [line("Toi, à gauche."), line("Et moi, à droite !")], roleStyles: {}, settings: { distribute: false },
   }, adapterFor(doubleInput));
   assert.strictEqual(notDistributed.consumed, 1);
+  // The neck is no bubble line: a large padding does not push the text off the
+  // chamber's centre, and the style size comes before the padding
+  const keptCentre = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Toi, à gauche."), line("Et moi, à droite !")], roleStyles: {}, settings: { distribute: true, padding: 30 },
+  }, adapterFor(doubleInput));
+  keptCentre.sessions.forEach((session) => {
+    assert.strictEqual(session.text.tier, "exact");
+    assert.ok(Math.abs((session.text.top + session.text.bottom) / 2 - session.plan.selection.yMid) < 2, "centred in its chamber");
+    assert.ok(Math.abs(session.text.axis - session.plan.selection.xMid) < 2, "centred in its chamber");
+  });
+  // A line too long for its chamber is pasted anyway, on the chamber's centre
+  // A padding too large for the bubble gives way before the classic paste
+  const roomy = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Merci beaucoup pour tout ce que tu as fait pour nous.", style("regular", 26))], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.75, padding: 70 },
+  }, adapterFor(roundInput));
+  assert.ok(roomy.sessions[0].text.pad < 70, "the padding gave way: " + roomy.sessions[0].text.pad);
+  assert.ok(roomy.sessions[0].text.size >= 26 * 0.75 - 1e-6, "the size stays above the minimum: " + roomy.sessions[0].text.size);
+  // and at the smallest size allowed, and so is the one that opens the bubble
+  const smallDouble = peanut([300, 300], [400, 300], 62);
+  const smallInput2 = { source: "wand", click: { x: 270, y: 300 }, selectionBounds: boundsOf(smallDouble), rawPath: pathOf([polygonNodes(smallDouble)]), fill: white };
+  const tooLong = "Une phrase beaucoup trop longue pour une si petite bulle de rien du tout, vraiment beaucoup trop longue.";
+  for (const pairOfLines of [["Toi.", tooLong], [tooLong, "Toi."]]) {
+    const anyway = await prepareSmartPaste({
+      trigger: { source: "wand" }, lines: pairOfLines.map((text) => line(text)), roleStyles: {}, settings: { distribute: true, hyphenation: "off", minScale: 0.85 },
+    }, adapterFor(smallInput2));
+    assert.strictEqual(anyway.consumed, 2, "both chambers get their line");
+    const long = anyway.sessions.find((session) => session.text.renderedText.length > 20);
+    assert.ok(Math.abs(long.text.size - 24 * 0.85) < 0.01, "smallest size " + long.text.size);
+    assert.ok(Math.abs((long.text.top + long.text.bottom) / 2 - long.plan.selection.yMid) < 2, "on the chamber's centre");
+  }
   // Without a click the first chamber in reading order gets the line (RTL: right)
   const rtl = await prepareSmartPaste({
     trigger: { source: "lasso" }, lines: [line("Droite d'abord."), line("Puis gauche.")], roleStyles: {}, settings: { distribute: true, direction: "rtl" },

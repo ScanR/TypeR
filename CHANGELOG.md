@@ -25,10 +25,10 @@
 - Black bubbles get white text without a stroke. A style can be marked as the Shout or Narration style of its
   folder; spiky bubbles and narration boxes selected with the Magic Wand then use it, unless the script line has
   its own prefix style. A rectangle marquee or a lasso keeps the line's style.
-- Double and triple bubbles receive the next script lines in their other chambers, in one history state.
+- Double and triple bubbles receive the next script lines in their other chambers, in one history state. Every chamber gets its line, centred, even if it has to overflow: the style size comes before the padding, which no longer applies along the invisible limit between two chambers.
 - Optional Auto clean paints the bubble under the text on a `TypeR Clean` layer (solid white or black only).
 - Conditional refont rules give the text between two markers another style's font.
-- When the text cannot be placed, the classic paste runs and a short notice explains why.
+- A bubble too small for the padding keeps the text inside it: the padding gives way, then the margin. When the text still cannot be placed, the classic paste runs and a short notice explains why.
 - Center after paste is now a setting of the classic paste only: the footer toggle is gone, and the setting is greyed out while smart paste is on (it still applies when smart paste falls back to the classic paste).
 - Multi-bubble batches select each stored bubble again and paste it with the smart paste.
 - Align knows double and triple bubbles: each selected text is centred in its own chamber instead of on the

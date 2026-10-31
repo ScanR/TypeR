@@ -702,8 +702,10 @@ function _jointCenterLines(lines, top, bottom, center, poly, size, axis, pad, ex
   // original feasible placement if neither bounded adjustment fits.
   var delta = center - (top + bottom) / 2;
   if (Math.abs(delta) < 0.000001) return { lines: lines, top: top, bottom: bottom };
-  for (var attempt = 0; attempt < 2; attempt++) {
-    var shift = delta * (attempt === 0 ? 1 : 0.5),
+  // The closest fit to the centre: a bubble's curve can stop the widest line
+  // just short of it.
+  for (var attempt = 0; attempt < 4; attempt++) {
+    var shift = delta * (1 - attempt * 0.25),
       valid = true;
     for (var i = 0; i < lines.length; i++)
       if (
@@ -766,7 +768,7 @@ function _jointSearch(variant, poly, selection, opts) {
     if (edges[i].to === edges[i].from + 1)
       upper = Math.min(
         upper,
-        (selection.width - 2 * opts.pad) / (edges[i].metric.right - edges[i].metric.left),
+        (opts.wordRoom || selection.width - 2 * opts.pad) / (edges[i].metric.right - edges[i].metric.left),
       );
   if (upper < opts.min - 0.001) return null;
   // Establish a readable placement before spending the refinement budget.

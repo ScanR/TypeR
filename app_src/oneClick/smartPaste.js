@@ -20,7 +20,7 @@
 import { buildPlan, subpathsFromDescriptor } from "./bubblePlan";
 import { isPageLeak } from "./openBubble";
 import { chambersFor } from "./connected";
-import { planText, NoPlacementError } from "./layout";
+import { planBubbleText, planChamberText, NoPlacementError } from "./layout";
 import { breakPointsFor } from "./hyphenation";
 import { clearGeometryCaches } from "./geometry";
 
@@ -174,18 +174,18 @@ export const prepareSmartPaste = async (request, adapter) => {
       direction: settings.direction,
       padding: settings.padding || 0,
     };
+    const context = {
+      page,
+      measure: adapter.measure,
+      useAtlas: !!adapter.useAtlas,
+      resolveRunStyle: adapter.resolveRunStyle,
+      breakPoints,
+      sizePolicy: { minScale: (settings.minScale > 0 ? settings.minScale : 0.75) / enlargedBy, fixed: !!settings.keepSize },
+    };
     let text;
     try {
-      text = await planText(chamber, payload, {
-        page,
-        measure: adapter.measure,
-        useAtlas: !!adapter.useAtlas,
-        resolveRunStyle: adapter.resolveRunStyle,
-        breakPoints,
-        sizePolicy: { minScale: (settings.minScale > 0 ? settings.minScale : 0.85) / enlargedBy, fixed: !!settings.keepSize },
-      });
+      text = await (chamber.connected ? planChamberText : planBubbleText)(chamber, payload, context);
     } catch (error) {
-      // A later chamber that does not fit: paste the chambers before it
       if (i > 0 && error instanceof NoPlacementError) break;
       if (error instanceof NoPlacementError) throw new SmartPasteError("noPlacement", error.message, { textColor: chamber.textColor });
       throw error;

@@ -18,11 +18,15 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
   - use the style marked *Shout* or *Narration* (style editor, "Bubble type") of the current folder for a spiky
     bubble or, on a Magic Wand selection only, a rectangular box (a rectangle marquee or a lasso keeps the line's
     style); a script prefix always wins;
-  - split a double or triple bubble and paste the next lines in its other chambers ("Distribute lines");
+  - split a double or triple bubble and paste the next lines in its other chambers ("Distribute lines"). A chamber's
+    line is always pasted: the style size comes before the user's padding, the padding before a smaller size, then no
+    margin at all, then the smallest size overflowing as little as possible. The neck is no bubble line: the padding
+    does not apply along it;
   - optionally paint the bubble under the text (Auto clean): one `TypeR Clean` layer per document, under the
     texts, only on solid white or black;
   - apply conditional refont rules: text between two markers takes another style's font.
-  - When the smart paste cannot place the text, the classic paste runs and a short notice says why.
+  - When the text does not fit at the minimum size, the user's padding gives way, then the margin. When it still
+    cannot be placed, the classic paste runs and a short notice says why.
 - **Paste on click** (off by default; footer toggle, shortcut without a default key). A Magic Wand click, a
   rectangle or a lasso pastes the current line at once. Restored or loaded selections, and the selections
   TypeR makes itself, never paste.

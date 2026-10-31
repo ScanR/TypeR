@@ -239,6 +239,7 @@ export const deriveTriplePlans = (input, plan, subpaths, options = {}) => {
         ...built,
         click: { ...seed },
         selectionBounds: { ...input.selectionBounds },
+        outline: partition.polygon,
         cleanPolygon,
         cleanupPolygon: built.cleanupPolygon ? applyConstraints(built.cleanupPolygon, leaf.constraints) : null,
         selection: { ...selection, bubbleKind: built.kind },
