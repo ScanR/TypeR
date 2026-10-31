@@ -1,7 +1,7 @@
 // Opt-in performance logger.
 //
-// Everything here is inert until it is switched on (Settings > Advanced, or
-// `typerPerf.enable()` from the CEP debug console). Once on it records:
+// Everything here is inert until it is switched on with `typerPerf.enable()`
+// from the debug console. Once on it records:
 //   - every ExtendScript round-trip (which host call, how long, how often)
 //   - every reducer dispatch (action type + time spent in the reducer)
 //   - every render of the instrumented React blocks

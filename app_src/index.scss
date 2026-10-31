@@ -448,14 +448,6 @@ body[data-editor-theme]:not([data-editor-theme="system"]) {
   }
 }
 
-// Page line background chosen in the settings. Applied to every theme, hence
-// outside of the themed block, and last so it wins over the palette value.
-BODY.m-page-line-custom {
-  .text-line.m-page .text-line-text {
-    background: var(--typer-page-line-color) !important;
-  }
-}
-
 // Custom background image. The picture is a fixed layer sitting behind the
 // whole interface rather than a body background: the image theme makes its
 // surfaces translucent, and a body background would paint over the layer.

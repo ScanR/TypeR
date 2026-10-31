@@ -1,5 +1,5 @@
 // The walkthrough: the guided tour (tour.jsx) shown to new users and available
-// from Help and Settings > General, in two parts. The basics of the TypeR
+// from Help, in two parts. The basics of the TypeR
 // workflow open their own practice page (four numbered spots) and script, with
 // a page marker and a translator note the user sees TypeR skip. The chapters
 // of What's new (whatsNew.jsx) follow, on the practice page of that tour.
@@ -502,7 +502,7 @@ const COURSE = {
     cleanup: () => locale.walkthroughDoneCleanup || "Close the two practice pages in Photoshop without saving them.",
     notes: () => [
       locale.walkthroughDoneHelp || "Help, the ? at the bottom of the panel, lists every feature and your shortcuts.",
-      locale.walkthroughDoneText || "Reopen this guide at any time from Help or Settings > General.",
+      locale.walkthroughDoneText || "Reopen this guide at any time from Help.",
     ],
   },
 };

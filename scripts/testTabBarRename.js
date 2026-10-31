@@ -19,7 +19,7 @@ const hooks = {
 };
 const actions = [];
 const context = {
-  state: { tabs: [{ id: 't1', name: 'One' }, { id: 't2', name: 'Two' }], currentTabId: 't1', multiTabEnabled: true },
+  state: { tabs: [{ id: 't1', name: 'One' }, { id: 't2', name: 'Two' }], currentTabId: 't1' },
   dispatch: (action) => actions.push(action),
 };
 const load = require('./helpers/loadAppModule')({

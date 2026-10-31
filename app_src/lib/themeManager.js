@@ -12,7 +12,6 @@ import {
     getBackgroundImageMeta,
     getEditorThemePreset,
     normalizeEditorTheme,
-    normalizePageLineColor,
     setBackgroundImageMeta,
     setCustomEditorThemes,
 } from '../themePresets';
@@ -29,7 +28,6 @@ setBackgroundImageMeta(normalizeBackgroundImage(readStorage("backgroundImage")))
 
 let currentAppSkinInfo = null;
 let currentEditorTheme = normalizeEditorTheme(readStorage("editorTheme"));
-let currentPageLineColor = normalizePageLineColor(readStorage("pageLineColor"));
 let currentBackground = null;
 let backgroundLayer = null;
 let backgroundImageElement = null;
@@ -148,16 +146,6 @@ function applyBackgroundLayer(preset) {
     window.addEventListener("resize", onBackgroundResize);
 }
 
-function applyPageLineColor(color) {
-    currentPageLineColor = normalizePageLineColor(color);
-    if (currentPageLineColor) {
-        setThemeProperty("--typer-page-line-color", currentPageLineColor);
-        document.body.classList.add("m-page-line-custom");
-    } else {
-        setThemeProperty("--typer-page-line-color", null);
-        document.body.classList.remove("m-page-line-custom");
-    }
-}
 
 function applyEditorTheme(id) {
     currentEditorTheme = normalizeEditorTheme(id);
@@ -187,7 +175,6 @@ function applyThemeState(state) {
     var settings = state || {};
     setCustomEditorThemes(settings.customThemes);
     setBackgroundImageMeta(normalizeBackgroundImage(settings.backgroundImage));
-    applyPageLineColor(settings.pageLineColor);
     applyEditorTheme(settings.editorTheme);
 }
 
@@ -253,7 +240,6 @@ function onAppThemeColorChanged() {
 const csInterface = new window.CSInterface();
 updateThemeWithAppSkinInfo(csInterface.hostEnvironment.appSkinInfo);
 csInterface.addEventListener(window.CSInterface.THEME_COLOR_CHANGED_EVENT, onAppThemeColorChanged);
-applyPageLineColor(currentPageLineColor);
 if (currentEditorTheme !== "system") applyEditorTheme(currentEditorTheme);
 
-export { applyEditorTheme, applyThemeState, applyPageLineColor };
+export { applyEditorTheme, applyThemeState };

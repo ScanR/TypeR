@@ -25,7 +25,6 @@ const TabBar = React.memo(function TabBar() {
   const context = useContext((state) => ({
     tabs: state.tabs,
     currentTabId: state.currentTabId,
-    multiTabEnabled: state.multiTabEnabled,
   }));
   const tabs = context.state.tabs || [];
   const currentTabId = context.state.currentTabId;
@@ -133,7 +132,6 @@ const TabBar = React.memo(function TabBar() {
     context.dispatch({ type: "showFeatureTip", id: "renameTab" });
   };
 
-  if (context.state.multiTabEnabled === false) return null;
 
   return (
     <div className="tab-bar hostBgdDark">

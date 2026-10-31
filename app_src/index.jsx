@@ -5,8 +5,8 @@ import './rtl.scss';
 import './components/modal/confirmDialog.scss';
 import './lib/CSInterface';
 import './lib/themeManager';
-// Opt-in profiler: stays inert unless enabled in the settings (or via
-// typerPerf.enable() in the debug console). Imported after CSInterface so it
+// Opt-in profiler: stays inert unless enabled with typerPerf.enable() in the
+// debug console. Imported after CSInterface so it
 // can wrap evalScript and time every host round-trip.
 import './perfDebug';
 

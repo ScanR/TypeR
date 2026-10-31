@@ -524,7 +524,7 @@ const COURSE = {
           "You are using the new TypeR (UXP): native on Apple Silicon and able to install its own updates."
         : locale.whatsNewDoneLegacy ||
           "This is the Legacy version. From Photoshop 2025, TypeR offers to switch to the new TypeR (UXP), faster and native on Apple Silicon.",
-      locale.whatsNewDoneText || "Reopen this tour at any time from Help or Settings > General.",
+      locale.whatsNewDoneText || "Reopen this tour at any time from Help.",
     ],
   },
 };

@@ -169,7 +169,7 @@ const applyLinesToSelectedLayers = (ctx, preferredOrder = [], options = {}) => {
 
 const switchTab = (ctx, direction) => {
   const tabs = ctx.state.tabs || [];
-  if (ctx.state.multiTabEnabled === false || tabs.length < 2) return;
+  if (tabs.length < 2) return;
   const currentIndex = tabs.findIndex((tab) => tab.id === ctx.state.currentTabId);
   const baseIndex = currentIndex < 0 ? 0 : currentIndex;
   const nextIndex = (baseIndex + direction + tabs.length) % tabs.length;

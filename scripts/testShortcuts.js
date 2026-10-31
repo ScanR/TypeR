@@ -238,7 +238,6 @@ const baseContext = {
     storedSelections: [{ id: "selection-1" }, { id: "selection-2" }],
     tabs: [{ id: "tab-1" }, { id: "tab-2" }, { id: "tab-3" }],
     currentTabId: "tab-2",
-    multiTabEnabled: true,
   },
   dispatch: (action) => dispatches.push(action),
 };

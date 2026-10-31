@@ -1,8 +1,6 @@
 import {
   buildCustomPalette,
   extractThemeKeys,
-  isValidColor,
-  toHex,
   withAlpha,
 } from "./themeColors";
 
@@ -398,8 +396,6 @@ const createCustomThemeFrom = (sourceId, label) => {
   });
 };
 
-const normalizePageLineColor = (value) => (isValidColor(value) ? toHex(value) : null);
-
 export {
   EDITOR_THEME_PRESETS,
   DEFAULT_EDITOR_THEME_ID,
@@ -417,5 +413,4 @@ export {
   getBackgroundImageMeta,
   getImageThemePreset,
   buildImageThemePreset,
-  normalizePageLineColor,
 };

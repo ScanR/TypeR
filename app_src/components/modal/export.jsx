@@ -22,7 +22,6 @@ const ExportModal = React.memo(function ExportModal() {
     defaultStyleId: state.defaultStyleId,
     language: state.language,
     autoClosePSD: state.autoClosePSD,
-    autoScrollStyle: state.autoScrollStyle,
     currentFolderTagPriority: state.currentFolderTagPriority,
     pastePointText: state.pastePointText,
     smartPaste: state.smartPaste,
@@ -163,7 +162,6 @@ const ExportModal = React.memo(function ExportModal() {
       data.defaultStyleId = exportSource.defaultStyleId;
       data.language = exportSource.language;
       data.autoClosePSD = exportSource.autoClosePSD;
-      data.autoScrollStyle = exportSource.autoScrollStyle;
       data.currentFolderTagPriority = exportSource.currentFolderTagPriority;
       data.pastePointText = !!exportSource.pastePointText;
       // Smart paste preferences; undefined values (older profiles) are

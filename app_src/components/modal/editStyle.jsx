@@ -41,7 +41,7 @@ const EditStyleModal = React.memo(function EditStyleModal() {
     modalData: state.modalData,
     folders: state.folders,
     styleSizeStep: state.styleSizeStep,
-    middleEast: state.middleEast,
+    direction: state.direction,
   }));
   const currentData = context.state.modalData;
   const [name, setName] = React.useState(currentData.name || "");
@@ -335,7 +335,7 @@ const EditStyleModal = React.memo(function EditStyleModal() {
                   setEdited(true);
                 }}
                 styleSizeStep={context.state.styleSizeStep}
-                middleEast={context.state.middleEast}
+                rtl={context.state.direction === "rtl"}
               />
             </div>
             <div className="field hostBrdTopContrast" data-tour="style-prefixes">
@@ -869,7 +869,7 @@ const StyleDetails = React.memo(function StyleDetails(props) {
           </div>
         </div>
       </div>
-      {props.middleEast && (
+      {props.rtl && (
         <div className="style-edit-props-row">
           <div className="style-edit-props-col">
             <div className="style-edit-props-icon double" title={locale.editStyleDiacXOffset}>
@@ -1073,7 +1073,7 @@ StyleDetails.propTypes = {
   punctuationOnlyScale: PropTypes.number.isRequired,
   setPunctuationOnlyScale: PropTypes.func.isRequired,
   styleSizeStep: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
-  middleEast: PropTypes.bool,
+  rtl: PropTypes.bool,
 };
 
 export default EditStyleModal;

@@ -7,7 +7,7 @@ import { shouldRunUpdateCheck } from "./updateLogic";
 import { getNode, readUxpMigrationState, syncLegacyPanelName } from "./uxpMigration";
 import config from "./config";
 import { getNextLineNumberState } from "./lineNumbering";
-import { CUSTOM_IMAGE_THEME_ID, normalizeCustomThemes, normalizeEditorTheme, normalizePageLineColor, setCustomEditorThemes } from "./themePresets";
+import { CUSTOM_IMAGE_THEME_ID, normalizeCustomThemes, normalizeEditorTheme, setCustomEditorThemes } from "./themePresets";
 import { normalizeBackgroundImage } from "./backgroundImage";
 import { toggleStyleStroke } from "./styleStroke";
 import { applyThemeState } from "./lib/themeManager";
@@ -83,14 +83,12 @@ const storeFields = [
   "autoClosePSD",
   "checkUpdates",
   "autoUpdate",
-  "autoScrollStyle",
   "currentFolderTagPriority",
   "resizeTextBoxOnCenter",
   "images",
   "shortcut",
   "language",
   "direction",
-  "middleEast",
   "lastOpenedImagePath",
   "multiBubbleMode",
   "autoCenterMode",
@@ -121,11 +119,9 @@ const storeFields = [
   "resetLineCounterOnPage",
   "tabs",
   "currentTabId",
-  "multiTabEnabled",
   "uiLayout",
   "editorTheme",
   "customThemes",
-  "pageLineColor",
   "backgroundImage",
 ];
 
@@ -259,7 +255,6 @@ const initialState = {
   autoClosePSD: false,
   checkUpdates: config.checkUpdates,
   autoUpdate: storage.data?.autoUpdate === true,
-  autoScrollStyle: storage.data?.autoScrollStyle !== false,
   currentFolderTagPriority: storage.data?.currentFolderTagPriority !== false,
   resizeTextBoxOnCenter: false,
   showTips: storage.data?.showTips !== false,
@@ -275,7 +270,6 @@ const initialState = {
   images: [],
   language: "auto",
   direction: "ltr",
-  middleEast: false,
   lastOpenedImagePath: null,
   storedSelections: [],
   multiBubbleMode: false,
@@ -283,7 +277,6 @@ const initialState = {
   interpretMarkdown: storage.data?.interpretMarkdown !== false,
   styleSizeStep: 1,
   resetLineCounterOnPage: storage.data?.resetLineCounterOnPage !== false,
-  multiTabEnabled: storage.data?.multiTabEnabled !== false,
   ...storage.data,
   textShapeRUsageCount: Math.min(
     TEXT_SHAPER_LEARN_TIP_THRESHOLD,
@@ -327,7 +320,6 @@ const initialState = {
   // The theme registry is filled by the theme manager at import time, so the
   // stored id can already point at a custom theme here
   customThemes: normalizeCustomThemes(storage.data?.customThemes),
-  pageLineColor: normalizePageLineColor(storage.data?.pageLineColor),
   backgroundImage: normalizeBackgroundImage(storage.data?.backgroundImage),
   editorTheme: normalizeEditorTheme(storage.data?.editorTheme),
   stylePrefixRefreshVersion: 0,
@@ -349,6 +341,20 @@ initialState.storedSelections = [];
 
 if (shortcutMigration.migrated) {
   writeToStorage({ shortcut: initialState.shortcut });
+}
+
+// Settings removed in 3.0. The multi-tab switch turned off now means a hidden
+// tab bar, which keeps the same panel.
+const removedFields = ["multiTabEnabled", "middleEast", "autoScrollStyle", "pageLineColor"];
+if (storage.data && removedFields.some((field) => field in storage.data)) {
+  if (storage.data.multiTabEnabled === false) {
+    initialState.uiLayout = { ...initialState.uiLayout, visible: { ...initialState.uiLayout.visible, tabBar: false } };
+  }
+  const cleanedData = { uiLayout: initialState.uiLayout };
+  removedFields.forEach((field) => {
+    cleanedData[field] = undefined;
+  });
+  writeToStorage(cleanedData);
 }
 
 if (tabStorage.migrated) {
@@ -1016,11 +1022,6 @@ const baseReducer = (state, action) => {
     break;
   }
 
-  case "setAutoScrollStyle": {
-    newState.autoScrollStyle = !!action.value;
-    break;
-  }
-
   case "setCurrentFolderTagPriority": {
     newState.currentFolderTagPriority = !!action.value;
     break;
@@ -1040,11 +1041,6 @@ const baseReducer = (state, action) => {
     newState.direction = action.direction || "ltr";
     break;
   }
-
-    case "setMiddleEast": {
-      newState.middleEast = !!action.value;
-      break;
-    }
 
     case "setKeepSizeHeld": {
       newState.keepSizeHeld = !!action.value;
@@ -1428,7 +1424,10 @@ const baseReducer = (state, action) => {
       // A caller that needs the new tab id right away passes its own
       const tab = action.id ? createTab(name, action.data, () => action.id) : createTab(name, action.data);
       newState.tabs = state.tabs.concat(tab);
-      newState.multiTabEnabled = true;
+      // A new tab must be reachable, even with the tab bar hidden
+      if (state.uiLayout?.visible?.tabBar === false) {
+        newState.uiLayout = { ...state.uiLayout, visible: { ...state.uiLayout.visible, tabBar: true } };
+      }
       loadTabIntoState(newState, tab);
       break;
     }
@@ -1453,12 +1452,6 @@ const baseReducer = (state, action) => {
       break;
     }
 
-    case "setMultiTabEnabled": {
-      const enabled = action.value !== false;
-      newState.multiTabEnabled = enabled;
-      break;
-    }
-
     case "setUiLayout": {
       newState.uiLayout = normalizeUiLayout(action.layout);
       break;
@@ -1479,11 +1472,6 @@ const baseReducer = (state, action) => {
       } else if (!customThemes.some((theme) => theme.id === state.editorTheme)) {
         newState.editorTheme = normalizeEditorTheme(state.editorTheme);
       }
-      break;
-    }
-
-    case "setPageLineColor": {
-      newState.pageLineColor = normalizePageLineColor(action.color);
       break;
     }
 
@@ -1771,7 +1759,7 @@ const baseReducer = (state, action) => {
   if (newState.currentStyle && newState.currentStyleId !== state.currentStyleId) {
     const folder = newState.currentStyle.folder || "unsorted";
     if (!newState.openFolders.includes(folder)) newState.openFolders.push(folder);
-    if (newState.autoScrollStyle && action.type !== "setCurrentStyleId") {
+    if (action.type !== "setCurrentStyleId") {
       scrollToStyle(newState.currentStyleId);
     }
   }
@@ -1962,10 +1950,9 @@ const ContextProvider = React.memo(function ContextProvider(props) {
     applyThemeState({
       editorTheme: state.editorTheme,
       customThemes: state.customThemes,
-      pageLineColor: state.pageLineColor,
       backgroundImage: state.backgroundImage,
     });
-  }, [state.editorTheme, state.customThemes, state.pageLineColor, state.backgroundImage]);
+  }, [state.editorTheme, state.customThemes, state.backgroundImage]);
   const updateCheckRan = React.useRef(false);
   React.useEffect(() => {
     if (!state.checkUpdates || updateCheckRan.current) return;

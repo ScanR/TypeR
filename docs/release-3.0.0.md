@@ -38,7 +38,7 @@ Record Photoshop, CEP, OS and architecture for each test. Do not infer a passed 
 - [ ] At 500 × 700 and a smaller panel: editor overlay, dialogs, RTL, style hierarchy and resizable layout.
 - [ ] Real PSD: selection-based creation, text replacement, alignment, point/box text, batch failure recovery and undo.
 - [ ] Page headings with colon/title/brackets; rapid forward/back navigation; missing PSD and cancelled save.
-- [ ] Toggle multi-tab off, restart, then on; verify scripts and current positions.
+- [ ] Hide the tab bar, restart, then show it; verify scripts and current positions.
 - [ ] Save, restart, switch profiles and restore an export with nested folders and unsorted styles.
 - [ ] Long typesetting session with TextShapeR scans and repeated undo/redo; verify responsiveness and persistence.
 - [ ] Test Windows native installer failure/rollback and update from the previous stable version.

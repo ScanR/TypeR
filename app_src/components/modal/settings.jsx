@@ -27,7 +27,6 @@ import {
   readBackgroundImageData,
   writeBackgroundImageData,
 } from "../../backgroundImage";
-import ColorField from "./colorField";
 import ThemeEditor from "./themeEditor";
 import BackgroundEditor from "./backgroundEditor";
 import Shortcut from "./shortCut";
@@ -41,7 +40,6 @@ import MissingFontsDialog from "./missingFontsDialog";
 import { collectMissingStyleFonts } from "../../fontFinderMatch";
 import { getFontViewerStatus } from "../../fontViewerApi";
 import { shortcutCommands } from "../../shortcutCommands";
-import { isPerfDebugEnabled, setPerfDebugEnabled, reportPerfDebug, resetPerfDebug } from "../../perfDebug";
 import { clearTypeRCache, formatCacheBytes, getTypeRCacheInfo } from "../../cepCache";
 import { DEFAULT_SETTINGS_TAB, readSettingsTab, writeSettingsTab } from "../../settingsTab";
 import { FOOTER_MODE_KEYS } from "../../uiLayout";
@@ -119,9 +117,7 @@ const SettingsModal = React.memo(function SettingsModal() {
     defaultStyleId: state.defaultStyleId,
     language: state.language,
     direction: state.direction,
-    middleEast: state.middleEast,
     autoClosePSD: state.autoClosePSD,
-    autoScrollStyle: state.autoScrollStyle,
     currentFolderTagPriority: state.currentFolderTagPriority,
     resizeTextBoxOnCenter: state.resizeTextBoxOnCenter,
     checkUpdates: state.checkUpdates,
@@ -143,10 +139,8 @@ const SettingsModal = React.memo(function SettingsModal() {
     internalPadding: state.internalPadding,
     interpretMarkdown: state.interpretMarkdown,
     resetLineCounterOnPage: state.resetLineCounterOnPage,
-    multiTabEnabled: state.multiTabEnabled,
     editorTheme: state.editorTheme,
     customThemes: state.customThemes,
-    pageLineColor: state.pageLineColor,
     backgroundImage: state.backgroundImage,
     shortcut: state.shortcut,
     uiLayout: state.uiLayout,
@@ -158,7 +152,6 @@ const SettingsModal = React.memo(function SettingsModal() {
   // Other windows (the What's new tour) can open a given tab; otherwise the
   // settings reopen on the last tab the user looked at
   const [activeTab, setActiveTab] = React.useState(() => (context.state.modalData && context.state.modalData.tab) || readSettingsTab());
-  const [perfDebug, setPerfDebug] = React.useState(isPerfDebugEnabled);
   const [pastePointText, setPastePointText] = React.useState(context.state.pastePointText ? "1" : "");
   const [ignoreLinePrefixes, setIgnoreLinePrefixes] = React.useState(
     context.state.ignoreLinePrefixes.join("\n")
@@ -169,12 +162,8 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [defaultStyleId, setDefaultStyleId] = React.useState(context.state.defaultStyleId || "");
   const [language, setLanguage] = React.useState(context.state.language || "auto");
   const [direction, setDirection] = React.useState(context.state.direction || "ltr");
-  const [middleEast, setMiddleEast] = React.useState(!!context.state.middleEast);
   const [autoClosePSD, setAutoClosePSD] = React.useState(
     !!context.state.autoClosePSD
-  );
-  const [autoScrollStyle, setAutoScrollStyle] = React.useState(
-    context.state.autoScrollStyle !== false
   );
   const [currentFolderTagPriority, setCurrentFolderTagPriority] = React.useState(
     context.state.currentFolderTagPriority !== false
@@ -233,11 +222,8 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [resetLineCounterOnPage, setResetLineCounterOnPage] = React.useState(
     context.state.resetLineCounterOnPage !== false
   );
-  const [multiTabEnabled, setMultiTabEnabled] = React.useState(
-    context.state.multiTabEnabled !== false
-  );
   const [editorTheme, setEditorTheme] = React.useState(context.state.editorTheme || "system");
-  // Themes, background and page line color are applied as soon as they change
+  // Themes and background are applied as soon as they change
   // (an appearance editor without a live result is unusable), so they are read
   // straight from the state instead of being drafts waiting for "Save".
   const customThemes = React.useMemo(
@@ -248,7 +234,6 @@ const SettingsModal = React.memo(function SettingsModal() {
     () => normalizeBackgroundImage(context.state.backgroundImage),
     [context.state.backgroundImage]
   );
-  const pageLineColor = context.state.pageLineColor || "";
   // The picture itself is not part of the state: it lives in its own file
   const [backgroundData, setBackgroundData] = React.useState(() => readBackgroundImageData());
   const [editedThemeId, setEditedThemeId] = React.useState(null);
@@ -256,7 +241,6 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [backgroundEditorOpen, setBackgroundEditorOpen] = React.useState(false);
   const [backgroundBusy, setBackgroundBusy] = React.useState(false);
   const [shortcutDraft, setShortcutDraft] = React.useState(() => ({ ...context.state.shortcut }));
-  const [multiTabConfirmOpen, setMultiTabConfirmOpen] = React.useState(false);
   const [edited, setEdited] = React.useState(false);
   const [discardConfirmOpen, setDiscardConfirmOpen] = React.useState(false);
   const [fontViewerAvailable, setFontViewerAvailable] = React.useState(false);
@@ -435,18 +419,8 @@ const SettingsModal = React.memo(function SettingsModal() {
     setEdited(true);
   };
 
-  const changeMiddleEast = (e) => {
-    const val = e.target.checked;
-    setMiddleEast(val);
-    setEdited(true);
-  };
-
   const changeAutoClosePSD = (e) => {
     setAutoClosePSD(e.target.checked);
-    setEdited(true);
-  };
-  const changeAutoScrollStyle = (e) => {
-    setAutoScrollStyle(e.target.checked);
     setEdited(true);
   };
   const changeCurrentFolderTagPriority = (e) => {
@@ -503,8 +477,10 @@ const SettingsModal = React.memo(function SettingsModal() {
     setEdited(true);
   };
 
+  // Turning tips on brings back the "Did you know?" ones already seen
   const changeShowTips = (e) => {
     setShowTips(e.target.checked);
+    if (e.target.checked) context.dispatch({ type: "resetFeatureTips" });
     setEdited(true);
   };
 
@@ -600,11 +576,6 @@ const SettingsModal = React.memo(function SettingsModal() {
     setEdited(true);
   };
 
-  const changeMultiTabEnabled = (e) => {
-    setMultiTabEnabled(e.target.checked);
-    setEdited(true);
-  };
-
   const changeResetLineCounterOnPage = (e) => {
     setResetLineCounterOnPage(e.target.checked);
     setEdited(true);
@@ -670,10 +641,6 @@ const SettingsModal = React.memo(function SettingsModal() {
     setEditedThemeId(null);
     setConfirmDeleteThemeId(null);
     setBackgroundEditorOpen((current) => !current);
-  };
-
-  const changePageLineColor = (color) => {
-    context.dispatch({ type: "setPageLineColor", color: color || null });
   };
 
   // File dialogs and reads return promises in the UXP plugin
@@ -859,29 +826,6 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const save = (e) => {
     e.preventDefault();
-    // Disabling multi-tab with several open tabs needs an in-app confirmation
-    if (
-      !multiTabEnabled &&
-      context.state.multiTabEnabled !== false &&
-      (context.state.tabs || []).length > 1
-    ) {
-      setMultiTabConfirmOpen(true);
-      return;
-    }
-    applySave();
-  };
-
-  const confirmDisableMultiTab = () => {
-    setMultiTabConfirmOpen(false);
-    applySave();
-  };
-
-  const cancelDisableMultiTab = () => {
-    setMultiTabEnabled(true);
-    setMultiTabConfirmOpen(false);
-  };
-
-  const applySave = () => {
     if (pastePointText !== context.state.pastePointText) {
       context.dispatch({
         type: "setPastePointText",
@@ -919,12 +863,6 @@ const SettingsModal = React.memo(function SettingsModal() {
         direction,
       });
     }
-    if (middleEast !== context.state.middleEast) {
-      context.dispatch({
-        type: "setMiddleEast",
-        value: middleEast,
-      });
-    }
     if (autoClosePSD !== context.state.autoClosePSD) {
       context.dispatch({
         type: "setAutoClosePSD",
@@ -932,12 +870,6 @@ const SettingsModal = React.memo(function SettingsModal() {
       });
     }
 
-    if (autoScrollStyle !== context.state.autoScrollStyle) {
-      context.dispatch({
-        type: "setAutoScrollStyle",
-        value: autoScrollStyle,
-      });
-    }
     if (currentFolderTagPriority !== context.state.currentFolderTagPriority) {
       context.dispatch({
         type: "setCurrentFolderTagPriority",
@@ -1053,10 +985,7 @@ const SettingsModal = React.memo(function SettingsModal() {
         value: resetLineCounterOnPage,
       });
     }
-    if (multiTabEnabled !== (context.state.multiTabEnabled !== false)) {
-      context.dispatch({ type: "setMultiTabEnabled", value: multiTabEnabled });
-    }
-    // Themes, background image and page line color are not part of the draft:
+    // Themes and background image are not part of the draft:
     // they are applied and persisted as soon as they change.
     const layoutToSave = buildUiLayoutToSave();
     if (JSON.stringify(layoutToSave) !== JSON.stringify(normalizeUiLayout(context.state.uiLayout))) {
@@ -1237,20 +1166,6 @@ const SettingsModal = React.memo(function SettingsModal() {
     }
   };
 
-  const openWalkthrough = () => {
-    context.dispatch({ type: "setModal", modal: "walkthrough", data: { source: "settings" } });
-  };
-
-  const [featureTipsReset, setFeatureTipsReset] = React.useState(false);
-  const resetFeatureTips = () => {
-    context.dispatch({ type: "resetFeatureTips" });
-    setFeatureTipsReset(true);
-  };
-
-  const openWhatsNew = () => {
-    context.dispatch({ type: "setModal", modal: "whatsNew", data: { source: "settings" } });
-  };
-
   // Legacy panel: the switch to the new TypeR (UXP), when Photoshop can run it
   const uxpMigration = React.useMemo(() => {
     try {
@@ -1345,26 +1260,6 @@ const SettingsModal = React.memo(function SettingsModal() {
     );
   };
 
-  // Performance logger: writes its own flag, never goes through the panel
-  // storage, so it can be switched on even to diagnose the storage itself
-  const changePerfDebug = (e) => {
-    setPerfDebug(setPerfDebugEnabled(e.target.checked));
-  };
-
-  const showPerfReport = () => {
-    const report = reportPerfDebug();
-    const slowest = report.hostCalls[0];
-    nativeAlert(
-      [
-        `${locale.settingsPerfDebugReportClicks || "Click to paint"}: ${report.clickToPaint.avgMs}ms (max ${report.clickToPaint.worstMs}ms, ${report.clickToPaint.samples})`,
-        `${locale.settingsPerfDebugReportHost || "Slowest Photoshop call"}: ${slowest ? `${slowest.name} ${slowest.avgMs}ms x${slowest.calls}` : "-"}`,
-        `${locale.settingsPerfDebugReportFrames || "Long frames"}: ${report.longFrames.count} (max ${report.longFrames.worstMs}ms)`,
-      ].join("\n"),
-      locale.settingsPerfDebugReport || "Performance report",
-      false
-    );
-  };
-
   // Work tabs first (in the order of the job), then the panel and the data
   const tabs = [
     { id: "general", label: locale.settingsTabGeneral || "General", icon: FiSettings },
@@ -1427,34 +1322,8 @@ const SettingsModal = React.memo(function SettingsModal() {
                   showTips,
                   changeShowTips,
                   locale.settingsShowTipsLabel || "Show tips",
-                  locale.settingsShowTipsHint || "Display tips in the interface (multi-bubble hints, etc.)"
+                  locale.settingsShowTipsHint
                 )}
-              </div>
-              <div className="field">
-                <button type="button" className="topcoat-button--large" onClick={resetFeatureTips} disabled={featureTipsReset}>
-                  {featureTipsReset
-                    ? (locale.settingsResetFeatureTipsDone || "Tips will show again")
-                    : (locale.settingsResetFeatureTips || "Show tips again")}
-                </button>
-              </div>
-              <div className="field-descr">
-                {locale.settingsResetFeatureTipsHint || "Brings back the \"Did you know?\" tips you have already seen."}
-              </div>
-              <div className="field">
-                <button type="button" className="topcoat-button--large" onClick={openWalkthrough}>
-                  {locale.settingsOpenWalkthrough || "Open walkthrough"}
-                </button>
-              </div>
-              <div className="field-descr">
-                {locale.settingsOpenWalkthroughHint || "Replay the first-time guide for the complete TypeR workflow."}
-              </div>
-              <div className="field">
-                <button type="button" className="topcoat-button--large" onClick={openWhatsNew}>
-                  {locale.settingsOpenWhatsNew || "What's new in 3.0"}
-                </button>
-              </div>
-              <div className="field-descr">
-                {locale.settingsOpenWhatsNewHint || "Replay the tour of the main 3.0 features."}
               </div>
             </div>
             <div className="settings-group">
@@ -1464,7 +1333,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                   checkUpdates,
                   changeCheckUpdates,
                   locale.settingsCheckUpdatesLabel,
-                  locale.settingsCheckUpdatesHint || "Automatically checks for available updates",
+                  null,
                   renderToggle(
                     autoUpdate,
                     changeAutoUpdate,
@@ -1496,6 +1365,7 @@ const SettingsModal = React.memo(function SettingsModal() {
               </div>
               )}
             </div>
+            {cacheInfo.supported && (
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupMaintenance || "Maintenance"}</div>
               <div className="field">
@@ -1503,7 +1373,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                   type="button"
                   className="topcoat-button--large"
                   onClick={clearCache}
-                  disabled={!cacheInfo.supported || cacheInfo.bytes === 0}
+                  disabled={cacheInfo.bytes === 0}
                 >
                   <FiTrash2 size={18} /> {locale.settingsClearCache || "Clear cache"}
                 </button>
@@ -1515,24 +1385,8 @@ const SettingsModal = React.memo(function SettingsModal() {
               <div className="field-descr">
                 {locale.settingsClearCacheHint || "Deletes TypeR's temporary browser files without touching texts, tabs, settings, styles, themes, or saved states."}
               </div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(
-                  perfDebug,
-                  changePerfDebug,
-                  locale.settingsPerfDebugLabel || "Performance logger",
-                  locale.settingsPerfDebugHint ||
-                    "Measures Photoshop calls, redraws and click latency. Leave it off unless the panel feels slow.",
-                  <div className="field" style={{ display: "flex", gap: 8 }}>
-                    <button type="button" className="topcoat-button--large" onClick={showPerfReport}>
-                      {locale.settingsPerfDebugReport || "Performance report"}
-                    </button>
-                    <button type="button" className="topcoat-button--large" onClick={resetPerfDebug}>
-                      {locale.settingsPerfDebugReset || "Reset counters"}
-                    </button>
-                  </div>
-                )}
-              </div>
             </div>
+            )}
           </div>
         );
 
@@ -1742,20 +1596,6 @@ const SettingsModal = React.memo(function SettingsModal() {
               </div>
             </div>
             <div className="settings-group">
-              <div className="settings-group-title">{locale.settingsGroupMultiTab || "Multi-series tabs"}</div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(
-                  multiTabEnabled,
-                  changeMultiTabEnabled,
-                  <React.Fragment>
-                    {locale.settingsMultiTabLabel || "Multi-tab"}
-                    <b className="settings-new-badge">{locale.settingsNewBadge || "New"}</b>
-                  </React.Fragment>,
-                  locale.settingsMultiTabHint || "Manage several series at once with tabs above the text block, each with its own text and PSD sync."
-                )}
-              </div>
-            </div>
-            <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupTextDirection || "Text direction"}</div>
               <div className="field">
                 <div className="field-label">{locale.settingsDirectionLabel}</div>
@@ -1765,9 +1605,6 @@ const SettingsModal = React.memo(function SettingsModal() {
                     <option value="rtl">{locale.settingsDirectionRtl}</option>
                   </select>
                 </div>
-              </div>
-              <div className="settings-checkbox-grid">
-                {renderToggle(middleEast, changeMiddleEast, locale.settingsMiddleEastLabel, null)}
               </div>
             </div>
           </div>
@@ -1802,12 +1639,6 @@ const SettingsModal = React.memo(function SettingsModal() {
                   locale.settingsCurrentFolderTagPriorityHint ||
                     "Prevents script tags from selecting a style from another folder"
                 )}
-                {renderToggle(
-                  autoScrollStyle,
-                  changeAutoScrollStyle,
-                  locale.settingsAutoScrollStyleLabel,
-                  locale.settingsAutoScrollStyleHint || "Automatically scrolls to selected style"
-                )}
               </div>
             </div>
             <div className="settings-group">
@@ -1817,7 +1648,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                   showQuickStyleSize,
                   changeShowQuickStyleSize,
                   locale.settingsQuickStyleSizeLabel || "Show style size presets",
-                  locale.settingsQuickStyleSizeHint || "Display the clickable size presets on each style.",
+                  null,
                   <div className="field">
                     <div className="field-label">{locale.settingsQuickStyleSizeStepLabel || "Quick size step"}</div>
                     <div className="field-input">
@@ -2299,18 +2130,6 @@ const SettingsModal = React.memo(function SettingsModal() {
                   onClose={() => setBackgroundEditorOpen(false)}
                 />
               )}
-              <div className="settings-color-row">
-                <ColorField
-                  label={locale.settingsPageLineColor || "Page line background"}
-                  value={pageLineColor}
-                  onChange={changePageLineColor}
-                  clearable={true}
-                  onClear={() => changePageLineColor("")}
-                />
-                <span className="settings-color-hint">
-                  {locale.settingsPageLineColorHint || "Background of the lines marked as a page separator."}
-                </span>
-              </div>
             </div>
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupInterface || "Interface layout"}</div>
@@ -2651,30 +2470,6 @@ const SettingsModal = React.memo(function SettingsModal() {
                   onClick={() => deleteCustomTheme(themeToDelete.id)}
                 >
                   {locale.yes || "Yes"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {multiTabConfirmOpen && (
-          <div className="settings-confirm-overlay" onClick={cancelDisableMultiTab}>
-            <div className="settings-confirm-dialog hostBgdLight" onClick={(e) => e.stopPropagation()}>
-              <div className="settings-confirm-icon">
-                <FiAlertTriangle size={26} />
-              </div>
-              <div className="settings-confirm-title">
-                {locale.settingsMultiTabDisableTitle || "Disable multi-tab?"}
-              </div>
-              <div className="settings-confirm-text">
-                {(locale.settingsMultiTabDisableConfirm || 'All tabs other than "{name}" will be lost.')
-                  .replace("{name}", (context.state.tabs || [])[0]?.name || "")}
-              </div>
-              <div className="settings-confirm-actions">
-                <button type="button" className="topcoat-button--large" onClick={cancelDisableMultiTab}>
-                  {locale.cancel || "Cancel"}
-                </button>
-                <button type="button" className="topcoat-button--large--cta settings-confirm-danger" onClick={confirmDisableMultiTab}>
-                  {locale.settingsMultiTabDisableAction || "Disable"}
                 </button>
               </div>
             </div>
