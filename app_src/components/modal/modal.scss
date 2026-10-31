@@ -353,6 +353,140 @@
     min-height: 250px;
 }
 
+.settings-content--hidden {
+    display: none !important;
+}
+
+// Settings search: in the header, so it stays visible while the tab scrolls
+.settings-search {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 10px;
+    padding: 0 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.18);
+
+    & > svg {
+        flex: 0 0 auto;
+        opacity: 0.6;
+    }
+
+    INPUT {
+        flex: 1 1 auto;
+        min-width: 0;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    BUTTON {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.7;
+    }
+
+    .light-theme & {
+        background: rgba(0, 0, 0, 0.07);
+    }
+}
+
+.settings-search-results {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-height: 250px;
+}
+
+.settings-search-empty {
+    min-height: 250px;
+    padding: 24px 10px;
+    font-size: 13px;
+    text-align: center;
+    opacity: 0.7;
+    overflow-wrap: anywhere;
+}
+
+.settings-search-result {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    padding: 7px 9px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+
+    &.m-active {
+        background: var(--editor-accentSoft, rgba(255, 255, 255, 0.1));
+    }
+
+    .light-theme &.m-active {
+        background: var(--editor-accentSoft, rgba(0, 0, 0, 0.08));
+    }
+
+    mark {
+        background: transparent;
+        color: var(--editor-accent, #6db3f2);
+        font-weight: 600;
+    }
+}
+
+.settings-search-result-path {
+    font-size: 10px;
+    opacity: 0.6;
+}
+
+.settings-search-result-title {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.settings-search-result-hint {
+    font-size: 11px;
+    line-height: 1.35;
+    opacity: 0.75;
+}
+
+// The setting a result led to
+.settings-search-flash {
+    border-radius: 4px;
+    animation: settings-search-flash 1.8s ease-out;
+}
+
+@keyframes settings-search-flash {
+    0%, 55% {
+        box-shadow: 0 0 0 2px var(--editor-accent, #6db3f2);
+        background-color: var(--editor-accentSoft, rgba(109, 179, 242, 0.18));
+    }
+
+    100% {
+        box-shadow: 0 0 0 2px transparent;
+        background-color: transparent;
+    }
+}
+
+// Too narrow for the title and the search on one line
+@media (max-width: 330px) {
+    .settings-search {
+        margin-left: 0;
+    }
+
+    .settings-title {
+        display: none;
+    }
+}
+
 // Shortcuts tab: one card per shortcut with clickable keycap recorder
 .shortcut-list {
     display: flex;

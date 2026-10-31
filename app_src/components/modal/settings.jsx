@@ -1,13 +1,13 @@
 import { useModalClose } from "../../modalClose";
 import { serializeStyle, validateImportData, hasStyleImportConflicts } from "../../librarySerialization";
 import React from "react";
-import { FiX, FiSettings, FiEye, FiEyeOff, FiEdit3, FiFileText, FiLayers, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiEdit2, FiGrid, FiPlus, FiImage, FiTrash2, FiDatabase, FiHelpCircle, FiFolderPlus, FiLock, FiMonitor, FiType, FiZoomIn } from "react-icons/fi";
+import { FiX, FiSearch, FiSettings, FiEye, FiEyeOff, FiEdit3, FiFileText, FiLayers, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiEdit2, FiGrid, FiPlus, FiImage, FiTrash2, FiDatabase, FiHelpCircle, FiFolderPlus, FiLock, FiMonitor, FiType, FiZoomIn } from "react-icons/fi";
 import { MdSave, MdTab, MdCenterFocusWeak, MdFormatSize, MdSwapVert, MdOutlineSubject, MdOutlineCallToAction } from "react-icons/md";
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { reloadApp, backupStorage, locale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig, getUserFonts } from "../../utils";
+import { reloadApp, backupStorage, locale, baseLocale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig, getUserFonts } from "../../utils";
 import { readUxpMigrationState } from "../../uxpMigration";
 import { openKeyboardAccessSettings, readKeyboardAccess } from "../../keyboardAccess";
 import { useContext, defaultUiLayout, normalizeUiLayout, normalizeSmartPasteMinScale } from "../../context";
@@ -44,6 +44,8 @@ import { getFontViewerStatus } from "../../fontViewerApi";
 import { shortcutCommands } from "../../shortcutCommands";
 import { clearTypeRCache, formatCacheBytes, getTypeRCacheInfo } from "../../cepCache";
 import { DEFAULT_SETTINGS_TAB, readSettingsTab, writeSettingsTab } from "../../settingsTab";
+import { buildSettingsSearchIndex, findSettingRow, searchSettings } from "../../settingsSearch";
+import SettingsSearchResults from "./settingsSearchResults";
 import { FOOTER_MODE_KEYS } from "../../uiLayout";
 import { FOOTER_MODE_ICONS, footerModeLabel } from "../footer/footer";
 
@@ -290,6 +292,47 @@ const SettingsModal = React.memo(function SettingsModal() {
     writeSettingsTab(activeTab);
     if (activeTab === "general") setCacheInfo(getTypeRCacheInfo());
   }, [activeTab]);
+
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchHighlight, setSearchHighlight] = React.useState(0);
+  const [searchTarget, setSearchTarget] = React.useState(null);
+  const searchInputRef = React.useRef(null);
+  const settingsFormRef = React.useRef(null);
+  const searching = searchQuery.trim() !== "";
+
+  // Runs once the tab of the chosen result is displayed
+  React.useEffect(() => {
+    if (!searchTarget || !settingsFormRef.current) return undefined;
+    const form = settingsFormRef.current;
+    const row = searchTarget.isTab ? null : findSettingRow(form, searchTarget);
+    if (!row) {
+      const body = form.closest(".app-modal-body");
+      if (body) body.scrollTop = 0;
+      return undefined;
+    }
+    row.scrollIntoView({ block: "center" });
+    row.classList.add("settings-search-flash");
+    const timer = setTimeout(() => row.classList.remove("settings-search-flash"), 1800);
+    return () => {
+      clearTimeout(timer);
+      row.classList.remove("settings-search-flash");
+    };
+  }, [searchTarget]);
+
+  // Cmd/Ctrl+F, except while a shortcut row is recording that very combination
+  React.useEffect(() => {
+    const focusSearch = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.keyCode !== 70) return;
+      const active = document.activeElement;
+      if (active && active.closest && active.closest(".shortcut-row")) return;
+      e.preventDefault();
+      if (!searchInputRef.current) return;
+      searchInputRef.current.focus();
+      searchInputRef.current.select();
+    };
+    document.addEventListener("keydown", focusSearch);
+    return () => document.removeEventListener("keydown", focusSearch);
+  }, []);
 
   // Paste on click and auto clean also have a shortcut / footer toggle: follow
   // a change made there so saving the modal never reverts it
@@ -1293,6 +1336,56 @@ const SettingsModal = React.memo(function SettingsModal() {
       disabledTitle: locale.fontViewerUnavailable,
     },
   ];
+
+  const searchIndex = React.useMemo(() => buildSettingsSearchIndex({
+    locale,
+    baseLocale,
+    tabs,
+    shortcutGroups,
+    themes: themeList.map((theme) => (theme.labelKey ? locale[theme.labelKey] : theme.label)).filter(Boolean),
+    footerModes: FOOTER_MODE_IDS.map(footerModeLabel),
+    available: {
+      uxpMigration: uxpMigration.eligibility === "ok" || uxpMigration.forced,
+      clearCache: cacheInfo.supported,
+      keyboardAccess: keyboardAccess === "missing",
+    },
+  }), [shortcutGroups, themeList, fontViewerAvailable, uxpMigration, cacheInfo.supported, keyboardAccess]);
+  const searchResults = React.useMemo(() => searchSettings(searchIndex, searchQuery), [searchIndex, searchQuery]);
+
+  const changeSearchQuery = (value) => {
+    setSearchQuery(value);
+    setSearchHighlight(0);
+    const body = settingsFormRef.current && settingsFormRef.current.closest(".app-modal-body");
+    if (body) body.scrollTop = 0;
+  };
+
+  const openSearchResult = (entry) => {
+    if (entry.layoutBlock) setSelectedLayoutBlock(entry.layoutBlock);
+    setActiveTab(entry.tab);
+    changeSearchQuery("");
+    setSearchTarget({ ...entry });
+    if (searchInputRef.current) searchInputRef.current.blur();
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === "Escape") {
+      if (!searchQuery) return;
+      // The search is cleared first: the next Escape closes the window
+      e.preventDefault();
+      e.stopPropagation();
+      changeSearchQuery("");
+    } else if (!searching) {
+      return;
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!searchResults.length) return;
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      setSearchHighlight((searchHighlight + step + searchResults.length) % searchResults.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (searchResults[searchHighlight]) openSearchResult(searchResults[searchHighlight].entry);
+    }
+  };
 
   // Shared markup for a toggle row (checkbox + label + optional hint). The
   // options that only matter while it is checked sit indented under it.
@@ -2427,7 +2520,26 @@ const SettingsModal = React.memo(function SettingsModal() {
   return (
     <React.Fragment>
       <div className="app-modal-header hostBrdBotContrast">
-        <div className="app-modal-title">{locale.settingsTitle}</div>
+        <div className="app-modal-title settings-title">{locale.settingsTitle}</div>
+        <div className="settings-search">
+          <FiSearch size={14} />
+          <input
+            ref={searchInputRef}
+            type="text"
+            className="topcoat-textarea"
+            spellCheck={false}
+            value={searchQuery}
+            placeholder={locale.settingsSearchPlaceholder}
+            aria-label={locale.settingsSearchPlaceholder}
+            onChange={(e) => changeSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+          />
+          {searchQuery ? (
+            <button type="button" className="topcoat-icon-button--quiet" title={locale.fontViewerClearSearch} onClick={() => changeSearchQuery("")}>
+              <FiX size={14} />
+            </button>
+          ) : null}
+        </div>
         <button className="topcoat-icon-button--large--quiet" title={locale.close} onClick={close}>
           <FiX size={18} />
         </button>
@@ -2440,12 +2552,14 @@ const SettingsModal = React.memo(function SettingsModal() {
               return (
                 <button
                   key={tab.id}
-                  className={`settings-tab ${activeTab === tab.id ? 'settings-tab--active' : ''}${tab.disabled ? ' settings-tab--disabled' : ''}`}
+                  className={`settings-tab ${activeTab === tab.id && !searching ? 'settings-tab--active' : ''}${tab.disabled ? ' settings-tab--disabled' : ''}`}
                   data-tour={"settings-" + tab.id}
                   aria-disabled={tab.disabled || undefined}
                   title={tab.disabled ? tab.disabledTitle : tab.label}
                   onClick={() => {
-                    if (!tab.disabled) setActiveTab(tab.id);
+                    if (tab.disabled) return;
+                    setActiveTab(tab.id);
+                    changeSearchQuery("");
                   }}
                 >
                   <IconComponent size={16} />
@@ -2454,8 +2568,19 @@ const SettingsModal = React.memo(function SettingsModal() {
               );
             })}
           </div>
+          {searching && (
+            <SettingsSearchResults
+              query={searchQuery}
+              results={searchResults}
+              highlight={searchHighlight}
+              onOpen={openSearchResult}
+              onHighlight={setSearchHighlight}
+            />
+          )}
+          {/* Stays mounted under the results: the tabs keep their own state */}
           <form
-            className={`settings-content${activeTab === "fontViewer" ? " settings-content--font-viewer" : ""}`}
+            ref={settingsFormRef}
+            className={`settings-content${activeTab === "fontViewer" ? " settings-content--font-viewer" : ""}${searching ? " settings-content--hidden" : ""}`}
             onSubmit={activeTab === "fontViewer" ? (event) => event.preventDefault() : save}
           >
             {renderTabContent()}
