@@ -16,6 +16,21 @@ import {
 import { buildSelectedLayerPayload, buildStoredSelectionPayload, getScaledStyle } from "./textLayerPayload";
 import { canSmartPasteStoredSelections, smartPasteInSelection, smartPasteStoredSelections } from "./smartPasteClient";
 import { isStyleStrokeOn } from "./styleStroke";
+import { isWindowTooShortForTextShapeR } from "./uiLayout";
+
+// Footer toggle and shortcut. The saved choice is left alone while the window is
+// too short, so TextShapeR comes back as soon as the window is tall enough.
+export const toggleTextShapeR = (ctx) => {
+  if (isWindowTooShortForTextShapeR()) {
+    ctx.dispatch({
+      type: "showNotice",
+      text: locale.textShapeRWindowTooShort || "The window is too short to show TextShapeR. Make it taller to use it.",
+      kind: "warning",
+    });
+    return;
+  }
+  ctx.dispatch({ type: "setInlineTextShapeR", value: !ctx.state.inlineTextShapeR });
+};
 
 const applyLinesToLayers = (ctx, layers, preferredOrder = [], options = {}) => {
   const selectedIds = layers
@@ -406,10 +421,7 @@ const shortcutCommands = [
     label: "shortcut_toggleTextShapeR",
     defaultKeys: [],
     repeatDelay: 300,
-    handler: (ctx) => ctx.dispatch({
-      type: "setInlineTextShapeR",
-      value: !ctx.state.inlineTextShapeR,
-    }),
+    handler: toggleTextShapeR,
   },
   {
     id: "previousTab",

@@ -8,7 +8,8 @@ import { useContext } from "../../context";
 import HiddenFileInput from "../hiddenFileInput/hiddenFileInput";
 import Notice from "../notice/notice";
 import FeatureTip from "../featureTip";
-import { isFooterModeVisible } from "../../uiLayout";
+import { isFooterModeVisible, isWindowTooShortForTextShapeR } from "../../uiLayout";
+import { toggleTextShapeR } from "../../shortcutCommands";
 
 // Shared with Settings > Appearance, which lists the toggles one by one
 export const FOOTER_MODE_ICONS = {
@@ -29,14 +30,15 @@ export const footerModeLabel = (id) => ({
 // label. The tooltip always spells out the state, so the hint text is never
 // read as one.
 const ModeToggle = ({ mode, compact }) => {
-  const { on, label, hint, Icon, onClick } = mode;
+  const { on, label, hint, Icon, onClick, unavailable } = mode;
   const state = on ? (locale.multiBubbleModeOn || "ON") : (locale.multiBubbleModeOff || "OFF");
   return (
     <button
       type="button"
-      className="footer-mode"
+      className={"footer-mode" + (unavailable ? " is-unavailable" : "")}
       data-tour={"mode-" + mode.id}
       aria-pressed={!!on}
+      aria-disabled={!!unavailable}
       aria-label={label}
       title={label + " (" + state + ") – " + hint}
       onClick={onClick}
@@ -92,6 +94,17 @@ const useCompactModes = (actionsRef, modesRef, measureRef) => {
   return compact;
 };
 
+const useWindowTooShortForTextShapeR = () => {
+  const [tooShort, setTooShort] = React.useState(isWindowTooShortForTextShapeR);
+  React.useEffect(() => {
+    const update = () => setTooShort(isWindowTooShortForTextShapeR());
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  return tooShort;
+};
+
 const AppFooter = React.memo(function AppFooter() {
   const context = useContext((state) => ({
     images: state.images,
@@ -121,6 +134,7 @@ const AppFooter = React.memo(function AppFooter() {
   const tooNarrow = useCompactModes(actionsRef, modesRef, measureRef);
   // Settings > Appearance can keep the icons at any panel width
   const compact = tooNarrow || context.state.uiLayout?.footerModeIcons === true;
+  const textShapeRTooShort = useWindowTooShortForTextShapeR();
 
   const openRepository = () => {
     if (context.state.images.length) {
@@ -132,10 +146,6 @@ const AppFooter = React.memo(function AppFooter() {
 
   const toggleMultiBubble = () => {
     context.dispatch({ type: "setMultiBubbleMode", value: !context.state.multiBubbleMode });
-  };
-
-  const toggleInlineTextShapeR = () => {
-    context.dispatch({ type: "setInlineTextShapeR", value: !context.state.inlineTextShapeR });
   };
 
   const togglePasteOnClick = () => {
@@ -154,11 +164,14 @@ const AppFooter = React.memo(function AppFooter() {
   const allModes = [
     {
       id: "textShapeR",
-      on: context.state.inlineTextShapeR,
+      on: context.state.inlineTextShapeR && !textShapeRTooShort,
+      unavailable: textShapeRTooShort,
       label: footerModeLabel("textShapeR"),
-      hint: locale.inlineTextShapeRModeHint || "Shows or hides TextShapeR suggestions directly in the main panel",
+      hint: textShapeRTooShort
+        ? (locale.textShapeRWindowTooShort || "The window is too short to show TextShapeR. Make it taller to use it.")
+        : (locale.inlineTextShapeRModeHint || "Shows or hides TextShapeR suggestions directly in the main panel"),
       Icon: FOOTER_MODE_ICONS.textShapeR,
-      onClick: toggleInlineTextShapeR,
+      onClick: () => toggleTextShapeR(context),
     },
     {
       id: "multiBubble",

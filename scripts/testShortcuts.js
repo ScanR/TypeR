@@ -119,6 +119,7 @@ assert(
 );
 
 const utilityCalls = [];
+let windowTooShortForTextShapeR = false;
 let selectionSnapshot = { selection: null, layers: [{ id: 10 }, { id: 20 }] };
 const transformedCommands = babel.transformSync(commandSource, {
   presets: [["@babel/preset-env", { modules: "commonjs" }]],
@@ -166,6 +167,9 @@ const mockRequire = (request) => {
       }),
       getScaledStyle: (style) => style,
     };
+  }
+  if (request === "./uiLayout") {
+    return { isWindowTooShortForTextShapeR: () => windowTooShortForTextShapeR };
   }
   if (request === "./styleStroke") {
     return { isStyleStrokeOn: (style) => !!(style && style.stroke && style.stroke.enabled) };
@@ -328,6 +332,21 @@ assert.deepStrictEqual(dispatches.shift(), { type: "clearSelections" });
 assert.deepStrictEqual(utilityCalls.shift(), ["deselect"]);
 getCommand("toggleTextShapeR").handler(baseContext);
 assert.deepStrictEqual(dispatches.shift(), { type: "setInlineTextShapeR", value: true });
+windowTooShortForTextShapeR = true;
+getCommand("toggleTextShapeR").handler(baseContext);
+windowTooShortForTextShapeR = false;
+{
+  const notice = dispatches.shift();
+  assert.strictEqual(notice.type, "showNotice", "A too short window must explain why TextShapeR stays off");
+  assert.strictEqual(notice.kind, "warning");
+  assert.strictEqual(dispatches.length, 0, "A too short window must not change the saved TextShapeR choice");
+}
+assert(
+  /@media \(max-height: 450px\) \{\s*\.preview-bottom \{\s*display: none;/.test(
+    fs.readFileSync(path.join(rootDir, "app_src", "components", "previewBlock", "previewBlock.scss"), "utf8")
+  ) && fs.readFileSync(path.join(rootDir, "app_src", "uiLayout.js"), "utf8").includes('matchMedia("(max-height: 450px)")'),
+  "The TextShapeR height check must use the media query that hides the preview bottom"
+);
 getCommand("toggleCleaningLayers").handler(baseContext);
 assert.deepStrictEqual(utilityCalls.shift(), ["toggleCleaningLayers"]);
 getCommand("previousTab").handler(baseContext);

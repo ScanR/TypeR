@@ -70,6 +70,11 @@ export const normalizeUiLayout = (raw) => {
   return { order, visible, sizes, footerModeIcons: layout.footerModeIcons === true };
 };
 
+// TextShapeR sits in .preview-bottom, which previewBlock.scss hides under this
+// height. Asking the same media query keeps the two in step at any UI scale.
+export const isWindowTooShortForTextShapeR = () =>
+  typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(max-height: 450px)").matches;
+
 export const isFooterModeVisible = (layout, id) => {
   const key = FOOTER_MODE_KEYS[id];
   return !key || !layout || !layout.visible || layout.visible[key] !== false;

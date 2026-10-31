@@ -132,6 +132,16 @@
   font-weight: 600;
 }
 
+// Still clickable: the click explains why the mode cannot be turned on
+.footer-mode.is-unavailable {
+  cursor: not-allowed;
+  opacity: 0.4;
+  &:hover {
+    opacity: 0.55;
+    background: transparent;
+  }
+}
+
 @media (max-height: 450px) {
   .footer-block {
     padding: 1px 5px 2px;
