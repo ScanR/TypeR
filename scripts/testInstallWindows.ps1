@@ -96,7 +96,14 @@ if ($env:TYPER_INSTALL_PROBE -eq 'installed') {
 }
 if ($env:TYPER_INSTALL_PROBE) { throw 'Silent updater unexpectedly opened a menu.' }
 $Edition = if ($Uxp) { 'uxp' } else { 'legacy' }
-$Hash = if ($Package) { (Get-FileHash -LiteralPath $Package -Algorithm SHA256).Hash } else { $null }
+$Hash = $null
+if ($Package) {
+    # .NET directly: Get-FileHash is missing from PowerShell 5.1 started from pwsh, as on CI
+    $Stream = [IO.File]::OpenRead($Package)
+    $Algorithm = [Security.Cryptography.SHA256]::Create()
+    try { $Hash = [BitConverter]::ToString($Algorithm.ComputeHash($Stream)).Replace('-', '').ToLowerInvariant() }
+    finally { $Algorithm.Dispose(); $Stream.Dispose() }
+}
 $Record = @{ Edition = $Edition; Package = $Package; Hash = $Hash; Source = $env:TYPER_INSTALL_SOURCE }
 Add-Content -LiteralPath $env:TYPER_TEST_UPDATER_CALLS -Value (ConvertTo-Json $Record -Compress)
 if ($env:TYPER_TEST_UPDATER_FAIL -eq $Edition) { 'INJECTED UPDATE FAILURE'; exit 7 }
@@ -137,7 +144,7 @@ try {
         $Result = Invoke-UpdaterFixture $true $false
         Assert ($Result.ExitCode -eq 0) $Result.Output
         Assert ($Result.Calls.Count -eq 1 -and $Result.Calls[0].Edition -eq 'uxp') 'Updater selected Legacy'
-        Assert ($Result.Calls[0].Hash -eq (Get-FileHash -LiteralPath $PackagePath).Hash) 'Updater installed stale neighboring package'
+        Assert ($Result.Calls[0].Hash -eq (Get-TypeRFileHash $PackagePath)) 'Updater installed stale neighboring package'
     }
     Test 'Standalone updater updates both installed editions' {
         $Result = Invoke-UpdaterFixture $true $true
