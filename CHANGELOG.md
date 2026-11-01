@@ -2,6 +2,7 @@
 
 ## 3.0.1
 
+- Paste on click now imposes "Sample All Layers" on the Magic Wand: TypeR turns the option on and selects the click again, so a click no longer reads the active layer and puts the text in the middle of the page.
 - The Legacy panel is called "TypeR (CEP)" in Photoshop, so that the version in use can be told at a glance. It is still called "TypeR (old)" while the new TypeR is installed.
 - Fix the script highlights and line numbers drifting away from the text in Photoshop 2019 and older on a screen scaled above 100%.
 - Fix the top of the Legacy panel in Photoshop 2019 and older: its buttons were stuck together, with too much space under them. In every version, the arrows no longer run over the tabs when the top block is at its smallest.

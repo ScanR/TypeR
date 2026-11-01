@@ -4,6 +4,8 @@
 //     paste when smart paste is off).
 //   - With smart paste, clicks made while a paste runs wait their turn: each
 //     one selects its bubble again and pastes the next line.
+//   - A Magic Wand click needs "Sample All Layers": TypeR turns it on and
+//     selects a click made without it again.
 //   - UXP reports every history move (TYPER_HISTORY_EVENT): an Undo of a
 //     TypeR paste puts the script line back. CEP has no history event: the
 //     history is checked after Photoshop events and when the panel is focused.
@@ -14,8 +16,8 @@ import { addPhotoshopEventListener, csInterface, msSinceHostAction, safeJsonPars
 import { PS_EVENT_SET } from "./photoshopEvents";
 import { classifySelectionEvent, parseCepEventData, triggerSourceForTool } from "./oneClick/selectionEvent";
 import {
-  applyHistorySnapshot, hasPasteHistory, isClassicFallbackSettling, isSmartPasteBusy, isSmartPasteSettling, rememberSelectionTrigger,
-  hasSplitCandidate, replaySelection, smartPasteFinishedAt, smartPasteInSelection, syncPasteHistory,
+  applyHistorySnapshot, hasPasteHistory, imposeSampleAll, isClassicFallbackSettling, isSmartPasteBusy, isSmartPasteSettling, rememberSelectionTrigger,
+  hasSplitCandidate, replaySelection, smartPasteFinishedAt, smartPasteInSelection, syncPasteHistory, withSampleAll,
 } from "./smartPasteClient";
 import { pasteInSelection } from "./shortcutCommands";
 
@@ -90,10 +92,15 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // Smart paste clicks, pasted one after the other. The first one pastes into
 // the selection it made; the ones that waited (the previous paste deselects)
 // are selected again first, and their replay events are not new clicks.
-export const createClickQueue = ({ canPaste, paste, replay, isBusy = () => false }) => {
+export const createClickQueue = ({ canPaste, paste, replay, isBusy = () => false, sampleAll = async () => "ok" }) => {
   const queue = [];
   const replays = [];
   let draining = false;
+
+  const selectAgain = (trigger) => {
+    replays.push({ trigger, at: Date.now() });
+    return replay(trigger);
+  };
 
   const drain = async () => {
     draining = true;
@@ -109,10 +116,11 @@ export const createClickQueue = ({ canPaste, paste, replay, isBusy = () => false
           queue.length = 0;
           break;
         }
-        if (reselect) {
+        const sampled = await sampleAll(trigger);
+        if (sampled === "skip") continue;
+        if (reselect || sampled === "reselect") {
           if (!isReplayable(trigger)) continue;
-          replays.push({ trigger, at: Date.now() });
-          if (!(await replay(trigger))) {
+          if (!(await selectAgain(trigger))) {
             queue.length = 0;
             break;
           }
@@ -139,6 +147,12 @@ export const createClickQueue = ({ canPaste, paste, replay, isBusy = () => false
       return false;
     },
     isDraining: () => draining,
+    // The classic paste does not queue: true when its click can be pasted
+    prepare: async (trigger) => {
+      const sampled = await sampleAll(trigger);
+      if (sampled === "skip") return false;
+      return sampled === "reselect" ? selectAgain(trigger) : true;
+    },
     push: (trigger) => {
       if (queue.length >= MAX_QUEUED_CLICKS) return false;
       queue.push(trigger);
@@ -172,8 +186,9 @@ const PasteOnClick = () => {
           state.currentLine && !state.currentLine.ignore && state.currentLine.text);
       },
       paste: (trigger) => smartPasteInSelection(getState, dispatch, { trigger }),
-      replay: (trigger) => replaySelection(trigger, dispatch),
+      replay: (trigger) => replaySelection(withSampleAll(trigger), dispatch),
       isBusy: isSmartPasteBusy,
+      sampleAll: (trigger) => imposeSampleAll(trigger, dispatch),
     });
     const scheduleHistoryCheck = () => {
       if (isUxp || !hasPasteHistory()) return;
@@ -207,7 +222,11 @@ const PasteOnClick = () => {
           return;
         }
         if (state.smartPaste === true) clicks.push(trigger);
-        else pasteInSelection({ state, dispatch, getState });
+        else {
+          clicks.prepare(trigger).then((ready) => {
+            if (ready) pasteInSelection({ state: getState(), dispatch, getState });
+          });
+        }
       };
       if (!hasDescriptor(data.eventData) && !isUxp) {
         const state = getState();

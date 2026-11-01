@@ -535,6 +535,21 @@ async function replaySelectionTrigger(trigger) {
   }
 }
 
+// Turns on the Magic Wand's "Sample All Layers" for paste on click (see host.js)
+async function ensureWandSampleAll() {
+  try {
+    const application = { _ref: "application", _enum: "ordinal", _value: "targetEnum" };
+    const tool = get([{ _property: "tool" }, application]).tool;
+    if ((tool && (tool._enum || tool._value)) !== "magicWandTool") return JSON.stringify({ wasOff: false });
+    const current = get([{ _property: "currentToolOptions" }, application]).currentToolOptions;
+    if (!current || current.windowsSystem !== false) return JSON.stringify({ wasOff: false });
+    await modal("TypeR", () => play({ _obj: "set", _target: [{ _ref: "magicWandTool" }], to: { _obj: "currentToolOptions", windowsSystem: true } }));
+    return JSON.stringify({ wasOff: true });
+  } catch (error) {
+    return JSON.stringify({ error: "sampleAll" });
+  }
+}
+
 // For parity with host.js (UXP events always carry their descriptor)
 function smartPasteSelectionProbe() {
   if (!hasDocument()) return JSON.stringify({ error: "doc" });
@@ -550,6 +565,6 @@ function smartPasteSelectionProbe() {
 }
 
 module.exports = {
-  methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot, restoreHistoryState, replaySelectionTrigger, smartPasteSelectionProbe },
+  methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot, restoreHistoryState, replaySelectionTrigger, ensureWandSampleAll, smartPasteSelectionProbe },
   _internals: { captureSelection, measureRequests, commitSessions, inkFits },
 };

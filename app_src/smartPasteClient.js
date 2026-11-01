@@ -282,6 +282,27 @@ export const replaySelection = async (trigger, dispatch) => {
   return false;
 };
 
+// A Magic Wand click always pastes with "Sample All Layers": without it the
+// click reads the active layer, often the text just pasted, instead of the
+// page. Answers "ok", "reselect" (the click was made without it) or "skip" (the
+// click cannot be selected again: the user clicks once more).
+export const imposeSampleAll = async (trigger, dispatch) => {
+  if (!trigger || trigger.source !== "wand") return "ok";
+  const sample = safeJsonParse(await evalHost("ensureWandSampleAll()", 15000), {});
+  const madeWithout = sample.wasOff === true || !!(trigger.options && trigger.options.merged === false);
+  if (!madeWithout) return "ok";
+  if (typeof trigger.x !== "number") {
+    notice(dispatch, locale.smartPasteSampleAllAgain, "warning");
+    return "skip";
+  }
+  if (sample.wasOff === true) notice(dispatch, locale.smartPasteSampleAllOn);
+  return "reselect";
+};
+
+export const withSampleAll = (trigger) => (
+  trigger && trigger.source === "wand" ? { ...trigger, options: { ...trigger.options, merged: true } } : trigger
+);
+
 const classicPaste = (state, dispatch, options, textColor) => new Promise((resolve) => {
   const line = state.currentLine || { text: "" };
   const style = styleWithTextColor(getScaledStyle(state.currentStyle, state.textScale), textColor);

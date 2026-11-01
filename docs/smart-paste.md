@@ -29,7 +29,8 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
     cannot be placed, the classic paste runs and a short notice says why.
 - **Paste on click** (off by default; footer toggle, shortcut without a default key). A Magic Wand click, a
   rectangle or a lasso pastes the current line at once. Restored or loaded selections, and the selections
-  TypeR makes itself, never paste.
+  TypeR makes itself, never paste. The Magic Wand must read the page and not the active layer, so TypeR turns its
+  "Sample All Layers" option on and selects a click made without it again (`ensureWandSampleAll`).
   A second Magic Wand click in a bubble that just got one line (the next line waiting) splits it: the paste is
   undone (`restoreHistoryState`) and both lines are pasted with `forceSplit`, which cuts the bubble at the chord
   that removes the most of its outline's dents (`forcedCut`), even when the neck finder saw a single bubble.

@@ -5376,6 +5376,32 @@ function replaySelectionTrigger(trigger) {
   }
 }
 
+// Paste on click needs the Magic Wand's "Sample All Layers": without it a click
+// reads the active layer, often the text just pasted, instead of the page.
+// Turns it on and answers whether it was off. WndS is the option's key.
+function ensureWandSampleAll() {
+  try {
+    var reference = new ActionReference();
+    reference.putEnumerated(charIDToTypeID("capp"), charID.Ordinal, charID.Target);
+    var application = executeActionGet(reference);
+    if (typeIDToStringID(application.getEnumerationType(stringIDToTypeID("tool"))) !== "magicWandTool") return jamJSON.stringify({ wasOff: false });
+    var sampleAll = charIDToTypeID("WndS");
+    var current = application.getObjectValue(stringIDToTypeID("currentToolOptions"));
+    if (!current.hasKey(sampleAll) || current.getBoolean(sampleAll)) return jamJSON.stringify({ wasOff: false });
+    var tool = new ActionReference();
+    tool.putClass(stringIDToTypeID("magicWandTool"));
+    var options = new ActionDescriptor();
+    options.putBoolean(sampleAll, true);
+    var desc = new ActionDescriptor();
+    desc.putReference(charID.Null, tool);
+    desc.putObject(charID.To, stringIDToTypeID("currentToolOptions"), options);
+    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+    return jamJSON.stringify({ wasOff: true });
+  } catch (sampleAllError) {
+    return jamJSON.stringify({ error: "sampleAll" });
+  }
+}
+
 // Paste on click when Photoshop sends a selection event without its
 // descriptor (some CEP hosts): the current tool and the selection bounds
 function smartPasteSelectionProbe() {

@@ -380,6 +380,7 @@ const baseState = () => ({
   queue.push({ source: "wand", x: 10, y: 10 });
   queue.push({ source: "wand", x: 20, y: 20 });
   queue.push({ source: "wand", x: 30, y: 30 });
+  await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepStrictEqual(order, [10], "one paste at a time");
   assert.strictEqual(queue.isDraining(), true);
   for (let i = 0; i < 3; i++) {
@@ -413,6 +414,53 @@ const baseState = () => ({
   await new Promise((resolve) => setTimeout(resolve, 80));
   assert.deepStrictEqual(later, [4]);
   assert.strictEqual(blocked.isDraining(), false);
+
+  // "Sample All Layers": a click made without it is selected again with it
+  utilsStub.locale.smartPasteSampleAllOn = "Now on";
+  utilsStub.locale.smartPasteSampleAllAgain = "Click again";
+  const sampleReply = (wasOff) => { hostReplies = { ensureWandSampleAll: JSON.stringify({ wasOff }) }; };
+  dispatched.length = 0;
+  sampleReply(false);
+  assert.strictEqual(await client.imposeSampleAll({ source: "wand", x: 1, y: 2, options: { merged: true } }, dispatch), "ok");
+  assert.strictEqual(await client.imposeSampleAll({ source: "wand", x: 1, y: 2 }, dispatch), "ok", "the option is on, an event without it says nothing");
+  assert.strictEqual(await client.imposeSampleAll({ source: "wand", x: 1, y: 2, options: { merged: false } }, dispatch), "reselect", "a click that waited while the option was off");
+  assert.strictEqual(dispatched.length, 0);
+  sampleReply(true);
+  assert.strictEqual(await client.imposeSampleAll({ source: "wand", x: 1, y: 2 }, dispatch), "reselect");
+  assert.strictEqual(dispatched.filter((action) => action.type === "showNotice").length, 1, "the user is told");
+  dispatched.length = 0;
+  assert.strictEqual(await client.imposeSampleAll({ source: "wand" }, dispatch), "skip", "no coordinates to select again");
+  assert.strictEqual(dispatched.filter((action) => action.type === "showNotice").length, 1);
+  evalCalls.length = 0;
+  assert.strictEqual(await client.imposeSampleAll({ source: "rectangle", left: 0, top: 0, right: 9, bottom: 9 }, dispatch), "ok");
+  assert.strictEqual(await client.imposeSampleAll({ source: "lasso" }, dispatch), "ok");
+  assert.strictEqual(evalCalls.length, 0, "only the Magic Wand has the option");
+  hostReplies = { ensureWandSampleAll: JSON.stringify({ error: "sampleAll" }) };
+  assert.strictEqual(await client.imposeSampleAll({ source: "wand", x: 1, y: 2 }, dispatch), "ok", "an older Photoshop still pastes");
+  assert.deepStrictEqual(client.withSampleAll({ source: "wand", x: 1, y: 2, options: { tolerance: 20 } }).options, { tolerance: 20, merged: true });
+  assert.deepStrictEqual(client.withSampleAll({ source: "wand", x: 1, y: 2, options: { merged: false } }).options, { merged: true });
+  assert.deepStrictEqual(client.withSampleAll({ source: "rectangle", left: 1 }), { source: "rectangle", left: 1 });
+
+  const sampledOrder = [];
+  const sampledReplays = [];
+  const answers = { 1: "reselect", 2: "skip", 3: "ok" };
+  const sampling = gate.createClickQueue({
+    canPaste: () => true,
+    paste: async (trigger) => { sampledOrder.push(trigger.x); },
+    replay: async (trigger) => { sampledReplays.push(trigger.x); return true; },
+    sampleAll: async (trigger) => answers[trigger.x],
+  });
+  sampling.push({ source: "wand", x: 1, y: 1 });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepStrictEqual(sampledReplays, [1], "the first click is selected again before its paste");
+  assert.strictEqual(sampling.isOwnReplay({ source: "wand", x: 1, y: 1 }), true, "that replay is not a new click");
+  sampling.push({ source: "wand", x: 2, y: 2 });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepStrictEqual(sampledOrder, [1], "a click that cannot be selected again does not paste");
+  assert.strictEqual(await sampling.prepare({ source: "wand", x: 3, y: 3 }), true);
+  assert.strictEqual(await sampling.prepare({ source: "wand", x: 2, y: 2 }), false);
+  assert.strictEqual(await sampling.prepare({ source: "wand", x: 1, y: 1 }), true);
+  assert.deepStrictEqual(sampledReplays, [1, 1], "the classic paste selects it again too");
 
   console.log("smart paste panel client tests passed");
 })().catch((error) => {
