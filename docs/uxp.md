@@ -93,6 +93,22 @@ in a `.zip` export, font installation, update installation and the mouse side bu
 type="file">` opens the host's dialog and receives File-like objects with a `path`, as in CEP. A fetch
 the WebView refuses because of CORS (GitHub release downloads) is made again by the host.
 
+## When the WebView does not start
+
+The panel only exists inside the WebView. Photoshop's panel background is all that shows when it never
+starts, without an error event (reported on Windows with Photoshop 2026, cause not established). So
+`uxp-src/host/panelStart.js` watches the start from the host page, which does not depend on the WebView:
+no load reported after 5 s sets the address once more, and no message from the panel after 20 s shows a
+notice with the versions, the view's size, the load events and, on Windows, the WebView2 versions present.
+The first message from the panel clears it. A slow start only shows the notice for a moment.
+
+`npm run package:uxp:debug` writes `Releases/TypeR-debug.zip`, to send to such a user on Windows. Double-clicking
+`TypeR-debug.cmd` installs the crash trace build through `install.ps1`, then `scripts/debug-kit/collect.ps1`
+writes `TypeR-debug-report.txt` on the Desktop: Photoshop installations and the WebView2 files they hold, runtime
+folders and registry, the running WebView processes, Windows errors and the trace. In that build, a panel still
+silent after 20 s runs `uxp-src/host/panelProbe.js`, which hides it and opens small WebViews instead. A red box is
+one that painted nothing. A trace build's `uxp/` folder must not be shipped: run `npm run build:uxp` afterwards.
+
 ## Keyboard reader
 
 The CEP panel polls `getHotkeyPressed()`; in UXP the keyboard reader writes the state to

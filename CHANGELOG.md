@@ -2,6 +2,7 @@
 
 ## 3.0.1
 
+- The new TypeR no longer stays an empty panel when Photoshop's WebView does not start: it tries once more, then says so, points to the Legacy panel and lists what is needed to find the cause.
 - Paste on click now imposes "Sample All Layers" on the Magic Wand: TypeR turns the option on and selects the click again, so a click no longer reads the active layer and puts the text in the middle of the page.
 - The Legacy panel is called "TypeR (CEP)" in Photoshop, so that the version in use can be told at a glance. It is still called "TypeR (old)" while the new TypeR is installed.
 - Fix the script highlights and line numbers drifting away from the text in the Legacy (CEP) panel, in every Photoshop version, on a screen scaled above 100% (125%, 150%, 175%…) or with the UI scale setting. The rows also follow when Photoshop moves to a screen with another scale.

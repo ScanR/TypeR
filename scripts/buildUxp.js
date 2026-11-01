@@ -107,6 +107,8 @@ function writeManifest() {
 
 function copyAssets() {
   fs.copyFileSync(path.join(root, "uxp-src/index.html"), path.join(out, "index.html"));
+  // The page of the WebView probes (uxp-src/host/panelProbe.js)
+  if (process.argv.includes("--trace")) fs.copyFileSync(path.join(root, "uxp-src/web/probe.html"), path.join(out, "web/probe.html"));
   copyDir(path.join(root, "locale"), path.join(out, "locale"));
   // UXP resolves "icons/x.png" with scale [1, 2] as x@1x.png and x@2x.png
   fs.mkdirSync(path.join(out, "icons"), { recursive: true });

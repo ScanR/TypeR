@@ -72,5 +72,5 @@ const panelConfig = (env, argv) => {
 
 module.exports = (env = {}, argv = {}) => {
   if (env.hostTest) return [hostConfig(env, argv, "./uxp-src/host/photoshop.js", "host-test.js", "TypeRHost")];
-  return [hostConfig(env, argv, "./uxp-src/host/main.js", "host.js"), panelConfig(env, argv)];
+  return [hostConfig(env, argv, env.trace ? "./uxp-src/host/traceEntry.js" : "./uxp-src/host/main.js", "host.js"), panelConfig(env, argv)];
 };

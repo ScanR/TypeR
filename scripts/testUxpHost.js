@@ -774,7 +774,24 @@ const pluginData = (appData) => appData + "\\Adobe\\UXP\\PluginsStorage\\PHSP\\2
   assert.strictEqual(usual.roamingAppDataOf("/Users/ana/Library/Application Support/Adobe/UXP/PluginsStorage"), "/Users/ana/Library/Application Support");
   assert.strictEqual(usual.roamingAppDataOf("C:\\elsewhere"), null);
   await queueChecks;
-  console.log("UXP host conversion, evalScript parsing, call queue, keyboard reader watchdog, host.js parity, mask sampling and Windows storage path tests passed");
+  /* ---------------------- panel start report ---------------------- */
+
+  const panelStart = require(path.join(root, "uxp-src/host/panelStart.js"));
+  const webViewFolders = await panelStart.readWebViewFolders((folder) => {
+    if (folder === "adobe") return Promise.resolve(["140.0.3485.54", "SxS"]);
+    if (folder === "empty") return Promise.resolve(["SxS"]);
+    return Promise.reject(new Error("no such file or directory"));
+  }, ["adobe", "empty", "gone"]);
+  assert.deepStrictEqual(webViewFolders, ["adobe: 140.0.3485.54", "empty: no version", "gone: missing"]);
+  const failureText = panelStart.panelStartFailureText({
+    versions: "Photoshop 27.7.0, UXP 9.3.0, win32 10.0.22631",
+    webViewFolders,
+    loadEvents: [],
+    viewSize: "600x0",
+  });
+  ["Photoshop 27.7.0", "Loads: none", "View: 600x0", "gone: missing", "TypeR (CEP)"].forEach((part) => assert.ok(failureText.includes(part), part));
+
+  console.log("UXP host conversion, evalScript parsing, call queue, keyboard reader watchdog, host.js parity, mask sampling, Windows storage path and panel start report tests passed");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

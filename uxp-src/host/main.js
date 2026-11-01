@@ -17,6 +17,8 @@ const keysHelper = require("./keysHelper");
 const services = require("./services");
 const { runJsx, systemCall } = require("./jsx");
 const { parseCall, callTimeout, createCallQueue } = require("./evalScript");
+const panelStart = require("./panelStart");
+const panelProbe = crashTrace ? require("./panelProbe") : null;
 
 if (crashTrace) {
   files.resolveFolders()
@@ -403,7 +405,10 @@ function attachView() {
       }
     }
     if (!message || typeof message !== "object") return;
+    if (crashTrace && !webviewReady) crashTrace.note("webview", "panel answered, view " + viewSize());
     webviewReady = true;
+    clearTimeout(panelRetryTimer);
+    clearTimeout(panelStartTimer);
     if (message.type === "ready") {
       showStatus("");
       return;
@@ -423,6 +428,7 @@ function attachView() {
   // not report it the same way.
   view.addEventListener("loadstart", (event) => {
     const url = String(event.url || "").split("#")[0];
+    noteLoadEvent("start " + url);
     if (loadingPanel) {
       loadingPanel = false;
       panelAddress = url;
@@ -432,9 +438,73 @@ function attachView() {
     showPanelPage();
     if (/^https?:\/\//i.test(url)) uxp.shell.openExternal(url).catch(() => {});
   });
-  view.addEventListener("loaderror", (event) => showStatus("TypeR: " + (event.message || "load error")));
+  view.addEventListener("loadstop", () => noteLoadEvent("stop"));
+  view.addEventListener("loaderror", (event) => {
+    noteLoadEvent("error " + (event.message || ""));
+    showStatus("TypeR: " + (event.message || "load error"));
+  });
   showPanelPage();
+  watchPanelStart();
   return view;
+}
+
+/* ===================== panel start watch ===================== */
+
+const loadEvents = [];
+let panelRetryTimer = null;
+let panelStartTimer = null;
+
+function noteLoadEvent(text) {
+  if (crashTrace) crashTrace.note("webview", text);
+  loadEvents.push(text);
+  // A reload loop would otherwise fill the report
+  if (loadEvents.length > 8) loadEvents.shift();
+}
+
+function viewSize() {
+  try {
+    const box = view.getBoundingClientRect();
+    return Math.round(box.width) + "x" + Math.round(box.height);
+  } catch (error) {
+    return "unknown";
+  }
+}
+
+async function reportPanelStartFailure() {
+  if (webviewReady || !panelVisible) return;
+  const windows = os.platform() === "win32";
+  const webViewFolders = windows ? await panelStart.readWebViewFolders((folder) => require("fs").readdir(files.toUrl(folder))) : [];
+  // The panel may have answered during the read
+  if (webviewReady) return;
+  const text = panelStart.panelStartFailureText({
+    versions: ["Photoshop " + uxp.host.version, uxp.versions.uxp, os.platform() + " " + os.release()].join(", "),
+    webViewFolders,
+    loadEvents,
+    viewSize: viewSize(),
+  });
+  console.error("TypeR:", text);
+  showStatus(text);
+  if (panelProbe) {
+    panelProbe.run({
+      mainView: view,
+      note: (line) => crashTrace.note("probe", line),
+      report: (line) => showStatus(text + "\n" + line + "\nLog: " + crashTrace.getPath()),
+    });
+  }
+}
+
+// Counted while the panel is visible: a hidden WebView may not load at all
+function watchPanelStart() {
+  clearTimeout(panelRetryTimer);
+  clearTimeout(panelStartTimer);
+  if (webviewReady) return;
+  // The WebView may not have been ready to take the address yet
+  panelRetryTimer = setTimeout(() => {
+    if (webviewReady || !panelVisible || loadEvents.length) return;
+    noteLoadEvent("retry");
+    showPanelPage();
+  }, panelStart.PANEL_RETRY_MS);
+  panelStartTimer = setTimeout(reportPanelStartFailure, panelStart.PANEL_START_LIMIT_MS);
 }
 
 /* ====================== Photoshop events ====================== */
@@ -531,6 +601,7 @@ uxp.entrypoints.setup({
         if (crashTrace) crashTrace.note("lifecycle", "panel show");
         attachView();
         panelVisible = true;
+        watchPanelStart();
         post({ type: "visibility", hidden: false });
       },
       hide() {
