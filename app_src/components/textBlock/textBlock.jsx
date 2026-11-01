@@ -150,7 +150,8 @@ const TextBlock = React.memo(function TextBlock() {
   const linesRef = React.useRef(null);
   const rowMirrorRef = React.useRef(null);
   const rowMeasureRef = React.useRef(null);
-  const [rowMirrorWidth, setRowMirrorWidth] = React.useState(0);
+  const overlayRef = React.useRef(null);
+  const [rowMirrorBox, setRowMirrorBox] = React.useState("");
   const [rowLayout, setRowLayout] = React.useState(null);
   const [viewport, setViewport] = React.useState({ top: 0, height: 600 });
   const scrollFrameRef = React.useRef(null);
@@ -322,23 +323,28 @@ const TextBlock = React.memo(function TextBlock() {
   }, [context.state.lines, context.state.images, pageImageLookup]);
 
   // Panel resizes rewrap the text without any state change, and the scrollbar
-  // appearing narrows it too: follow the width of the mirror itself. Deferred
-  // out of the notification, as the new row heights can resize what is observed.
+  // appearing narrows it too: follow the width of the mirror itself. Moving
+  // Photoshop to a screen with another scale can change the height of the lines
+  // and nothing else, which the height of the text shows. Deferred out of the
+  // notification, as the new row heights can resize what is observed.
   React.useEffect(() => {
     const mirror = rowMirrorRef.current;
     if (!mirror) return undefined;
     let timer = null;
-    const syncWidth = () => {
+    const syncBox = () => {
       timer = null;
-      setRowMirrorWidth(mirror.clientWidth);
+      setRowMirrorBox(`${mirror.clientWidth}@${window.devicePixelRatio}`);
     };
     const requestSync = () => {
-      if (!timer) timer = setTimeout(syncWidth, 0);
+      if (!timer) timer = setTimeout(syncBox, 0);
     };
-    syncWidth();
+    syncBox();
     window.addEventListener("resize", requestSync);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(requestSync);
-    if (observer) observer.observe(mirror);
+    if (observer) {
+      observer.observe(mirror);
+      if (overlayRef.current) observer.observe(overlayRef.current);
+    }
     return () => {
       window.removeEventListener("resize", requestSync);
       if (observer) observer.disconnect();
@@ -355,7 +361,7 @@ const TextBlock = React.memo(function TextBlock() {
     const measured = measureRows(mirror, context.state.lines.map((line) => line.rawText), rowMeasureRef.current);
     rowMeasureRef.current = measured;
     setRowLayout((current) => (sameRowHeights(current, measured) ? current : measured));
-  }, [context.state.lines, rowMirrorWidth]);
+  }, [context.state.lines, rowMirrorBox]);
 
   React.useEffect(() => {
     const scrollContainer = linesRef.current?.parentElement;
@@ -581,7 +587,7 @@ const TextBlock = React.memo(function TextBlock() {
         ))}
         {virtualWindow.bottom > 0 && <div className="text-lines-spacer" style={{ height: virtualWindow.bottom }} />}
       </div>
-      <div className={"text-area-overlay" + (focused ? " m-hidden" : "")} dir={direction}>
+      <div ref={overlayRef} className={"text-area-overlay" + (focused ? " m-hidden" : "")} dir={direction}>
         {overlayContent}
       </div>
       <div ref={rowMirrorRef} className="text-area-overlay text-row-mirror" dir={direction} aria-hidden="true" />

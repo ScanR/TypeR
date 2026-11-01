@@ -12,7 +12,8 @@ const createMirror = (clientWidth) => {
     defaultView: {
       getComputedStyle: (node) => {
         mirror.reads += 1;
-        return { height: Math.max(1, Math.ceil(node.text.length / (mirror.clientWidth / 10))) * mirror.lineHeight + "px" };
+        const lines = node.text.split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / (mirror.clientWidth / 10))), 0);
+        return { height: mirror.truncate(lines * mirror.lineHeight) + mirror.extraHeight(node) + "px" };
       },
     },
     createElement: () => {
@@ -24,6 +25,8 @@ const createMirror = (clientWidth) => {
   const mirror = {
     clientWidth,
     lineHeight: 17,
+    truncate: (height) => height,
+    extraHeight: () => 0,
     children: [],
     reads: 0,
     writes: 0,
@@ -47,7 +50,7 @@ assert.strictEqual(layout.total, 85);
 mirror.clientWidth = 200;
 let wider = measureRows(mirror, ["a", "", long, "b"], layout);
 assert.deepStrictEqual(wider.heights, [17, 17, 17, 17], "a width change measures every line again");
-assert.strictEqual(mirror.writes, 4, "the same text is not written again");
+assert.strictEqual(mirror.writes, 4 + 2, "the same text is not written again, only the probe of each measure");
 assert.ok(!sameRowHeights(layout, wider));
 
 // Same width: only the edited line is read
@@ -82,6 +85,28 @@ assert.strictEqual(scaledLayout.offsets[2], 33.6);
 // Laid out at 125%, a row lands on its 21 device pixels and not 1/64 below
 assert.strictEqual(Math.floor(rowStyleHeight(16.8) * 1.25 * 64) / 64, 21);
 assert.strictEqual(Math.floor(rowStyleHeight(17) * 64) / 64, 17);
+
+// Another screen changes the height of the lines and neither the text nor the
+// width: every line is read again
+const moved = createMirror(100);
+moved.ownerDocument.defaultView.devicePixelRatio = 1;
+const onFirstScreen = measureRows(moved, ["a", long], null);
+moved.ownerDocument.defaultView.devicePixelRatio = 1.25;
+moved.lineHeight = 16.8;
+assert.deepStrictEqual(measureRows(moved, ["a", long], onFirstScreen).heights, [16.8, 33.6]);
+
+// Each block truncates its height to 1/64px, the lines of the text don't
+const truncating = createMirror(100);
+truncating.lineHeight = 18.7;
+truncating.truncate = (height) => Math.floor(height * 64) / 64;
+const truncated = measureRows(truncating, ["a", long], null);
+assert.ok(Math.abs(truncated.heights[0] - 18.7) < 1 / 512, "the height of a line comes from the tall block");
+assert.ok(Math.abs(truncated.heights[1] - 37.4) < 1 / 256);
+
+// A line really taller than its wrapping keeps its height
+const tall = createMirror(100);
+tall.extraHeight = (node) => (node.text === "emoji" ? 3 : 0);
+assert.deepStrictEqual(measureRows(tall, ["a", "emoji"], null).heights, [17, 20]);
 
 // The textarea reads every "\r" as a line break while the rows split on "\n"
 const { reducer, initial } = loadContext({});
