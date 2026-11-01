@@ -128,7 +128,7 @@ try {
       }));
       const { REQUIRED_PACKAGE_FILES } = require('./helpers/loadAppModule')()('app_src/releasePackage.js');
       const released = Object.fromEntries(REQUIRED_PACKAGE_FILES.map((name) => [name, strToU8('new ' + name)]));
-      released['CSXS/manifest.xml'] = strToU8('<ExtensionManifest ExtensionBundleId="com.scanr.typer" ExtensionBundleVersion="3.1.0"><Menu>TypeR</Menu><ExtensionList><Extension Id="typer" Version="3.1.0" /></ExtensionList></ExtensionManifest>');
+      released['CSXS/manifest.xml'] = strToU8('<ExtensionManifest ExtensionBundleId="com.scanr.typer" ExtensionBundleVersion="3.1.0"><Menu>TypeR (CEP)</Menu><ExtensionList><Extension Id="typer" Version="3.1.0" /></ExtensionList></ExtensionManifest>');
       released['app/package.sha256'] = strToU8(Object.keys(released).sort().map((name) => crypto.createHash('sha256').update(released[name]).digest('hex') + '  ' + name).join('\n') + '\n');
       const archive = path.join(sandbox, 'release-3.1.0.zip');
       fs.writeFileSync(archive, zipSync({ ...released, 'TypeR-UXP.ccx': fs.readFileSync(packageFile) }));
@@ -236,6 +236,7 @@ sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
       ok(computer.run());
       assert.strictEqual(computer.pluginUpdated(), false);
       assert.match(computer.legacyManifest(), /Version="3\.1\.0"/);
+      assert.match(computer.legacyManifest(), /<Menu>TypeR \(CEP\)<\/Menu>/);
 
       // Legacy in a console, Photoshop can run the plugin: Enter takes the recommended plugin
       computer = machine({ legacy: true });

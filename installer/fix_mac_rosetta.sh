@@ -89,10 +89,10 @@ msg() {
     es:not_installed) printf '%s' "TypeR aún no está instalado: ejecuta install_mac.command." ;;
     pt:not_installed) printf '%s' "O TypeR ainda não está instalado: execute install_mac.command." ;;
     *:not_installed) printf '%s' "TypeR is not installed yet: run install_mac.command." ;;
-    fr:done) printf '%s' "Terminé. Ouvrez Photoshop avec le lanceur, puis [Fenêtre] > [Extensions (héritées)] > [TypeR]." ;;
-    es:done) printf '%s' "Listo. Abre Photoshop con el lanzador y luego [Ventana] > [Extensiones (heredadas)] > [TypeR]." ;;
-    pt:done) printf '%s' "Concluído. Abra o Photoshop pelo atalho e depois [Janela] > [Extensões (herdadas)] > [TypeR]." ;;
-    *:done) printf '%s' "Done. Open Photoshop with the launcher, then [Window] > [Extensions (Legacy)] > [TypeR]." ;;
+    fr:done) printf '%s' "Terminé. Ouvrez Photoshop avec le lanceur, puis [Fenêtre] > [Extensions (héritées)] > [TypeR (CEP)]." ;;
+    es:done) printf '%s' "Listo. Abre Photoshop con el lanzador y luego [Ventana] > [Extensiones (heredadas)] > [TypeR (CEP)]." ;;
+    pt:done) printf '%s' "Concluído. Abra o Photoshop pelo atalho e depois [Janela] > [Extensões (herdadas)] > [TypeR (CEP)]." ;;
+    *:done) printf '%s' "Done. Open Photoshop with the launcher, then [Window] > [Extensions (Legacy)] > [TypeR (CEP)]." ;;
   esac
 }
 

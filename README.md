@@ -143,7 +143,7 @@ New here? A hands-on walkthrough and a What's new tour open from **Help** and **
 | **You need** | A browser (Chrome or Edge work best) | Photoshop 2025 (26.0) or later | Photoshop CC 2015 (16.0) or later |
 | **Built on** | TypeR's panel and paste engine in a Photoshop-like workspace | Adobe's UXP plugin framework | Adobe's older CEP extensions |
 | **Apple Silicon** | Yes | Native | Through a Rosetta launcher on Photoshop 2026 |
-| **Open it from** | [typer.hayasaku.fr/web](https://typer.hayasaku.fr/web) | **Plugins → TypeR → TypeR** | **Window → Extensions → TypeR** |
+| **Open it from** | [typer.hayasaku.fr/web](https://typer.hayasaku.fr/web) | **Plugins → TypeR → TypeR** | **Window → Extensions → TypeR (CEP)** |
 
 The new TypeR and Legacy are the same application: the new one is faster and runs natively on Apple Silicon. The [web version](https://typer.hayasaku.fr/web) opens and saves PSD files with nothing to install, and has no filters.
 
@@ -243,7 +243,7 @@ The project does not maintain a verified OS and version matrix, so compatibility
 
 ## Your first page
 
-1. Open TypeR: **Plugins → TypeR → TypeR**, or **Window → Extensions → TypeR** for Legacy.
+1. Open TypeR: **Plugins → TypeR → TypeR**, or **Window → Extensions → TypeR (CEP)** for Legacy.
 2. Paste your script into the text panel.
 3. Optionally import the chapter pages and add `Page N` headings to the script.
 4. Create a style or copy one from a Photoshop text layer, then assign its script prefix.
@@ -280,7 +280,7 @@ A shortcut made of modifier keys only (`Win + Ctrl`, `Win + Shift`, `Win + Alt`)
 <summary><strong>TypeR does not appear in Photoshop</strong></summary>
 
 1. Close every Photoshop window and run the installer again. If you used the archive, extract it completely first.
-2. Restart Photoshop and look under **Plugins → TypeR → TypeR**, or **Window → Extensions → TypeR** for Legacy.
+2. Restart Photoshop and look under **Plugins → TypeR → TypeR**, or **Window → Extensions → TypeR (CEP)** for Legacy.
 3. Legacy on Apple Silicon: open Photoshop with the **Adobe Photoshop … (TypeR)** launcher in `~/Applications`, not the usual icon, and look under **Window → Extensions (Legacy)**. If the launcher is missing, close Photoshop and run `bash installer/fix_mac_rosetta.sh`.
 4. Check that you use a standard desktop Photoshop. Portable or light builds often remove or alter extension support.
 

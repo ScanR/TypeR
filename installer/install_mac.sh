@@ -26,7 +26,7 @@ LANGUAGE=$((defaults read -g AppleLocale 2>/dev/null || printf 'en') | cut -d"_"
 MSG_CLOSE_PHOTOSHOP_EN="Photoshop is open: close it first."
 MSG_PRESS_KEY_EN="Press any key to continue"
 MSG_INSTALL_COMPLETE_EN="Installation completed."
-MSG_OPEN_PHOTOSHOP_EN="Open Photoshop and in the menu click the following: [Window] > [Extensions] > [TypeR]"
+MSG_OPEN_PHOTOSHOP_EN="Open Photoshop and in the menu click the following: [Window] > [Extensions] > [TypeR (CEP)]"
 MSG_PRESS_ENTER_EN="Press Enter to continue"
 MSG_CREDITS_EN="TypeR developed by Sakushi & SeanR."
 MSG_TYPERTOOLS_EN="typertools, developed by Swirt: https://swirt.github.io/typertools/"
@@ -65,7 +65,7 @@ MSG_UXP_FAILED_EN="The installation failed. Close Photoshop and run this script 
 MSG_CLOSE_PHOTOSHOP_FR="Photoshop est ouvert : fermez-le d'abord."
 MSG_PRESS_KEY_FR="Appuyez sur une touche pour continuer"
 MSG_INSTALL_COMPLETE_FR="Installation terminée."
-MSG_OPEN_PHOTOSHOP_FR="Ouvrez Photoshop et dans le menu cliquez sur : [Fenêtre] > [Extensions] > [TypeR]"
+MSG_OPEN_PHOTOSHOP_FR="Ouvrez Photoshop et dans le menu cliquez sur : [Fenêtre] > [Extensions] > [TypeR (CEP)]"
 MSG_PRESS_ENTER_FR="Appuyez sur Entrée pour continuer"
 MSG_CREDITS_FR="TypeR développé par Sakushi & SeanR."
 MSG_TYPERTOOLS_FR="typertools, développé par Swirt : https://swirt.github.io/typertools/"
@@ -104,7 +104,7 @@ MSG_UXP_FAILED_FR="L'installation a échoué. Fermez Photoshop et relancez ce sc
 MSG_CLOSE_PHOTOSHOP_ES="Photoshop está abierto: ciérralo primero."
 MSG_PRESS_KEY_ES="Presiona cualquier tecla para continuar"
 MSG_INSTALL_COMPLETE_ES="Instalación completada."
-MSG_OPEN_PHOTOSHOP_ES="Abre Photoshop y en el menú haz clic en: [Ventana] > [Extensiones] > [TypeR]"
+MSG_OPEN_PHOTOSHOP_ES="Abre Photoshop y en el menú haz clic en: [Ventana] > [Extensiones] > [TypeR (CEP)]"
 MSG_PRESS_ENTER_ES="Presiona Enter para continuar"
 MSG_CREDITS_ES="TypeR desarrollado por Sakushi & SeanR."
 MSG_TYPERTOOLS_ES="typertools, desarrollado por Swirt: https://swirt.github.io/typertools/"
@@ -143,7 +143,7 @@ MSG_UXP_FAILED_ES="La instalación falló. Cierra Photoshop y vuelve a ejecutar 
 MSG_CLOSE_PHOTOSHOP_PT="O Photoshop está aberto: feche-o primeiro."
 MSG_PRESS_KEY_PT="Pressione qualquer tecla para continuar"
 MSG_INSTALL_COMPLETE_PT="Instalação concluída."
-MSG_OPEN_PHOTOSHOP_PT="Abra o Photoshop e no menu clique em: [Janela] > [Extensões] > [TypeR]"
+MSG_OPEN_PHOTOSHOP_PT="Abra o Photoshop e no menu clique em: [Janela] > [Extensões] > [TypeR (CEP)]"
 MSG_PRESS_ENTER_PT="Pressione Enter para continuar"
 MSG_CREDITS_PT="TypeR desenvolvido por Sakushi & SeanR."
 MSG_TYPERTOOLS_PT="typertools, desenvolvido por Swirt: https://swirt.github.io/typertools/"
@@ -531,7 +531,7 @@ install_uxp_manually() (
 rename_legacy_panel() {
   local manifest="$CEP_DESTDIR/CSXS/manifest.xml"
   [ -f "$manifest" ] || return 0
-  if ! { sed 's#<Menu>TypeR</Menu>#<Menu>TypeR (old)</Menu>#' "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"; }; then
+  if ! { sed -e 's#<Menu>TypeR</Menu>#<Menu>TypeR (old)</Menu>#' -e 's#<Menu>TypeR (CEP)</Menu>#<Menu>TypeR (old)</Menu>#' "$manifest" > "$manifest.tmp" && mv "$manifest.tmp" "$manifest"; }; then
     rm -f "$manifest.tmp"
   fi
   return 0

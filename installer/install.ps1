@@ -36,7 +36,7 @@ $Lang = $Host.CurrentCulture.TwoLetterISOLanguageName
 # Valeurs par défaut (anglais)
 $msg_close    = "Photoshop is open: close it first."
 $msg_complete = "Installation completed."
-$msg_open     = "Open Photoshop and in the upper menu click the following: [Window] > [Extensions] > [TypeR]"
+$msg_open     = "Open Photoshop and in the upper menu click the following: [Window] > [Extensions] > [TypeR (CEP)]"
 $msg_pause    = "Press Enter to continue..."
 $msg_credits  = "TypeR developed by Sakushi & SeanR."
 $msg_typertools = "typertools, developed by Swirt: https://swirt.github.io/typertools/"
@@ -71,7 +71,7 @@ $msg_uxp_failed = "Installation failed. See the error above; no success was conf
 if ($Lang -eq "fr") {
     $msg_close    = "Photoshop est ouvert : fermez-le d'abord."
     $msg_complete = "Installation terminée."
-    $msg_open     = "Ouvrez Photoshop et dans le menu supérieur cliquez sur : [Fenêtre] > [Extensions] > [TypeR]"
+    $msg_open     = "Ouvrez Photoshop et dans le menu supérieur cliquez sur : [Fenêtre] > [Extensions] > [TypeR (CEP)]"
     $msg_pause    = "Appuyez sur Entrée pour continuer..."
     $msg_credits  = "TypeR développé par Sakushi & SeanR."
     $msg_typertools = "typertools, développé par Swirt : https://swirt.github.io/typertools/"
@@ -106,7 +106,7 @@ if ($Lang -eq "fr") {
 elseif ($Lang -eq "es") {
     $msg_close    = "Photoshop está abierto: ciérralo primero."
     $msg_complete = "Instalación completada."
-    $msg_open     = "Abre Photoshop y en el menú superior haz clic en lo siguiente: [Ventana] > [Extensiones] > [TypeR]"
+    $msg_open     = "Abre Photoshop y en el menú superior haz clic en lo siguiente: [Ventana] > [Extensiones] > [TypeR (CEP)]"
     $msg_pause    = "Presiona Enter para continuar..."
     $msg_credits  = "TypeR desarrollado por Sakushi & SeanR."
     $msg_typertools = "typertools, desarrollado por Swirt: https://swirt.github.io/typertools/"
@@ -141,7 +141,7 @@ elseif ($Lang -eq "es") {
 elseif ($Lang -eq "pt") {
     $msg_close    = "O Photoshop está aberto: feche-o primeiro."
     $msg_complete = "Instalação concluída."
-    $msg_open     = "Abra o Photoshop e no menu superior clique em: [Janela] > [Extensões] > [TypeR]"
+    $msg_open     = "Abra o Photoshop e no menu superior clique em: [Janela] > [Extensões] > [TypeR (CEP)]"
     $msg_pause    = "Pressione Enter para continuar..."
     $msg_credits  = "TypeR desenvolvido por Sakushi & SeanR."
     $msg_typertools = "typertools, desenvolvido por Swirt: https://swirt.github.io/typertools/"
@@ -768,7 +768,7 @@ function Rename-TypeRLegacyPanel {
     if (-not (Test-Path -LiteralPath $File -PathType Leaf)) { return }
     try {
         $Text = [IO.File]::ReadAllText($File)
-        $Next = $Text.Replace('<Menu>TypeR</Menu>', '<Menu>TypeR (old)</Menu>')
+        $Next = $Text.Replace('<Menu>TypeR</Menu>', '<Menu>TypeR (old)</Menu>').Replace('<Menu>TypeR (CEP)</Menu>', '<Menu>TypeR (old)</Menu>')
         if ($Next -cne $Text) {
             $Temporary = $File + '.tmp'
             [IO.File]::WriteAllText($Temporary, $Next, (New-Object Text.UTF8Encoding($false)))

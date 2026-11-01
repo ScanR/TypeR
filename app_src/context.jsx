@@ -1967,7 +1967,7 @@ const ContextProvider = React.memo(function ContextProvider(props) {
     }).catch(error => console.warn("Automatic update check failed:", error));
   }, [state.checkUpdates, state.autoUpdate]);
   useKeyboardAccessPrompt(state.modalType);
-  // Legacy panel: called "TypeR (old)" while TypeR UXP is installed (uxpMigration.js)
+  // Legacy panel: called "TypeR (CEP)", or "TypeR (old)" while TypeR UXP is installed (uxpMigration.js)
   React.useEffect(() => {
     try {
       if (readUxpMigrationState(getUpdateTestConfig()).eligibility !== "uxp") {

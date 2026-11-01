@@ -69,11 +69,15 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
 
   // The Legacy panel's name in Photoshop: the real manifest, with its line endings
   const packagedManifest = fs.readFileSync(path.resolve(__dirname, "../CSXS/manifest.xml"), "utf8");
-  assert.ok(packagedManifest.includes("<Menu>TypeR</Menu>"), "the package keeps the plain name");
+  assert.ok(packagedManifest.includes("<Menu>TypeR (CEP)</Menu>"), "the package has the Legacy name");
   const oldManifest = panelName.legacyManifestWithName(packagedManifest, true);
-  assert.strictEqual(oldManifest, packagedManifest.replace("<Menu>TypeR</Menu>", "<Menu>TypeR (old)</Menu>"));
+  assert.strictEqual(oldManifest, packagedManifest.replace("<Menu>TypeR (CEP)</Menu>", "<Menu>TypeR (old)</Menu>"));
   assert.strictEqual(panelName.legacyManifestWithName(oldManifest, true), oldManifest, "nothing to write the second time");
   assert.strictEqual(panelName.legacyManifestWithName(oldManifest, false), packagedManifest, "a removed plugin gives the name back");
+  const plainManifest = packagedManifest.replace("<Menu>TypeR (CEP)</Menu>", "<Menu>TypeR</Menu>");
+  assert.strictEqual(panelName.legacyManifestWithName(plainManifest, false), packagedManifest, "a panel from before 3.0.1 takes the new name");
+  assert.strictEqual(panelName.legacyManifestWithName(plainManifest, true), oldManifest);
+  assert.strictEqual(panelName.legacyManifestWithName(packagedManifest, false), packagedManifest, "nothing to write without the plugin");
   assert.strictEqual(panelName.legacyManifestWithName("<Menu>Other</Menu>", true), "<Menu>Other</Menu>");
 
   const nameSandbox = fs.mkdtempSync(path.join(os.tmpdir(), "typer-legacy-name-"));

@@ -128,11 +128,11 @@ Legacy panel once it is updated (`app_src/uxpMigration.js`, `components/modal/ux
   installs the package by hand (see below) and asks to restart Photoshop.
 - TypeR UXP imports the Legacy styles, profiles and settings on its first start. The Legacy version
   stays installed; the panel offers to close it.
-- While TypeR UXP is installed, the Legacy panel is called "TypeR (old)" in Photoshop: `<Menu>` in its
+- The Legacy panel is called "TypeR (CEP)" in Photoshop, and "TypeR (old)" while TypeR UXP is installed: `<Menu>` in its
   installed `CSXS/manifest.xml`, which Photoshop reads at its start (`app_src/legacyPanelName.js`). The
   installers apply it, the UXP plugin at each start (whichever way it was installed), and the Legacy
-  panel at each start and after installing the plugin, which also restores "TypeR" once the plugin is
-  removed. The packaged manifest keeps "TypeR", so a Legacy update resets it until the next check.
+  panel at each start and after installing the plugin, which also restores "TypeR (CEP)" once the plugin is
+  removed. The packaged manifest has "TypeR (CEP)", so a Legacy update resets it until the next check.
 - Each start of the Legacy panel then says first, before the walkthrough and What's new, that the new
   version opens from Plug-ins > TypeR, until "Don't show again". Those windows follow when it closes.
   Photoshop versions older than 26.0 cannot run the plugin and get no such notice.

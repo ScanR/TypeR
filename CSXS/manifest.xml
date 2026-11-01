@@ -33,7 +33,7 @@
                 </Lifecycle>
                 <UI>
                     <Type>Panel</Type>
-                    <Menu>TypeR</Menu>
+                    <Menu>TypeR (CEP)</Menu>
                     <Geometry>
                         <Size>
                             <Height>900</Height>
