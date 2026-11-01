@@ -144,6 +144,30 @@ var _hostState = {
 // How long the fast path-based shape scan stays disabled after 3 failures
 var _PATH_SCAN_RETRY_MS = 3 * 60 * 1000;
 
+// Older CEP hosts can expose the pre-suspension history until Photoshop
+// refreshes. Selecting the saved state through Action Manager also publishes
+// that pending history, without repainting the whole document. Refresh is a
+// fallback for hosts where this does not publish the expected state.
+function _suspendedHistoryIndex(doc, name, previousIndex, restored) {
+  var index = doc.historyStates.length - 1;
+  if ((index < 0 || doc.historyStates[index].name !== name) && previousIndex >= 0) {
+    try {
+      var reference = new ActionReference();
+      reference.putIndex(stringIDToTypeID("historyState"), previousIndex + 1);
+      var descriptor = new ActionDescriptor();
+      descriptor.putReference(charID.Null, reference);
+      executeAction(charID.Select, descriptor, DialogModes.NO);
+      index = doc.historyStates.length - 1;
+      if (restored && index >= 0 && doc.historyStates[index].name === name) restored.selected = true;
+    } catch (selectError) {}
+  }
+  if (index < 0 || doc.historyStates[index].name !== name) {
+    app.refresh();
+    index = doc.historyStates.length - 1;
+  }
+  return index >= 0 && doc.historyStates[index].name === name ? index : -1;
+}
+
 // Shape detection reads pixels through temporary channels, paths and selections.
 // Grouping those operations still retains a full scan in Photoshop history.
 // Roll back and delete only that new state, never the user's undo/redo states.
@@ -151,15 +175,17 @@ function _withTemporaryHistory(name, fn, options) {
   var doc = app.activeDocument;
   var scanName = name;
   var historyLimit = null;
+  var previousHistoryIndex = null;
   var reservedHistorySlot = false;
   // The smart paste reads right before a paste: that paste discards the redo
   // branch anyway, so its reads may run after an Undo (discardRedo)
   var discardRedo = !!(options && options.discardRedo);
   try {
     var count = doc.historyStates.length;
+    previousHistoryIndex = _getActiveHistoryIndex();
     // Starting a new operation after Undo would discard the redo branch.
     if (_hostState.temporaryHistoryFailed || count < (discardRedo ? 1 : 2) ||
-        (!discardRedo && _getActiveHistoryIndex() !== count - 1)) {
+        (!discardRedo && previousHistoryIndex !== count - 1)) {
       return { error: "historyBusy" };
     }
     // A no-op or failed suspension must never match an existing user state.
@@ -198,9 +224,12 @@ function _withTemporaryHistory(name, fn, options) {
   } finally {
     _hostState.suspendedRun = previousRun;
     try {
-      var scanIndex = doc.historyStates.length - 1;
-      if (scanIndex > 0 && doc.historyStates[scanIndex].name === scanName) {
-        doc.activeHistoryState = doc.historyStates[scanIndex - 1];
+      var restored = { selected: false };
+      var scanIndex = _suspendedHistoryIndex(doc, scanName, previousHistoryIndex, restored);
+      if (scanIndex > 0) {
+        // The Action Manager fallback already restored this exact state.
+        // Setting it again adds another synchronous Photoshop operation.
+        if (!restored.selected || scanIndex - 1 !== previousHistoryIndex) doc.activeHistoryState = doc.historyStates[scanIndex - 1];
         var reference = new ActionReference();
         reference.putIndex(stringIDToTypeID("historyState"), scanIndex + 1);
         var descriptor = new ActionDescriptor();
@@ -4999,31 +5028,33 @@ function launchInstaller(filePath) {
 var _SMART_CLEAN_LAYER = "TypeR Clean";
 var _SMART_HISTORY_NAME = "TyperTools Smart Paste";
 
-function _smartUnit(desc, key) {
+function _smartUnit(desc, key, units) {
   var type = desc.getUnitDoubleType(key);
   var unit = "pixelsUnit";
-  if (type === charIDToTypeID("#Rlt") || type === charIDToTypeID("#Pnt")) unit = "distanceUnit";
+  if (type === units.distance || type === units.points) unit = "distanceUnit";
   return { _unit: unit, _value: desc.getUnitDoubleValue(key) };
 }
 
-function _smartPathPoint(desc) {
+function _smartPathPoint(desc, units) {
   return {
-    horizontal: _smartUnit(desc, charIDToTypeID("Hrzn")),
-    vertical: _smartUnit(desc, charIDToTypeID("Vrtc"))
+    horizontal: _smartUnit(desc, charID.Horizontal, units),
+    vertical: _smartUnit(desc, charID.Vertical, units)
   };
 }
 
 // The work path as the actionJSON UXP returns: pathContents > pathComponents
 // > subpathListKey > points { anchor, forward, backward }
-function _smartReadWorkPath() {
-  var reference = new ActionReference();
-  // 'WrPt' (not charID.WorkPath, 'WrkP') is the work path a get accepts
-  reference.putProperty(charID.Path, charIDToTypeID("WrPt"));
+function _smartReadPath(reference, maxPoints) {
   var descriptor = executeActionGet(reference);
   var contentsKey = stringIDToTypeID("pathContents");
   if (!descriptor.hasKey(contentsKey)) return null;
   var contents = descriptor.getObjectValue(contentsKey);
   var componentList = contents.getList(stringIDToTypeID("pathComponents"));
+  // An atlas has thousands of handles. Resolve invariant Action Manager
+  // ids once per path, rather than crossing into Photoshop for every axis.
+  var units = { distance: charIDToTypeID("#Rlt"), points: charIDToTypeID("#Pnt") };
+  var subpathsKey = stringIDToTypeID("subpathListKey");
+  var pointsKey = stringIDToTypeID("points");
   var anchorKey = stringIDToTypeID("anchor");
   var forwardKey = stringIDToTypeID("forward");
   var backwardKey = stringIDToTypeID("backward");
@@ -5032,19 +5063,19 @@ function _smartReadWorkPath() {
   var total = 0;
   for (var c = 0; c < componentList.count; c++) {
     var component = componentList.getObjectValue(c);
-    var subList = component.getList(stringIDToTypeID("subpathListKey"));
+    var subList = component.getList(subpathsKey);
     var subpaths = [];
     for (var s = 0; s < subList.count; s++) {
       var sub = subList.getObjectValue(s);
-      var pointList = sub.getList(stringIDToTypeID("points"));
+      var pointList = sub.getList(pointsKey);
       var points = [];
       total += pointList.count;
-      if (total > 4096) throw new Error("pathBudget");
+      if (total > maxPoints) throw new Error("pathBudget");
       for (var p = 0; p < pointList.count; p++) {
         var pointDesc = pointList.getObjectValue(p);
-        var point = { anchor: _smartPathPoint(pointDesc.getObjectValue(anchorKey)) };
-        if (pointDesc.hasKey(forwardKey)) point.forward = _smartPathPoint(pointDesc.getObjectValue(forwardKey));
-        if (pointDesc.hasKey(backwardKey)) point.backward = _smartPathPoint(pointDesc.getObjectValue(backwardKey));
+        var point = { anchor: _smartPathPoint(pointDesc.getObjectValue(anchorKey), units) };
+        if (pointDesc.hasKey(forwardKey)) point.forward = _smartPathPoint(pointDesc.getObjectValue(forwardKey), units);
+        if (pointDesc.hasKey(backwardKey)) point.backward = _smartPathPoint(pointDesc.getObjectValue(backwardKey), units);
         points.push(point);
       }
       subpaths.push({ closedSubpath: sub.hasKey(closedKey) && sub.getBoolean(closedKey), points: points });
@@ -5054,21 +5085,86 @@ function _smartReadWorkPath() {
   return { pathContents: { pathComponents: components } };
 }
 
-// Channel histograms of the selection (Photoshop computes them on the
-// selected pixels of the active layer): read on a stamp of the visible
-// layers, inside the caller's rolled-back history, so they show the page
-function _smartSelectionHistograms() {
+function _smartReadWorkPath() {
+  var reference = new ActionReference();
+  // 'WrPt' (not charID.WorkPath, 'WrkP') is the work path a get accepts
+  reference.putProperty(charID.Path, charIDToTypeID("WrPt"));
+  return _smartReadPath(reference, 4096);
+}
+
+// Reduce a vector atlas here, before crossing the CEP bridge. Sending all
+// Bezier points costs far more than the few bounds the layout engine needs.
+function _smartAtlasMetrics(path, count) {
+  if (!(count >= 1 && count <= 24 && count === Math.floor(count))) return null;
+  var page = _getDocumentPixelSize();
+  var resolution = _getDocumentResolution();
+  var cx = page.width / 2;
+  var cy = page.height / 2;
+  var rows = [];
+  var i, c, s, p, k;
+  for (i = 0; i < count; i++) rows.push({ left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity });
+  var components = path && path.pathContents && path.pathContents.pathComponents;
+  if (!components) return null;
+  var keys = ["anchor", "forward", "backward"];
+  for (c = 0; c < components.length; c++) {
+    var subs = components[c].subpathListKey || [];
+    for (s = 0; s < subs.length; s++) {
+      var points = subs[s].points || [];
+      var left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      for (p = 0; p < points.length; p++) {
+        for (k = 0; k < keys.length; k++) {
+          var point = points[p][keys[k]];
+          if (!point || !point.horizontal || !point.vertical) continue;
+          if ((point.horizontal._unit !== "pixelsUnit" && point.horizontal._unit !== "distanceUnit") ||
+              (point.vertical._unit !== "pixelsUnit" && point.vertical._unit !== "distanceUnit")) return null;
+          var x = point.horizontal._unit === "distanceUnit" ? (point.horizontal._value * resolution) / 72 : point.horizontal._value;
+          var y = point.vertical._unit === "distanceUnit" ? (point.vertical._value * resolution) / 72 : point.vertical._value;
+          if (!isFinite(x) || !isFinite(y)) return null;
+          left = Math.min(left, x); right = Math.max(right, x);
+          top = Math.min(top, y); bottom = Math.max(bottom, y);
+        }
+      }
+      if (!isFinite(left)) continue;
+      var row = Math.floor(((top + bottom) / 2 - cy + 128) / 256);
+      if (row < 0 || row >= count || top < cy + row * 256 - 128 || bottom > cy + row * 256 + 128) return null;
+      rows[row].left = Math.min(rows[row].left, left);
+      rows[row].right = Math.max(rows[row].right, right);
+      rows[row].top = Math.min(rows[row].top, top);
+      rows[row].bottom = Math.max(rows[row].bottom, bottom);
+    }
+  }
+  for (i = 0; i < rows.length; i++) {
+    var bounds = rows[i];
+    if (!(bounds.right > bounds.left && bounds.bottom > bounds.top)) return null;
+    rows[i] = { left: (bounds.left - cx - 1) / 64, right: (bounds.right - cx + 1) / 64,
+      top: (bounds.top - (cy + i * 256) - 1) / 64, bottom: (bounds.bottom - (cy + i * 256) + 1) / 64 };
+  }
+  return rows;
+}
+
+// Document component channels already describe the visible composite, even
+// when the active layer is empty or translucent. Avoid stamping the whole
+// page just to read the same histograms.
+function _smartReadChannelHistograms() {
   var out = [];
+  var channels = app.activeDocument.componentChannels;
+  for (var i = 0; i < channels.length && i < 3; i++) out.push(channels[i].histogram);
+  return out;
+}
+
+function _smartSelectionHistograms() {
+  try {
+    return _smartReadChannelHistograms();
+  } catch (readError) {}
+  // Preserve the older-host fallback if a composite is not readable yet.
   try {
     var stamp = new ActionDescriptor();
     stamp.putBoolean(charIDToTypeID("Dplc"), true);
     executeAction(charIDToTypeID("MrgV"), stamp, DialogModes.NO);
-    var channels = app.activeDocument.componentChannels;
-    for (var i = 0; i < channels.length && i < 3; i++) out.push(channels[i].histogram);
+    return _smartReadChannelHistograms();
   } catch (histogramError) {
-    out = [];
+    return [];
   }
-  return out;
 }
 
 function smartPasteCapture(data) {
@@ -5110,27 +5206,95 @@ function smartPasteCapture(data) {
   return jamJSON.stringify(result);
 }
 
+function _smartCreateMeasureGroup() {
+  var reference = new ActionReference();
+  reference.putClass(stringIDToTypeID("layerSection"));
+  var descriptor = new ActionDescriptor();
+  descriptor.putReference(charID.Null, reference);
+  var using = new ActionDescriptor();
+  using.putUnitDouble(stringIDToTypeID("opacity"), stringIDToTypeID("percentUnit"), 0);
+  descriptor.putObject(stringIDToTypeID("using"), stringIDToTypeID("layerSection"), using);
+  executeAction(charID.Make, descriptor, DialogModes.NO);
+  var group = app.activeDocument.activeLayer;
+  // Opacity is honoured during make on PS 2019 (visible:false is ignored),
+  // so temporary text is invisible without a second hide command.
+  if (group.opacity !== 0) group.visible = false;
+  return group;
+}
+
 function smartPasteMeasure(data) {
   if (!app.documents.length) return jamJSON.stringify({ error: "doc" });
   var requests = (data && data.requests) || [];
+  if (!requests.length) return jamJSON.stringify([]);
   var measured = _withTemporaryHistory("TypeR text measurement", function () {
     var replies = [];
     var staging = false;
-    for (var i = 0; i < requests.length; i++) {
-      var params = requests[i].params;
-      if (!staging) {
-        jamEngine.jsonPlay("make", {
-          target: ["<reference>", [["textLayer", ["<class>", null]]]],
-          using: jamText.toLayerTextObject(params)
-        });
-        staging = true;
-      } else {
-        jamText.setLayerText(params);
+    var group = _smartCreateMeasureGroup();
+    try {
+      // Make every test layer inside an already invisible group.
+      for (var i = 0; i < requests.length; i++) {
+        var request = requests[i];
+        var params = request.params;
+        if (request.kind === "atlas" && params.typeUnit === "pixelsUnit") {
+          // The shared atlas generator expresses its 256px row advance in
+          // points. JAM honours typeUnit for leading too; pixel styles need
+          // that advance converted back to pixels on non-72dpi documents.
+          params = _clone(params);
+          var ranges = params.layerText.textStyleRange || [];
+          var scale = _getDocumentResolution() / 72;
+          for (var r = 0; r < ranges.length; r++) {
+            var style = ranges[r].textStyle;
+            if (style && typeof style.leading === "number") style.leading *= scale;
+          }
+        }
+        var using = jamText.toLayerTextObject(params);
+        if (!staging) {
+          executeAction(charID.Make, jamEngine.jsonToActionDescriptor({
+            target: ["<reference>", [["textLayer", ["<class>", null]]]],
+            using: using
+          }), DialogModes.NO);
+          staging = true;
+        } else {
+          // We own the staging layer: avoid setLayerText's full textKey
+          // read/JSON conversion before every candidate's update.
+          executeAction(charID.Set, jamEngine.jsonToActionDescriptor({
+            target: ["<reference>", [["layer", ["<enumerated>", ["ordinal", "targetEnum"]]]]],
+            to: using
+          }), DialogModes.NO);
+        }
+        if (request.kind === "atlas") {
+          try {
+            executeAction(charID.Make, jamEngine.jsonToActionDescriptor({
+              target: ["<reference>", [["contentLayer", ["<class>", null]]]],
+              using: ["<reference>", [["textLayer", ["<enumerated>", ["ordinal", "targetEnum"]]]]]
+            }), DialogModes.NO);
+            var reference = new ActionReference();
+            reference.putEnumerated(charID.Path, charID.Path, stringIDToTypeID("vectorMask"));
+            replies.push({ metrics: _smartAtlasMetrics(_smartReadPath(reference, 65536), request.count) });
+          } catch (atlasError) {
+            // The engine retries unsupported fonts/conversions individually.
+            replies.push(null);
+          }
+          var measuredLayer = app.activeDocument.activeLayer;
+          if (measuredLayer.parent !== group) throw new Error("measureLayer");
+          // The final group removal below also deletes its last atlas.
+          // Only switch back to the group when another request follows.
+          if (i + 1 < requests.length) {
+            measuredLayer.remove();
+            app.activeDocument.activeLayer = group;
+          }
+          staging = false;
+        } else {
+          var box = _currentLayerBox();
+          replies.push(box ? { bounds: { left: box.left, top: box.top, right: box.right, bottom: box.bottom } } : null);
+        }
       }
-      var box = _currentLayerBox();
-      replies.push(box ? { bounds: { left: box.left, top: box.top, right: box.right, bottom: box.bottom } } : null);
+      return { replies: replies };
+    } finally {
+      // Remove our objects before history refresh, including the selected
+      // vector path; rollback still restores the user's selection/history.
+      group.remove();
     }
-    return { replies: replies };
   }, { discardRedo: true });
   if (!measured || measured.error || !measured.replies) return jamJSON.stringify({ error: "measure" });
   return jamJSON.stringify(measured.replies);

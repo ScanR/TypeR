@@ -142,7 +142,7 @@ const cepAdapter = (request) => ({
     };
   },
   measure: async (requests) => {
-    const raw = await evalHost("smartPasteMeasure(" + JSON.stringify({ requests: requests.map((r) => ({ params: r.params })) }) + ")");
+    const raw = await evalHost("smartPasteMeasure(" + JSON.stringify({ requests: requests.map((r) => ({ params: r.params, kind: r.kind, count: r.count })) }) + ")");
     const replies = safeJsonParse(raw, null);
     if (!Array.isArray(replies)) throw Object.assign(new Error("measure"), { code: "measure" });
     return replies;
@@ -158,7 +158,7 @@ const cepAdapter = (request) => ({
     }
     return style;
   },
-  useAtlas: false,
+  useAtlas: true,
 });
 
 export const runSmartPaste = async (request) => {

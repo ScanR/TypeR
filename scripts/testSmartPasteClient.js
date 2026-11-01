@@ -461,6 +461,32 @@ const baseState = () => ({
   assert.strictEqual(await sampling.prepare({ source: "wand", x: 2, y: 2 }), false);
   assert.strictEqual(await sampling.prepare({ source: "wand", x: 1, y: 1 }), true);
   assert.deepStrictEqual(sampledReplays, [1, 1], "the classic paste selects it again too");
+  // CEP must preserve the atlas protocol: losing kind/count would silently
+  // measure a multi-line atlas as one ordinary line.
+  const uxp = window.typerUXP;
+  delete window.typerUXP;
+  try {
+    const metrics = [{ left: -1, right: 1, top: -0.7, bottom: 0.1 }];
+    hostReplies = {
+      smartPasteMeasure: JSON.stringify([{ metrics }]),
+      smartPasteCommit: JSON.stringify({ layerIds: [42] }),
+    };
+    const cep = require("./helpers/loadAppModule")({
+      "./utils": utilsStub,
+      "./oneClick/smartPaste": {
+        prepareSmartPaste: async (request, adapter) => {
+          assert.strictEqual(adapter.useAtlas, true);
+          assert.deepStrictEqual(await adapter.measure([{ kind: "atlas", count: 1, params: { text: "probe" } }]), [{ metrics }]);
+          const call = evalCalls[evalCalls.length - 1];
+          assert.deepStrictEqual(JSON.parse(call.slice("smartPasteMeasure(".length, -1)), { requests: [{ kind: "atlas", count: 1, params: { text: "probe" } }] });
+          return { consumed: 1, sessions: [] };
+        },
+      },
+    })("app_src/smartPasteClient.js");
+    assert.strictEqual((await cep.runSmartPaste({ settings: {} })).ok, true);
+  } finally {
+    window.typerUXP = uxp;
+  }
 
   console.log("smart paste panel client tests passed");
 })().catch((error) => {

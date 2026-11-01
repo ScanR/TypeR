@@ -272,15 +272,16 @@
 .settings-tabs {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px;
     margin-bottom: 12px;
-    padding: 4px;
+    // Symmetric gutters also work in CEP's old Chromium, without flex gap.
+    padding: 2px;
     border-radius: 6px;
     background: rgba(0, 0, 0, 0.15);
 }
 
 .settings-tab {
-    flex: 0 0 calc(25% - 3px);
+    flex: 0 0 calc(25% - 4px);
+    margin: 2px;
     min-width: 0;
     box-sizing: border-box;
     display: flex;
