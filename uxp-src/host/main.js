@@ -349,6 +349,10 @@ const requests = {
   flushMirror: () => mirror.flush(),
   openUrl: (url) => uxp.shell.openExternal(String(url)),
   keyboardAccess: () => keysHelper.access(),
+  keyboardDebug: () => typeof keysHelper.diagnostics === "function" ? keysHelper.diagnostics() : {
+    source: "helper", running: null, foreground: null, error: "",
+    state: keyboard.getState(), sampledAt: keyboard.lastUpdate(),
+  },
   openKeyboardAccess: () => systemCall('open "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"'),
   log: (...args) => log("panel:", ...args),
 };
@@ -356,7 +360,7 @@ Object.assign(requests, services.requests);
 
 // Panel requests in the crash trace: evalScript has its own lines, and the
 // storage writes and log lines say nothing about Photoshop
-const UNTRACED_REQUESTS = { evalScript: true, writeMirror: true, deleteMirror: true, flushMirror: true, log: true };
+const UNTRACED_REQUESTS = { evalScript: true, writeMirror: true, deleteMirror: true, flushMirror: true, log: true, keyboardDebug: true };
 
 async function handleRequest(message) {
   if (crashTrace && !UNTRACED_REQUESTS[message.method]) crashTrace.note("request", String(message.method));

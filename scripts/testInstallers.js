@@ -131,7 +131,7 @@ try {
       released['CSXS/manifest.xml'] = strToU8('<ExtensionManifest ExtensionBundleId="com.scanr.typer" ExtensionBundleVersion="3.1.0"><Menu>TypeR (CEP)</Menu><ExtensionList><Extension Id="typer" Version="3.1.0" /></ExtensionList></ExtensionManifest>');
       released['app/package.sha256'] = strToU8(Object.keys(released).sort().map((name) => crypto.createHash('sha256').update(released[name]).digest('hex') + '  ' + name).join('\n') + '\n');
       const archive = path.join(sandbox, 'release-3.1.0.zip');
-      fs.writeFileSync(archive, zipSync({ ...released, 'TypeR-UXP.ccx': fs.readFileSync(packageFile) }));
+      fs.writeFileSync(archive, zipSync({ ...released, 'TypeR-UXP-mac.ccx': fs.readFileSync(packageFile) }));
 
       const TERMINAL_DRIVER = `
 import os, pty, sys
@@ -165,7 +165,7 @@ sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
       }
       fs.cpSync(path.join(root, 'installer'), path.join(extracted, 'installer'), { recursive: true });
       fs.copyFileSync(commandFile, path.join(extracted, 'install_mac.command'));
-      fs.copyFileSync(packageFile, path.join(extracted, 'TypeR-UXP.ccx'));
+      fs.copyFileSync(packageFile, path.join(extracted, 'TypeR-UXP-mac.ccx'));
       const runExtracted = (args, name) => spawnSync(path.join(extracted, 'install_mac.command'), args, {
         encoding: 'utf8',
         input: '',

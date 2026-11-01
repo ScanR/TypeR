@@ -10,6 +10,9 @@ app/
 storage/
 # UXP plugin build output (npm run build:uxp)
 uxp/
+uxp-addon/
+uxp-mac/
+.native-build/
 
 # Release artifacts
 Releases/

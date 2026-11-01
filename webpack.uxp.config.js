@@ -8,7 +8,8 @@ const HtmlWebpackPlugin = require("html-webpack-plugin");
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 
 const OUT = path.join(__dirname, "uxp");
-const UXP_MODULES = ["photoshop", "uxp", "fs", "os", "path"];
+const outputPath = (env) => env.mac ? path.join(__dirname, "uxp-mac") : env.addon ? path.join(__dirname, "uxp-addon") : OUT;
+const UXP_MODULES = ["photoshop", "uxp", "fs", "os", "path", "typer-keys.uxpaddon"];
 
 const hostConfig = (env, argv, entry, filename, library) => ({
   name: library ? "uxp-host-test" : "uxp-host",
@@ -16,7 +17,7 @@ const hostConfig = (env, argv, entry, filename, library) => ({
   target: "web",
   devtool: false,
   entry,
-  output: Object.assign({ path: OUT, filename }, library ? { library: { name: library, type: "var" } } : {}),
+  output: Object.assign({ path: outputPath(env), filename }, library ? { library: { name: library, type: "var" } } : {}),
   externals: UXP_MODULES.reduce((externals, name) => Object.assign(externals, { [name]: "commonjs " + name }), {}),
   externalsType: "commonjs",
   resolve: { extensions: [".js", ".jsxinc"] },
@@ -31,7 +32,8 @@ const hostConfig = (env, argv, entry, filename, library) => ({
       },
     ],
   },
-  plugins: [new webpack.DefinePlugin({ TYPER_DEV: JSON.stringify(!!env.dev), TYPER_TRACE: JSON.stringify(!!env.trace) })],
+  plugins: [new webpack.DefinePlugin({ TYPER_DEV: JSON.stringify(!!env.dev), TYPER_TRACE: JSON.stringify(!!env.trace) }),
+    ...(!env.mac ? [new webpack.NormalModuleReplacementPlugin(/^\.\/keysHelper$/, path.join(__dirname, "uxp-src/host/keysAddon.js"))] : [])],
   optimization: { minimize: false },
   performance: { hints: false },
 });
@@ -59,7 +61,7 @@ const panelConfig = (env, argv) => {
     target: ["web", "es2017"],
     entry: { index: "./uxp-src/web/entry.js" },
     output: Object.assign({}, modern.output, {
-      path: path.join(OUT, "web"),
+      path: path.join(outputPath(env), "web"),
       filename: "index.js",
       chunkFilename: "[name].[contenthash:12].index.js",
       publicPath: "./",
@@ -71,6 +73,8 @@ const panelConfig = (env, argv) => {
 };
 
 module.exports = (env = {}, argv = {}) => {
+  if (env.mac && env.addon) throw new Error("Choose either macOS or Windows addon output");
+  if (env.addon && (env.dev || env.trace || env.hostTest)) throw new Error("Build the Windows addon preview separately from developer/diagnostic builds");
   if (env.hostTest) return [hostConfig(env, argv, "./uxp-src/host/photoshop.js", "host-test.js", "TypeRHost")];
   return [hostConfig(env, argv, env.trace ? "./uxp-src/host/traceEntry.js" : "./uxp-src/host/main.js", "host.js"), panelConfig(env, argv)];
 };

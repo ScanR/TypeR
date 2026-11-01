@@ -19,6 +19,7 @@ import { legacyManifestWithName } from "./legacyPanelName";
 export { UXP_PLUGIN_ID };
 export const UXP_MIN_PHOTOSHOP_MAJOR = 26;
 export const UXP_PACKAGE_URL = "https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx";
+export const UXP_MAC_PACKAGE_URL = "https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP-mac.ccx";
 export const UXP_RELEASE_PAGE = "https://github.com/ScanR/TypeR/releases/latest";
 // "Later" asks again a week later
 export const UXP_MIGRATION_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -93,9 +94,9 @@ export const declinedUxpMigration = () => ({ declined: true });
 
 // The newest stable release with a TypeR .ccx (test mode reads a local
 // release list; production downloads the latest release's asset directly)
-export const pickUxpPackageUrl = (releases) => {
-  const newest = findNewerReleases(releases, "0.0.0", ".ccx")[0];
-  return newest ? pickUpdateDownloadUrl(newest, ".ccx") : null;
+export const pickUxpPackageUrl = (releases, platform) => {
+  const newest = findNewerReleases(releases, "0.0.0", ".ccx", platform)[0];
+  return newest ? pickUpdateDownloadUrl(newest, ".ccx", platform) : null;
 };
 
 // Only a TypeR plugin package gets installed (a failed download can be an HTML
@@ -117,12 +118,12 @@ const codedError = (code, message) => Object.assign(new Error(message), { code }
 
 // The package of the latest release, checked. In test mode it comes from the
 // local release list, and only from a loopback address.
-export const downloadUxpPackage = async (testConfig, fetchImpl) => {
-  let url = UXP_PACKAGE_URL;
+export const downloadUxpPackage = async (testConfig, fetchImpl, platform = "win") => {
+  let url = platform === "mac" || platform === "darwin" ? UXP_MAC_PACKAGE_URL : UXP_PACKAGE_URL;
   try {
     if (testConfig) {
       const releases = await fetchBody(testConfig.releasesUrl, { headers: { Accept: "application/vnd.github.v3+json" } }, "json", 20000, fetchImpl);
-      url = pickUxpPackageUrl(releases);
+      url = pickUxpPackageUrl(releases, platform);
       if (!url || !isLoopbackHttpUrl(url)) throw new Error("No local TypeR UXP package");
     }
     const buffer = await fetchBody(url, { headers: { Accept: "application/octet-stream" } }, "arrayBuffer", 120000, fetchImpl);

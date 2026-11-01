@@ -9,6 +9,11 @@
 // the title is not displayed as such.
 const SECTIONS = [
   {
+    tab: "debug",
+    group: "keyboardDebugTitle",
+    entries: [{ title: "keyboardDebugTitle", hint: "keyboardDebugHint", keywords: "debug diagnostic clavier touches keyboard keys addon focus" }],
+  },
+  {
     tab: "general",
     group: "settingsLanguageLabel",
     entries: [

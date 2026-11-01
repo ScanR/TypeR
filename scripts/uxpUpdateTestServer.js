@@ -13,7 +13,8 @@ const path = require("path");
 const { strToU8, zipSync } = require("fflate");
 
 const root = path.resolve(__dirname, "..");
-const plugin = path.join(root, "uxp");
+const assetName = process.platform === "darwin" ? "TypeR-UXP-mac.ccx" : "TypeR-UXP.ccx";
+const plugin = path.join(root, process.platform === "darwin" ? "uxp-mac" : "uxp");
 const manual = process.argv.includes("--manual");
 const port = Number(process.argv.slice(2).find((arg) => arg !== "--manual") || 17843);
 const baseUrl = "http://127.0.0.1:" + port;
@@ -61,7 +62,7 @@ const server = http.createServer((request, response) => {
       prerelease: false,
       published_at: new Date().toISOString(),
       body_html: "<p>Local test, no release was published.</p>",
-      assets: [{ name: "TypeR-UXP.ccx", browser_download_url: baseUrl + "/TypeR-UXP.ccx" }],
+      assets: [{ name: assetName, browser_download_url: baseUrl + "/TypeR-UXP.ccx" }],
     }]));
     return;
   }

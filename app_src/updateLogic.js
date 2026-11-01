@@ -37,8 +37,19 @@ const compareVersions = (left, right) => {
 // has no compiled app/ folder (webpack output), so installing it would leave a
 // broken extension — no fallback on purpose.
 // The UXP plugin installs its .ccx asset instead of the CEP .zip.
-const pickUpdateDownloadUrl = (release, extension = ".zip") => {
+const pickUpdateDownloadUrl = (release, extension = ".zip", platform) => {
   const assets = release && Array.isArray(release.assets) ? release.assets : [];
+  if (extension === ".ccx" && platform) {
+    const mac = platform === "darwin" || platform === "mac";
+    const name = mac ? "TypeR-UXP-mac.ccx" : "TypeR-UXP.ccx";
+    const target = assets.find(asset => asset && asset.name === name);
+    if (target) return target.browser_download_url || null;
+    // Before 3.0.1 the ordinary CCX supported both platforms. Never hand
+    // a newer Windows-only hybrid package to macOS when its asset is absent.
+    if (!mac || compareVersions(release.tag_name, "3.0.1") >= 0) return null;
+    const legacy = assets.find(asset => asset && asset.name === "TypeR-UXP.ccx");
+    return legacy && legacy.browser_download_url || null;
+  }
   const zipAsset = assets.find(
     (asset) =>
       asset &&
@@ -49,10 +60,10 @@ const pickUpdateDownloadUrl = (release, extension = ".zip") => {
   return zipAsset && zipAsset.browser_download_url ? zipAsset.browser_download_url : null;
 };
 
-const findNewerReleases = (releases, currentVersion, extension = ".zip") => {
+const findNewerReleases = (releases, currentVersion, extension = ".zip", platform) => {
   const list = Array.isArray(releases) ? releases : [];
   const newer = list.filter(
-    (release) => release && !release.draft && !release.prerelease && versionParts(release.tag_name) && !versionParts(release.tag_name).pre.length && pickUpdateDownloadUrl(release, extension) && compareVersions(release.tag_name, currentVersion) > 0
+    (release) => release && !release.draft && !release.prerelease && versionParts(release.tag_name) && !versionParts(release.tag_name).pre.length && pickUpdateDownloadUrl(release, extension, platform) && compareVersions(release.tag_name, currentVersion) > 0
   );
   newer.sort((a, b) => compareVersions(b.tag_name, a.tag_name));
   return newer;

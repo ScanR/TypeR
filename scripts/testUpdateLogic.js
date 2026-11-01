@@ -61,6 +61,19 @@ assert.strictEqual(pickUpdateDownloadUrl(null), null);
 assert.strictEqual(pickUpdateDownloadUrl({ assets: [{ name: "other-tool.zip" }] }), null);
 
 // --- findNewerReleases ---
+const splitRelease = { tag_name: "3.0.1", assets: [
+  { name: "TypeR-UXP-debug.ccx", browser_download_url: "debug" },
+  { name: "TypeR-UXP-mac.ccx", browser_download_url: "mac" },
+  { name: "TypeR-UXP.ccx", browser_download_url: "win" },
+] };
+assert.strictEqual(pickUpdateDownloadUrl(splitRelease, ".ccx", "win32"), "win");
+assert.strictEqual(pickUpdateDownloadUrl(splitRelease, ".ccx", "darwin"), "mac");
+const windowsOnly = { ...splitRelease, assets: splitRelease.assets.filter(asset => asset.name !== "TypeR-UXP-mac.ccx") };
+assert.strictEqual(pickUpdateDownloadUrl(windowsOnly, ".ccx", "darwin"), null, "Never install a Windows-only addon on macOS");
+assert.deepStrictEqual(findNewerReleases([windowsOnly], "3.0.0", ".ccx", "darwin"), []);
+assert.strictEqual(pickUpdateDownloadUrl({ ...windowsOnly, tag_name: "3.0.0" }, ".ccx", "darwin"), "win", "Older CCX packages were universal");
+
+// --- findNewerReleases ---
 const releases = [
   { assets: [builtAsset], tag_name: "v3.0.0" },
   { assets: [builtAsset], tag_name: "v3.2.0" },

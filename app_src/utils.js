@@ -60,11 +60,11 @@ const checkUpdate = async (currentVersion) => {
       { headers: { Accept: "application/vnd.github.v3.html+json" } }
     );
     if (!Array.isArray(releases)) throw new Error("invalidResponse");
-    const newerReleases = findNewerReleases(releases, comparisonVersion, UPDATE_PACKAGE_EXTENSION);
+    const newerReleases = findNewerReleases(releases, comparisonVersion, UPDATE_PACKAGE_EXTENSION, uxpHost && uxpHost.platform);
     if (newerReleases.length > 0) {
       return {
         version: newerReleases[0].tag_name,
-        downloadUrl: pickUpdateDownloadUrl(newerReleases[0], UPDATE_PACKAGE_EXTENSION),
+        downloadUrl: pickUpdateDownloadUrl(newerReleases[0], UPDATE_PACKAGE_EXTENSION, uxpHost && uxpHost.platform),
         testMode: !!testConfig,
         releases: newerReleases.map(release => ({
           version: release.tag_name,

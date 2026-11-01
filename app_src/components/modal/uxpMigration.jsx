@@ -5,7 +5,7 @@ import { FiAlertTriangle, FiCheckCircle, FiCpu, FiDownload, FiDownloadCloud, FiI
 import { clearUpdateTestConfig, csInterface, flushStorageWrite, getUpdateTestConfig, locale, openUrl, writeToStorage } from "../../utils";
 import { useContext } from "../../context";
 import {
-  UXP_RELEASE_PAGE, declinedUxpMigration, downloadUxpPackage, getNode, runUxpInstaller, snoozedUxpMigration, syncLegacyPanelName,
+  UXP_RELEASE_PAGE, declinedUxpMigration, downloadUxpPackage, getNode, nodePlatform, runUxpInstaller, snoozedUxpMigration, syncLegacyPanelName,
 } from "../../uxpMigration";
 
 const REASONS = {
@@ -57,7 +57,7 @@ const UxpMigrationModal = React.memo(function UxpMigrationModal() {
     setStatus(locale.uxpMigrationDownloading || "Downloading the new TypeR...");
     try {
       const testConfig = getUpdateTestConfig();
-      const bytes = await downloadUxpPackage(testConfig && testConfig.forceUxpMigration ? testConfig : null);
+      const bytes = await downloadUxpPackage(testConfig && testConfig.forceUxpMigration ? testConfig : null, undefined, nodePlatform(getNode()));
       setStatus(locale.uxpMigrationInstalling || "Installing the new TypeR...");
       // The new TypeR imports these styles and settings on its first start
       flushStorageWrite(true);

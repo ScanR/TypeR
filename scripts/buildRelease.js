@@ -15,14 +15,18 @@ function walk(relative) {
 ['app', 'CSXS', 'icons', 'locale', 'installer', 'install_mac.command', 'install_win.cmd', 'README.md', 'LICENSE.md', 'CHANGELOG.md'].forEach(walk);
 // The installers install the UXP plugin offline from the TypeR-UXP.ccx of the
 // archive (npm run package:uxp); --with-uxp makes it mandatory.
-const uxpPackage = path.join(root, 'Releases', 'TypeR-UXP.ccx');
+for (const name of ['TypeR-UXP.ccx', 'TypeR-UXP-mac.ccx']) {
+const uxpPackage = path.join(root, 'Releases', name);
 if (fs.existsSync(uxpPackage)) {
   const ccx = fs.readFileSync(uxpPackage);
   const uxpManifest = JSON.parse(Buffer.from(unzipSync(ccx)['manifest.json']).toString('utf8'));
   if (uxpManifest.id !== 'com.scanr.typer' || uxpManifest.version !== require('../package.json').version) throw new Error('Releases/TypeR-UXP.ccx is not TypeR ' + require('../package.json').version + ': run npm run package:uxp');
-  files['TypeR-UXP.ccx'] = ccx;
+  if (name === 'TypeR-UXP.ccx' && (!uxpManifest.addon || !uxpManifest.requiredPermissions.enableAddon)) throw new Error('Rebuild the Windows UXP package with its native addon');
+  if (name === 'TypeR-UXP-mac.ccx' && uxpManifest.addon) throw new Error('The macOS package must not require the Windows addon');
+  files[name] = ccx;
 } else if (process.argv.includes('--with-uxp')) {
-  throw new Error('Missing Releases/TypeR-UXP.ccx: run npm run package:uxp');
+  throw new Error('Missing Releases/' + name + ': run npm run package:uxp');
+}
 }
 // The macOS scripts keep their executable mode: Finder cannot open a
 // .command without it, and it spares users a chmod.

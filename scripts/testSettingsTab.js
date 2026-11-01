@@ -17,7 +17,7 @@ const memoryWindow = () => {
   };
 };
 
-assert.deepStrictEqual(tabs.SETTINGS_TABS, ["general", "insertion", "script", "styles", "shortcuts", "appearance", "data", "fontViewer"]);
+assert.deepStrictEqual(tabs.SETTINGS_TABS, ["general", "insertion", "script", "styles", "shortcuts", "appearance", "data", "fontViewer", "debug"]);
 assert.strictEqual(tabs.DEFAULT_SETTINGS_TAB, "insertion");
 
 const win = memoryWindow();

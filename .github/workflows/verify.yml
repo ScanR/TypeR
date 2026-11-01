@@ -21,10 +21,16 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run verify
+      - run: npm run package:uxp
+      - run: npm run test:keys-addon:native
+        if: matrix.os == 'windows-latest'
       - run: npm audit --audit-level=moderate
-      - run: node scripts/buildRelease.js
+      - run: node scripts/buildRelease.js --with-uxp
       - uses: actions/upload-artifact@v4
         if: matrix.os == 'ubuntu-latest'
         with:
           name: TypeR-release-candidate
-          path: Releases/TypeR.zip*
+          path: |
+            Releases/TypeR.zip*
+            Releases/TypeR-UXP.ccx*
+            Releases/TypeR-UXP-mac.ccx*

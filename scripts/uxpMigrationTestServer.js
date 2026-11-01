@@ -13,10 +13,11 @@ const os = require("os");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
+const assetName = process.platform === "darwin" ? "TypeR-UXP-mac.ccx" : "TypeR-UXP.ccx";
 const version = require("../package.json").version;
 const manual = process.argv.includes("--manual");
 const args = process.argv.slice(2).filter((arg) => arg !== "--manual");
-const packagePath = path.resolve(args[0] || path.join(root, "Releases", "TypeR-UXP.ccx"));
+const packagePath = path.resolve(args[0] || path.join(root, "Releases", assetName));
 const port = Number(args[1] || 17832);
 const baseUrl = "http://127.0.0.1:" + port;
 const extensionRoot = process.platform === "win32"
@@ -41,7 +42,7 @@ const server = http.createServer((request, response) => {
       prerelease: false,
       published_at: new Date().toISOString(),
       body_html: "<p>Local test, no release was published.</p>",
-      assets: [{ name: "TypeR-UXP.ccx", browser_download_url: baseUrl + "/TypeR-UXP.ccx" }],
+      assets: [{ name: assetName, browser_download_url: baseUrl + "/TypeR-UXP.ccx" }],
     }]));
     return;
   }

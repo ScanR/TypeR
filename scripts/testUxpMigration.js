@@ -135,6 +135,7 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
     return { ok: true, status: 200, json: async () => body, arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) };
   };
   const bytes = await migration.downloadUxpPackage(null, fakeFetch({ [migration.UXP_PACKAGE_URL]: typerPackage }));
+  await migration.downloadUxpPackage(null, fakeFetch({ [migration.UXP_MAC_PACKAGE_URL]: typerPackage }), "mac");
   assert.strictEqual(bytes.length, typerPackage.length);
   const testConfig = parseUpdateTestConfig({ enabled: true, releasesUrl: "http://127.0.0.1:17832/releases", currentVersion: "3.0.0", forceUxpMigration: true });
   assert.strictEqual(testConfig.forceUxpMigration, true);

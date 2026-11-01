@@ -1,0 +1,76 @@
+// Native keyboard snapshot shared by the UXP bridge and its Windows tests.
+// No hooks, worker threads, files, processes, or network connections.
+#pragma once
+#include <string>
+
+namespace typer {
+struct Snapshot {
+    bool foreground = false;
+    std::string state = "a";
+    unsigned mouseDown = 0;
+    unsigned mousePressed = 0;
+    std::string mouseModifiers;
+};
+
+// Injected in tests; production uses the current Photoshop process id.
+struct Input {
+    virtual ~Input() = default;
+    virtual bool isHostForeground() const = 0;
+    virtual short keyState(int key) const = 0;
+};
+
+inline Snapshot readSnapshot(const Input& input) {
+    Snapshot result;
+    if (!input.isHostForeground()) return result;
+    result.foreground = true;
+    const auto down = [&](int key) { return (input.keyState(key) & 0x8000) != 0; };
+    const bool win = down(0x5B) || down(0x5C);
+    const bool ctrl = down(0x11);
+    const bool alt = down(0x12);
+    const bool shift = down(0x10);
+    if (win) { result.state += "WINa"; result.mouseModifiers += "W"; }
+    if (ctrl) { result.state += "CTRLa"; result.mouseModifiers += "C"; }
+    if (alt) { result.state += "ALTa"; result.mouseModifiers += "A"; }
+    if (shift) { result.state += "SHIFTa"; result.mouseModifiers += "S"; }
+
+    static constexpr int namedKeys[] = {
+        0x08, 0x09, 0x0D, 0x1B, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E,
+        0x6A, 0x6B, 0x6D, 0x6E, 0x6F, 0xBB, 0xBD, 0xBC, 0xBE, 0xBF, 0xBA, 0xDE,
+    };
+    static constexpr const char* names[] = {
+        "BACKSPACE", "TAB", "ENTER", "ESCAPE", "SPACE", "PAGEUP", "PAGEDOWN", "END", "HOME",
+        "LEFTaARROWLEFT", "UPaARROWUP", "RIGHTaARROWRIGHT", "DOWNaARROWDOWN", "INSERT", "DELETE",
+        "MULTIPLY", "PLUS", "MINUS", "DECIMAL", "DIVIDE", "EQUALaPLUS", "MINUS", "COMMA", "PERIOD",
+        "SLASHaDIVIDE", "SEMICOLON", "QUOTEaAPOSTROPHE",
+    };
+    static_assert(sizeof(namedKeys) / sizeof(*namedKeys) == sizeof(names) / sizeof(*names));
+    std::string key;
+    for (unsigned i = 0; i < sizeof(namedKeys) / sizeof(*namedKeys); ++i) {
+        if (down(namedKeys[i])) { key = names[i]; break; }
+    }
+    for (int i = 0; key.empty() && i < 24; ++i) if (down(0x70 + i)) key = "F" + std::to_string(i + 1);
+    for (int i = 0; key.empty() && i < 10; ++i) if (down(0x60 + i)) key = std::to_string(i);
+    for (int vk = 0x30; key.empty() && vk <= 0x5A; ++vk) {
+        if ((vk <= 0x39 || vk >= 0x41) && down(vk)) key = static_cast<char>(vk);
+    }
+    if (!key.empty()) result.state += key + "a";
+    for (int button = 5; button <= 6; ++button) {
+        const short value = input.keyState(button);
+        const unsigned bit = 1u << (button - 5);
+        if (value & 0x8000) result.mouseDown |= bit;
+        // Best effort for a very short click; Windows does not guarantee the low bit.
+        if (value & 1) result.mousePressed |= bit;
+    }
+    // Losing foreground during sampling must never deliver a partial shortcut.
+    if (!input.isHostForeground()) return Snapshot{};
+    return result;
+}
+
+inline std::string serialize(const Snapshot& value) {
+    // All strings are generated above from fixed ASCII tokens, never user input.
+    return "{\"apiVersion\":1,\"foreground\":" + std::string(value.foreground ? "true" : "false") +
+        ",\"state\":\"" + value.state + "\",\"mouseDown\":" + std::to_string(value.mouseDown) +
+        ",\"mousePressed\":" + std::to_string(value.mousePressed) +
+        ",\"mouseModifiers\":\"" + value.mouseModifiers + "\"}";
+}
+}

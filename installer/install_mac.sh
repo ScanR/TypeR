@@ -540,7 +540,7 @@ rename_legacy_panel() {
 if [ "$EDITION" = uxp ]; then
   UPIA="${TYPER_INSTALL_UPIA:-/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent}"
   CREATIVE_CLOUD="/Applications/Utilities/Adobe Creative Cloud/ACC/Creative Cloud.app"
-  PACKAGE="${UXP_PACKAGE:-$SRCDIR/TypeR-UXP.ccx}"
+  PACKAGE="${UXP_PACKAGE:-$SRCDIR/TypeR-UXP-mac.ccx}"
   WORK="$(mktemp -d)"
   trap 'status=$?; rm -rf "$WORK"; on_exit "$status"' EXIT
   # The installer reads the package from a temporary folder: macOS would ask
@@ -549,7 +549,7 @@ if [ "$EDITION" = uxp ]; then
     cp "$PACKAGE" "$WORK/TypeR-UXP.ccx"
   else
     printf '  %s\n' "$MSG_UXP_DOWNLOAD"
-    curl -fL --retry 2 --progress-bar -o "$WORK/TypeR-UXP.ccx" "https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx"
+    curl -fL --retry 2 --progress-bar -o "$WORK/TypeR-UXP.ccx" "https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP-mac.ccx"
   fi
   # A package extracted from a downloaded archive is still marked as downloaded
   xattr -d com.apple.quarantine "$WORK/TypeR-UXP.ccx" 2>/dev/null || true

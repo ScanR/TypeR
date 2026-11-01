@@ -22,15 +22,14 @@ runtime around it differs:
     `.cep-import`, marked complete, then moved in, so an import cut short is finished or retried at the
     next start).
   - `services.js` — file dialogs, files the user picks, font files, font installation, updates, fetch.
-  - `keysHelper.js`, `keyboard.js` — start and follow the keyboard reader.
+  - `keysAddon.js` (Windows), `keysHelper.js` (macOS), `keyboard.js` — start and follow the keyboard reader.
   - `jsx.js` — the few ExtendScript calls UXP cannot replace (`app.system`, `app.refreshFonts`).
   - `devChannel.js` — development builds only, see *Testing in Photoshop*.
 - `uxp-src/web/` — the panel's entry: rebuilds the CEP environment the application expects
   (`CSInterface`, `cep.fs`, `cep.util`, `__adobe_cep__`) before loading `app_src/index.jsx`,
   plus `webkit.scss` for the few places WebKit lays the same CSS out differently.
-- `uxp-src/native/` — keyboard readers, shipped prebuilt because a `.ccx` may not carry a bare
-  executable: `typer-keys.m` (macOS, packed as `typer-keys.json`) and `typer-keys.cs` (Windows, a
-  .NET Framework 4.8 Windows application packed as `typer-keys-win.json`). On macOS the reader counts
+- `uxp-src/native/` ? the Windows addon (native DLL) and the macOS external reader
+  (`typer-keys.m`, packed as `typer-keys.json`). On macOS the reader counts
   as Photoshop for privacy: without Input Monitoring for Photoshop, it only sees modifiers and keys
   such as Return, Tab or function keys. Asking from it does not add Photoshop to that list, so it
   reports the permission in `<state file>.access` and the panel offers to open the pane
@@ -111,23 +110,78 @@ one that painted nothing. A trace build's `uxp/` folder must not be shipped: run
 
 ## Keyboard reader
 
-The CEP panel polls `getHotkeyPressed()`; in UXP the keyboard reader writes the state to
-`<data>/keys/state`, the host reads it every 25 ms and pushes each change to the panel, which matches it
-at once (`typerUXP.onKeys`), so a short press is not lost between two polls. On macOS the reader is
-started through ExtendScript's `app.system`, receives Photoshop's process id and exits with it. On
-Windows `app.system` goes through `cmd.exe`, whose console window flashes on screen, so the reader is a
-windowed application without any window, `<data>/keys/TypeR Shortcuts.exe` (named, described and
-with TypeR's icon in the Task Manager), started through ExtendScript's `File.execute()` as a double
-click would; it finds its state file next to itself and exits once Photoshop is gone. A new build
-asks the running one to stop before replacing its locked `.exe`. It writes
-`<state>|<beat>` and moves the beat at least once a second: a beat frozen for 2.5 s counts as no key
-held, and after 6 s the reader is started again. A start that fails (Photoshop in a modal state while it
-starts up) is retried after 2, 5, 10, then every 30 s, up to 10 times without a report. It only reports
-keys while Photoshop is the frontmost application; on macOS a release stays at least 100 ms so a quick
-tap or a double tap reaches the panel. Key names follow ScriptUI's
-(`LEFT`, `ENTER`, …) and are followed by the names the shortcut recorder uses (`ARROWLEFT`), so
-bindings recorded in either version match; the recorder keeps the first name. On macOS it also reports
-mouse buttons 4 and 5, which the CEP version only supported on Windows.
+### Windows: UXP native addon
+
+Windows uses the C++ addon in every UXP build, including the ordinary release,
+development and trace builds. No TypeR Shortcuts.exe is packaged or launched.
+The plugin loads win/x64/typer-keys.uxpaddon asynchronously through Adobe's require,
+then polls every 25 ms. Failure stops polling and clears held keys; it never
+falls back to an external executable.
+
+The foreground window must belong to the current Photoshop process, checked both
+before and after sampling. The panel does not need focus. No keyboard hooks,
+background processes, network calls or keyboard state files are used. Mouse side
+buttons use edges; very short taps can be missed while the UXP scripting thread
+is busy. The existing key aliases and shortcut formats are preserved.
+
+Settings > Debug displays live held keys, the last combination, sample count,
+foreground status and loading errors. TypeR shortcuts are suspended while settings
+are open; click the Photoshop canvas to test detection without panel focus.
+The user confirmed loading and shortcut operation on Windows Photoshop. Automated
+tests cover asynchronous loading, cancellation/restart, focus and mouse edges.
+This does not establish compatibility with every Photoshop build or remove the
+remaining antivirus detections. The addon is currently unsigned.
+
+The prebuilt AMD64 DLL and its source/binary checksums are committed under
+uxp-src/native/addon/win-x64/. Ordinary builds work without the Adobe SDK or C++
+compiler, on Windows, macOS and Linux. Source checksums normalize line endings.
+If native sources or the build script change, rebuild on Windows and commit both
+the binary and build.json. Do not commit the downloaded Adobe SDK.
+
+To rebuild the native module, install Visual Studio C++ Build Tools and the Windows
+SDK, then download the UXP Hybrid Plugin SDK from Adobe Developer Console:
+
+```powershell
+$env:UXP_HYBRID_SDK = 'C:\SDKs\uxp-hybrid-plugin-sdk'
+npm run build:keys-addon
+npm run test:keys-addon:native
+npm run package:uxp
+```
+
+### Separate platform packages
+
+npm run package:uxp builds and verifies both packages:
+- Releases/TypeR-UXP.ccx: Windows x64, manifest v6 with enableAddon.
+- Releases/TypeR-UXP-mac.ccx: macOS, manifest v5 with the existing external reader.
+
+The updater and Legacy-to-UXP migration choose the platform's exact asset name.
+The macOS installer also selects the macOS package. Both CCX files are included
+in TypeR.zip by the release command. Publish both CCX files and their checksums.
+A Windows-only hybrid manifest must not be installed on macOS: Adobe requires a
+native binary for the target platform. This is not a Marketplace hybrid package.
+
+**Upgrade from 3.0.0:** older UXP clients select the first CCX asset without looking
+at its platform. The first upgrade to this split must use the correct platform's
+CCX or the new offline installer, particularly on macOS. Do not advertise the old
+in-panel updater as a safe cross-platform route to 3.0.1. No release is published
+by these build commands.
+
+npm run package:uxp:addon:installer retains the standalone Windows installation
+kit at Releases/TypeR-Addon-Windows.zip. Extract all files, quit Photoshop and run
+Installer-TypeR-Addon.cmd. It verifies checksums and the native DLL, then invokes
+the transactional local installer without Creative Cloud. It preserves settings
+and backs up replaced plugin files. The older addon command and CCX filename remain
+as aliases for this kit; the panel is now labelled TypeR, without Preview.
+
+### macOS external reader
+
+macOS keeps typer-keys.m, packed in native/typer-keys.json. It starts through
+ExtendScript app.system, receives Photoshop's PID and exits with Photoshop.
+The host follows its state file and heartbeat, drops stale keys and retries a
+stopped reader. Input Monitoring permission for Photoshop is still required.
+The old Windows C# reader and its base64 payload have been removed.
+
+Adobe reference: https://developer.adobe.com/uxp/guides/how-to/hybrid-plugins/build.
 
 ## Moving Legacy users to UXP
 
@@ -138,7 +192,7 @@ Legacy panel once it is updated (`app_src/uxpMigration.js`, `components/modal/ux
 - The offer opens first at startup, before What's new, when Photoshop is 2025 (26.0) or later and
   TypeR UXP is not installed. It is shown only to existing users with update checks on. "Later" asks
   again a week later, "Don't ask again" stops it, and Settings > General > Updates keeps a button.
-- The panel downloads `TypeR-UXP.ccx` from the latest release, checks that it is a TypeR plugin, and
+- The panel downloads `TypeR-UXP.ccx` on Windows or `TypeR-UXP-mac.ccx` on macOS from the latest release, checks that it is a TypeR plugin, and
   hands it to Creative Cloud's plugin installer through the panel's Node.js (`child_process.execFile`,
   no ExtendScript). Photoshop loads a first installation at once. Without that installer, the panel
   installs the package by hand (see below) and asks to restart Photoshop.
@@ -153,7 +207,7 @@ Legacy panel once it is updated (`app_src/uxpMigration.js`, `components/modal/ux
   version opens from Plug-ins > TypeR, until "Don't show again". Those windows follow when it closes.
   Photoshop versions older than 26.0 cannot run the plugin and get no such notice.
 
-Every release must therefore publish `TypeR.zip` and `TypeR-UXP.ccx`, and no other `.zip` whose name
+Every release must therefore publish `TypeR.zip`, `TypeR-UXP.ccx` and `TypeR-UXP-mac.ccx`, and no other `.zip` whose name
 contains "typer".
 
 Test it without publishing anything: `npm run package:uxp`, then `npm run test:uxp-migration` serves
@@ -272,24 +326,24 @@ anything, run the script with `TYPER_INSTALL_PROBE=choice`, which prints the cho
 ## Building
 
 ```sh
-npm run build:uxp       # uxp/: the plugin folder
-npm run package:uxp     # Releases/TypeR-UXP.ccx, added to TypeR.zip by scripts/buildRelease.js
+npm run build:uxp       # uxp/: Windows plugin
+npm run build:uxp:mac   # uxp-mac/: macOS plugin
+npm run package:uxp     # Windows + macOS CCX, both added to TypeR.zip
 npm run test:uxp        # the UXP suites (also run by npm test)
 ```
 
-Changing `uxp-src/native/typer-keys.m` on macOS rebuilds `typer-keys.json`, and changing
-`typer-keys.cs`, `typer-keys.csproj` or `typer-keys.ico` on a system with the .NET SDK rebuilds `typer-keys-win.json`;
-commit them.
+Changing `uxp-src/native/typer-keys.m` on macOS rebuilds `typer-keys.json`; commit it.
+For the Windows addon rebuild instructions, see Keyboard reader above.
 
 ## Testing in Photoshop
 
-`npm run build:uxp:dev` builds `Releases/TypeR-UXP-dev.ccx`, which can run test code through
+`npm run build:uxp:mac:dev` builds `Releases/TypeR-UXP-mac-dev.ccx` on macOS (`build:uxp:dev` targets Windows), which can run test code through
 `uxp-src/host/devChannel.js` (files under `/private/tmp/typer-uxp-dev`). Install it with Creative
 Cloud's plugin installer, which needs no developer mode:
 
 ```sh
 UPIA="/Library/Application Support/Adobe/Adobe Desktop Common/RemoteComponents/UPI/UnifiedPluginInstallerAgent/UnifiedPluginInstallerAgent.app/Contents/MacOS/UnifiedPluginInstallerAgent"
-cp Releases/TypeR-UXP-dev.ccx /tmp/ && "$UPIA" --remove "TypeR"; "$UPIA" --install /tmp/TypeR-UXP-dev.ccx
+cp Releases/TypeR-UXP-mac-dev.ccx /tmp/ && "$UPIA" --remove "TypeR"; "$UPIA" --install /tmp/TypeR-UXP-mac-dev.ccx
 ```
 
 Photoshop loads a first installation at once; an upgrade of an installed version only at its next
