@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.1
+
+- Fix the top of the Legacy panel in Photoshop 2019 and older: its buttons were stuck together, with too much space under them. In every version, the arrows no longer run over the tabs when the top block is at its smallest.
+
 ## 3.0.0
 
 ### UXP plugin

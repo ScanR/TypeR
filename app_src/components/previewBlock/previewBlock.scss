@@ -2,7 +2,8 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  // Never shorter than its content: the arrows would run over the tabs below
+  min-height: min-content;
   padding: 10px 10px 5px;
 }
 .preview-top {
@@ -258,7 +259,8 @@
 .preview-bottom {
   justify-content: space-between;
   display: flex;
-  flex: 1 1 auto;
+  // The room of the two arrows, and no more: a long line scrolls in its own box
+  flex: 1 0 54px;
   min-height: 0;
 }
 // .preview-nav {
