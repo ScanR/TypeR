@@ -12,7 +12,7 @@ import { notePerfRender } from "../../perfDebug";
 import { formatMarkdownSelection } from "../../markdownFormatting";
 import { createPageImageLookup, getImageForPage } from "../../pageImageMapping";
 import { practiceTabIds, whatsNewSession } from "../../whatsNewSession";
-import { measureRows, sameRowHeights } from "./rowLayout";
+import { measureRows, rowStyleHeight, sameRowHeights } from "./rowLayout";
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -89,7 +89,7 @@ const LineItem = React.memo(function LineItem({ line, direction, isCurrent, disp
   }, [dispatch, line.text, direction]);
 
   return (
-    <div className={className} data-line-index={line.rawIndex} style={height ? { height } : undefined}>
+    <div className={className} data-line-index={line.rawIndex} style={height ? { height: rowStyleHeight(height) } : undefined}>
       <div className="text-line-num" title={String(lineNum || "")}>{lineNum}</div>
       <div className="text-line-select" title={line.ignore ? "" : locale.selectLine}>
         {line.ignore ? " " : <FiTarget size={14} onClick={handleSelect} />}

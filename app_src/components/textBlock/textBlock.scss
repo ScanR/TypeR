@@ -293,8 +293,10 @@ body.light-theme .text-block {
   height: 0;
   padding-top: 0;
   padding-bottom: 0;
-  & > div {
-    min-height: $code-leading;
+  // An empty line takes one line box, like in the text: a fixed height would
+  // not follow the rounding of the line height under a display scale
+  & > div:empty::before {
+    content: "\200b";
   }
 }
 .text-format-toolbar {

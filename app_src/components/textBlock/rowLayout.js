@@ -4,6 +4,17 @@
 // line in one hidden mirror that wraps like the text layer instead.
 const ROW_HEIGHT = 17;
 
+// Under a display scale, older Chromiums round each line of text to whole device
+// pixels (125%: 16.8px, not 17px), and offsetHeight rounds that back to 17: the
+// rows then outgrow the text, by two lines after some 80 rows. The computed height
+// keeps the fraction.
+const rowHeight = (node) => parseFloat(node.ownerDocument.defaultView.getComputedStyle(node).height) || ROW_HEIGHT;
+
+// The computed height has a few digits only and layout truncates to 1/64px: this
+// keeps a row from falling just under its line. It stays out of the offsets, as
+// the spacers aren't truncated line by line.
+export const rowStyleHeight = (height) => height + 0.005;
+
 export const measureRows = (mirror, rawTexts, previous) => {
   const width = mirror.clientWidth;
   const count = rawTexts.length;
@@ -22,9 +33,9 @@ export const measureRows = (mirror, rawTexts, previous) => {
   const sameWidth = !!previous && previous.width === width;
   const heights = sameWidth ? previous.heights.slice(0, count) : new Array(count);
   if (sameWidth) {
-    changed.forEach((i) => { heights[i] = nodes[i].offsetHeight || ROW_HEIGHT; });
+    changed.forEach((i) => { heights[i] = rowHeight(nodes[i]); });
   } else {
-    for (let i = 0; i < count; i++) heights[i] = nodes[i].offsetHeight || ROW_HEIGHT;
+    for (let i = 0; i < count; i++) heights[i] = rowHeight(nodes[i]);
   }
 
   const offsets = new Array(count + 1);
