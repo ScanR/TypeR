@@ -12,7 +12,7 @@ import { notePerfRender } from "../../perfDebug";
 import { formatMarkdownSelection } from "../../markdownFormatting";
 import { createPageImageLookup, getImageForPage } from "../../pageImageMapping";
 import { practiceTabIds, whatsNewSession } from "../../whatsNewSession";
-import { measureRows, rowStyleHeight, sameRowHeights } from "./rowLayout";
+import { measureRows, rowLayoutKey, rowStyleHeight, sameRowHeights } from "./rowLayout";
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -151,7 +151,8 @@ const TextBlock = React.memo(function TextBlock() {
   const rowMirrorRef = React.useRef(null);
   const rowMeasureRef = React.useRef(null);
   const overlayRef = React.useRef(null);
-  const [rowMirrorBox, setRowMirrorBox] = React.useState("");
+  const [rowMetricsKey, setRowMetricsKey] = React.useState("");
+  const [fontRevision, setFontRevision] = React.useState(0);
   const [rowLayout, setRowLayout] = React.useState(null);
   const [viewport, setViewport] = React.useState({ top: 0, height: 600 });
   const scrollFrameRef = React.useRef(null);
@@ -323,23 +324,37 @@ const TextBlock = React.memo(function TextBlock() {
   }, [context.state.lines, context.state.images, pageImageLookup]);
 
   // Panel resizes rewrap the text without any state change, and the scrollbar
-  // appearing narrows it too: follow the width of the mirror itself. Moving
-  // Photoshop to a screen with another scale can change the height of the lines
-  // and nothing else, which the height of the text shows. Deferred out of the
-  // notification, as the new row heights can resize what is observed.
+  // appearing narrows it too: follow the mirror's metrics, including zoom. Deferred
+  // out of the notification, as the new row heights can resize what is observed.
   React.useEffect(() => {
     const mirror = rowMirrorRef.current;
     if (!mirror) return undefined;
     let timer = null;
-    const syncBox = () => {
+    const syncMetrics = () => {
       timer = null;
-      setRowMirrorBox(`${mirror.clientWidth}@${window.devicePixelRatio}`);
+      setRowMetricsKey(mirror.clientWidth ? rowLayoutKey(mirror) : "");
     };
     const requestSync = () => {
-      if (!timer) timer = setTimeout(syncBox, 0);
+      if (!timer) timer = setTimeout(syncMetrics, 0);
     };
-    syncBox();
+    const fonts = mirror.ownerDocument.fonts;
+    const onFontsLoaded = () => {
+      rowMeasureRef.current = null;
+      setFontRevision((revision) => revision + 1);
+    };
+    // Moving the panel to another monitor needn't resize its CSS viewport.
+    // Re-arm the query after each change so subsequent monitor moves work too.
+    let densityQuery = null;
+    const onDensityChanged = () => {
+      if (densityQuery) densityQuery.removeListener(onDensityChanged);
+      densityQuery = window.matchMedia ? window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`) : null;
+      if (densityQuery) densityQuery.addListener(onDensityChanged);
+      requestSync();
+    };
+    syncMetrics();
+    onDensityChanged();
     window.addEventListener("resize", requestSync);
+    if (fonts && fonts.addEventListener) fonts.addEventListener("loadingdone", onFontsLoaded);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(requestSync);
     if (observer) {
       observer.observe(mirror);
@@ -347,6 +362,8 @@ const TextBlock = React.memo(function TextBlock() {
     }
     return () => {
       window.removeEventListener("resize", requestSync);
+      if (fonts && fonts.removeEventListener) fonts.removeEventListener("loadingdone", onFontsLoaded);
+      if (densityQuery) densityQuery.removeListener(onDensityChanged);
       if (observer) observer.disconnect();
       if (timer) clearTimeout(timer);
     };
@@ -361,7 +378,7 @@ const TextBlock = React.memo(function TextBlock() {
     const measured = measureRows(mirror, context.state.lines.map((line) => line.rawText), rowMeasureRef.current);
     rowMeasureRef.current = measured;
     setRowLayout((current) => (sameRowHeights(current, measured) ? current : measured));
-  }, [context.state.lines, rowMirrorBox]);
+  }, [context.state.lines, rowMetricsKey, fontRevision]);
 
   React.useEffect(() => {
     const scrollContainer = linesRef.current?.parentElement;

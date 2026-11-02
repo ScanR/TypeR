@@ -35,9 +35,27 @@ const rowHeight = (node, pitch) => {
 // the spacers aren't truncated line by line.
 export const rowStyleHeight = (height) => height + 0.005;
 
+// clientWidth is an integer in CSS pixels: it can stay unchanged after a zoom,
+// a monitor/DPI change, or a fractional resize that changes a line's wrapping.
+// Old CEP also leaves getBoundingClientRect unscaled under CSS zoom, so include
+// the application's root zoom explicitly, not just the rendered width.
+export const rowLayoutKey = (mirror) => {
+  const view = mirror.ownerDocument.defaultView;
+  const style = view.getComputedStyle(mirror);
+  const root = mirror.ownerDocument.documentElement;
+  return [
+    mirror.clientWidth, style.width, mirror.getBoundingClientRect().width,
+    view.devicePixelRatio, root && view.getComputedStyle(root).zoom,
+    style.fontFamily, style.fontSize, style.fontWeight, style.fontStyle,
+    style.lineHeight, style.letterSpacing, style.wordSpacing, style.tabSize,
+    style.paddingLeft, style.paddingRight, style.whiteSpace, style.wordBreak,
+    style.overflowWrap, style.direction,
+  ].join("|");
+};
+
 export const measureRows = (mirror, rawTexts, previous) => {
   const width = mirror.clientWidth;
-  const scale = mirror.ownerDocument.defaultView.devicePixelRatio;
+  const key = rowLayoutKey(mirror);
   const count = rawTexts.length;
   while (mirror.children.length > count) mirror.removeChild(mirror.lastChild);
   while (mirror.children.length < count) mirror.appendChild(mirror.ownerDocument.createElement("div"));
@@ -50,11 +68,11 @@ export const measureRows = (mirror, rawTexts, previous) => {
     changed.push(i);
   }
 
-  // Same width and display scale: only the rewritten lines can have changed height
-  const sameBox = !!previous && previous.width === width && previous.scale === scale;
-  const pitch = sameBox ? previous.pitch : measurePitch(mirror);
-  const heights = sameBox ? previous.heights.slice(0, count) : new Array(count);
-  if (sameBox) {
+  // Reuse heights only while the actual text metrics are unchanged.
+  const sameMetrics = !!previous && previous.key === key;
+  const pitch = sameMetrics ? previous.pitch : measurePitch(mirror);
+  const heights = sameMetrics ? previous.heights.slice(0, count) : new Array(count);
+  if (sameMetrics) {
     changed.forEach((i) => { heights[i] = rowHeight(nodes[i], pitch); });
   } else {
     for (let i = 0; i < count; i++) heights[i] = rowHeight(nodes[i], pitch);
@@ -63,7 +81,7 @@ export const measureRows = (mirror, rawTexts, previous) => {
   const offsets = new Array(count + 1);
   offsets[0] = 0;
   for (let i = 0; i < count; i++) offsets[i + 1] = offsets[i] + heights[i];
-  return { rawTexts, width, scale, pitch, heights, offsets, total: offsets[count] };
+  return { rawTexts, width, key, pitch, heights, offsets, total: offsets[count] };
 };
 
 export const sameRowHeights = (a, b) => {

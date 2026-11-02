@@ -10,12 +10,16 @@ const { measureRows, rowStyleHeight, sameRowHeights } = createLoader()("app_src/
 const createMirror = (clientWidth) => {
   const ownerDocument = {
     defaultView: {
+      devicePixelRatio: 1,
       getComputedStyle: (node) => {
+        if (node === ownerDocument.documentElement) return { zoom: mirror.zoom };
+        if (node === mirror) return { width: mirror.layoutWidth + "px", fontFamily: mirror.fontFamily, lineHeight: "17px" };
         mirror.reads += 1;
-        const lines = node.text.split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / (mirror.clientWidth / 10))), 0);
+        const lines = node.text.split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / (mirror.layoutWidth / 10))), 0);
         return { height: mirror.truncate(lines * mirror.lineHeight) + mirror.extraHeight(node) + "px" };
       },
     },
+    documentElement: {},
     createElement: () => {
       const node = { text: "", ownerDocument };
       Object.defineProperty(node, "textContent", { set(value) { node.text = value; mirror.writes += 1; } });
@@ -24,6 +28,12 @@ const createMirror = (clientWidth) => {
   };
   const mirror = {
     clientWidth,
+    preciseWidth: null,
+    get layoutWidth() { return mirror.preciseWidth === null ? mirror.clientWidth : mirror.preciseWidth; },
+    // Legacy CEP doesn't include CSS zoom in this rectangle.
+    getBoundingClientRect() { return { width: mirror.layoutWidth }; },
+    zoom: 1,
+    fontFamily: "Consolas",
     lineHeight: 17,
     truncate: (height) => height,
     extraHeight: () => 0,
@@ -107,6 +117,38 @@ assert.ok(Math.abs(truncated.heights[1] - 37.4) < 1 / 256);
 const tall = createMirror(100);
 tall.extraHeight = (node) => (node.text === "emoji" ? 3 : 0);
 assert.deepStrictEqual(measureRows(tall, ["a", "emoji"], null).heights, [17, 20]);
+
+// A zoom/DPI change can leave clientWidth AND the requested CSS line-height
+// unchanged. Every cached row must still be measured, even without a text edit.
+const zoomed = createMirror(100);
+const script = ["a", "", long];
+let zoomLayout = measureRows(zoomed, script, null);
+zoomed.zoom = 1.25;
+zoomed.lineHeight = 16.8;
+zoomed.reads = 0;
+zoomed.writes = 0;
+zoomLayout = measureRows(zoomed, script, zoomLayout);
+assert.deepStrictEqual(zoomLayout.heights, [16.8, 16.8, 33.6]);
+assert.strictEqual(zoomed.reads, 4, "zoom invalidates the heights even in old CEP with unscaled rectangles");
+assert.strictEqual(zoomed.writes, 1, "a zoom change writes only the pitch probe");
+zoomed.ownerDocument.defaultView.devicePixelRatio = 1.5;
+zoomed.lineHeight = 16 + 2 / 3;
+zoomLayout = measureRows(zoomed, script, zoomLayout);
+assert.strictEqual(zoomLayout.heights[0], zoomed.lineHeight, "moving to another DPI remeasures rows");
+
+// A subpixel resize can unwrap text without changing the integer clientWidth.
+const fractional = createMirror(100);
+fractional.preciseWidth = 99.9;
+const beforeResize = measureRows(fractional, ["1234567890", "next"], null);
+fractional.preciseWidth = 100.1;
+const afterResize = measureRows(fractional, ["1234567890", "next"], beforeResize);
+assert.deepStrictEqual(beforeResize.heights, [34, 17]);
+assert.deepStrictEqual(afterResize.heights, [17, 17]);
+assert.strictEqual(afterResize.offsets[1], 17);
+
+zoomed.fontFamily = "Menlo";
+zoomed.lineHeight = 18;
+assert.strictEqual(measureRows(zoomed, script, zoomLayout).heights[0], 18, "font metrics are part of the cache key");
 
 // The textarea reads every "\r" as a line break while the rows split on "\n"
 const { reducer, initial } = loadContext({});
