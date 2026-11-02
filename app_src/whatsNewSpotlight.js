@@ -16,6 +16,7 @@ import { whatsNewSession as session } from "./whatsNewSession";
 let spot = null;
 let listener = null;
 let ring = null;
+let scaleProbe = null;
 let frame = 0;
 let shown = null;
 let missingSince = 0;
@@ -87,11 +88,25 @@ const hideRing = () => {
   setMarks([]);
 };
 
-// Layout pixels of the ring per pixel of getBoundingClientRect: they differ
-// under the panel zoom (Settings > Appearance > scale) in recent Chromium
-const rectScale = (element) => {
-  const width = element.offsetWidth;
-  return width ? element.getBoundingClientRect().width / width : 1;
+// Layout pixels per pixel of getBoundingClientRect: they differ under the panel
+// zoom (Settings > Appearance > scale) in recent Chromium. Measured on a hidden
+// element of a whole width, as offsetWidth rounds: read on the ring, whose size
+// comes from this scale, a fractional size fed back and shook it by several pixels.
+const PROBE_WIDTH = 100;
+const layoutScale = () => {
+  if (!scaleProbe || !scaleProbe.parentNode) {
+    scaleProbe = document.createElement("div");
+    scaleProbe.setAttribute("aria-hidden", "true");
+    scaleProbe.style.position = "fixed";
+    scaleProbe.style.left = "0";
+    scaleProbe.style.top = "0";
+    scaleProbe.style.width = PROBE_WIDTH + "px";
+    scaleProbe.style.height = "0";
+    scaleProbe.style.visibility = "hidden";
+    scaleProbe.style.pointerEvents = "none";
+    document.body.appendChild(scaleProbe);
+  }
+  return scaleProbe.getBoundingClientRect().width / PROBE_WIDTH;
 };
 
 // Over the panel, the ring darkens everything around the control, under the
@@ -105,7 +120,7 @@ const placeRing = (target) => {
   }
   element.style.display = "block";
   const rect = target.getBoundingClientRect();
-  const scale = rectScale(element) || 1;
+  const scale = layoutScale() || 1;
   const pad = 3;
   element.style.left = (rect.left / scale - pad) + "px";
   element.style.top = (rect.top / scale - pad) + "px";

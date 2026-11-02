@@ -542,4 +542,57 @@ const session = createLoader({
   delete global.document;
 }
 
+{
+  // offsetWidth rounds while getBoundingClientRect does not: read on the ring,
+  // whose width comes from that scale, a fractional target shook it by several pixels
+  const run = { active: true, done: {} };
+  const spotlight = createLoader({
+    "./whatsNewGuide": { avoidRing: () => {} },
+    "./whatsNewSession": { whatsNewSession: run },
+  })("app_src/whatsNewSpotlight.js");
+  const makeElement = () => {
+    const element = {
+      style: {},
+      setAttribute: () => {},
+      get offsetWidth() { return Math.round(parseFloat(this.style.width) || 0); },
+      getBoundingClientRect() {
+        const width = parseFloat(this.style.width) || 0;
+        return { left: parseFloat(this.style.left) || 0, top: parseFloat(this.style.top) || 0, width, height: parseFloat(this.style.height) || 0 };
+      },
+    };
+    return element;
+  };
+  const target = {
+    offsetWidth: 24,
+    getBoundingClientRect: () => ({ left: 320.5, top: 300, width: 23.5, height: 23.5, right: 344, bottom: 323.5 }),
+    closest: () => null,
+  };
+  const frames = [];
+  const flush = () => frames.splice(0).forEach((callback) => callback());
+  const rings = [];
+  global.window = { requestAnimationFrame: (callback) => { frames.push(callback); return 1; } };
+  global.document = {
+    querySelector: (selector) => (selector === ".target" ? target : null),
+    querySelectorAll: () => [],
+    createElement: () => {
+      const element = makeElement();
+      rings.push(element);
+      return element;
+    },
+    body: { appendChild: (element) => { element.parentNode = global.document.body; } },
+  };
+  spotlight.setTourSpot({ key: "steady", candidates: [{ selector: ".target" }] });
+  flush();
+  const ring = rings.find((element) => element.className && element.className.indexOf("whats-new-spot") === 0);
+  for (let i = 0; i < 60; i++) {
+    flush();
+    assert(Math.abs(parseFloat(ring.style.left) - 317.5) < 0.01, "The ring stays around a target of a fractional size, frame " + i + ": " + ring.style.left);
+    assert(Math.abs(parseFloat(ring.style.width) - 29.5) < 0.01, "Its width does not change either, frame " + i + ": " + ring.style.width);
+  }
+  run.active = false;
+  flush();
+  delete global.window;
+  delete global.document;
+}
+
 console.log("What's new tour tests passed");
