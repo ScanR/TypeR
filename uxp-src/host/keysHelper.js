@@ -1,5 +1,7 @@
 // Starts the external macOS keyboard reader and follows its reports.
-// Windows uses keysAddon.js; this module is bundled only for macOS.
+// This module is bundled in TypeR-UXP.ccx, which also runs on Windows (clients up
+// to 3.0.0 install it there): it starts no reader there, and the panel replaces
+// the package with UXP-Windows.ccx, whose reader is keysAddon.js.
 //
 // The reader writes "<state>|<beat>" and moves the beat at least once a
 // second. A beat that stops means a dead reader: its last state is dropped
@@ -134,7 +136,16 @@ function readState(path) {
   }
 }
 
+// True once per run of the plugin: a panel reload must not install it again
+let platformPackageAsked = false;
+function needsPlatformPackage() {
+  if (os.platform() !== "win32" || platformPackageAsked) return false;
+  platformPackageAsked = true;
+  return true;
+}
+
 async function start(onMouseLine) {
+  if (os.platform() === "win32") return false;
   mouseListener = onMouseLine || null;
   if (started) return true;
   started = true;
@@ -208,4 +219,4 @@ function access() {
   return value === "0" ? "missing" : "unknown";
 }
 
-module.exports = { start, stop, access, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };
+module.exports = { start, stop, access, needsPlatformPackage, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };

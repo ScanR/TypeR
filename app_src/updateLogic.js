@@ -33,6 +33,18 @@ const compareVersions = (left, right) => {
   return 0;
 };
 
+// The UXP plugin's release assets. Clients up to 3.0.0 install the first asset
+// that ends in .ccx with "typer" in its name, on any system, and their Legacy
+// panel and standalone updaters ask for TypeR-UXP.ccx by name. So TypeR-UXP.ccx
+// stays a package every system can run (no addon, it replaces itself on Windows:
+// uxpPlatformPackage.js), and the name of the Windows package must not contain
+// "typer": those clients then skip it, in whatever order GitHub lists the assets.
+const UXP_PACKAGE = "TypeR-UXP.ccx";
+const UXP_WINDOWS_PACKAGE = "UXP-Windows.ccx";
+
+// The Windows package of a release, whose tag is its version
+const windowsPackageUrl = (version) => "https://github.com/ScanR/TypeR/releases/download/" + version + "/" + UXP_WINDOWS_PACKAGE;
+
 // Only a built release asset is installable. The GitHub "source code" zipball
 // has no compiled app/ folder (webpack output), so installing it would leave a
 // broken extension — no fallback on purpose.
@@ -41,14 +53,9 @@ const pickUpdateDownloadUrl = (release, extension = ".zip", platform) => {
   const assets = release && Array.isArray(release.assets) ? release.assets : [];
   if (extension === ".ccx" && platform) {
     const mac = platform === "darwin" || platform === "mac";
-    const name = mac ? "TypeR-UXP-mac.ccx" : "TypeR-UXP.ccx";
-    const target = assets.find(asset => asset && asset.name === name);
-    if (target) return target.browser_download_url || null;
-    // Before 3.0.1 the ordinary CCX supported both platforms. Never hand
-    // a newer Windows-only hybrid package to macOS when its asset is absent.
-    if (!mac || compareVersions(release.tag_name, "3.0.1") >= 0) return null;
-    const legacy = assets.find(asset => asset && asset.name === "TypeR-UXP.ccx");
-    return legacy && legacy.browser_download_url || null;
+    const named = (name) => assets.find(asset => asset && asset.name === name);
+    const target = (!mac && named(UXP_WINDOWS_PACKAGE)) || named(UXP_PACKAGE);
+    return target && target.browser_download_url || null;
   }
   const zipAsset = assets.find(
     (asset) =>
@@ -126,6 +133,9 @@ const shouldRunUpdateCheck = (lastCheckAt, now, interval = UPDATE_CHECK_INTERVAL
 
 export {
   UPDATE_CHECK_INTERVAL,
+  UXP_PACKAGE,
+  UXP_WINDOWS_PACKAGE,
+  windowsPackageUrl,
   INSTALL_FOLDERS,
   parseVersion,
   compareVersions,

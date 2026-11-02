@@ -1,4 +1,4 @@
-﻿# install.ps1 [-Uxp | -Legacy] [-Silent] [TypeR-UXP.ccx]
+﻿# install.ps1 [-Uxp | -Legacy] [-Silent] [UXP-Windows.ccx]
 # Without -Uxp or -Legacy an interactive console asks which version to install;
 # a scripted installation (updates, tests) installs the Legacy version.
 param([switch]$Silent, [switch]$Uxp, [switch]$Legacy, [Parameter(Position = 0)][string]$Package, [string[]]$PhotoshopPath)
@@ -883,7 +883,7 @@ if ($Fancy) {
 # --- 5. UXP: install directly and verify actual files, never trust UPIA's
 # exit code (it can report success without installing anything).
 if ($Edition -eq 'uxp') {
-    $Source = if ($Package) { [IO.Path]::GetFullPath($Package) } else { Join-Path $ScriptDir 'TypeR-UXP.ccx' }
+    $Source = if ($Package) { [IO.Path]::GetFullPath($Package) } else { Join-Path $ScriptDir 'UXP-Windows.ccx' }
     $Work = Join-Path ([IO.Path]::GetTempPath()) ('TypeR-UXP-' + [Guid]::NewGuid().ToString('N') + '.ccx')
     $CompleteMessage = $null
     try {
@@ -897,7 +897,7 @@ if ($Edition -eq 'uxp') {
             Write-Host "  $msg_uxp_download"
             [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
             $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx' -OutFile $Work -TimeoutSec 180
+            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/ScanR/TypeR/releases/latest/download/UXP-Windows.ccx' -OutFile $Work -TimeoutSec 180
         }
         Write-Host "  $msg_uxp_installing"
         Install-TypeRPluginManually $Work

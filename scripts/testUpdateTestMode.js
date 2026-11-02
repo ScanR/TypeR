@@ -32,6 +32,7 @@ assert.deepStrictEqual(
     autoInstall: true,
     forceUxpMigration: false,
     forceManualPluginInstall: false,
+    platformPackageUrl: null,
   }
 );
 assert.strictEqual(parseUpdateTestConfig("not json"), null);
@@ -48,3 +49,8 @@ assert.strictEqual(parseUpdateTestConfig({
 }), null);
 
 console.log("update test mode tests passed");
+
+// Only a loopback address can stand in for the Windows package
+const platformConfig = (url) => parseUpdateTestConfig({ enabled: true, releasesUrl: "http://127.0.0.1:17831/releases", currentVersion: "2.9.9", platformPackageUrl: url });
+assert.strictEqual(platformConfig("http://127.0.0.1:17843/TypeR-UXP.ccx").platformPackageUrl, "http://127.0.0.1:17843/TypeR-UXP.ccx");
+assert.strictEqual(platformConfig("https://example.com/UXP-Windows.ccx").platformPackageUrl, null);

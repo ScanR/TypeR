@@ -2,7 +2,7 @@
 
 ## 3.0.1
 
-- Replace the Windows UXP keyboard EXE with a native .uxpaddon, add Settings > Debug for live keys and loader errors, and ship separate Windows/macOS CCX packages with platform-aware installers and updates.
+- Replace the Windows UXP keyboard EXE with a native .uxpaddon, add Settings > Debug for live keys and loader errors, and ship separate Windows/macOS CCX packages with platform-aware installers and updates. Every way of updating from 3.0.0 works, including the panel's own updates: TypeR gets its Windows package by itself at its first start.
 - The new TypeR no longer stays an empty panel when Photoshop's WebView does not start: it tries once more, then says so, points to the Legacy panel and lists what is needed to find the cause.
 - Paste on click now imposes "Sample All Layers" on the Magic Wand: TypeR turns the option on and selects the click again, so a click no longer reads the active layer and puts the text in the middle of the page.
 - The Legacy panel is called "TypeR (CEP)" in Photoshop, so that the version in use can be told at a glance. It is still called "TypeR (old)" while the new TypeR is installed.

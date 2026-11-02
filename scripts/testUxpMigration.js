@@ -134,8 +134,8 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
     if (body === undefined) return { ok: false, status: 404 };
     return { ok: true, status: 200, json: async () => body, arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) };
   };
-  const bytes = await migration.downloadUxpPackage(null, fakeFetch({ [migration.UXP_PACKAGE_URL]: typerPackage }));
-  await migration.downloadUxpPackage(null, fakeFetch({ [migration.UXP_MAC_PACKAGE_URL]: typerPackage }), "mac");
+  const bytes = await migration.downloadUxpPackage(null, fakeFetch({ [migration.UXP_WINDOWS_PACKAGE_URL]: typerPackage }));
+  await migration.downloadUxpPackage(null, fakeFetch({ [migration.UXP_PACKAGE_URL]: typerPackage }), "mac");
   assert.strictEqual(bytes.length, typerPackage.length);
   const testConfig = parseUpdateTestConfig({ enabled: true, releasesUrl: "http://127.0.0.1:17832/releases", currentVersion: "3.0.0", forceUxpMigration: true });
   assert.strictEqual(testConfig.forceUxpMigration, true);
@@ -150,7 +150,7 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   );
   await assert.rejects(migration.downloadUxpPackage(null, fakeFetch({})), (error) => error.code === "download");
   await assert.rejects(
-    migration.downloadUxpPackage(null, fakeFetch({ [migration.UXP_PACKAGE_URL]: strToU8("<html>rate limited</html>".repeat(10)) })),
+    migration.downloadUxpPackage(null, fakeFetch({ [migration.UXP_WINDOWS_PACKAGE_URL]: strToU8("<html>rate limited</html>".repeat(10)) })),
     (error) => error.code === "package"
   );
 

@@ -1,6 +1,7 @@
 // Finishes the UXP plugin folder (uxp/) after webpack: manifest, host page,
 // locales, icons and the native keyboard reader. `--package` also writes the
-// installable Releases/TypeR-UXP.ccx.
+// installable package: Releases/UXP-Windows.ccx, or with --mac Releases/TypeR-UXP.ccx,
+// which runs on every system and replaces itself on Windows (app_src/updateLogic.js).
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -122,7 +123,9 @@ function packageCcx(manifest) {
   // --trace: the crash trace build (uxp-src/host/crashTrace.js), sent to a
   // user whose Photoshop crashes
   const suffix = process.argv.includes('--diagnostic') ? '-debug' : process.argv.includes('--dev') ? '-dev' : process.argv.includes('--trace') ? '-trace' : '';
-  const name = addonBuild ? "TypeR-UXP-addon-win.ccx" : 'TypeR-UXP' + (macBuild ? '-mac' : '') + suffix + '.ccx';
+  const name = addonBuild ? "TypeR-UXP-addon-win.ccx"
+    : suffix ? 'TypeR-UXP' + (macBuild ? '-mac' : '') + suffix + '.ccx'
+    : macBuild ? 'TypeR-UXP.ccx' : 'UXP-Windows.ccx';
   const target = path.join(directory, name);
   fs.writeFileSync(target, zip);
   fs.writeFileSync(target + ".sha256", sha256(zip) + "  " + name + "\n");

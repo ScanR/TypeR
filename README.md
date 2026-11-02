@@ -358,7 +358,7 @@ Bug reports, translations, workflow suggestions and pull requests are welcome. S
 
 ### Preparing a release
 
-`npm run release` generates `Releases/TypeR.zip`, `Releases/TypeR-UXP.ccx` (Windows) and `Releases/TypeR-UXP-mac.ccx` (macOS), with their SHA-256 checksums; `build_release.cmd` runs the same pipeline on Windows. Publish all three with their checksums. New clients choose the matching platform asset. The Windows addon ships prebuilt; only rebuilding its C++ sources requires Visual Studio and the Adobe UXP Hybrid Plugin SDK. See the platform transition notes in [docs/uxp.md](docs/uxp.md) before publishing the first split release. Publish this built ZIP rather than GitHub's source archive. See [the release acceptance checklist](docs/release-3.0.0.md) for the real-Photoshop checks and recovery procedures.
+`npm run release` generates `Releases/TypeR.zip`, `Releases/UXP-Windows.ccx` (Windows) and `Releases/TypeR-UXP.ccx` (macOS, and the first step on Windows for clients up to 3.0.0), with their SHA-256 checksums; `build_release.cmd` runs the same pipeline on Windows. Publish all three with their checksums. New clients choose the matching platform asset. The Windows addon ships prebuilt; only rebuilding its C++ sources requires Visual Studio and the Adobe UXP Hybrid Plugin SDK. See the platform transition notes in [docs/uxp.md](docs/uxp.md) before publishing the first split release. Publish this built ZIP rather than GitHub's source archive. See [the release acceptance checklist](docs/release-3.0.0.md) for the real-Photoshop checks and recovery procedures.
 
 ## Credits and license
 

@@ -33,4 +33,4 @@ jobs:
           path: |
             Releases/TypeR.zip*
             Releases/TypeR-UXP.ccx*
-            Releases/TypeR-UXP-mac.ccx*
+            Releases/UXP-Windows.ccx*

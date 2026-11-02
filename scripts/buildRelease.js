@@ -13,16 +13,17 @@ function walk(relative) {
 }
 // One file to run per system at the root of the archive, the rest in installer/
 ['app', 'CSXS', 'icons', 'locale', 'installer', 'install_mac.command', 'install_win.cmd', 'README.md', 'LICENSE.md', 'CHANGELOG.md'].forEach(walk);
-// The installers install the UXP plugin offline from the TypeR-UXP.ccx of the
-// archive (npm run package:uxp); --with-uxp makes it mandatory.
-for (const name of ['TypeR-UXP.ccx', 'TypeR-UXP-mac.ccx']) {
+// The installers install the UXP plugin offline from the archive's package for
+// their system (npm run package:uxp); --with-uxp makes them mandatory. The
+// updaters of 3.0.0 take TypeR-UXP.ccx on every system (app_src/updateLogic.js).
+for (const name of ['UXP-Windows.ccx', 'TypeR-UXP.ccx']) {
 const uxpPackage = path.join(root, 'Releases', name);
 if (fs.existsSync(uxpPackage)) {
   const ccx = fs.readFileSync(uxpPackage);
   const uxpManifest = JSON.parse(Buffer.from(unzipSync(ccx)['manifest.json']).toString('utf8'));
-  if (uxpManifest.id !== 'com.scanr.typer' || uxpManifest.version !== require('../package.json').version) throw new Error('Releases/TypeR-UXP.ccx is not TypeR ' + require('../package.json').version + ': run npm run package:uxp');
-  if (name === 'TypeR-UXP.ccx' && (!uxpManifest.addon || !uxpManifest.requiredPermissions.enableAddon)) throw new Error('Rebuild the Windows UXP package with its native addon');
-  if (name === 'TypeR-UXP-mac.ccx' && uxpManifest.addon) throw new Error('The macOS package must not require the Windows addon');
+  if (uxpManifest.id !== 'com.scanr.typer' || uxpManifest.version !== require('../package.json').version) throw new Error('Releases/' + name + ' is not TypeR ' + require('../package.json').version + ': run npm run package:uxp');
+  if (name === 'UXP-Windows.ccx' && (!uxpManifest.addon || !uxpManifest.requiredPermissions.enableAddon)) throw new Error('Rebuild the Windows UXP package with its native addon');
+  if (name === 'TypeR-UXP.ccx' && uxpManifest.addon) throw new Error('TypeR-UXP.ccx must run on every system: no native addon');
   files[name] = ccx;
 } else if (process.argv.includes('--with-uxp')) {
   throw new Error('Missing Releases/' + name + ': run npm run package:uxp');

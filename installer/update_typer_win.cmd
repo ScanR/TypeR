@@ -155,9 +155,9 @@ try {
     $env:TYPER_INSTALL_TARGET = $TargetDir
     $env:TYPER_INSTALL_SKIP_DEBUG = $env:TYPER_UPDATE_SKIP_DEBUG
     $Installer = Join-Path $ScriptDir 'install.ps1'
-    # The plugin of this release, never a TypeR-UXP.ccx left next to this script.
+    # The plugin of this release, never a UXP-Windows.ccx left next to this script.
     # An older release without one: the installer downloads the latest.
-    $UxpPackage = Join-Path $PackageRoot 'TypeR-UXP.ccx'
+    $UxpPackage = Join-Path $PackageRoot 'UXP-Windows.ccx'
 
     # What is installed gets updated. Without the plugin, a Photoshop that can run
     # it gets the installer's menu, which recommends it; a scripted run stays on Legacy.

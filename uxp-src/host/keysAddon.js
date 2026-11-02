@@ -121,6 +121,24 @@ function createReader({ loadAddon, setState, schedule = setInterval, cancel = cl
   return { start, stop, diagnostics, access: () => running ? "granted" : loading ? "unknown" : "missing" };
 }
 
+// The reader of 3.0.0 and its files, once updated: it exits within ~1.5 s when
+// its owner file changes, and keeps its program busy until then. A failure is
+// tried again at the next start.
+async function removeOldReader(files, wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))) {
+  await files.resolveFolders();
+  const folder = files.joinPath(files.getStorageRoot(), "keys");
+  if (!(await files.exists(folder))) return true;
+  await files.writeText(files.joinPath(folder, "state.owner"), "update");
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await wait(750);
+    try {
+      await files.removeTree(folder);
+      if (!(await files.exists(folder))) return true;
+    } catch (error) {}
+  }
+  return false;
+}
+
 const reader = createReader({
   // Kept external by webpack: Adobe resolves win/x64/ through the manifest.
   loadAddon: () => require("typer-keys.uxpaddon"),
@@ -128,9 +146,13 @@ const reader = createReader({
 });
 
 module.exports = {
-  start: async (onMouseLine) => reader.start(onMouseLine),
+  start: async (onMouseLine) => {
+    removeOldReader(require("./files")).catch((error) => console.warn("TypeR: old keyboard reader", error));
+    return reader.start(onMouseLine);
+  },
+  needsPlatformPackage: () => false,
   stop: reader.stop,
   access: reader.access,
   diagnostics: reader.diagnostics,
-  _internals: { createReader, parseSnapshot, POLL_MS },
+  _internals: { createReader, parseSnapshot, removeOldReader, POLL_MS },
 };

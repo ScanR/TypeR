@@ -77,10 +77,10 @@ function Invoke-UpdaterFixture([bool]$Installed, [bool]$LegacyInstalled, [string
     $Release = Join-Path $Fixture 'release'
     $null = New-Item -ItemType Directory -Path $Updater, $Release
     Copy-Item -LiteralPath (Join-Path $ScriptDir 'installer\update_typer_win.cmd') -Destination $Updater
-    Write-Text (Join-Path $Updater 'TypeR-UXP.ccx') 'stale package next to updater'
+    Write-Text (Join-Path $Updater 'UXP-Windows.ccx') 'stale package next to updater'
     Write-Text (Join-Path $Release 'CSXS\manifest.xml') '<ExtensionManifest><Extension Id="typer" Version="3.0.0" /></ExtensionManifest>'
     foreach ($Folder in 'app', 'icons', 'locale') { Write-Text (Join-Path $Release ($Folder + '\fixture')) 'fixture' }
-    if ($IncludePackage) { Copy-Item -LiteralPath $PackagePath -Destination (Join-Path $Release 'TypeR-UXP.ccx') }
+    if ($IncludePackage) { Copy-Item -LiteralPath $PackagePath -Destination (Join-Path $Release 'UXP-Windows.ccx') }
     $ReleaseZip = Join-Path $Fixture 'release.zip'
     [IO.Compression.ZipFile]::CreateFromDirectory($Release, $ReleaseZip)
     $Cep = Join-Path $Fixture 'cep'
@@ -361,7 +361,7 @@ try {
         Assert ((Get-Content -LiteralPath $UxpRegistry -Raw) -ceq $Before) 'Interrupted registry not recovered'
         Assert (-not (Test-Path -LiteralPath (Join-Path $Control 'pending.json'))) 'Recovery journal left behind'
     }
-    $RealPackage = Join-Path $ScriptDir 'Releases\TypeR-UXP.ccx'
+    $RealPackage = Join-Path $ScriptDir 'Releases\UXP-Windows.ccx'
     if (Test-Path -LiteralPath $RealPackage) {
       Test 'Real distributed CCX extracts and verifies all packaged files' {
         $Root = Join-Path $Fixture 'real-package'

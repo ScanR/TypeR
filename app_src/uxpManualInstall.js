@@ -12,6 +12,9 @@ import { strFromU8, unzipSync } from "fflate";
 
 export const UXP_PLUGIN_ID = "com.scanr.typer";
 const STAGING_SUFFIX = ".installing";
+// A package of the running version cannot take the running folder's name: on
+// Windows, the running plugin's files cannot be removed yet.
+export const SAME_VERSION_SUFFIX = ".win";
 
 export const isPluginFolder = (name) => (
   typeof name === "string" && name.indexOf(UXP_PLUGIN_ID + "_") === 0 && !name.endsWith(STAGING_SUFFIX)
@@ -46,7 +49,7 @@ const parseRegistry = (registryText) => {
 
 // PS.json with this plugin registered. Other plugins are kept, and an
 // unreadable file is an error: replacing it would unregister them.
-export const registerPlugin = (registryText, manifest, platform = "darwin") => {
+export const registerPlugin = (registryText, manifest, platform = "darwin", folder = pluginFolderName(manifest)) => {
   const registry = parseRegistry(registryText);
   const others = (registry.plugins || []).filter((plugin) => !plugin || plugin.pluginId !== manifest.id);
   const host = [].concat(manifest.host || [])[0] || {};
@@ -54,7 +57,7 @@ export const registerPlugin = (registryText, manifest, platform = "darwin") => {
     hostMinVersion: host.minVersion,
     name: manifest.name,
     // Photoshop's Windows registry reader does not resolve $localPlugins/.
-    path: (platform === "win32" ? "$localPlugins\\External\\" : "$localPlugins/External/") + pluginFolderName(manifest),
+    path: (platform === "win32" ? "$localPlugins\\External\\" : "$localPlugins/External/") + folder,
     pluginId: manifest.id,
     status: "enabled",
     type: "uxp",
@@ -81,13 +84,14 @@ export const stalePluginFolders = (folderNames, registryText, ownFolder) => {
 };
 
 // io: { pluginsFolder, join, removeTree, rename, writeFile, readRegistry,
-// writeRegistry }. The files go to a staging folder first: an installation cut
+// writeRegistry, ownFolder (the running plugin's, if any) }. The files go to a staging folder first: an installation cut
 // short leaves nothing Photoshop or the next installation could take for a
 // plugin, and the registry is written last.
 export const installPluginFiles = async (bytes, io) => {
   const { manifest, files } = readPluginPackage(bytes);
-  const registry = registerPlugin(await io.readRegistry(), manifest, io.platform);
-  const target = io.join(io.pluginsFolder, pluginFolderName(manifest));
+  const folder = pluginFolderName(manifest) === io.ownFolder ? io.ownFolder + SAME_VERSION_SUFFIX : pluginFolderName(manifest);
+  const registry = registerPlugin(await io.readRegistry(), manifest, io.platform, folder);
+  const target = io.join(io.pluginsFolder, folder);
   const staging = target + STAGING_SUFFIX;
   await io.removeTree(staging);
   try {

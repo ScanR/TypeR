@@ -432,6 +432,7 @@ const requests = {
   flushMirror: () => mirror.flush(),
   openUrl: (url) => uxp.shell.openExternal(String(url)),
   keyboardAccess: () => keysHelper.access(),
+  needsPlatformPackage: () => keysHelper.needsPlatformPackage(),
   keyboardDebug: () => typeof keysHelper.diagnostics === "function" ? keysHelper.diagnostics() : {
     source: "helper", running: null, foreground: null, error: "",
     state: keyboard.getState(), sampledAt: keyboard.lastUpdate(),

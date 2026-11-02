@@ -9,7 +9,7 @@ const files = require("./files");
 const { systemCall } = require("./jsx");
 const { matchFontRef, normalize } = require("../../app_src/fontFileExport");
 const { buildWindowsRegistrationScript } = require("../../app_src/fontInstaller");
-const { installPluginFiles, pluginFolderName, stalePluginFolders } = require("../../app_src/uxpManualInstall");
+const { SAME_VERSION_SUFFIX, installPluginFiles, pluginFolderName, stalePluginFolders } = require("../../app_src/uxpManualInstall");
 const { legacyManifestWithName } = require("../../app_src/legacyPanelName");
 const updateScript = require("../../app_src/uxpUpdateScript");
 
@@ -370,7 +370,19 @@ function validatePackage(bytes, expectedVersion, pluginId) {
   return manifest;
 }
 
-async function installUpdatePackage(base64, expectedVersion, options = {}) {
+// The panel's update and the swap to the Windows package can start together:
+// one installation at a time.
+let updateInstallation = null;
+function installUpdatePackage(base64, expectedVersion, options = {}) {
+  if (!updateInstallation) {
+    updateInstallation = runUpdateInstallation(base64, expectedVersion, options).finally(() => {
+      updateInstallation = null;
+    });
+  }
+  return updateInstallation;
+}
+
+async function runUpdateInstallation(base64, expectedVersion, options) {
   const bytes = base64ToBytes(base64);
   const manifest = validatePackage(bytes, expectedVersion, PLUGIN_ID);
   const installer = upiaPath();
@@ -454,10 +466,11 @@ async function removeUpdateFolder() {
   await files.removeTree(await updateFolder());
 }
 
-async function writePluginFiles(bytes, pluginsFolder, writeRegistry) {
+async function writePluginFiles(bytes, pluginsFolder, writeRegistry, ownFolder) {
   const { registry } = await files.getPluginInstallPaths();
   await installPluginFiles(bytes, {
     platform: os.platform(),
+    ownFolder,
     pluginsFolder,
     join: files.joinPath,
     removeTree: files.removeTree,
@@ -470,16 +483,17 @@ async function writePluginFiles(bytes, pluginsFolder, writeRegistry) {
 
 async function installPluginManually(bytes) {
   const { pluginsFolder, registry } = await files.getPluginInstallPaths();
-  await writePluginFiles(bytes, pluginsFolder, (text) => files.writeTextAtomic(registry, text));
+  const own = files.basename((await lfs.getPluginFolder()).nativePath);
+  await writePluginFiles(bytes, pluginsFolder, (text) => files.writeTextAtomic(registry, text), own);
 }
 
 // After an update installed by hand, the previous version's folder stays until
 // Photoshop runs the new one. Creative Cloud's installer cleans up after itself.
 async function removeStalePluginFolders(options = {}) {
-  if (!options.forceManual && await files.exists(upiaPath())) return;
+  const own = files.basename((await lfs.getPluginFolder()).nativePath);
+  if (!options.forceManual && !own.endsWith(SAME_VERSION_SUFFIX) && await files.exists(upiaPath())) return;
   const { pluginsFolder, registry } = await files.getPluginInstallPaths();
   if (!(await files.exists(registry))) return;
-  const own = files.basename((await lfs.getPluginFolder()).nativePath);
   const names = (await files.listFolder(pluginsFolder)).map((child) => child.name);
   for (const name of stalePluginFolders(names, await files.readText(registry), own)) {
     await files.removeTree(files.joinPath(pluginsFolder, name));

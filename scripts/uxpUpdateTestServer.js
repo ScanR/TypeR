@@ -1,7 +1,9 @@
 // Local test of the UXP panel's update without a Photoshop restart
 // (app_src/uxpUpdateScript.js), without publishing a release:
-//   npm run build:uxp && npm run test:uxp-update [-- [--manual] [port]]
+//   npm run build:uxp && npm run test:uxp-update [-- [--manual] [--platform-package] [port]]
 // --manual installs as if Creative Cloud's plugin installer were absent.
+// --platform-package runs the swap to the Windows package on any system, with
+// the built plugin at the same version (app_src/uxpPlatformPackage.js).
 // It serves the built plugin as the next version and writes the update test
 // file (autoInstall) into TypeR's storage. The next time the panel loads, it
 // updates itself, and the new version's panel reports here once it runs.
@@ -13,10 +15,11 @@ const path = require("path");
 const { strToU8, zipSync } = require("fflate");
 
 const root = path.resolve(__dirname, "..");
-const assetName = process.platform === "darwin" ? "TypeR-UXP-mac.ccx" : "TypeR-UXP.ccx";
+const assetName = process.platform === "darwin" ? "TypeR-UXP.ccx" : "UXP-Windows.ccx";
 const plugin = path.join(root, process.platform === "darwin" ? "uxp-mac" : "uxp");
 const manual = process.argv.includes("--manual");
-const port = Number(process.argv.slice(2).find((arg) => arg !== "--manual") || 17843);
+const platformPackage = process.argv.includes("--platform-package");
+const port = Number(process.argv.slice(2).find((arg) => !arg.startsWith("--")) || 17843);
 const baseUrl = "http://127.0.0.1:" + port;
 const storageRoot = process.platform === "win32"
   ? path.join(process.env.APPDATA || "", "TypeR", "UXP")
@@ -29,7 +32,7 @@ if (!Number.isInteger(port) || port <= 0 || port > 65535) throw new Error("Inval
 
 const manifest = JSON.parse(fs.readFileSync(path.join(plugin, "manifest.json"), "utf8"));
 const parts = manifest.version.split(".").map(Number);
-const nextVersion = [parts[0], parts[1], parts[2] + 1].join(".");
+const nextVersion = platformPackage ? manifest.version : [parts[0], parts[1], parts[2] + 1].join(".");
 
 const entries = {};
 const add = (folder, relative) => {
@@ -80,7 +83,8 @@ server.listen(port, "127.0.0.1", () => {
     enabled: true,
     releasesUrl: baseUrl + "/releases",
     currentVersion: manifest.version,
-    autoInstall: true,
+    autoInstall: !platformPackage,
+    platformPackageUrl: platformPackage ? baseUrl + "/TypeR-UXP.ccx" : undefined,
     forceManualPluginInstall: manual,
   }, null, 2));
   console.log("Serving TypeR " + nextVersion + " at " + baseUrl + ", test file: " + testFile);

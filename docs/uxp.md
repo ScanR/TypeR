@@ -158,20 +158,33 @@ npm run package:uxp
 ### Separate platform packages
 
 npm run package:uxp builds and verifies both packages:
-- Releases/TypeR-UXP.ccx: Windows x64, manifest v6 with enableAddon.
-- Releases/TypeR-UXP-mac.ccx: macOS, manifest v5 with the existing external reader.
+- Releases/UXP-Windows.ccx: Windows x64, manifest v6 with enableAddon.
+- Releases/TypeR-UXP.ccx: macOS with the external reader, manifest v5. It also runs on Windows, only to replace itself (see below).
 
-The updater and Legacy-to-UXP migration choose the platform's exact asset name.
-The macOS installer also selects the macOS package. Both CCX files are included
-in TypeR.zip by the release command. Publish both CCX files and their checksums.
-A Windows-only hybrid manifest must not be installed on macOS: Adobe requires a
-native binary for the target platform. This is not a Marketplace hybrid package.
+The updater, the installers and Legacy-to-UXP migration choose the platform's exact
+asset name. Both CCX files are included in TypeR.zip by the release command. Publish
+both CCX files and their checksums. The Windows manifest must not be installed on
+macOS: Adobe requires a native binary for the target platform. This is not a
+Marketplace hybrid package. No release is published by these build commands.
 
-**Upgrade from 3.0.0:** older UXP clients select the first CCX asset without looking
-at its platform. The first upgrade to this split must use the correct platform's
-CCX or the new offline installer, particularly on macOS. Do not advertise the old
-in-panel updater as a safe cross-platform route to 3.0.1. No release is published
-by these build commands.
+**Upgrade from 3.0.0:** the 3.0.0 clients cannot change, and they do not look at the
+platform. Its panel installs the first asset ending in `.ccx` with "typer" in its name;
+its Legacy panel and standalone updaters ask for `TypeR-UXP.ccx` by name. So:
+
+- `TypeR-UXP.ccx` must keep that name and run on every system.
+- `UXP-Windows.ccx` must not have "typer" in its name, so that they skip it whatever the
+  order of the assets. Never publish another `.ccx` with "typer" in its name
+  (`TypeR-UXP-addon-win.ccx`, `TypeR-UXP-debug.ccx`…): a 3.0.0 panel could take it.
+- On Windows, `TypeR-UXP.ccx` starts no keyboard reader and its panel at once installs
+  `UXP-Windows.ccx` from the release of its own version
+  (`app_src/uxpPlatformPackage.js`), through the ordinary update path. It says so if
+  Photoshop must restart or if it failed, and tries again at the next start. A release's
+  tag must therefore be its version.
+- The Windows version then removes the `keys` folder of the 3.0.0 reader.
+- Without Creative Cloud's installer, the package of the running version goes to
+  `com.scanr.typer_<version>.win`: the running folder cannot be replaced on Windows.
+
+`npm run test:uxp-update -- --platform-package` runs this swap on any system.
 
 npm run package:uxp:addon:installer retains the standalone Windows installation
 kit at Releases/TypeR-Addon-Windows.zip. Extract all files, quit Photoshop and run
@@ -199,7 +212,7 @@ Legacy panel once it is updated (`app_src/uxpMigration.js`, `components/modal/ux
 - The offer opens first at startup, before What's new, when Photoshop is 2025 (26.0) or later and
   TypeR UXP is not installed. It is shown only to existing users with update checks on. "Later" asks
   again a week later, "Don't ask again" stops it, and Settings > General > Updates keeps a button.
-- The panel downloads `TypeR-UXP.ccx` on Windows or `TypeR-UXP-mac.ccx` on macOS from the latest release, checks that it is a TypeR plugin, and
+- The panel downloads `UXP-Windows.ccx` on Windows or `TypeR-UXP.ccx` on macOS from the latest release, checks that it is a TypeR plugin, and
   hands it to Creative Cloud's plugin installer through the panel's Node.js (`child_process.execFile`,
   no ExtendScript). Photoshop loads a first installation at once. Without that installer, the panel
   installs the package by hand (see below) and asks to restart Photoshop.
@@ -214,7 +227,7 @@ Legacy panel once it is updated (`app_src/uxpMigration.js`, `components/modal/ux
   version opens from Plug-ins > TypeR, until "Don't show again". Those windows follow when it closes.
   Photoshop versions older than 26.0 cannot run the plugin and get no such notice.
 
-Every release must therefore publish `TypeR.zip`, `TypeR-UXP.ccx` and `TypeR-UXP-mac.ccx`, and no other `.zip` whose name
+Every release must therefore publish `TypeR.zip`, `TypeR-UXP.ccx` and `UXP-Windows.ccx`, and no other `.zip` whose name
 contains "typer".
 
 Test it without publishing anything: `npm run package:uxp`, then `npm run test:uxp-migration` serves
@@ -227,7 +240,7 @@ The standalone updaters (`installer/update_typer_mac.sh`, `installer/update_type
 are there. Without the plugin, a Photoshop that can run it gets the installers' menu, with UXP
 recommended; Q leaves everything as it was. An older Photoshop, or a scripted run (no console, or
 `--silent` on Windows), updates Legacy as before. Their messages are the installers' ones. The plugin
-always comes from the downloaded archive, never from a `TypeR-UXP.ccx` left next to the script.
+always comes from the downloaded archive, never from a package left next to the script.
 
 ## Updating without a restart
 

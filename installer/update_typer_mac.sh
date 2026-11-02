@@ -138,7 +138,7 @@ export TYPER_INSTALL_SOURCE="$PACKAGE_ROOT" TYPER_INSTALL_TARGET="$DEST_DIR" TYP
 INSTALLER="$SCRIPT_DIR/install_mac.sh"
 # The plugin of this release, never a TypeR-UXP.ccx left next to this script.
 # An older release without one: the installer downloads the latest.
-UXP_PACKAGE="$PACKAGE_ROOT/TypeR-UXP-mac.ccx"
+UXP_PACKAGE="$PACKAGE_ROOT/TypeR-UXP.ccx"
 
 update_legacy() {
   bash "$INSTALLER" --silent

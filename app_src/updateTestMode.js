@@ -35,6 +35,8 @@ const parseUpdateTestConfig = (raw) => {
     forceUxpMigration: data.forceUxpMigration === true,
     // Installs the plugin as if Creative Cloud's plugin installer were absent
     forceManualPluginInstall: data.forceManualPluginInstall === true,
+    // Runs the swap to the Windows package on any system, from this address
+    platformPackageUrl: isLoopbackHttpUrl(data.platformPackageUrl) ? data.platformPackageUrl : null,
   };
 };
 

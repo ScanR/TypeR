@@ -13,7 +13,7 @@ const os = require("os");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
-const assetName = process.platform === "darwin" ? "TypeR-UXP-mac.ccx" : "TypeR-UXP.ccx";
+const assetName = process.platform === "darwin" ? "TypeR-UXP.ccx" : "UXP-Windows.ccx";
 const version = require("../package.json").version;
 const manual = process.argv.includes("--manual");
 const args = process.argv.slice(2).filter((arg) => arg !== "--manual");

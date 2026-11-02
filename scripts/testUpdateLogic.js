@@ -63,15 +63,24 @@ assert.strictEqual(pickUpdateDownloadUrl({ assets: [{ name: "other-tool.zip" }] 
 // --- findNewerReleases ---
 const splitRelease = { tag_name: "3.0.1", assets: [
   { name: "TypeR-UXP-debug.ccx", browser_download_url: "debug" },
-  { name: "TypeR-UXP-mac.ccx", browser_download_url: "mac" },
-  { name: "TypeR-UXP.ccx", browser_download_url: "win" },
+  { name: "TypeR-UXP.ccx", browser_download_url: "universal" },
+  { name: "UXP-Windows.ccx", browser_download_url: "win" },
 ] };
 assert.strictEqual(pickUpdateDownloadUrl(splitRelease, ".ccx", "win32"), "win");
-assert.strictEqual(pickUpdateDownloadUrl(splitRelease, ".ccx", "darwin"), "mac");
-const windowsOnly = { ...splitRelease, assets: splitRelease.assets.filter(asset => asset.name !== "TypeR-UXP-mac.ccx") };
-assert.strictEqual(pickUpdateDownloadUrl(windowsOnly, ".ccx", "darwin"), null, "Never install a Windows-only addon on macOS");
+assert.strictEqual(pickUpdateDownloadUrl(splitRelease, ".ccx", "win"), "win");
+assert.strictEqual(pickUpdateDownloadUrl(splitRelease, ".ccx", "darwin"), "universal");
+assert.strictEqual(pickUpdateDownloadUrl(splitRelease, ".ccx", "mac"), "universal");
+const windowsOnly = { ...splitRelease, assets: splitRelease.assets.filter(asset => asset.name !== "TypeR-UXP.ccx") };
+assert.strictEqual(pickUpdateDownloadUrl(windowsOnly, ".ccx", "darwin"), null, "Never install the Windows addon on macOS");
 assert.deepStrictEqual(findNewerReleases([windowsOnly], "3.0.0", ".ccx", "darwin"), []);
-assert.strictEqual(pickUpdateDownloadUrl({ ...windowsOnly, tag_name: "3.0.0" }, ".ccx", "darwin"), "win", "Older CCX packages were universal");
+const universalOnly = { tag_name: "3.0.0", assets: [{ name: "TypeR-UXP.ccx", browser_download_url: "universal" }] };
+assert.strictEqual(pickUpdateDownloadUrl(universalOnly, ".ccx", "win32"), "universal", "Older releases have only the universal package");
+// The selection of the 3.0.0 panels, which cannot change: whatever the order of
+// the assets, they must get the package that runs on every system.
+const clientOf300 = (release) => release.assets.find((asset) => asset.name.toLowerCase().endsWith(".ccx") && asset.name.toLowerCase().indexOf("typer") !== -1).browser_download_url;
+const releasedAssets = ["TypeR-UXP.ccx", "UXP-Windows.ccx", "TypeR.zip"].map((name) => ({ name, browser_download_url: name }));
+assert.strictEqual(clientOf300({ assets: releasedAssets }), "TypeR-UXP.ccx");
+assert.strictEqual(clientOf300({ assets: [...releasedAssets].reverse() }), "TypeR-UXP.ccx");
 
 // --- findNewerReleases ---
 const releases = [

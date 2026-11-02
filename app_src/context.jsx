@@ -16,6 +16,7 @@ import { getStoredSelectionLineIndex } from "./multiBubbleHistory";
 import { collectDescendantIds, getAutomaticTagStyles } from "./folderUtils";
 import { perfMeasure } from "./perfDebug";
 import { useKeyboardAccessPrompt } from "./keyboardAccess";
+import { useUxpPlatformPackage } from "./uxpPlatformPackage";
 import { TAB_FIELDS, createTab, migrateTabStorage, moveTab } from "./tabStorage";
 import { applyAutoTabNames, getNextDefaultTabName } from "./tabNames";
 import { getInterfaceLanguage } from "./interfaceLanguage";
@@ -1966,6 +1967,7 @@ const ContextProvider = React.memo(function ContextProvider(props) {
       dispatch({ type: "setModal", modal: "update", data });
     }).catch(error => console.warn("Automatic update check failed:", error));
   }, [state.checkUpdates, state.autoUpdate]);
+  useUxpPlatformPackage();
   useKeyboardAccessPrompt(state.modalType);
   // Legacy panel: called "TypeR (CEP)", or "TypeR (old)" while TypeR UXP is installed (uxpMigration.js)
   React.useEffect(() => {
