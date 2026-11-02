@@ -276,7 +276,6 @@ const HOST_HELPERS = [
   "_rectFrom", "_rectOverlap", "_unionRect", "_usableBubble", "_bubbleCandidateValid", "_probePoints", "_probeMargin", "_pickBubble",
   "_splitBubble", "_autoCenterEnabled", "_doubleBubbleEntriesValid", "_transformScale", "_displayedTextSize", "_displayedStyleValue",
   "_scaleTextShape", "_textResizePlan", "_appliedSizeRatio", "_keepLiveTextSize", "_alignPlacementMap",
-  "_topSlotOfStack",
 ];
 const host = new Function(hostSource + "\nreturn {" + HOST_HELPERS.join(", ") + "};")();
 
@@ -391,36 +390,30 @@ shapes.forEach((bounds) => {
 
 /* ---------------- slot of a new text in the layer stack ---------------- */
 
-// Stack as Photoshop indexes it, listed from the top: "[" starts a folder and
-// "]" ends it. The expected slots were measured on Photoshop 2026, moving a
-// text made above each layer of these documents.
-const stackSections = (stack) => {
-  const top = stack.length;
-  return (index) => ({ "[": "layerSectionStart", "]": "layerSectionEnd" }[stack[top - index]] || "layerSectionContent");
-};
-const nested = ["top", "[", "a", "[", "b", "c", "]", "d", "]", "e", "f"];
-[
-  // Outside any folder: above everything, folders included
-  { stack: nested, index: 1, slot: 11 },
-  { stack: nested, index: 2, slot: 11 },
-  // Already on top: no move
-  { stack: nested, index: 11, slot: 11 },
-  // In a folder, under a nested folder: first in that folder
-  { stack: nested, index: 4, slot: 9 },
-  { stack: nested, index: 9, slot: 9 },
-  // In the nested folder
-  { stack: nested, index: 6, slot: 7 },
-  { stack: nested, index: 7, slot: 7 },
-  // A folder at the very top is not entered from outside
-  { stack: ["[", "a", "]", "b"], index: 1, slot: 4 },
-  // A nested folder first in its parent is not entered either
-  { stack: ["[", "[", "a", "]", "b", "]", "c"], index: 3, slot: 6 },
-  { stack: ["only"], index: 1, slot: 1 },
-].forEach(({ stack, index, slot }) => {
-  const sectionAt = stackSections(stack);
-  assert.strictEqual(host._topSlotOfStack(index, stack.length, sectionAt), slot, stack.join(" ") + " from " + index);
-  assert.strictEqual(port._topSlotOfStack(index, stack.length, sectionAt), slot, "UXP: " + stack.join(" ") + " from " + index);
-});
+/* ---------------- where a new text goes in the layer stack ---------------- */
+
+// A new text is released from a clipping mask, then brought to the front of
+// its folder with Photoshop's ordinal move: no index arithmetic (a background
+// layer and every folder shift the indexes).
+const stackPhotoshop = (answers) => ({ action: { batchPlay: (commands) => [answers(commands[0])] }, app: {}, core: {}, constants: { LayerKind: {} } });
+const raiseCalls = [];
+const raisePort = loadPortModule(stackPhotoshop((command) => {
+  raiseCalls.push(command);
+  if (command._obj === "get" && command._target[0]._property === "group") return { group: true };
+  return {};
+}))._internals;
+raisePort._raiseNewTextLayer();
+assert.deepStrictEqual(raiseCalls.map((command) => command._obj), ["get", "ungroup", "move"], "a clipped text is released, then raised");
+assert.deepStrictEqual(raiseCalls[2].to, { _ref: "layer", _enum: "ordinal", _value: "front" }, "the raise is Photoshop's Bring to Front");
+assert.deepStrictEqual(raiseCalls[2]._target, [{ _ref: "layer", _enum: "ordinal", _value: "targetEnum" }]);
+const plainCalls = [];
+loadPortModule(stackPhotoshop((command) => { plainCalls.push(command._obj); return { group: false }; }))._internals._raiseNewTextLayer();
+assert.deepStrictEqual(plainCalls, ["get", "move"], "an unclipped text is only raised");
+// A text already in front: Photoshop refuses the move, which must not fail the paste
+const refusing = loadPortModule(stackPhotoshop((command) => (command._obj === "move" ? { _obj: "error", message: "The command \"Move\" is not currently available.", result: 1 } : { group: false })))._internals;
+assert.doesNotThrow(() => refusing._raiseNewTextLayer());
+assert.match(hostSource, /charIDToTypeID\("Frnt"\)/, "host.js brings the new text to the front the same way");
+assert.doesNotMatch(hostSource, /_topSlotOfStack|putIndex\(charID\.Layer, slot/, "host.js no longer moves a new text by index");
 
 /* -------------- auto-centre and size +/- helpers vs host.js -------------- */
 

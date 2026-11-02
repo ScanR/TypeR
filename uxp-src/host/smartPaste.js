@@ -415,6 +415,15 @@ function placeText(session, pointText) {
   return host._getActiveLayerId();
 }
 
+// A layer's place in the stack, from the bottom up (itemIndex): -1 when unknown
+function stackIndex(layerId) {
+  try {
+    return Math.trunc(Number(unitValue(get([{ _property: "itemIndex" }, { _ref: "layer", _id: layerId }]).itemIndex)));
+  } catch (error) {
+    return -1;
+  }
+}
+
 async function commitSessions(prepared) {
   const doc = ps.app.activeDocument;
   if (!doc || doc.id !== prepared.documentId) throw Object.assign(new Error("The document changed"), { code: "doc" });
@@ -423,10 +432,14 @@ async function commitSessions(prepared) {
   await modal("TypeR", (context) => suspendHistory(context, HISTORY_NAME, () => {
     for (const session of prepared.sessions) {
       if (session.plan.autoClean && session.plan.cleanupPolygon) {
-        // Back on the user's layer afterwards: it decides the text's folder
+        // Back on the user's layer afterwards when it sits above the clean
+        // layer: it decides the text's folder. Below it, the clean layer stays
+        // active, so the text is made above the fill whatever the stack.
         const activeId = host._getActiveLayerId();
-        paintCleanup(doc, session.plan);
-        play({ _obj: "select", _target: [{ _ref: "layer", _id: activeId }], makeVisible: false });
+        const cleanId = paintCleanup(doc, session.plan);
+        if (activeId !== cleanId && stackIndex(activeId) > stackIndex(cleanId)) {
+          play({ _obj: "select", _target: [{ _ref: "layer", _id: activeId }], makeVisible: false });
+        }
       }
       play({ _obj: "set", _target: [SELECTION], to: { _enum: "ordinal", _value: "none" } });
       layerIds.push(placeText(session, prepared.pointText));

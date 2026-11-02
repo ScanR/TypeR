@@ -246,7 +246,7 @@ function hostHarness({ readWebViewFolders } = {}) {
   for (const tick of [...h.timers.values()]) tick();
   assert.match(h.nodes['typer-status'].textContent, /did not finish initializing/);
   assert.strictEqual(h.nodes['typer-recovery'].style.display, 'block');
-  assert.strictEqual(second.style.display, 'none');
+  assert.strictEqual(second.style.display, 'block', 'the view stays in place after the deadline: a late start must still open the panel');
 
   await h.nodes['typer-retry'].onclick();
   const third = h.nodes['typer-view'];

@@ -25,6 +25,12 @@ function createPanelStartup({ show, environment, retry = () => {}, onFailure = (
     text += french
       ? '\nVous pouvez utiliser la version Legacy : Fenêtre > Extensions > TypeR (CEP).'
       : '\nThe Legacy version may still work: Window > Extensions > TypeR (CEP).';
+    if (!bridge && !loadStarted && !loadStopped) {
+      // The view is still there: Photoshop 27.7 starts its WebView slowly
+      text += french
+        ? '\nTypeR attend encore : le panneau peut apparaître dans un instant (depuis Photoshop 27.7, le WebView met parfois longtemps à démarrer).'
+        : '\nTypeR keeps waiting: the panel may still appear in a moment (since Photoshop 27.7, the WebView can take long to start).';
+    }
     if (!bridge && !loadStopped && env.platform === 'win32') {
       text += french
         ? '\nVérifiez le composant UXP WebView / Microsoft Edge WebView2 de Photoshop. S’il est absent ou endommagé, réparez l’installation Adobe, puis redémarrez Photoshop.'

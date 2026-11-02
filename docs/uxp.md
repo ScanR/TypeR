@@ -101,7 +101,10 @@ no load reported after 5 s sets the address once more, and no message from the p
 notice with the versions, the view's size, the load events and, on Windows, the WebView2 versions present
 (reported by `panelStart.js`). Once the bridge answers, the app has up to 15 s to finish initializing;
 repeated bridge messages do not extend that deadline. Only the app-ready message clears the loading
-notice. Hiding the panel suspends the deadlines and showing it starts a fresh waiting period. The native
+notice. Hiding the panel suspends the deadlines and showing it starts a fresh waiting period. The notice
+leaves the WebView in place: Photoshop 27.7 can take far longer than before to start it (its renderer is
+gone once the last WebView closes and starts cold), and a hidden WebView never loads (see
+`docs/uxp-startup-reproduction.md`), so a late start still opens the panel by itself. The native
 **Reload TypeR** button saves pending settings writes and recreates the WebView.
 
 `npm run package:uxp:debug` writes `Releases/TypeR-DEBUG-Windows-EN.zip`: the support build adds an independent

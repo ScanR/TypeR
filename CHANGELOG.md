@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.2
+
+- Fix the text pasted with Auto clean landing under the `TypeR Clean` layer, hidden by its fill, since 3.0.1: the text is made above the clean layer again, in the user's folder when that folder sits above it, and a new text is brought to the front of its folder with Photoshop's own command instead of a computed layer index (which also raised a Photoshop error on some documents).
+- The new TypeR no longer hides its WebView when it has not answered after 15 s: Photoshop 27.7 can take much longer to start it, and a hidden WebView never loads. The notice says TypeR keeps waiting, and the panel opens by itself when the WebView starts.
+
 ## 3.0.1
 
 - Replace the Windows UXP keyboard EXE with a native .uxpaddon, and ship separate Windows/macOS CCX packages with platform-aware installers and updates. Every way of updating from 3.0.0 works, including the panel's own updates: TypeR gets its Windows package by itself at its first start.

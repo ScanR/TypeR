@@ -129,8 +129,11 @@ const panelStartup = createPanelStartup({
     showStatus(text);
     const recovery = document.getElementById('typer-recovery');
     if (recovery) recovery.style.display = failed ? 'block' : 'none';
-    // The native error must have room even in a short docked panel.
-    if (view) view.style.display = failed ? 'none' : 'block';
+    // The notice sits above the view, which stays in place even after the
+    // deadline: a hidden WebView never loads (docs/uxp-startup-reproduction.md)
+    // while Photoshop 27.7 can take long to start one, and a late start must
+    // still open the panel. The status block keeps its room (index.html).
+    if (view) view.style.display = 'block';
   }
 });
 

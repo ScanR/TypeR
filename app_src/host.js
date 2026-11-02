@@ -2300,62 +2300,33 @@ function _applyRichTextRanges(textParams, textRuns, textLength) {
   return true;
 }
 
-// The slot a new layer takes: first in its folder, or on top of the document
-// outside any folder. Indexes run from the bottom of the stack up, and a folder
-// has its start entry above its content and its end entry below it.
-function _topSlotOfStack(index, top, sectionAt) {
-  var depth = 0;
-  for (var i = index + 1; i <= top; i++) {
-    var section = sectionAt(i);
-    if (section === "layerSectionEnd") {
-      depth++;
-    } else if (section === "layerSectionStart") {
-      if (!depth) return i - 1;
-      depth--;
-    }
-  }
-  return top;
-}
-
-function _layerSectionAt(index) {
-  var layerSection = stringIDToTypeID("layerSection");
-  var reference = new ActionReference();
-  reference.putProperty(charID.Property, layerSection);
-  reference.putIndex(charID.Layer, index);
-  return typeIDToStringID(executeActionGet(reference).getEnumerationValue(layerSection));
-}
-
 // Photoshop makes a layer right above the active one, so under whatever is
-// higher up, and clipped when the active one is. A new text must not stay there.
-// It only decides where the text sits, so a refusal must not fail the paste.
+// higher up, and clipped when the active one is. A new text must not stay
+// there: it is released from the clipping mask, then brought to the front,
+// which Photoshop keeps inside the layer's folder (Layer > Arrange > Bring to
+// Front). No index arithmetic: layer indexes shift with a background layer and
+// with every folder, and the 3.0.1 index move misplaced texts under the clean
+// layer. It only decides where the text sits, so a refusal must not fail the
+// paste; Photoshop refuses the move when the layer is already in front.
 function _raiseNewTextLayer() {
+  var target = new ActionReference();
+  target.putEnumerated(charID.Layer, charID.Ordinal, charID.Target);
   try {
-    var itemIndex = stringIDToTypeID("itemIndex");
-    var numberOfLayers = stringIDToTypeID("numberOfLayers");
-    // A background is index 0 but item 1, and the move takes item numbers
-    var offset = _documentHasBackgroundLayer() ? 1 : 0;
-    var index = _getCurrent(charID.Layer, itemIndex).getInteger(itemIndex) - offset;
-    var top = _getCurrent(charID.Document, numberOfLayers).getInteger(numberOfLayers);
-    var slot = _topSlotOfStack(index, top, _layerSectionAt);
-    var target = new ActionReference();
-    target.putEnumerated(charID.Layer, charID.Ordinal, charID.Target);
-    if (slot !== index) {
-      var destination = new ActionReference();
-      destination.putIndex(charID.Layer, slot + offset);
-      var move = new ActionDescriptor();
-      move.putReference(charID.Null, target);
-      move.putReference(charID.To, destination);
-      move.putBoolean(charIDToTypeID("Adjs"), false);
-      move.putInteger(charIDToTypeID("Vrsn"), 5);
-      executeAction(charID.Move, move, DialogModes.NO);
-    }
     var group = stringIDToTypeID("group");
     if (_getCurrent(charID.Layer, group).getBoolean(group)) {
       var release = new ActionDescriptor();
       release.putReference(charID.Null, target);
       executeAction(charIDToTypeID("Ungr"), release, DialogModes.NO);
     }
-  } catch (raiseError) {}
+  } catch (releaseError) {}
+  try {
+    var destination = new ActionReference();
+    destination.putEnumerated(charID.Layer, charID.Ordinal, charIDToTypeID("Frnt"));
+    var move = new ActionDescriptor();
+    move.putReference(charID.Null, target);
+    move.putReference(charID.To, destination);
+    executeAction(charID.Move, move, DialogModes.NO);
+  } catch (moveError) {}
 }
 
 function _createAndSetLayerText(data, width, height) {
@@ -5537,10 +5508,15 @@ function _smartPasteCommitRun() {
     for (var i = 0; i < sessions.length; i++) {
       var plan = sessions[i].plan;
       if (plan.autoClean && plan.cleanupPolygon) {
-        // Back on the user's layer afterwards: it decides the text's folder
+        // Back on the user's layer afterwards when it sits above the clean
+        // layer: it decides the text's folder. Below it, the clean layer stays
+        // active, so the text is made above the fill whatever the stack.
         var activeId = _safeActiveLayerId();
         _smartPaintCleanup(plan);
-        if (activeId !== null) _selectLayerById(activeId);
+        var cleanId = _safeActiveLayerId();
+        if (activeId !== null && activeId !== cleanId && _layerStackIndex(activeId) > _layerStackIndex(cleanId)) {
+          _selectLayerById(activeId);
+        }
       }
       try { app.activeDocument.selection.deselect(); } catch (deselectError) {}
       var id = _smartPlaceText(sessions[i], !!state.data.pointText);
