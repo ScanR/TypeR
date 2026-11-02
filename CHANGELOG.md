@@ -2,7 +2,7 @@
 
 ## 3.0.1
 
-- Replace the Windows UXP keyboard EXE with a native .uxpaddon, add Settings > Debug for live keys and loader errors, and ship separate Windows/macOS CCX packages with platform-aware installers and updates. Every way of updating from 3.0.0 works, including the panel's own updates: TypeR gets its Windows package by itself at its first start.
+- Replace the Windows UXP keyboard EXE with a native .uxpaddon, and ship separate Windows/macOS CCX packages with platform-aware installers and updates. Every way of updating from 3.0.0 works, including the panel's own updates: TypeR gets its Windows package by itself at its first start.
 - The new TypeR no longer stays an empty panel when Photoshop's WebView does not start: it tries once more, then says so, points to the Legacy panel and lists what is needed to find the cause.
 - Paste on click now imposes "Sample All Layers" on the Magic Wand: TypeR turns the option on and selects the click again, so a click no longer reads the active layer and puts the text in the middle of the page.
 - The Legacy panel is called "TypeR (CEP)" in Photoshop, so that the version in use can be told at a glance. It is still called "TypeR (old)" while the new TypeR is installed.
@@ -10,6 +10,8 @@
 - Remeasure script rows after font loading and fractional panel width changes, even when the rounded width stays the same.
 - Fix the top of the Legacy panel in Photoshop 2019 and older: its buttons were stuck together, with too much space under them. In every version, the arrows no longer run over the tabs when the top block is at its smallest.
 - Fix Align on a text placed too high, too low or to one side of its bubble: the text landed off-centre and only a second click put it right.
+- The blue ring of the guide no longer shakes around a control of a fractional size, as on a screen scaled above 100%.
+- Mouse buttons 4 and 5 can be set as shortcuts by pressing them on a shortcut's row, without a left click on it first.
 
 ## 3.0.0
 
