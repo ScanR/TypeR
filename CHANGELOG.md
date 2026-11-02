@@ -9,6 +9,7 @@
 - Fix the script highlights and line numbers drifting away from the text in the Legacy (CEP) panel, in every Photoshop version, on a screen scaled above 100% (125%, 150%, 175%…) or with the UI scale setting. The rows also follow when Photoshop moves to a screen with another scale.
 - Remeasure script rows after font loading and fractional panel width changes, even when the rounded width stays the same.
 - Fix the top of the Legacy panel in Photoshop 2019 and older: its buttons were stuck together, with too much space under them. In every version, the arrows no longer run over the tabs when the top block is at its smallest.
+- Fix Align on a text placed too high, too low or to one side of its bubble: the text landed off-centre and only a second click put it right.
 
 ## 3.0.0
 

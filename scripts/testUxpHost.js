@@ -273,7 +273,7 @@ const HOST_HELPERS = [
   "_getAdjustedSelectionBoundsFallback", "_buildBoundsShapeRows", "_normalizeShapeSampleCount", "_selectionBoundsKey",
   "_buildPathShapeRows", "_polygonScanlineSpan",
   // auto-centre, double bubble, size +/- and TextShapeR live size
-  "_rectFrom", "_unionRect", "_usableBubble", "_bubbleCandidateValid", "_probePoints", "_probeMargin", "_pickBubble",
+  "_rectFrom", "_rectOverlap", "_unionRect", "_usableBubble", "_bubbleCandidateValid", "_probePoints", "_probeMargin", "_pickBubble",
   "_splitBubble", "_autoCenterEnabled", "_doubleBubbleEntriesValid", "_transformScale", "_displayedTextSize", "_displayedStyleValue",
   "_scaleTextShape", "_textResizePlan", "_appliedSizeRatio", "_keepLiveTextSize", "_alignPlacementMap",
 ];
@@ -420,6 +420,13 @@ rects.forEach((candidate) => {
   assert.deepStrictEqual(port._rectFrom(...args), host._rectFrom(...args));
 });
 assert.deepStrictEqual(port._unionRect(rects), host._unionRect(rects));
+[
+  [boundsOf(0, 0, 100, 100), boundsOf(50, 80, 150, 140)],
+  [boundsOf(0, 0, 100, 100), boundsOf(200, 200, 300, 300)],
+  [boundsOf(0, 0, 100, 100), null],
+].forEach(([a, b]) => assert.deepStrictEqual(port._rectOverlap(a, b), host._rectOverlap(a, b)));
+assert.deepStrictEqual(host._rectOverlap(boundsOf(0, 0, 100, 100), boundsOf(50, 80, 150, 140)), host._rectFrom(50, 80, 100, 100));
+assert.strictEqual(host._rectOverlap(boundsOf(0, 0, 100, 100), boundsOf(200, 200, 300, 300)), null);
 [0, 8, 20, 400, NaN, "12"].forEach((size) => assert.strictEqual(port._probeMargin(size), host._probeMargin(size)));
 assert.deepStrictEqual(port._probePoints(textBox, 7), host._probePoints(textBox, 7));
 [
@@ -533,6 +540,11 @@ const simulatedPhotoshop = () => {
     const property = target[0] && target[0]._property;
     const layer = sim.layers[ref._id !== undefined ? ref._id : sim.active];
     if (d._obj === "get") {
+      if (sim.stack && property === "numberOfLayers") return { numberOfLayers: sim.stack.length };
+      if (sim.stack && ref._index !== undefined && !property) {
+        const entry = sim.layers[sim.stack[ref._index - 1]];
+        return { layerID: entry.id, visible: true, textKey: textKeyOf(entry), boundsNoEffects: unitBounds(layerBox(entry)) };
+      }
       if (ref._ref === "channel" && ref._name) return sim.channels[ref._name] ? { channelName: ref._name } : { _obj: "error", result: -25922 };
       if (property === "targetLayersIDs") return { targetLayersIDs: (sim.targets || [sim.active]).map((id) => ({ _ref: "layer", _id: id })) };
       if (property === "selection") return sim.selection ? { selection: unitBounds(sim.selection) } : {};
@@ -560,7 +572,7 @@ const simulatedPhotoshop = () => {
         const y = value(to.vertical);
         const hit = sim.bubbles.find((bubble) => x >= bubble.left && x <= bubble.right && y >= bubble.top && y <= bubble.bottom);
         sim.selection = hit ? Object.assign({}, hit) : Object.assign({}, sim.page);
-        sim.log.push(["wand"]);
+        sim.log.push(["wand", x, y]);
       }
       return {};
     }
@@ -573,6 +585,14 @@ const simulatedPhotoshop = () => {
       }
       return {};
     }
+    if (d._obj === "hide" || d._obj === "show") {
+      sim.log.push([d._obj, d.null.map((reference) => reference._id)]);
+      return {};
+    }
+    if (d._obj === "addTo") {
+      sim.log.push(["addTo", value(d.to.left), value(d.to.top), value(d.to.right), value(d.to.bottom)]);
+      return {};
+    }
     if (d._obj === "intersectWith") {
       const r = rectOf(d.to);
       const s = sim.selection;
@@ -581,6 +601,7 @@ const simulatedPhotoshop = () => {
       return {};
     }
     if (d._obj === "contract" || d._obj === "expand") {
+      if (d._obj === "contract") sim.log.push(["contract"]);
       const by = value(d.by) * (d._obj === "contract" ? 1 : -1);
       const s = sim.selection;
       sim.selection = boundsOf(s.left + by, s.top + by, s.right - by, s.bottom - by);
@@ -698,7 +719,39 @@ const simulatedPhotoshop = () => {
   assert.strictEqual(await double.methods.alignTextLayersToDoubleBubble({}), "doubleBubbleNotFound");
   assert.strictEqual(JSON.stringify(double.layers), before, "UXP: a failed split is rolled back");
   assert.deepStrictEqual(double.log[double.log.length - 1], ["history", "TyperTools Align Double", false]);
-  console.log("UXP auto-centre, double bubble and size +/- tests passed (simulated Photoshop)");
+
+  // Align without a selection: the wand reads the page with the lettering
+  // hidden, from the text's centre, and the texts come back right after
+  const aligned = simulatedPhotoshop();
+  aligned.addLayer(3, { x: 150, y: 190, size: 5, scale: 1 });
+  aligned.addLayer(4, { x: 400, y: 400, size: 5, scale: 1 });
+  aligned.stack = [3, 4];
+  aligned.bubbles = [boundsOf(100, 100, 300, 220)];
+  aligned.active = 3;
+  const alignSteps = (sim) => sim.log.filter((entry) => ["hide", "wand", "show", "addTo", "contract"].includes(entry[0]));
+  assert.strictEqual(await aligned.methods.alignTextLayerToSelection({ resizeTextBox: false, padding: 0 }), "");
+  assert.deepStrictEqual(alignSteps(aligned).slice(0, 4), [["hide", [4, 3]], ["wand", 162.5, 195], ["show", [4, 3]], ["contract"]], "UXP: no text in the wand's way, no box to fill");
+  assert.deepStrictEqual([aligned.layers[3].x + 12.5, aligned.layers[3].y + 5], [200, 160], "UXP: centred on the bubble");
+  assert.strictEqual(aligned.selection, null, "UXP: Align uses the wand marquee up");
+
+  // Align on the user's marquee: it was taken around the text, whose box fills
+  // the holes (clipped to the marquee) before the opening measures it
+  const marquee = simulatedPhotoshop();
+  marquee.addLayer(3, { x: 150, y: 210, size: 5, scale: 1 });
+  marquee.active = 3;
+  marquee.selection = boundsOf(100, 100, 300, 220);
+  assert.strictEqual(await marquee.methods.alignTextLayerToSelection({ resizeTextBox: false, padding: 0 }), "");
+  assert.deepStrictEqual(alignSteps(marquee).slice(0, 2), [["addTo", 150, 210, 175, 220], ["contract"]], "UXP: the text's box fills the marquee first");
+  assert.deepStrictEqual([marquee.layers[3].x + 12.5, marquee.layers[3].y + 5], [200, 160]);
+  // A text beside the marquee has no hole in it: the box must not add a second area
+  const beside = simulatedPhotoshop();
+  beside.addLayer(3, { x: 500, y: 500, size: 5, scale: 1 });
+  beside.active = 3;
+  beside.selection = boundsOf(100, 100, 300, 220);
+  assert.strictEqual(await beside.methods.alignTextLayerToSelection({ resizeTextBox: false, padding: 0 }), "");
+  assert.ok(!beside.log.some((entry) => entry[0] === "addTo"), "UXP: a text away from the marquee fills nothing");
+  assert.deepStrictEqual([beside.layers[3].x + 12.5, beside.layers[3].y + 5], [200, 160]);
+  console.log("UXP auto-centre, double bubble, Align and size +/- tests passed (simulated Photoshop)");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

@@ -689,8 +689,11 @@ function _getAdaptiveSelectionOpenRadius(bounds) {
 }
 
 // Morphological opening of the selection (contract then expand by the same
-// radius): closes the wand's holes on the letters and cuts the bubble's tail
-function _getAdaptiveOpenedSelectionBounds(bounds) {
+// radius): cuts the bubble's tail. It wipes everything thinner than the radius,
+// and a marquee taken around a text has holes on its letters: the strip between
+// the text and the outline goes, and the bounds shrink towards the far side of
+// the bubble. `holes` lists the text boxes to fill for the measure.
+function _getAdaptiveOpenedSelectionBounds(bounds, holes) {
   if (!bounds) return bounds;
 
   const radius = _getAdaptiveSelectionOpenRadius(bounds);
@@ -711,6 +714,7 @@ function _getAdaptiveOpenedSelectionBounds(bounds) {
       }
 
       let candidate = null;
+      _fillSelectionHoles(holes, bounds);
       try {
         _modifySelectionBounds(-attemptRadius);
         const contracted = _getCurrentSelectionBounds();
@@ -736,6 +740,17 @@ function _getAdaptiveOpenedSelectionBounds(bounds) {
   }
 
   return opened || bounds;
+}
+
+// The part of each box inside `bounds`: a text beside the marquee fills nothing
+function _fillSelectionHoles(holes, bounds) {
+  for (let i = 0; holes && i < holes.length; i++) {
+    const inside = _rectOverlap(holes[i], bounds);
+    if (!inside) continue;
+    try {
+      _addRectToSelection(inside);
+    } catch (fillError) {}
+  }
 }
 
 function _selectionBoundsKey(bounds) {
@@ -860,6 +875,11 @@ function _usableBubble(rect, docSize) {
   if (docSize && docSize.width && docSize.height && area > docSize.width * docSize.height * 0.45) return null;
   if (area < _MIN_BUBBLE_AREA) return null;
   return rect;
+}
+
+function _rectOverlap(a, b) {
+  if (!a || !b) return null;
+  return _rectFrom(Math.max(a.left, b.left), Math.max(a.top, b.top), Math.min(a.right, b.right), Math.min(a.bottom, b.bottom));
 }
 
 function _containsPoint(rect, x, y, tolerance) {
@@ -1206,6 +1226,14 @@ function _intersectSelectionWithRect(rect) {
   });
 }
 
+function _addRectToSelection(rect) {
+  play({
+    _obj: "addTo",
+    _target: [SELECTION],
+    to: { _obj: "rectangle", top: px(rect.top), left: px(rect.left), bottom: px(rect.bottom), right: px(rect.right) },
+  });
+}
+
 function _channelExists(name) {
   try {
     get([{ _property: "channelName" }, { _ref: "channel", _name: name }]);
@@ -1335,12 +1363,13 @@ function _probeBubble(box, sizePixels, exclude, docSize) {
   return found;
 }
 
-// Opens the live marquee, which must be `rect`; any answer that is not a
-// plausible part of `rect` holding the text keeps `rect` (see host.js)
-function _openedBubble(rect, box) {
+// Opens the live marquee, which must be `rect`; `holes` are the texts in the
+// marquee, `box` alone by default; any answer that is not a plausible part of
+// `rect` holding the text keeps `rect` (see host.js)
+function _openedBubble(rect, box, holes) {
   let opened = null;
   try {
-    opened = _getAdaptiveOpenedSelectionBounds(rect);
+    opened = _getAdaptiveOpenedSelectionBounds(rect, holes || (box ? [box] : null));
   } catch (openError) {
     opened = null;
   }
@@ -1417,6 +1446,23 @@ function _textNeighbours(skipIds) {
   return found;
 }
 
+// Runs fn on the page without its lettering, as the wand must read it: a text
+// in the bubble leaves holes in the marquee and, touching the outline, cuts the
+// bubble in two.
+function _withoutLettering(fn) {
+  const ids = _textNeighbours([]).map((text) => text.id);
+  try {
+    _setLayerVisibilityByIds(ids, false);
+  } catch (hideError) {}
+  try {
+    return fn();
+  } finally {
+    try {
+      _setLayerVisibilityByIds(ids, true);
+    } catch (showError) {}
+  }
+}
+
 // Centres the active text layer on `rect`, fitting a box frame to it first
 // when asked (see host.js). False when the text has no visible pixels.
 function _placeLayerInRect(rect, resize, padding) {
@@ -1478,12 +1524,13 @@ function _autoCenterLayers(created, data) {
       } catch (rearmError) {
         continue;
       }
-      const rect = _openedBubble(merged, item.box);
+      const groupBoxes = group.map((member) => member.box);
+      const rect = _openedBubble(merged, item.box, groupBoxes);
       if (group.length === 1) {
         item.rect = rect;
         continue;
       }
-      const lobes = _splitBubble(rect, group.map((member) => member.box));
+      const lobes = _splitBubble(rect, groupBoxes);
       group.forEach((member, j) => {
         member.rect = _tightLobe(merged, lobes[j], member.box, docSize) || lobes[j];
         if (member.neighbour && !member.locked) moves.push(member);
@@ -1555,7 +1602,7 @@ function _splitDoubleBubble(entries, resize, padding) {
   let merged = null;
   const userHoldsAll = !!user && items.every((item) => _containsPoint(user, item.box.xMid, item.box.yMid, 1));
   if (userHoldsAll) {
-    merged = { rect: _openedBubble(user, null), probe: null };
+    merged = { rect: _openedBubble(user, null, boxes), probe: null };
     outcome.consumed = true;
   } else {
     let missing = false;
@@ -1572,7 +1619,7 @@ function _splitDoubleBubble(entries, resize, padding) {
         outcome.result = "doubleBubbleNotFound";
         return outcome;
       }
-      merged = { rect: _openedBubble(whole, null), probe: whole };
+      merged = { rect: _openedBubble(whole, null, boxes), probe: whole };
     }
   }
   if (merged) {
@@ -1918,7 +1965,7 @@ function _checkSelection(options) {
 
   let adjustedSelection = selection;
   if (adaptiveOpen) {
-    adjustedSelection = _getAdaptiveOpenedSelectionBounds(selection);
+    adjustedSelection = _getAdaptiveOpenedSelectionBounds(selection, options.holes);
   } else if (adjustAmount !== 0) {
     adjustedSelection = _getAdjustedSelectionBounds(selection, adjustAmount);
   }
@@ -2298,14 +2345,25 @@ function _createTextLayerInSelection(state) {
   return "";
 }
 
+// With the lettering hidden, the text's centre has no glyph left to land on
+function _wandBubbleOfActiveText() {
+  const box = _currentLayerBox();
+  if (!box) return;
+  _withoutLettering(() => {
+    try {
+      _magicWandAt(box.xMid, box.yMid, _BUBBLE_WAND_TOLERANCE);
+    } catch (wandError) {}
+  });
+}
+
 function _alignCurrentTextLayerToSelection(state) {
   if (!_layerIsTextLayer()) return "layer";
 
   // The chamber of a double or triple bubble the panel found for this text
-  let selection = (state.placements && state.placements["id" + _safeActiveLayerId()]) || _checkSelection({ adaptiveOpen: true });
+  let selection = (state.placements && state.placements["id" + _safeActiveLayerId()]) || _checkSelection({ adaptiveOpen: true, holes: [_currentLayerBox()] });
   if (selection.error) {
     if (selection.error === "noSelection") {
-      _createMagicWandSelection(20);
+      _wandBubbleOfActiveText();
       selection = _checkSelection({ adaptiveOpen: true });
     }
     if (selection.error) return selection.error;
@@ -3004,20 +3062,22 @@ function _alignCaptureRun() {
       bubbles.push(outline);
     }
   } else {
-    texts.forEach((text) => {
-      const found = _probeBubble(text.box, text.sizePixels, [], docSize).best;
-      const live = found ? _liveSelectionBounds() : null;
-      if (!live) return;
-      let known = bubbles.find((bubble) => {
-        const b = bubble.selectionBounds;
-        return b.left === live.left && b.top === live.top && b.right === live.right && b.bottom === live.bottom;
+    _withoutLettering(() => {
+      texts.forEach((text) => {
+        const found = _probeBubble(text.box, text.sizePixels, [], docSize).best;
+        const live = found ? _liveSelectionBounds() : null;
+        if (!live) return;
+        let known = bubbles.find((bubble) => {
+          const b = bubble.selectionBounds;
+          return b.left === live.left && b.top === live.top && b.right === live.right && b.bottom === live.bottom;
+        });
+        if (!known) {
+          known = _alignReadOutline();
+          if (!known) return;
+          bubbles.push(known);
+        }
+        known.textIds.push(text.id);
       });
-      if (!known) {
-        known = _alignReadOutline();
-        if (!known) return;
-        bubbles.push(known);
-      }
-      known.textIds.push(text.id);
     });
   }
   if (ids.length > 1) _selectLayersById(ids);
@@ -3931,7 +3991,7 @@ module.exports = {
     _getAdjustedSelectionBoundsFallback, _buildBoundsShapeRows, _normalizeShapeSampleCount, _buildMaskShapeRows,
     _selectionBoundsKey, _normalizeTextKey,
     // auto-centre, double bubble, size +/- and TextShapeR live size
-    _rectFrom, _unionRect, _usableBubble, _bubbleCandidateValid, _probePoints, _probeMargin, _pickBubble,
+    _rectFrom, _rectOverlap, _unionRect, _usableBubble, _bubbleCandidateValid, _probePoints, _probeMargin, _pickBubble,
     _splitBubble, _autoCenterEnabled, _doubleBubbleEntriesValid, _transformScale, _displayedTextSize, _displayedStyleValue,
     _scaleTextShape, _textResizePlan, _appliedSizeRatio, _keepLiveTextSize, _alignPlacementMap,
     // the auto-centre entry point, run against a simulated Photoshop
