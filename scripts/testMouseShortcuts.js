@@ -107,9 +107,9 @@ assert.strictEqual(matching.matchBinding(["WIN", "CTRL"], shortcut, true).id, "a
 assert(/MOUSE_BUTTON_KEYS = \{ 3: "MOUSE4", 4: "MOUSE5" \}/.test(editorSource),
   "The settings recorder must map the DOM side buttons to the stored names");
 assert(/onMouseDown=\{changeShortCutFromMouse\}/.test(editorSource),
-  "The shortcut row must capture side-button presses while recording");
-assert(/if \(!mouseKey \|\| !recording\) return;/.test(editorSource),
-  "Side buttons must only be captured while the row is recording");
+  "The shortcut row must capture side-button presses");
+assert(/if \(!mouseKey\) return;/.test(editorSource) && !/!mouseKey \|\| !recording/.test(editorSource),
+  "A side button pressed on a row must record it without a left click first");
 
 [
   ["shortcutCommands.js", commandSource],
