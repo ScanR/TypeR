@@ -334,7 +334,6 @@ function paintCleanup(doc, plan) {
     mode: { _enum: "blendMode", _value: "normal" },
   });
   play({ _obj: "set", _target: [SELECTION], to: { _enum: "ordinal", _value: "none" } });
-  // The clean layer stays active: the text is made right above it
   return cleanId;
 }
 
@@ -423,7 +422,12 @@ async function commitSessions(prepared) {
   const layerIds = [];
   await modal("TypeR", (context) => suspendHistory(context, HISTORY_NAME, () => {
     for (const session of prepared.sessions) {
-      if (session.plan.autoClean && session.plan.cleanupPolygon) paintCleanup(doc, session.plan);
+      if (session.plan.autoClean && session.plan.cleanupPolygon) {
+        // Back on the user's layer afterwards: it decides the text's folder
+        const activeId = host._getActiveLayerId();
+        paintCleanup(doc, session.plan);
+        play({ _obj: "select", _target: [{ _ref: "layer", _id: activeId }], makeVisible: false });
+      }
       play({ _obj: "set", _target: [SELECTION], to: { _enum: "ordinal", _value: "none" } });
       layerIds.push(placeText(session, prepared.pointText));
     }

@@ -276,6 +276,7 @@ const HOST_HELPERS = [
   "_rectFrom", "_rectOverlap", "_unionRect", "_usableBubble", "_bubbleCandidateValid", "_probePoints", "_probeMargin", "_pickBubble",
   "_splitBubble", "_autoCenterEnabled", "_doubleBubbleEntriesValid", "_transformScale", "_displayedTextSize", "_displayedStyleValue",
   "_scaleTextShape", "_textResizePlan", "_appliedSizeRatio", "_keepLiveTextSize", "_alignPlacementMap",
+  "_topSlotOfStack",
 ];
 const host = new Function(hostSource + "\nreturn {" + HOST_HELPERS.join(", ") + "};")();
 
@@ -386,6 +387,39 @@ shapes.forEach((bounds) => {
 });
 [undefined, 0, "3", 17, "21", 40, "x"].forEach((value) => {
   assert.strictEqual(port._normalizeShapeSampleCount(value, 17), host._normalizeShapeSampleCount(value, 17));
+});
+
+/* ---------------- slot of a new text in the layer stack ---------------- */
+
+// Stack as Photoshop indexes it, listed from the top: "[" starts a folder and
+// "]" ends it. The expected slots were measured on Photoshop 2026, moving a
+// text made above each layer of these documents.
+const stackSections = (stack) => {
+  const top = stack.length;
+  return (index) => ({ "[": "layerSectionStart", "]": "layerSectionEnd" }[stack[top - index]] || "layerSectionContent");
+};
+const nested = ["top", "[", "a", "[", "b", "c", "]", "d", "]", "e", "f"];
+[
+  // Outside any folder: above everything, folders included
+  { stack: nested, index: 1, slot: 11 },
+  { stack: nested, index: 2, slot: 11 },
+  // Already on top: no move
+  { stack: nested, index: 11, slot: 11 },
+  // In a folder, under a nested folder: first in that folder
+  { stack: nested, index: 4, slot: 9 },
+  { stack: nested, index: 9, slot: 9 },
+  // In the nested folder
+  { stack: nested, index: 6, slot: 7 },
+  { stack: nested, index: 7, slot: 7 },
+  // A folder at the very top is not entered from outside
+  { stack: ["[", "a", "]", "b"], index: 1, slot: 4 },
+  // A nested folder first in its parent is not entered either
+  { stack: ["[", "[", "a", "]", "b", "]", "c"], index: 3, slot: 6 },
+  { stack: ["only"], index: 1, slot: 1 },
+].forEach(({ stack, index, slot }) => {
+  const sectionAt = stackSections(stack);
+  assert.strictEqual(host._topSlotOfStack(index, stack.length, sectionAt), slot, stack.join(" ") + " from " + index);
+  assert.strictEqual(port._topSlotOfStack(index, stack.length, sectionAt), slot, "UXP: " + stack.join(" ") + " from " + index);
 });
 
 /* -------------- auto-centre and size +/- helpers vs host.js -------------- */

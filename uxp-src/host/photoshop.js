@@ -1880,8 +1880,49 @@ function _stripDirection(paragraphRanges) {
   }
 }
 
+// The slot a new layer takes: first in its folder, or on top of the document
+// outside any folder. Indexes run from the bottom of the stack up, and a folder
+// has its start entry above its content and its end entry below it.
+function _topSlotOfStack(index, top, sectionAt) {
+  let depth = 0;
+  for (let i = index + 1; i <= top; i++) {
+    const section = sectionAt(i);
+    if (section === "layerSectionEnd") {
+      depth++;
+    } else if (section === "layerSectionStart") {
+      if (!depth) return i - 1;
+      depth--;
+    }
+  }
+  return top;
+}
+
+function _layerSectionAt(index) {
+  return get([{ _property: "layerSection" }, { _ref: "layer", _index: index }]).layerSection._value;
+}
+
+// Photoshop makes a layer right above the active one, so under whatever is
+// higher up, and clipped when the active one is. A new text must not stay there.
+// It only decides where the text sits, so a refusal must not fail the paste.
+function _raiseNewTextLayer() {
+  try {
+    // A background is index 0 but item 1, and the move takes item numbers
+    const offset = _documentHasBackgroundLayer() ? 1 : 0;
+    const index = integerValue(get([{ _property: "itemIndex" }, TARGET_LAYER]).itemIndex) - offset;
+    const top = integerValue(get([{ _property: "numberOfLayers" }, TARGET_DOCUMENT]).numberOfLayers);
+    const slot = _topSlotOfStack(index, top, _layerSectionAt);
+    if (slot !== index) {
+      play({ _obj: "move", _target: [TARGET_LAYER], to: { _ref: "layer", _index: slot + offset }, adjustment: false, version: 5 });
+    }
+    if (get([{ _property: "group" }, TARGET_LAYER]).group) {
+      play({ _obj: "ungroup", _target: [TARGET_LAYER] });
+    }
+  } catch (raiseError) {}
+}
+
 function _makeTextLayer(textProps) {
   play({ _obj: "make", _target: [{ _ref: "textLayer" }], using: jamText.toLayerTextObject(textProps) });
+  _raiseNewTextLayer();
 }
 
 function _createAndSetLayerText(data, width, height) {
@@ -3994,6 +4035,8 @@ module.exports = {
     _rectFrom, _rectOverlap, _unionRect, _usableBubble, _bubbleCandidateValid, _probePoints, _probeMargin, _pickBubble,
     _splitBubble, _autoCenterEnabled, _doubleBubbleEntriesValid, _transformScale, _displayedTextSize, _displayedStyleValue,
     _scaleTextShape, _textResizePlan, _appliedSizeRatio, _keepLiveTextSize, _alignPlacementMap,
+    // where a new text goes in the layer stack
+    _topSlotOfStack,
     // the auto-centre entry point, run against a simulated Photoshop
     _autoCenterCreated,
   },

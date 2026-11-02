@@ -2300,6 +2300,64 @@ function _applyRichTextRanges(textParams, textRuns, textLength) {
   return true;
 }
 
+// The slot a new layer takes: first in its folder, or on top of the document
+// outside any folder. Indexes run from the bottom of the stack up, and a folder
+// has its start entry above its content and its end entry below it.
+function _topSlotOfStack(index, top, sectionAt) {
+  var depth = 0;
+  for (var i = index + 1; i <= top; i++) {
+    var section = sectionAt(i);
+    if (section === "layerSectionEnd") {
+      depth++;
+    } else if (section === "layerSectionStart") {
+      if (!depth) return i - 1;
+      depth--;
+    }
+  }
+  return top;
+}
+
+function _layerSectionAt(index) {
+  var layerSection = stringIDToTypeID("layerSection");
+  var reference = new ActionReference();
+  reference.putProperty(charID.Property, layerSection);
+  reference.putIndex(charID.Layer, index);
+  return typeIDToStringID(executeActionGet(reference).getEnumerationValue(layerSection));
+}
+
+// Photoshop makes a layer right above the active one, so under whatever is
+// higher up, and clipped when the active one is. A new text must not stay there.
+// It only decides where the text sits, so a refusal must not fail the paste.
+function _raiseNewTextLayer() {
+  try {
+    var itemIndex = stringIDToTypeID("itemIndex");
+    var numberOfLayers = stringIDToTypeID("numberOfLayers");
+    // A background is index 0 but item 1, and the move takes item numbers
+    var offset = _documentHasBackgroundLayer() ? 1 : 0;
+    var index = _getCurrent(charID.Layer, itemIndex).getInteger(itemIndex) - offset;
+    var top = _getCurrent(charID.Document, numberOfLayers).getInteger(numberOfLayers);
+    var slot = _topSlotOfStack(index, top, _layerSectionAt);
+    var target = new ActionReference();
+    target.putEnumerated(charID.Layer, charID.Ordinal, charID.Target);
+    if (slot !== index) {
+      var destination = new ActionReference();
+      destination.putIndex(charID.Layer, slot + offset);
+      var move = new ActionDescriptor();
+      move.putReference(charID.Null, target);
+      move.putReference(charID.To, destination);
+      move.putBoolean(charIDToTypeID("Adjs"), false);
+      move.putInteger(charIDToTypeID("Vrsn"), 5);
+      executeAction(charID.Move, move, DialogModes.NO);
+    }
+    var group = stringIDToTypeID("group");
+    if (_getCurrent(charID.Layer, group).getBoolean(group)) {
+      var release = new ActionDescriptor();
+      release.putReference(charID.Null, target);
+      executeAction(charIDToTypeID("Ungr"), release, DialogModes.NO);
+    }
+  } catch (raiseError) {}
+}
+
 function _createAndSetLayerText(data, width, height) {
   var style = _scaleStyleForPunctuationOnlyText(_resolveStyleSizeForDocument(_ensureStyle(data.style)), data.text);
   if (data.textSizeOverride > 0) {
@@ -2352,6 +2410,7 @@ function _createAndSetLayerText(data, width, height) {
     });
     directionBaked = false;
   }
+  _raiseNewTextLayer();
   _applyMiddleEast(style.textProps.layerText.textStyleRange[0].textStyle);
   if (style.stroke) {
     _setLayerStroke(style.stroke);
@@ -5417,7 +5476,6 @@ function _smartPaintCleanup(plan) {
   color.rgb.blue = rgb.blue;
   doc.selection.fill(color, ColorBlendMode.NORMAL, 100, false);
   doc.selection.deselect();
-  // The clean layer stays active: the text is made right above it
 }
 
 function _smartMakeText(params) {
@@ -5450,6 +5508,7 @@ function _smartMakeText(params) {
 function _smartPlaceText(session, pointText) {
   var params = session.text.params;
   _smartMakeText(params);
+  _raiseNewTextLayer();
   var ranges = params.layerText.textStyleRange;
   if (ranges && ranges[0]) _applyMiddleEast(ranges[0].textStyle);
   if (!pointText) {
@@ -5477,7 +5536,12 @@ function _smartPasteCommitRun() {
   try {
     for (var i = 0; i < sessions.length; i++) {
       var plan = sessions[i].plan;
-      if (plan.autoClean && plan.cleanupPolygon) _smartPaintCleanup(plan);
+      if (plan.autoClean && plan.cleanupPolygon) {
+        // Back on the user's layer afterwards: it decides the text's folder
+        var activeId = _safeActiveLayerId();
+        _smartPaintCleanup(plan);
+        if (activeId !== null) _selectLayerById(activeId);
+      }
       try { app.activeDocument.selection.deselect(); } catch (deselectError) {}
       var id = _smartPlaceText(sessions[i], !!state.data.pointText);
       state.layerIds.push(id);
