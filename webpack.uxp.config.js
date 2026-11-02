@@ -32,7 +32,7 @@ const hostConfig = (env, argv, entry, filename, library) => ({
       },
     ],
   },
-  plugins: [new webpack.DefinePlugin({ TYPER_DEV: JSON.stringify(!!env.dev), TYPER_TRACE: JSON.stringify(!!env.trace) }),
+  plugins: [new webpack.DefinePlugin({ TYPER_DEV: JSON.stringify(!!env.dev), TYPER_TRACE: JSON.stringify(!!env.trace), TYPER_DIAGNOSTIC: JSON.stringify(!!env.diagnostic) }),
     ...(!env.mac ? [new webpack.NormalModuleReplacementPlugin(/^\.\/keysHelper$/, path.join(__dirname, "uxp-src/host/keysAddon.js"))] : [])],
   optimization: { minimize: false },
   performance: { hints: false },
@@ -46,12 +46,13 @@ const panelConfig = (env, argv) => {
     !(plugin instanceof HtmlWebpackPlugin) &&
     !(plugin instanceof MiniCssExtractPlugin)
   ));
-  plugins.push(new HtmlWebpackPlugin({ template: "./uxp-src/web/index.html", filename: "index.html" }));
+  plugins.push(new HtmlWebpackPlugin({ template: "./uxp-src/web/index.html", filename: "index.html",
+    diagnosticSource: env.diagnostic ? require('fs').readFileSync(path.join(__dirname, 'uxp-src/web/diagnosticBoot.js'), 'utf8') : '' }));
   plugins.push(new MiniCssExtractPlugin({ filename: "index.css", chunkFilename: "[name].[contenthash:12].css" }));
   // The CEP library only talks to window.__adobe_cep__
   plugins.push(new webpack.NormalModuleReplacementPlugin(/[\\/]lib[\\/]CSInterface(\.js)?$/, path.join(__dirname, "uxp-src/web/csinterfaceStub.js")));
   plugins.push(new webpack.NormalModuleReplacementPlugin(/^\.\/CSInterface$/, path.join(__dirname, "uxp-src/web/csinterfaceStub.js")));
-  plugins.push(new webpack.DefinePlugin({ "process.env.TYPER_UXP": JSON.stringify("1"), "process.env.TYPER_DEV": JSON.stringify(env.dev ? "1" : "0") }));
+  plugins.push(new webpack.DefinePlugin({ "process.env.TYPER_UXP": JSON.stringify("1"), "process.env.TYPER_DEV": JSON.stringify(env.dev ? "1" : "0"), "process.env.TYPER_DIAGNOSTIC": JSON.stringify(env.diagnostic ? "1" : "0") }));
   const rules = modern.module.rules.map((rule) => {
     if (String(rule.test) !== String(/\.m?jsx?$/)) return rule;
     return Object.assign({}, rule, { include: undefined, exclude: /node_modules[\\/](?!react-icons[\\/]|fflate[\\/])/ });
@@ -74,7 +75,7 @@ const panelConfig = (env, argv) => {
 
 module.exports = (env = {}, argv = {}) => {
   if (env.mac && env.addon) throw new Error("Choose either macOS or Windows addon output");
-  if (env.addon && (env.dev || env.trace || env.hostTest)) throw new Error("Build the Windows addon preview separately from developer/diagnostic builds");
+  if (env.addon && (env.dev || env.trace || env.diagnostic || env.hostTest)) throw new Error("Build the Windows addon preview separately from developer/diagnostic builds");
   if (env.hostTest) return [hostConfig(env, argv, "./uxp-src/host/photoshop.js", "host-test.js", "TypeRHost")];
-  return [hostConfig(env, argv, env.trace ? "./uxp-src/host/traceEntry.js" : "./uxp-src/host/main.js", "host.js"), panelConfig(env, argv)];
+  return [hostConfig(env, argv, env.diagnostic ? "./uxp-src/host/diagnosticEntry.js" : env.trace ? "./uxp-src/host/traceEntry.js" : "./uxp-src/host/main.js", "host.js"), panelConfig(env, argv)];
 };

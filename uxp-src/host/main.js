@@ -17,8 +17,11 @@ const keysHelper = require("./keysHelper");
 const services = require("./services");
 const { runJsx, systemCall } = require("./jsx");
 const { parseCall, callTimeout, createCallQueue } = require("./evalScript");
+const { createPanelStartup } = require("./panelStartup");
 const panelStart = require("./panelStart");
 const panelProbe = crashTrace ? require("./panelProbe") : null;
+const diagnostic = typeof TYPER_DIAGNOSTIC !== 'undefined' && TYPER_DIAGNOSTIC ? require('./diagnostics') : null;
+const debugNote = (stage, detail) => { if (diagnostic) diagnostic.note(stage, detail); };
 
 if (crashTrace) {
   files.resolveFolders()
@@ -33,13 +36,68 @@ const PANEL_URL = "plugin:/web/index.html";
 // is looked up then, and starts loading after its listeners are in place
 let view = null;
 let statusElement = null;
+let viewGeneration = 0;
+let windowMessageListener = null;
+const recentRequestIds = new Set();
+
+function detachWindowMessages() {
+  if (windowMessageListener) window.removeEventListener('message', windowMessageListener);
+  windowMessageListener = null;
+}
 
 // Known once files.resolveFolders() has run (init)
 let storageRoot = null;
 const mirror = files.createMirrorWriter(() => storageRoot);
 let mirrorFiles = null;
-let panelVisible = true;
+let panelVisible = false;
 let webviewReady = false;
+const loadEvents = [];
+let stopProbes = null;
+let startupViewSize = 'unknown';
+
+function clearProbes() {
+  if (stopProbes) stopProbes();
+  stopProbes = null;
+}
+
+function noteLoadEvent(text) {
+  if (crashTrace) crashTrace.note('webview', text);
+  debugNote('webview.event', text);
+  loadEvents.push(text);
+  if (loadEvents.length > 8) loadEvents.shift();
+}
+
+function viewSize() {
+  try {
+    const box = view.getBoundingClientRect();
+    return Math.round(box.width) + 'x' + Math.round(box.height);
+  } catch (error) { return 'unknown'; }
+}
+
+async function reportPanelStartFailure(baseText) {
+  const generation = viewGeneration;
+  const size = startupViewSize;
+  const events = loadEvents.slice();
+  const webViewFolders = os.platform() === 'win32'
+    ? await panelStart.readWebViewFolders(folder => require('fs').readdir(files.toUrl(folder))) : [];
+  // A report from a closed/reloaded panel must never cover its replacement.
+  if (generation !== viewGeneration || webviewReady || !panelVisible || panelStartup.getState() !== 'failed') return;
+  const text = baseText + '\n' + panelStart.panelStartFailureText({
+    versions: ['Photoshop ' + uxp.host.version, 'UXP ' + (uxp.versions && uxp.versions.uxp), os.platform() + ' ' + os.release()].join(', '),
+    webViewFolders, loadEvents: events, viewSize: size,
+  });
+  console.error('TypeR:', text);
+  debugNote('startup.report', text);
+  showStatus(text);
+  if (panelProbe) {
+    clearProbes();
+    stopProbes = panelProbe.run({
+      mainView: view,
+      note: line => crashTrace.note('probe', line),
+      report: line => showStatus(text + '\n' + line + '\nLog: ' + crashTrace.getPath()),
+    });
+  }
+}
 
 function log(...args) {
   console.log("TypeR:", ...args);
@@ -52,6 +110,30 @@ function showStatus(text) {
   statusElement.style.display = text ? "block" : "none";
 }
 
+const panelStartup = createPanelStartup({
+  initiallyVisible: false,
+  environment: () => ({ photoshop: String(uxp.host.version || 'unknown'), uxp: String(uxp.versions && uxp.versions.uxp || 'unknown'), platform: os.platform(), locale: uxp.host.uiLocale }),
+  retry() {
+    noteLoadEvent('retry');
+    loadingPanel = true;
+    view.src = PANEL_URL;
+  },
+  onFailure(text, { bridge }) {
+    if (!bridge) reportPanelStartFailure(text).catch(error => console.error('TypeR: startup report', error));
+  },
+  show(text, failed) {
+    if (!failed) clearProbes();
+    // Read before hiding the view, otherwise every failure would report 0x0.
+    if (failed) startupViewSize = viewSize();
+    debugNote('startup.status', String(failed) + ': ' + text);
+    showStatus(text);
+    const recovery = document.getElementById('typer-recovery');
+    if (recovery) recovery.style.display = failed ? 'block' : 'none';
+    // The native error must have room even in a short docked panel.
+    if (view) view.style.display = failed ? 'none' : 'block';
+  }
+});
+
 /* ======================= panel messages ======================= */
 
 function post(message) {
@@ -59,6 +141,7 @@ function post(message) {
   try {
     view.postMessage(JSON.stringify(message));
   } catch (error) {
+    debugNote('bridge.post.error', error.message || error);
     console.error("TypeR: message to panel failed", error);
   }
 }
@@ -362,18 +445,24 @@ Object.assign(requests, services.requests);
 // storage writes and log lines say nothing about Photoshop
 const UNTRACED_REQUESTS = { evalScript: true, writeMirror: true, deleteMirror: true, flushMirror: true, log: true, keyboardDebug: true };
 
-async function handleRequest(message) {
+async function handleRequest(message, generation) {
+  if (message.method === 'init') debugNote('init.request', message.id);
+  // Request ids restart in a new WebView. Never deliver a late reply from the
+  // destroyed page to an unrelated request in its replacement.
+  const reply = (response) => { if (generation === viewGeneration) post(response); };
   if (crashTrace && !UNTRACED_REQUESTS[message.method]) crashTrace.note("request", String(message.method));
   const handler = Object.prototype.hasOwnProperty.call(requests, message.method) ? requests[message.method] : null;
   if (!handler) {
-    post({ type: "reply", id: message.id, error: "Unknown request " + message.method });
+    reply({ type: "reply", id: message.id, error: "Unknown request " + message.method });
     return;
   }
   try {
     const result = await handler(...(Array.isArray(message.args) ? message.args : []));
-    post({ type: "reply", id: message.id, result: result === undefined ? null : result });
+    if (message.method === 'init') debugNote('init.reply', message.id);
+    reply({ type: "reply", id: message.id, result: result === undefined ? null : result });
   } catch (error) {
-    post({ type: "reply", id: message.id, error: String((error && error.message) || error) });
+    debugNote('request.error', String(message.method) + ': ' + (error.message || error));
+    reply({ type: "reply", id: message.id, error: String((error && error.message) || error) });
   }
 }
 
@@ -382,12 +471,28 @@ let loadingPanel = false;
 let panelAddress = PANEL_URL;
 
 function showPanelPage() {
+  clearProbes();
+  loadEvents.length = 0;
+  debugNote('webview.navigate', PANEL_URL);
   loadingPanel = true;
-  view.src = PANEL_URL;
+  webviewReady = false;
+  recentRequestIds.clear();
+  panelStartup.begin();
+  try { view.src = PANEL_URL; }
+  catch (error) { panelStartup.fail(String(error && error.message || error)); }
 }
 
 function attachView() {
-  if (view) return view;
+  if (diagnostic) diagnostic.attachUI();
+  // Photoshop may recreate the panel DOM after closing it. A cached detached
+  // WebView cannot render or receive replies in the newly created panel.
+  if (view && document.getElementById("typer-view") === view) return view;
+  detachWindowMessages();
+  clearProbes();
+  panelStartup.dispose();
+  statusElement = null;
+  viewOnPanel = true;
+  const generation = ++viewGeneration;
   view = document.getElementById("typer-view");
   if (!view) {
     view = document.createElement("webview");
@@ -396,9 +501,12 @@ function attachView() {
     view.setAttribute("height", "100%");
     document.body.appendChild(view);
   }
-  view.addEventListener("message", (event) => {
+  const attachedView = view;
+  let messageSamples = 0;
+  const onPanelMessage = (event, channel) => {
+    if (messageSamples++ < 30) debugNote('bridge.receive', channel + '; data=' + typeof event.data + '; message=' + typeof event.message + '; current=' + (generation === viewGeneration));
     // The bridge is open to remote pages too (see the loadstart listener)
-    if (!viewOnPanel) return;
+    if (generation !== viewGeneration || view !== attachedView || !viewOnPanel) return;
     let message = event.message !== undefined ? event.message : event.data;
     // The WebView delivers the panel's string JSON-encoded once more
     for (let depth = 0; typeof message === "string" && depth < 2; depth++) {
@@ -409,21 +517,53 @@ function attachView() {
       }
     }
     if (!message || typeof message !== "object") return;
-    if (crashTrace && !webviewReady) crashTrace.note("webview", "panel answered, view " + viewSize());
-    webviewReady = true;
-    clearTimeout(panelRetryTimer);
-    clearTimeout(panelStartTimer);
-    if (message.type === "ready") {
-      showStatus("");
+    if (message.type === 'diagnostic' && diagnostic) {
+      panelStartup.bridgeReady();
+      diagnostic.note('web.' + String(message.stage).slice(0, 60), message.detail);
       return;
     }
-    if (message.type === "request") handleRequest(message);
+    if (!['ready', 'appReady', 'request', 'devResult', 'panelError'].includes(message.type)) return;
+    if (crashTrace && !webviewReady) crashTrace.note('webview', 'panel answered, view ' + viewSize());
+    webviewReady = true;
+    panelStartup.bridgeReady();
+    if (message.type === "ready") {
+      debugNote('bridge.ready', channel);
+      panelStartup.bridgeReady();
+      return;
+    }
+    if (message.type === "appReady") {
+      debugNote('app.ready', channel);
+      panelStartup.appReady();
+      return;
+    }
+    if (message.type === "request") {
+      // Some hosts deliver the same message to both the element and window.
+      // Never run a paste (or any other request) twice. Keep a bounded recent
+      // history; ids are monotonic within a page and restart on navigation.
+      if (typeof message.id !== 'number' || !Number.isSafeInteger(message.id) || message.id < 1) return;
+      if (recentRequestIds.has(message.id)) return;
+      recentRequestIds.add(message.id);
+      if (recentRequestIds.size > 512) recentRequestIds.delete(recentRequestIds.values().next().value);
+      handleRequest(message, generation);
+    }
     else if (message.type === "devResult") devResultListeners.forEach((listener) => listener(message));
     else if (message.type === "panelError") {
       console.error("TypeR panel:", message.text);
-      showStatus(message.text);
+      // Runtime errors keep the working panel accessible. Only startup
+      // failures replace the view with the native recovery controls.
+      if (panelStartup.getState() === 'ready') showStatus(message.text);
+      else panelStartup.fail(message.text);
     }
-  });
+  };
+  view.addEventListener("message", event => onPanelMessage(event, 'element'));
+  // Adobe documents window as the receiver of WebView postMessage events.
+  // Keep the element listener for hosts that dispatch there, but only accept
+  // global messages whose source is this panel's current WebView.
+  windowMessageListener = (event) => {
+    if (messageSamples < 30) debugNote('bridge.window', 'sourceMatch=' + (event.source === attachedView) + '; sourceType=' + typeof event.source + '; origin=' + String(event.origin || ''));
+    if (event.source === attachedView) onPanelMessage(event, 'window');
+  };
+  window.addEventListener('message', windowMessageListener);
   // The message bridge is "localAndRemote": "localOnly" stops the host's
   // messages from reaching the panel in Photoshop 26.6. A page that is not
   // the panel never gets to talk to the host: the WebView goes back to the
@@ -431,84 +571,54 @@ function attachView() {
   // one reported by the load that follows setting src, as the platforms may
   // not report it the same way.
   view.addEventListener("loadstart", (event) => {
+    if (generation !== viewGeneration || view !== attachedView) return;
+    debugNote('webview.loadstart', event.url);
     const url = String(event.url || "").split("#")[0];
-    noteLoadEvent("start " + url);
+    noteLoadEvent('start ' + url);
     if (loadingPanel) {
       loadingPanel = false;
       panelAddress = url;
     }
     viewOnPanel = url === panelAddress || url.indexOf("plugin:/") === 0;
-    if (viewOnPanel) return;
+    if (viewOnPanel) { panelStartup.loadStarted(); return; }
     showPanelPage();
     if (/^https?:\/\//i.test(url)) uxp.shell.openExternal(url).catch(() => {});
   });
-  view.addEventListener("loadstop", () => noteLoadEvent("stop"));
   view.addEventListener("loaderror", (event) => {
-    noteLoadEvent("error " + (event.message || ""));
-    showStatus("TypeR: " + (event.message || "load error"));
+    if (generation !== viewGeneration || view !== attachedView) return;
+    debugNote('webview.loaderror', 'code=' + event.code + '; ' + event.message + '; ' + event.url);
+    noteLoadEvent('error ' + (event.message || ''));
+    panelStartup.loadError(event);
   });
+  view.addEventListener('loadstop', () => {
+    if (generation !== viewGeneration || view !== attachedView || !viewOnPanel) return;
+    debugNote('webview.loadstop', 'current=' + (generation === viewGeneration));
+    noteLoadEvent('stop');
+    panelStartup.loadStopped();
+  });
+  const retry = document.getElementById('typer-retry');
+  if (retry) {
+    retry.textContent = /^fr/i.test(uxp.host.uiLocale || '') ? 'Recharger TypeR' : 'Reload TypeR';
+    retry.onclick = async () => {
+      debugNote('user.reload', 'requested');
+      retry.disabled = true;
+      try {
+        await mirror.flush();
+        if (generation !== viewGeneration) return;
+        panelStartup.dispose();
+        const previous = view;
+        view = null;
+        webviewReady = false;
+        if (previous) previous.remove();
+        attachView();
+      } catch (error) { panelStartup.fail(String(error && error.message || error)); }
+      finally { retry.disabled = false; }
+    };
+  }
+  const help = document.getElementById('typer-webview-help');
+  if (help) help.onclick = () => uxp.shell.openExternal('https://helpx.adobe.com/creative-cloud/apps/integration-with-other-apps/manage-plugins/uxp-webview.html').catch((error) => showStatus(String(error.message || error)));
   showPanelPage();
-  watchPanelStart();
   return view;
-}
-
-/* ===================== panel start watch ===================== */
-
-const loadEvents = [];
-let panelRetryTimer = null;
-let panelStartTimer = null;
-
-function noteLoadEvent(text) {
-  if (crashTrace) crashTrace.note("webview", text);
-  loadEvents.push(text);
-  // A reload loop would otherwise fill the report
-  if (loadEvents.length > 8) loadEvents.shift();
-}
-
-function viewSize() {
-  try {
-    const box = view.getBoundingClientRect();
-    return Math.round(box.width) + "x" + Math.round(box.height);
-  } catch (error) {
-    return "unknown";
-  }
-}
-
-async function reportPanelStartFailure() {
-  if (webviewReady || !panelVisible) return;
-  const windows = os.platform() === "win32";
-  const webViewFolders = windows ? await panelStart.readWebViewFolders((folder) => require("fs").readdir(files.toUrl(folder))) : [];
-  // The panel may have answered during the read
-  if (webviewReady) return;
-  const text = panelStart.panelStartFailureText({
-    versions: ["Photoshop " + uxp.host.version, uxp.versions.uxp, os.platform() + " " + os.release()].join(", "),
-    webViewFolders,
-    loadEvents,
-    viewSize: viewSize(),
-  });
-  console.error("TypeR:", text);
-  showStatus(text);
-  if (panelProbe) {
-    panelProbe.run({
-      mainView: view,
-      note: (line) => crashTrace.note("probe", line),
-      report: (line) => showStatus(text + "\n" + line + "\nLog: " + crashTrace.getPath()),
-    });
-  }
-}
-
-// Counted while the panel is visible: a hidden WebView may not load at all
-function watchPanelStart() {
-  clearTimeout(panelRetryTimer);
-  clearTimeout(panelStartTimer);
-  if (webviewReady) return;
-  // The WebView may not have been ready to take the address yet
-  panelRetryTimer = setTimeout(() => {
-    if (webviewReady || !panelVisible || loadEvents.length) return;
-    noteLoadEvent("retry");
-    showPanelPage();
-  }, panelStart.PANEL_RETRY_MS);
-  panelStartTimer = setTimeout(reportPanelStartFailure, panelStart.PANEL_START_LIMIT_MS);
 }
 
 /* ====================== Photoshop events ====================== */
@@ -590,6 +700,11 @@ uxp.entrypoints.setup({
     },
     destroy() {
       if (crashTrace) crashTrace.note("lifecycle", "plugin destroy (Photoshop closed TypeR normally)");
+      panelStartup.dispose();
+      clearProbes();
+      detachWindowMessages();
+      viewGeneration++;
+      panelVisible = false;
       keysHelper.stop();
       return mirror.flush();
     },
@@ -605,16 +720,27 @@ uxp.entrypoints.setup({
         if (crashTrace) crashTrace.note("lifecycle", "panel show");
         attachView();
         panelVisible = true;
-        watchPanelStart();
+        panelStartup.setVisible(true);
         post({ type: "visibility", hidden: false });
       },
       hide() {
         if (crashTrace) crashTrace.note("lifecycle", "panel hide");
         panelVisible = false;
+        panelStartup.setVisible(false);
+        clearProbes();
         post({ type: "visibility", hidden: true });
       },
       destroy() {
         if (crashTrace) crashTrace.note("lifecycle", "panel destroy");
+        panelStartup.dispose();
+        clearProbes();
+        detachWindowMessages();
+        panelVisible = false;
+        panelStartup.setVisible(false);
+        viewGeneration++;
+        view = null;
+        statusElement = null;
+        webviewReady = false;
         return mirror.flush();
       },
     },

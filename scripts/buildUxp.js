@@ -66,6 +66,10 @@ function writeManifest() {
     manifest.addon = { name: "typer-keys.uxpaddon" };
     manifest.requiredPermissions.enableAddon = true;
   }
+  if (process.argv.includes('--diagnostic')) {
+    manifest.name = 'TypeR DEBUG';
+    manifest.entrypoints.forEach(entry => { if (entry.id === 'typer') entry.label = { default: 'TypeR DEBUG' }; });
+  }
   // Development builds evaluate test code (uxp-src/host/devChannel.js)
   if (process.argv.includes("--dev")) manifest.requiredPermissions.allowCodeGenerationFromStrings = true;
   fs.writeFileSync(path.join(out, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
@@ -117,7 +121,7 @@ function packageCcx(manifest) {
   fs.mkdirSync(directory, { recursive: true });
   // --trace: the crash trace build (uxp-src/host/crashTrace.js), sent to a
   // user whose Photoshop crashes
-  const suffix = process.argv.includes('--dev') ? '-dev' : process.argv.includes('--trace') ? '-trace' : '';
+  const suffix = process.argv.includes('--diagnostic') ? '-debug' : process.argv.includes('--dev') ? '-dev' : process.argv.includes('--trace') ? '-trace' : '';
   const name = addonBuild ? "TypeR-UXP-addon-win.ccx" : 'TypeR-UXP' + (macBuild ? '-mac' : '') + suffix + '.ccx';
   const target = path.join(directory, name);
   fs.writeFileSync(target, zip);
@@ -128,11 +132,20 @@ function packageCcx(manifest) {
 if (!fs.existsSync(path.join(out, "host.js")) || !fs.existsSync(path.join(out, "web/index.js"))) {
   throw new Error("Run webpack with webpack.uxp.config.js first");
 }
+const diagnosticBuild = process.argv.includes('--diagnostic');
 if (macBuild && addonBuild) throw new Error('Choose either macOS or Windows addon packaging');
-if (addonBuild && (process.argv.includes('--dev') || process.argv.includes('--trace'))) throw new Error('Build the Windows addon preview separately');
+if (addonBuild && (diagnosticBuild || process.argv.includes('--dev') || process.argv.includes('--trace'))) throw new Error('Build the Windows addon preview separately');
 const addonHost = fs.readFileSync(path.join(out, 'host.js'), 'utf8').includes('TypeR UXP addon reader v1');
 if ((!macBuild) !== addonHost) throw new Error('UXP addon build mode mismatch: use matching --env mac / --mac flags');
+if (diagnosticBuild && (process.argv.includes('--dev') || process.argv.includes('--trace'))) throw new Error('Choose one UXP diagnostic, developer, or trace build');
+const diagnosticHost = fs.readFileSync(path.join(out, 'host.js'), 'utf8').includes('TypeR startup diagnostic v1');
+const diagnosticPanel = fs.readFileSync(path.join(out, 'web/index.html'), 'utf8').includes('html.script');
+if (diagnosticBuild !== diagnosticHost || diagnosticBuild !== diagnosticPanel) throw new Error('UXP build mode mismatch: rebuild both host and panel with matching --env diagnostic / --diagnostic flags');
 const manifest = writeManifest();
+const debugMarker = path.join(out, 'typer-debug-build.json');
+if (process.argv.includes('--diagnostic')) {
+  fs.writeFileSync(debugMarker, JSON.stringify({ build: 'startup-debug', version: pkg.version, builtAt: new Date().toISOString(), hostSha256: sha256(fs.readFileSync(path.join(out, 'host.js'))), panelSha256: sha256(fs.readFileSync(path.join(out, 'web/index.js'))) }, null, 2));
+} else if (fs.existsSync(debugMarker)) fs.unlinkSync(debugMarker);
 copyAssets();
 if (!macBuild) {
   const bytes = require('./buildKeysAddon').verifiedBinary();

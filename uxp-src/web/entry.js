@@ -41,7 +41,10 @@ async function requestInit() {
 
 // Startup milestones, in ms since the page started (perf diagnostics)
 const startup = (window.__typerStartup = {});
-const mark = (name) => { startup[name] = Math.round(performance.now()); };
+const mark = (name) => {
+  startup[name] = Math.round(performance.now());
+  if (process.env.TYPER_DIAGNOSTIC === "1" && window.typerDiagnosticNote) window.typerDiagnosticNote('app.' + name, startup[name] + ' ms');
+};
 
 async function start() {
   installErrorReporting(report);
@@ -62,6 +65,7 @@ async function start() {
   if (IS_WEBKIT) installInputCentering();
   await import(/* webpackMode: "eager" */ "../../app_src/index.jsx");
   mark("app");
+  notify("appReady");
   requestAnimationFrame(() => requestAnimationFrame(() => mark("painted")));
 }
 

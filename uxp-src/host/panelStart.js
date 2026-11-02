@@ -3,7 +3,7 @@
 // runtime Photoshop's installer provides). The host page does not depend on it:
 // it says so there, with what is needed to find the cause.
 const PANEL_RETRY_MS = 5000;
-const PANEL_START_LIMIT_MS = 20000;
+const PANEL_START_LIMIT_MS = 15000;
 
 // Where Adobe's installer and Microsoft's put the WebView2 runtime
 const WINDOWS_WEBVIEW_FOLDERS = [

@@ -31,7 +31,8 @@
     "package:uxp:addon:installer": "npm run package:uxp:addon && node scripts/packageAddonInstaller.js",
     "test:uxp:addon:installer": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/testAddonInstaller.ps1",
     "package:uxp:trace": "webpack --config webpack.uxp.config.js --mode=production --env trace && node scripts/buildUxp.js --package --trace",
-    "package:uxp:debug": "npm run package:uxp:trace && node scripts/buildDebugKit.js",
+    "package:uxp:trace-kit": "npm run package:uxp:trace && node scripts/buildDebugKit.js",
+    "package:uxp:debug": "webpack --config webpack.uxp.config.js --mode=production --env diagnostic && node scripts/buildUxp.js --package --diagnostic && node scripts/packageUxpDebug.js",
     "test:uxp": "node scripts/testUxpHost.js && node scripts/testUxpPanelShim.js"
   },
   "dependencies": {

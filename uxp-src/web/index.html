@@ -5,6 +5,7 @@
     <title>TypeR</title>
     <link id="topcoat" rel="stylesheet" />
     <style id="hostStyle"></style>
+    <% if (htmlWebpackPlugin.options.diagnosticSource) { %><script><%= htmlWebpackPlugin.options.diagnosticSource %></script><% } %>
   </head>
   <body class="hostElt">
     <div id="app"></div>

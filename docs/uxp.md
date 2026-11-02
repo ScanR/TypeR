@@ -96,17 +96,25 @@ the WebView refuses because of CORS (GitHub release downloads) is made again by 
 
 The panel only exists inside the WebView. Photoshop's panel background is all that shows when it never
 starts, without an error event (reported on Windows with Photoshop 2026, cause not established). So
-`uxp-src/host/panelStart.js` watches the start from the host page, which does not depend on the WebView:
-no load reported after 5 s sets the address once more, and no message from the panel after 20 s shows a
-notice with the versions, the view's size, the load events and, on Windows, the WebView2 versions present.
-The first message from the panel clears it. A slow start only shows the notice for a moment.
+`uxp-src/host/panelStartup.js` watches the start from the host page, which does not depend on the WebView:
+no load reported after 5 s sets the address once more, and no message from the panel after 15 s shows a
+notice with the versions, the view's size, the load events and, on Windows, the WebView2 versions present
+(reported by `panelStart.js`). Once the bridge answers, the app has up to 15 s to finish initializing;
+repeated bridge messages do not extend that deadline. Only the app-ready message clears the loading
+notice. Hiding the panel suspends the deadlines and showing it starts a fresh waiting period. The native
+**Reload TypeR** button saves pending settings writes and recreates the WebView.
 
-`npm run package:uxp:debug` writes `Releases/TypeR-debug.zip`, to send to such a user on Windows. Double-clicking
+`npm run package:uxp:debug` writes `Releases/TypeR-DEBUG-Windows-EN.zip`: the support build adds an independent
+startup journal, an **Export diagnostic** button and a read-only Windows collector. It uses the normal plugin
+ID and preserves its data, without enabling developer code execution. Reinstall the normal build afterwards.
+
+`npm run package:uxp:trace-kit` writes `Releases/TypeR-debug.zip`, for deeper crash/WebView investigation on Windows. Double-clicking
 `TypeR-debug.cmd` installs the crash trace build through `install.ps1`, then `scripts/debug-kit/collect.ps1`
 writes `TypeR-debug-report.txt` on the Desktop: Photoshop installations and the WebView2 files they hold, runtime
 folders and registry, the running WebView processes, Windows errors and the trace. In that build, a panel still
-silent after 20 s runs `uxp-src/host/panelProbe.js`, which hides it and opens small WebViews instead. A red box is
-one that painted nothing. A trace build's `uxp/` folder must not be shipped: run `npm run build:uxp` afterwards.
+silent after 15 s runs `uxp-src/host/panelProbe.js`, which hides it and opens small WebViews instead. A red box is
+one that painted nothing. The probes are removed on recovery, reload, hiding or closing the panel. A trace
+or debug build's `uxp/` folder must not be shipped: run `npm run build:uxp` afterwards.
 
 ## Keyboard reader
 

@@ -287,6 +287,21 @@ A shortcut made of modifier keys only (`Win + Ctrl`, `Win + Shift`, `Win + Alt`)
 </details>
 
 <details>
+<summary><strong>TypeR UXP opens as an empty panel</strong></summary>
+
+TypeR UXP renders its interface in Photoshop's WebView. If it stays silent, TypeR retries the address once after 5 seconds and shows a native diagnostic after 15 seconds. Once the WebView answers, the interface has up to 15 seconds to finish initializing. These deadlines pause while the panel is hidden. Copy the message and the Photoshop/UXP versions for support. **Reload TypeR** recreates the WebView and preserves pending settings writes.
+
+On Windows, a missing or damaged **UXP WebView / Microsoft Edge WebView2** component is one possible cause, especially with an incomplete Photoshop installation. Adobe documents its shared runtime at `C:\Program Files\Common Files\Adobe\Microsoft\EdgeWebView\`. Repair the Adobe installation if that component is missing or damaged, then restart Photoshop; reinstalling TypeR alone cannot restore an Adobe runtime. See [Adobe's UXP WebView documentation](https://helpx.adobe.com/creative-cloud/apps/integration-with-other-apps/manage-plugins/uxp-webview.html).
+
+If the diagnostic says the panel did not finish initializing, its WebView has answered: send that message to support rather than assuming the runtime is missing.
+
+TypeR listens for WebView messages on both the element and the native UXP window, as described in [Adobe's messaging API](https://developer.adobe.com/photoshop/uxp/2022/uxp-api/reference-js/global-members/html-elements/html-web-view-element). A timeout alone does not prove that WebView2 is missing: the diagnostic also reports whether loading started, finished, and reached the message bridge.
+
+For a support build, run `npm run package:uxp:debug`. It creates `Releases/TypeR-DEBUG-Windows-EN.zip`, with a direct installer and a read-only Windows collector. The temporary **TypeR DEBUG** build keeps the normal plugin ID and data, records startup events outside the WebView, and offers **Export diagnostic** from the native panel. Its bounded automatic reports live in the plugin's `PluginData/diagnostics` folder; the collector combines them with runtime versions and relevant Photoshop log lines. No report is uploaded automatically. Reinstall the normal TypeR package after diagnosis. This support build does not enable the developer code-execution channel (`package:uxp:debug` is distinct from `build:uxp:dev`).
+
+</details>
+
+<details>
 <summary><strong>Shortcuts with a letter or digit do nothing on macOS</strong></summary>
 
 Add Photoshop to **System Settings → Privacy & Security → Input Monitoring**. See [macOS: allow the shortcuts](#macos-allow-the-shortcuts).

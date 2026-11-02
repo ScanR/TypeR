@@ -65,7 +65,7 @@ function run({ mainView, note, report }) {
   document.body.appendChild(container);
   const results = PROBES.map((probe) => startProbe(probe, container, note));
   report("Probes running...");
-  setTimeout(() => {
+  const timer = setTimeout(() => {
     results.forEach((result) => {
       try {
         const box = result.view.getBoundingClientRect();
@@ -76,6 +76,10 @@ function run({ mainView, note, report }) {
     note(text);
     report(text);
   }, WATCH_MS);
+  return () => {
+    clearTimeout(timer);
+    container.remove();
+  };
 }
 
 module.exports = { run };

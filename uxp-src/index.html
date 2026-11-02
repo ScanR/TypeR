@@ -5,12 +5,20 @@
     <style>
       html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
       body { display: flex; flex-direction: column; }
-      #typer-status { display: none; padding: 8px; color: #f2bc76; font-size: 12px; white-space: pre-wrap; }
-      #typer-view { flex: 1; width: 100%; height: 100%; border: 0; }
+      #typer-status { flex-shrink: 0; max-height: 180px; overflow: auto; padding: 12px; color: #f2bc76; font-size: 12px; white-space: pre-wrap; }
+      #typer-recovery { display: none; flex-shrink: 0; padding: 0 12px 12px; }
+      #typer-view { flex: 1; min-height: 0; width: 100%; height: 100%; border: 0; }
+      #typer-debug { display: none; flex-shrink: 0; padding: 8px; background: #303030; color: #eee; }
+      #typer-debug-status { font-size: 10px; max-height: 48px; overflow: auto; }
     </style>
   </head>
   <body>
-    <div id="typer-status"></div>
+    <div id="typer-debug"><strong>TypeR DEBUG</strong><sp-button id="typer-debug-export">Export diagnostic</sp-button><div id="typer-debug-status"></div></div>
+    <div id="typer-status">Loading TypeR… If this message remains, close and reopen the panel or reinstall TypeR.</div>
+    <div id="typer-recovery">
+      <sp-button id="typer-retry">Reload TypeR</sp-button>
+      <sp-button id="typer-webview-help">WebView help</sp-button>
+    </div>
     <webview id="typer-view" width="100%" height="100%"></webview>
     <script src="host.js"></script>
   </body>
