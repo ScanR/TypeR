@@ -64,9 +64,12 @@ app_src/host.js              CEP host, "smart paste" section (ES3): capture, mea
 
 - **UXP** runs the whole engine in the plugin host (`smartPaste(request)`): pixels and paths never cross the
   WebView. Reads run in rolled-back history suspensions; the paste is one history state.
+  Each text measurement groups its create/update and bounds read into one `batchPlay` call; an atlas
+  groups creation, conversion and path reading. The final atlas is removed by history rollback.
+  Atlas row leading is normalized for pixel styles at non-72 dpi so the engine can keep measuring in batches.
 - **CEP** runs the engine in the panel (modern or ES5 build) and calls three ExtendScript steps:
   `smartPasteCapture` (work path through ActionManager, channel histograms of the selection),
-  `smartPasteMeasure` (one staging text layer, bounds per line) and `smartPasteCommit`.
+  `smartPasteMeasure` (invisible staging layers, individual bounds or atlas metrics) and `smartPasteCommit`.
 - Both hosts also answer `getHistorySnapshot` (history state ids) and `replaySelectionTrigger` (multi-bubble).
 
 ## Deliberate differences between CEP and UXP
@@ -75,7 +78,8 @@ These follow from what ExtendScript can do; the behaviour stays the same otherwi
 
 - CEP reads no pixels: the fill comes from the channel histograms of the selection. The cleanup checks that need
   pixels (fading edges) and open bubbles run in UXP only; in CEP an open bubble falls back to the classic paste.
-- CEP measures line by line; UXP also reads up to 24 plain lines at once from a vector atlas.
+- Both hosts read up to 24 compatible lines at once from a vector atlas, with individual measurements as fallback.
+  CEP reduces the outlines to metrics before returning them across its bridge.
 - UXP reports history moves live; CEP checks the history before a paste, after Photoshop events and when the
   panel gets the focus.
 

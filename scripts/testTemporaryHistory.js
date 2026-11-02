@@ -157,6 +157,48 @@ assert.strictEqual(JSON.parse(deferred.context.smartPasteMeasure({ requests: [{ 
 assert.strictEqual(deferred.getPixels(), "original selection", "Failed measurements must also clean up deferred history");
 assert.deepStrictEqual(deferred.states.map((state) => state.name), deferredNames);
 
+// Align first reads an oval as a work path, then centres a previously moved
+// text. PS 2019 must restore the original selection and remove that path
+// before the positioning step, just as it does for smart paste captures.
+const align = makeHost({ deferredHistory: true });
+const selection = { left: 420, top: 400, right: 680, bottom: 560, width: 260, height: 160, xMid: 550, yMid: 480 };
+let textBox = { left: 250, top: 180, right: 450, bottom: 240, xMid: 350, yMid: 210 };
+const outline = { pathContents: { pathComponents: [] } };
+align.doc.id = 7;
+Object.assign(align.context, {
+  _getDocumentPixelSize: () => ({ width: 1200, height: 1000 }),
+  _getDocumentResolution: () => 72,
+  _targetLayerEntries: () => [{ id: 42, text: true }],
+  _selectLayerById: () => {},
+  _layerStackIndex: () => 2,
+  _currentLayerBox: () => textBox,
+  _currentDisplayedTextPixels: () => 20,
+  _liveSelectionBounds: () => selection,
+  _makeWorkPathFromSelection: () => align.mutate("temporary selected work path"),
+  _smartReadWorkPath: () => outline,
+  _safeActiveLayerId: () => 42,
+  _layerIsTextLayer: () => true,
+  _textLayerIsPointText: () => true,
+  _getCurrentTextLayerBounds: () => textBox,
+  _checkSelection: () => {
+    assert.strictEqual(align.getPixels(), "original selection", "Align must use the restored selection, with no temporary path selected");
+    return selection;
+  },
+  _deselect: () => {},
+  _changeToPointText: () => {},
+  _moveLayer: (dx, dy) => { textBox = { ...textBox, xMid: textBox.xMid + dx, yMid: textBox.yMid + dy }; },
+});
+align.context._hostState.alignTextLayerToSelection = { placements: {}, resize: false, padding: 0 };
+["alignCapture", "_alignCaptureRun", "_alignReadOutline", "_alignCurrentTextLayerToSelection", "_positionLayerWithinSelection"].forEach(name => vm.runInContext(extract(name), align.context));
+const alignRead = JSON.parse(align.context.alignCapture());
+assert.strictEqual(alignRead.texts[0].id, 42);
+assert.deepStrictEqual(alignRead.bubbles[0].textIds, [42]);
+assert.strictEqual(align.getPixels(), "original selection", "Align capture must remove its oval work path on deferred-history hosts");
+assert.deepStrictEqual(align.states.map(state => state.name), names);
+assert.strictEqual(align.context._alignCurrentTextLayerToSelection(), "");
+assert.strictEqual(textBox.xMid, selection.xMid);
+assert.strictEqual(textBox.yMid, selection.yMid);
+
 const deferredFull = makeHost({ deferredHistory: true });
 deferredFull.context.app.preferences.numberOfHistoryStates = 3;
 assert.strictEqual(JSON.parse(deferredFull.context.getCurrentSelectionShape({})).scan, "path");

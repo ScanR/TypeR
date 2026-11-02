@@ -225,6 +225,32 @@ async function recoverOpenBubble(doc, page, click, selectionBounds, wants) {
 
 const textObject = (params) => jamText.toLayerTextObject(params);
 
+// Keep dependent make/set/read operations in one Photoshop call. Abort at
+// the first failed command so a later operation cannot target a user layer.
+function measureBatch(commands) {
+  const results = ps.action.batchPlay(commands.map((command) => Object.assign({ _options: { dialogOptions: "silent" } }, command)), {
+    synchronousExecution: true, immediateRedraw: false, continueOnError: false,
+  });
+  const failure = results && results.find((result) => result && result._obj === "error");
+  if (failure) throw Object.assign(new Error(failure.message || "Text measurement failed"), { code: failure.result });
+  if (!results || results.length !== commands.length || results.some((result) => !result)) throw new Error("Incomplete text measurement");
+  return results;
+}
+
+function measureTextObject(request) {
+  let params = request.params;
+  if (request.kind === "atlas" && params.typeUnit === "pixelsUnit") {
+    // Shared atlases express row leading in points. JAM writes it using
+    // typeUnit: preserve the 256px row spacing at resolutions other than 72.
+    params = clone(params);
+    const scale = ps.app.activeDocument.resolution / 72;
+    for (const range of params.layerText.textStyleRange || []) {
+      if (range.textStyle && typeof range.textStyle.leading === "number") range.textStyle.leading *= scale;
+    }
+  }
+  return textObject(params);
+}
+
 async function measureRequests(requests) {
   const replies = new Array(requests.length).fill(null);
   if (!requests.length) return replies;
@@ -234,26 +260,33 @@ async function measureRequests(requests) {
       const request = requests[i];
       if (request.kind === "atlas") {
         try {
-          play({ _obj: "make", _target: [{ _ref: "textLayer" }], using: textObject(request.params) });
-          // Convert to shape: the outlines tell each row's ink bounds
-          play({ _obj: "make", _target: [{ _ref: "contentLayer" }], using: { _ref: "textLayer", _enum: "ordinal", _value: "targetEnum" } });
-          const path = get([{ _ref: "path", _enum: "path", _value: "vectorMask" }]);
-          replies[i] = { path };
-          play({ _obj: "delete", _target: [TARGET_LAYER] });
+          const using = measureTextObject(request);
+          const commands = [
+            staging ? { _obj: "set", _target: [TARGET_LAYER], to: using } : { _obj: "make", _target: [{ _ref: "textLayer" }], using },
+            // Convert to shape: the outlines tell each row's ink bounds.
+            { _obj: "make", _target: [{ _ref: "contentLayer" }], using: { _ref: "textLayer", _enum: "ordinal", _value: "targetEnum" } },
+            { _obj: "get", _target: [{ _ref: "path", _enum: "path", _value: "vectorMask" }] },
+          ];
+          // History rollback already removes the final atlas. Earlier ones
+          // are deleted in the same batch to bound temporary memory usage.
+          if (i + 1 < requests.length) commands.push({ _obj: "delete", _target: [TARGET_LAYER] });
+          replies[i] = { path: measureBatch(commands)[2] };
         } catch (atlasError) {
           replies[i] = null;
+        } finally {
+          // A converted/deleted layer can never be reused as text, even
+          // when a line was measured before this atlas in the same batch.
           staging = false;
         }
         continue;
       }
-      const using = textObject(request.params);
-      if (!staging) {
-        play({ _obj: "make", _target: [{ _ref: "textLayer" }], using });
-        staging = true;
-      } else {
-        play({ _obj: "set", _target: [TARGET_LAYER], to: using });
-      }
-      const bounds = boxOf(get([{ _property: "boundsNoEffects" }, TARGET_LAYER]).boundsNoEffects || get([{ _property: "bounds" }, TARGET_LAYER]).bounds);
+      const using = measureTextObject(request);
+      const results = measureBatch([
+        staging ? { _obj: "set", _target: [TARGET_LAYER], to: using } : { _obj: "make", _target: [{ _ref: "textLayer" }], using },
+        { _obj: "get", _target: [{ _property: "boundsNoEffects" }, TARGET_LAYER] },
+      ]);
+      staging = true;
+      const bounds = boxOf(results[1].boundsNoEffects || get([{ _property: "bounds" }, TARGET_LAYER]).bounds);
       replies[i] = bounds ? { bounds } : null;
     }
   }, { rollback: true }));
