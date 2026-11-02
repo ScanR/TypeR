@@ -4,6 +4,7 @@
 
 - Fix the text pasted with Auto clean landing under the `TypeR Clean` layer, hidden by its fill, since 3.0.1: the text is made above the clean layer again, in the user's folder when that folder sits above it, and a new text is brought to the front of its folder with Photoshop's own command instead of a computed layer index (which also raised a Photoshop error on some documents).
 - The new TypeR no longer hides its WebView when it has not answered after 15 s: Photoshop 27.7 can take much longer to start it, and a hidden WebView never loads. The notice says TypeR keeps waiting, and the panel opens by itself when the WebView starts.
+- Windows: the keyboard shortcuts (tool keys, `Ctrl+T`…) no longer die after a paste on click or TextShapeR until the document is clicked. Photoshop's contextual task bar settles under the cursor with the new text layer, and the tooltip of one of its icons takes the keyboard focus, a Photoshop bug. The new TypeR's keyboard addon now sees that tooltip hold the focus and gives it back to the document at once. The Legacy panel has no such reader: there, click the document or press the Windows key to get the shortcuts back.
 
 ## 3.0.1
 

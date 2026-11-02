@@ -15,6 +15,29 @@ public:
         return foregroundProcess == GetCurrentProcessId();
     }
     short keyState(int key) const override { return GetAsyncKeyState(key); }
+    // Read only: GetGUIThreadInfo and the window queries work from any thread.
+    typer::FocusWindow focusWindow() const override {
+        typer::FocusWindow result;
+        const HWND foreground = GetForegroundWindow();
+        if (!foreground) return result;
+        const DWORD thread = GetWindowThreadProcessId(foreground, nullptr);
+        GUITHREADINFO info{};
+        info.cbSize = sizeof(info);
+        if (!thread || !GetGUIThreadInfo(thread, &info) || !info.hwndFocus) return result;
+        const HWND root = GetAncestor(info.hwndFocus, GA_ROOT);
+        char name[64] = {};
+        if (!root || !GetClassNameA(root, name, sizeof(name))) return result;
+        result.known = true;
+        result.className = name;
+        result.style = static_cast<unsigned long>(GetWindowLongPtrW(root, GWL_STYLE));
+        result.exStyle = static_cast<unsigned long>(GetWindowLongPtrW(root, GWL_EXSTYLE));
+        const HWND owner = GetWindow(root, GW_OWNER);
+        if (owner && GetClassNameA(owner, name, sizeof(name))) {
+            result.ownerClassName = name;
+            result.ownerEnabled = IsWindowEnabled(owner) != FALSE;
+        }
+        return result;
+    }
 };
 
 // Synchronous bounded sampling on UXP's scripting thread: no retained JS handles,

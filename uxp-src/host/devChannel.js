@@ -2,8 +2,12 @@
 // code inside the plugin host or the panel, through files in a temporary
 // folder. Never part of a release build.
 const fs = require("fs");
+const os = require("os");
 
-const DIR = "/private/tmp/typer-uxp-dev/";
+// macOS: /private/tmp. Windows: %APPDATA%\TypeR\UXP\dev, as a file: URL
+const DIR = os.platform() === "win32"
+  ? "file:/" + String(os.homedir()).replace(/\\/g, "/") + "/AppData/Roaming/TypeR/UXP/dev/"
+  : "/private/tmp/typer-uxp-dev/";
 const PANEL_TIMEOUT_MS = 20000;
 
 function writeResult(id, out) {

@@ -10,6 +10,18 @@ struct Snapshot {
     unsigned mouseDown = 0;
     unsigned mousePressed = 0;
     std::string mouseModifiers;
+    bool focusStolen = false;
+};
+
+// The top-level window holding the keyboard focus in the foreground thread
+// (the root of the focused control), with its owner.
+struct FocusWindow {
+    bool known = false;
+    std::string className;
+    unsigned long style = 0;
+    unsigned long exStyle = 0;
+    std::string ownerClassName;
+    bool ownerEnabled = false;
 };
 
 // Injected in tests; production uses the current Photoshop process id.
@@ -17,12 +29,29 @@ struct Input {
     virtual ~Input() = default;
     virtual bool isHostForeground() const = 0;
     virtual short keyState(int key) const = 0;
+    virtual FocusWindow focusWindow() const = 0;
 };
+
+// Photoshop's rich tooltips (the contextual task bar's, among others) are
+// dialog-class popups shown without WS_EX_NOACTIVATE: on Windows they take
+// the keyboard focus, and every shortcut dies until the user clicks the
+// document or switches applications. Such a tooltip has no caption, is
+// layered and is owned by the still enabled main window. A real dialog,
+// Photoshop's (PSFloatC) or UXP's, has a caption and disables its owner.
+inline bool isTooltipFocus(const FocusWindow& window) {
+    constexpr unsigned long WS_CAPTION_ = 0x00C00000;
+    constexpr unsigned long WS_EX_LAYERED_ = 0x00080000;
+    constexpr unsigned long WS_EX_NOACTIVATE_ = 0x08000000;
+    return window.known && window.className == "#32770" && (window.style & WS_CAPTION_) == 0 &&
+        (window.exStyle & WS_EX_LAYERED_) != 0 && (window.exStyle & WS_EX_NOACTIVATE_) == 0 &&
+        window.ownerClassName == "Photoshop" && window.ownerEnabled;
+}
 
 inline Snapshot readSnapshot(const Input& input) {
     Snapshot result;
     if (!input.isHostForeground()) return result;
     result.foreground = true;
+    result.focusStolen = isTooltipFocus(input.focusWindow());
     const auto down = [&](int key) { return (input.keyState(key) & 0x8000) != 0; };
     const bool win = down(0x5B) || down(0x5C);
     const bool ctrl = down(0x11);
@@ -71,6 +100,7 @@ inline std::string serialize(const Snapshot& value) {
     return "{\"apiVersion\":1,\"foreground\":" + std::string(value.foreground ? "true" : "false") +
         ",\"state\":\"" + value.state + "\",\"mouseDown\":" + std::to_string(value.mouseDown) +
         ",\"mousePressed\":" + std::to_string(value.mousePressed) +
-        ",\"mouseModifiers\":\"" + value.mouseModifiers + "\"}";
+        ",\"mouseModifiers\":\"" + value.mouseModifiers + "\"" +
+        ",\"focusStolen\":" + std::string(value.focusStolen ? "true" : "false") + "}";
 }
 }

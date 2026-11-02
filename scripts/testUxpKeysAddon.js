@@ -9,17 +9,25 @@ function fixture() {
   let next = snapshot();
   let callback = null;
   let loads = 0;
+  let focusReports = 0;
   const states = [], lines = [], errors = [];
+  const self = {
+    clock: 1000,
+    states, lines, errors,
+    start: () => reader.start(line => lines.push(line), () => focusReports++),
+    tick: patch => { next = patch instanceof Error ? patch : snapshot(patch); assert(callback); callback(); },
+    get running() { return callback !== null; }, get loads() { return loads; }, get focusReports() { return focusReports; },
+  };
   const reader = createReader({
     loadAddon: () => { loads++; return { readSnapshot: () => { if (next instanceof Error) throw next; return next; } }; },
     setState: state => states.push(state),
     schedule: (fn, ms) => { assert.strictEqual(ms, 25); assert.strictEqual(callback, null); callback = fn; return 1; },
     cancel: id => { assert.strictEqual(id, 1); callback = null; },
     reportError: (...args) => errors.push(args),
+    now: () => self.clock,
   });
-  return { reader, states, lines, errors, start: () => reader.start(line => lines.push(line)),
-    tick: patch => { next = patch instanceof Error ? patch : snapshot(patch); assert(callback); callback(); },
-    get running() { return callback !== null; }, get loads() { return loads; } };
+  self.reader = reader;
+  return self;
 }
 
 // Native polling needs no DOM event and no focus on the UXP panel.
@@ -64,6 +72,31 @@ f.tick({});
 f.tick({ mouseDown: 1 });
 assert.strictEqual(f.lines.length, count + 1);
 
+// A Photoshop tooltip holding the focus is reported once per theft, then
+// again every second while it lasts (Photoshop may have been busy).
+assert.strictEqual(f.focusReports, 0);
+f.tick({ focusStolen: true });
+assert.strictEqual(f.focusReports, 1);
+assert.strictEqual(f.reader.diagnostics().focusStolen, true);
+f.clock += 500;
+f.tick({ focusStolen: true });
+assert.strictEqual(f.focusReports, 1, "No repeat while the same theft lasts");
+f.clock += 500;
+f.tick({ focusStolen: true });
+assert.strictEqual(f.focusReports, 2, "Tried again after a second");
+f.tick({});
+assert.strictEqual(f.reader.diagnostics().focusStolen, false);
+f.tick({ focusStolen: true });
+assert.strictEqual(f.focusReports, 3, "A new theft is reported at once");
+f.tick({ foreground: false, focusStolen: true });
+f.tick({ foreground: false, focusStolen: true });
+assert.strictEqual(f.focusReports, 3, "Another application's windows are not Photoshop's tooltips");
+assert.strictEqual(f.reader.diagnostics().focusStolen, false);
+f.tick({});
+f.tick({ focusStolen: undefined });
+assert.strictEqual(f.focusReports, 3, "An addon without the field reports nothing");
+assert.strictEqual(f.reader.diagnostics().focusReports, 3);
+
 // Fail closed, clear held keys and allow a deliberate restart after failure.
 f.tick(new Error("addon unavailable"));
 assert(!f.running);
@@ -83,7 +116,7 @@ assert(await restarting.start());
 assert.strictEqual(restarting.loads, 2);
 restarting.reader.stop();
 
-for (const patch of [{ apiVersion: 2 }, { state: null }, { state: "a\nINJECT" }, { foreground: "true" }, { mouseDown: 4 }, { mousePressed: -1 }, { mouseModifiers: "SC" }]) {
+for (const patch of [{ apiVersion: 2 }, { state: null }, { state: "a\nINJECT" }, { foreground: "true" }, { mouseDown: 4 }, { mousePressed: -1 }, { mouseModifiers: "SC" }, { focusStolen: "yes" }]) {
   assert.throws(() => parseSnapshot(snapshot(patch)), /Incompatible/);
 }
 assert.throws(() => parseSnapshot("null"), /Incompatible/);

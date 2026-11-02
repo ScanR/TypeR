@@ -435,11 +435,12 @@ const requests = {
   flushMirror: () => mirror.flush(),
   openUrl: (url) => uxp.shell.openExternal(String(url)),
   keyboardAccess: () => keysHelper.access(),
-  needsPlatformPackage: () => keysHelper.needsPlatformPackage(),
-  keyboardDebug: () => typeof keysHelper.diagnostics === "function" ? keysHelper.diagnostics() : {
+  // A development build must not replace itself with the release package
+  needsPlatformPackage: () => !(typeof TYPER_DEV !== "undefined" && TYPER_DEV) && keysHelper.needsPlatformPackage(),
+  keyboardDebug: () => Object.assign(typeof keysHelper.diagnostics === "function" ? keysHelper.diagnostics() : {
     source: "helper", running: null, foreground: null, error: "",
     state: keyboard.getState(), sampledAt: keyboard.lastUpdate(),
-  },
+  }, { focusRestores }),
   openKeyboardAccess: () => systemCall('open "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"'),
   log: (...args) => log("panel:", ...args),
 };
@@ -660,6 +661,31 @@ function onHistoryChanged() {
 
 keyboard.onChange((state) => post({ type: "keys", state }));
 
+/* ========================= focus ========================= */
+
+// Photoshop's rich tooltips take the keyboard focus on Windows (keys.h): after
+// a paste on click or TextShapeR, the contextual task bar of the new text
+// layer sits under the cursor, its tooltip opens, and every shortcut dies
+// until the user clicks the document. The addon reports the theft, and the
+// focus goes back to the document: bringToFront does that, from the modal
+// scope it needs as an action. Photoshop busy (a text being edited, a
+// dialog): the user's next click restores it, as before.
+let restoringFocus = false;
+let focusRestores = 0;
+
+async function restoreFocus() {
+  if (restoringFocus) return;
+  restoringFocus = true;
+  try {
+    await photoshop._internals.modal("TypeR", () => ps.app.bringToFront());
+    focusRestores++;
+  } catch (error) {
+    debugNote("focus.restore", String((error && error.message) || error));
+  } finally {
+    restoringFocus = false;
+  }
+}
+
 /* ========================= setup ========================= */
 
 function onThemeChanged() {
@@ -683,7 +709,7 @@ async function startOnce() {
   try {
     document.theme.onUpdated.addListener(onThemeChanged);
   } catch (error) {}
-  keysHelper.start((line) => post({ type: "watcherLine", line })).catch((error) => console.error("TypeR keys", error));
+  keysHelper.start((line) => post({ type: "watcherLine", line }), restoreFocus).catch((error) => console.error("TypeR keys", error));
   services.removeStalePluginFolders().catch((error) => console.error("TypeR: plugin cleanup", error));
   services.removeUpdateFolder().catch((error) => console.error("TypeR: update cleanup", error));
   services.renameLegacyPanel().catch((error) => console.error("TypeR: Legacy panel name", error));

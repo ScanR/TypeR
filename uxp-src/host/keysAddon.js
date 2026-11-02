@@ -1,7 +1,12 @@
 // TypeR UXP addon reader v1. Default Windows keyboard reader.
 // An addon failure never falls back to an executable.
+// The addon also tells when a Photoshop tooltip holds the keyboard focus
+// (focusStolen, keys.h): the listener given to start() gives it back.
 const keyboard = require("./keyboard");
 const POLL_MS = 25;
+// A theft that lasts is reported again this often: Photoshop may have been
+// busy when the focus was first given back
+const FOCUS_RETRY_MS = 1000;
 
 function parseSnapshot(text) {
   const snapshot = JSON.parse(text);
@@ -9,16 +14,20 @@ function parseSnapshot(text) {
       typeof snapshot.state !== "string" || !/^a(?:[A-Z0-9]+a)*$/.test(snapshot.state) ||
       !Number.isInteger(snapshot.mouseDown) || snapshot.mouseDown < 0 || snapshot.mouseDown > 3 ||
       !Number.isInteger(snapshot.mousePressed) || snapshot.mousePressed < 0 || snapshot.mousePressed > 3 ||
-      typeof snapshot.mouseModifiers !== "string" || !/^W?C?A?S?$/.test(snapshot.mouseModifiers)) {
+      typeof snapshot.mouseModifiers !== "string" || !/^W?C?A?S?$/.test(snapshot.mouseModifiers) ||
+      (snapshot.focusStolen !== undefined && typeof snapshot.focusStolen !== "boolean")) {
     throw new Error("Incompatible TypeR keyboard addon snapshot");
   }
   return snapshot;
 }
 
-function createReader({ loadAddon, setState, schedule = setInterval, cancel = clearInterval, reportError = console.error }) {
+function createReader({ loadAddon, setState, schedule = setInterval, cancel = clearInterval, reportError = console.error, now = Date.now }) {
   let timer = null;
   let addon = null;
   let mouseListener = null;
+  let focusListener = null;
+  let lastFocusReport = 0;
+  let focusReports = 0;
   let previous = null;
   let running = false;
   let loading = false;
@@ -32,8 +41,11 @@ function createReader({ loadAddon, setState, schedule = setInterval, cancel = cl
   function diagnostics() {
     return { source: "uxpaddon", running, loading, error: lastError, sampledAt, samples,
       foreground: previous ? previous.foreground : null,
-      state: previous && previous.foreground ? previous.state : "a", lastKeys };
+      state: previous && previous.foreground ? previous.state : "a", lastKeys,
+      focusStolen: isStolen(previous), focusReports };
   }
+
+  const isStolen = (snapshot) => !!(snapshot && snapshot.foreground && snapshot.focusStolen === true);
 
   function fail(error) {
     stop();
@@ -50,6 +62,7 @@ function createReader({ loadAddon, setState, schedule = setInterval, cancel = cl
     timer = null;
     previous = null;
     mouseListener = null;
+    focusListener = null;
     addon = null;
     setState("a");
   }
@@ -57,7 +70,7 @@ function createReader({ loadAddon, setState, schedule = setInterval, cancel = cl
   function poll() {
     try {
       const snapshot = parseSnapshot(addon.readSnapshot());
-      sampledAt = Date.now();
+      sampledAt = now();
       samples++;
       if (snapshot.foreground && snapshot.state !== "a") lastKeys = snapshot.state;
       setState(snapshot.foreground ? snapshot.state : "a");
@@ -69,6 +82,12 @@ function createReader({ loadAddon, setState, schedule = setInterval, cancel = cl
           if (pressed & (1 << index)) mouseListener("MB|" + (index + 5) + "|" + snapshot.mouseModifiers + "|Photoshop");
         }
       }
+      // A tooltip took the focus: reported once, then again while it lasts
+      if (isStolen(snapshot) && focusListener && (!isStolen(previous) || sampledAt - lastFocusReport >= FOCUS_RETRY_MS)) {
+        lastFocusReport = sampledAt;
+        focusReports++;
+        focusListener();
+      }
       previous = snapshot;
       return true;
     } catch (error) {
@@ -77,8 +96,9 @@ function createReader({ loadAddon, setState, schedule = setInterval, cancel = cl
     }
   }
 
-  function start(onMouseLine) {
+  function start(onMouseLine, onFocusStolen) {
     mouseListener = onMouseLine || null;
+    focusListener = onFocusStolen || null;
     if (running) return Promise.resolve(true);
     if (startTask) return startTask;
     lastError = "";
@@ -146,13 +166,13 @@ const reader = createReader({
 });
 
 module.exports = {
-  start: async (onMouseLine) => {
+  start: async (onMouseLine, onFocusStolen) => {
     removeOldReader(require("./files")).catch((error) => console.warn("TypeR: old keyboard reader", error));
-    return reader.start(onMouseLine);
+    return reader.start(onMouseLine, onFocusStolen);
   },
   needsPlatformPackage: () => false,
   stop: reader.stop,
   access: reader.access,
   diagnostics: reader.diagnostics,
-  _internals: { createReader, parseSnapshot, removeOldReader, POLL_MS },
+  _internals: { createReader, parseSnapshot, removeOldReader, POLL_MS, FOCUS_RETRY_MS },
 };
