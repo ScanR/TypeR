@@ -206,6 +206,17 @@ function _withTemporaryHistory(name, fn, options) {
     return { error: "historyBusy" };
   }
 
+  // A history state remembers the layers that were selected when it was
+  // made, and going back to it selects them again. A click on a layer makes
+  // no state, so after "wand on the clean layer, click on a text layer" the
+  // state before the scan still holds the clean layer: the revert below
+  // would take the text layer away from the user (and from Align, and from
+  // the TextShapeR read that runs by itself on every such click).
+  var targetLayerIds = null;
+  try {
+    targetLayerIds = _getTargetLayerIds();
+  } catch (targetError) {}
+
   var result = null;
   var previousRun = _hostState.suspendedRun;
   _hostState.suspendedRun = function () {
@@ -241,6 +252,12 @@ function _withTemporaryHistory(name, fn, options) {
       _hostState.temporaryHistoryFailed = true;
       result = { error: "historyBusy" };
     } finally {
+      // Give the user's layers back (selecting layers makes no history state)
+      if (targetLayerIds && targetLayerIds.length) {
+        try {
+          if (!_sameIds(_getTargetLayerIds(), targetLayerIds)) _selectLayersById(targetLayerIds);
+        } catch (reselectError) {}
+      }
       if (reservedHistorySlot) {
         try {
           app.preferences.numberOfHistoryStates = historyLimit;
@@ -481,6 +498,36 @@ function _getActiveLayerId() {
   reference.putProperty(charID.Property, layerIdProp);
   reference.putEnumerated(charID.Layer, charID.Ordinal, charID.Target);
   return executeActionGet(reference).getInteger(layerIdProp);
+}
+
+// IDs of the selected layers, in stack order; the active layer when the
+// document reports none
+function _getTargetLayerIds() {
+  var targetLayers = stringIDToTypeID("targetLayers");
+  var layerIdProp = stringIDToTypeID("layerID");
+  var reference = new ActionReference();
+  reference.putProperty(charID.Property, targetLayers);
+  reference.putEnumerated(charID.Document, charID.Ordinal, charID.Target);
+  var doc = executeActionGet(reference);
+  if (!doc.hasKey(targetLayers)) return [_getActiveLayerId()];
+  var list = doc.getList(targetLayers);
+  var offset = _documentHasBackgroundLayer() ? 0 : 1;
+  var ids = [];
+  for (var i = 0; i < list.count; i++) {
+    var idRef = new ActionReference();
+    idRef.putProperty(charID.Property, layerIdProp);
+    idRef.putIndex(charID.Layer, list.getReference(i).getIndex() + offset);
+    ids.push(executeActionGet(idRef).getInteger(layerIdProp));
+  }
+  return ids;
+}
+
+function _sameIds(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
 }
 
 function _duplicateActiveLayer() {

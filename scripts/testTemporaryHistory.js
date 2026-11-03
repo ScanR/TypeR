@@ -17,11 +17,16 @@ const makeHost = ({ deferredHistory = false, publishOnSelect = true } = {}) => {
   let scanCalls = 0;
   let refreshCalls = 0;
   let restoreCalls = 0;
+  let selectLayerCalls = 0;
   let pendingState = null;
-  const states = ["Open", "Paint", "Selection"].map((name) => ({ name, pixels }));
+  // Like Photoshop, a state remembers the layers selected when it was made
+  // and going back to it selects them again: the selection was made on the
+  // clean layer, every state so far holds it
+  let targetLayers = ["clean"];
+  const states = ["Open", "Paint", "Selection"].map((name) => ({ name, pixels, layers: targetLayers }));
   const publish = (state) => {
     states.splice(activeIndex + 1);
-    states.push(state);
+    states.push({ ...state, layers: targetLayers });
     while (states.length > context.app.preferences.numberOfHistoryStates) states.shift();
     activeIndex = states.length - 1;
   };
@@ -32,6 +37,7 @@ const makeHost = ({ deferredHistory = false, publishOnSelect = true } = {}) => {
       restoreCalls++;
       activeIndex = states.indexOf(state);
       pixels = state.pixels;
+      if (state.layers) targetLayers = state.layers;
     },
     suspendHistory(name, script) {
       dirty = false;
@@ -82,6 +88,11 @@ const makeHost = ({ deferredHistory = false, publishOnSelect = true } = {}) => {
       states.splice(index, 1);
     },
     jamJSON: JSON,
+    _getTargetLayerIds: () => targetLayers.slice(),
+    _selectLayersById: (ids) => {
+      selectLayerCalls++;
+      targetLayers = ids.slice();
+    },
     _getCurrentSelectionBounds: () => ({ width: 100, height: 120 }),
     _normalizeShapeSampleCount: () => 21,
     _withDialogsSuppressed: (fn) => fn(),
@@ -92,13 +103,16 @@ const makeHost = ({ deferredHistory = false, publishOnSelect = true } = {}) => {
       return { bounds: { width: 100, height: 120 }, rows: [{ width: 1 }], scan: "path" };
     },
   });
-  ["_suspendedHistoryIndex", "_withTemporaryHistory", "getCurrentSelectionShape", "getActiveLayerBubbleShape", "smartPasteCapture", "smartPasteMeasure"].forEach((name) => {
+  ["_sameIds", "_suspendedHistoryIndex", "_withTemporaryHistory", "getCurrentSelectionShape", "getActiveLayerBubbleShape", "smartPasteCapture", "smartPasteMeasure"].forEach((name) => {
     vm.runInContext(extract(name), context);
   });
   return {
     context, doc, states, getPixels: () => pixels, getScanCalls: () => scanCalls,
     getRefreshCalls: () => refreshCalls,
     getRestoreCalls: () => restoreCalls,
+    getSelectLayerCalls: () => selectLayerCalls,
+    getTargetLayers: () => targetLayers.slice(),
+    selectLayers(ids) { targetLayers = ids.slice(); },
     mutate(value) { dirty = true; pixels = value; },
   };
 };
@@ -115,6 +129,31 @@ for (let i = 0; i < 10000; i++) {
 assert.deepStrictEqual(host.states.map((state) => state.name), names);
 assert.strictEqual(host.getScanCalls(), 10000);
 assert.strictEqual(host.getRefreshCalls(), 0, "Hosts with up-to-date history must not pay for a refresh on each read");
+assert.strictEqual(host.getSelectLayerCalls(), 0, "A scan on the layer of the last state must not reselect anything");
+
+// The report: a wand selection on the clean layer, then a click on a text
+// layer (no history state). The revert after the scan selects the clean
+// layer again; the scan must give the text layer back, without a new state.
+const clicked = makeHost();
+clicked.selectLayers(["text"]);
+assert.strictEqual(JSON.parse(clicked.context.getCurrentSelectionShape({ samples: 21 })).scan, "path");
+assert.deepStrictEqual(clicked.getTargetLayers(), ["text"], "The scan must leave the layer the user selected active");
+assert.strictEqual(clicked.getSelectLayerCalls(), 1);
+assert.strictEqual(clicked.states.length, 3);
+assert.deepStrictEqual(clicked.states.map((state) => state.name), names);
+clicked.selectLayers(["text", "text 2"]);
+clicked.context._withTemporaryHistory("Read", () => clicked.mutate("temporary channel"));
+assert.deepStrictEqual(clicked.getTargetLayers(), ["text", "text 2"], "Several selected layers come back too");
+assert.strictEqual(clicked.getSelectLayerCalls(), 2);
+clicked.selectLayers(["clean"]);
+clicked.context._withTemporaryHistory("Read", () => clicked.mutate("temporary channel"));
+assert.strictEqual(clicked.getSelectLayerCalls(), 2, "No reselection when the revert keeps the user's layer");
+// A host that cannot read the selected layers scans as before
+const unreadable = makeHost();
+unreadable.context._getTargetLayerIds = () => { throw new Error("no targetLayers"); };
+unreadable.selectLayers(["text"]);
+assert.strictEqual(JSON.parse(unreadable.context.getCurrentSelectionShape({})).scan, "path");
+assert.strictEqual(unreadable.getSelectLayerCalls(), 0);
 
 // PS 2019-style deferred publication: the DOM still shows the previous
 // history state until an Action Manager selection (or app.refresh()). Exercise the real capture/measurement

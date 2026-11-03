@@ -19,6 +19,8 @@ After the fix, all 100 scans returned path profiles without errors. The original
 
 The three analysis paths now use `_withTemporaryHistory`. It suspends operations, restores the preceding document state and deletes only the newly created scan state. It never retries a failed scan without history suspension. The temporary callback is released in `finally`.
 
+Going back to a history state also selects the layers that state was made with (confirmed live on Photoshop 2026: a marquee made on layer A, layer B clicked, a revert to the marquee state makes A active again; a UXP suspension rolled back with `resumeHistory(id, false)` keeps B). A layer click makes no state, so a text layer clicked after a wand selection on the clean layer was taken away by every read: the helper now records the selected layer IDs before the suspension and selects them again after the revert when they changed. Selecting layers adds no history state.
+
 A scan after Undo is deferred to preserve Redo. At history capacity, the helper temporarily reserves a slot and restores the history preference after cleanup. If Photoshop cannot reserve or clean up safely, it defers the analysis. The panel does not permanently cache a deferred bubble as a failed detection.
 
 `npm test` includes a 10,000-scan regression simulation covering retention, selection restoration, undo/redo, capacity, failures and bubble integration. Capacity reservation and failure injection are simulated tests; the native Photoshop checks above did not fill the history limit.
