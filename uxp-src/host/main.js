@@ -31,6 +31,8 @@ if (crashTrace) {
 }
 
 const EXTENSION_ID = "typer";
+// manifest.json id, as Photoshop's UXP log names the plugin
+const PLUGIN_ID = "com.scanr.typer";
 const PANEL_URL = "plugin:/web/index.html";
 // The panel's DOM only exists once Photoshop creates the panel: the WebView
 // is looked up then, and starts loading after its listeners are in place
@@ -74,17 +76,44 @@ function viewSize() {
   } catch (error) { return 'unknown'; }
 }
 
-async function reportPanelStartFailure(baseText) {
+// Adobe's page on UXP WebViews, until Photoshop's log names the real cause
+const ADOBE_WEBVIEW_HELP_URL = 'https://helpx.adobe.com/creative-cloud/apps/integration-with-other-apps/manage-plugins/uxp-webview.html';
+let webViewHelpUrl = ADOBE_WEBVIEW_HELP_URL;
+
+// Photoshop gave up creating the WebView (no WebView2 runtime it can start):
+// the help button installs the runtime instead of explaining WebViews
+function offerWebViewInstall(french) {
+  webViewHelpUrl = panelStart.WEBVIEW2_DOWNLOAD_URL;
+  const help = document.getElementById('typer-webview-help');
+  if (help) help.textContent = french ? 'Installer WebView2' : 'Install WebView2';
+}
+
+async function reportPanelStartFailure(baseText, { head = baseText, french = false } = {}) {
   const generation = viewGeneration;
   const size = startupViewSize;
   const events = loadEvents.slice();
-  const webViewFolders = os.platform() === 'win32'
+  const windows = os.platform() === 'win32';
+  const webViewFolders = windows
     ? await panelStart.readWebViewFolders(folder => require('fs').readdir(files.toUrl(folder))) : [];
+  const webViewFailure = windows
+    ? await panelStart.findWebViewCreationFailure({
+      listFolder: files.listFolder, readText: files.readText, appData: await files.getRoamingAppData(), pluginId: PLUGIN_ID,
+    }) : null;
   // A report from a closed/reloaded panel must never cover its replacement.
   if (generation !== viewGeneration || webviewReady || !panelVisible || panelStartup.getState() !== 'failed') return;
-  const text = baseText + '\n' + panelStart.panelStartFailureText({
+  if (webViewFailure) {
+    debugNote('startup.webview-failure', webViewFailure.line);
+    if (crashTrace) crashTrace.note('webview', 'creation failed: ' + webViewFailure.line);
+    offerWebViewInstall(french);
+  }
+  // The cause and the remedy right under the title, where the notice is read
+  // without scrolling; the facts of the head and the report follow
+  const notice = webViewFailure
+    ? head.split('\n').slice(0, 1).concat(panelStart.webViewFailureText(webViewFailure, french), head.split('\n').slice(1)).join('\n')
+    : baseText;
+  const text = notice + '\n' + panelStart.panelStartFailureText({
     versions: ['Photoshop ' + uxp.host.version, 'UXP ' + (uxp.versions && uxp.versions.uxp), os.platform() + ' ' + os.release()].join(', '),
-    webViewFolders, loadEvents: events, viewSize: size,
+    webViewFolders, loadEvents: events, viewSize: size, webViewFailure,
   });
   console.error('TypeR:', text);
   debugNote('startup.report', text);
@@ -118,8 +147,8 @@ const panelStartup = createPanelStartup({
     loadingPanel = true;
     view.src = PANEL_URL;
   },
-  onFailure(text, { bridge }) {
-    if (!bridge) reportPanelStartFailure(text).catch(error => console.error('TypeR: startup report', error));
+  onFailure(text, { bridge, head, french }) {
+    if (!bridge) reportPanelStartFailure(text, { head, french }).catch(error => console.error('TypeR: startup report', error));
   },
   show(text, failed) {
     if (!failed) clearProbes();
@@ -376,6 +405,10 @@ async function evalScript(script) {
   } finally {
     if (Object.prototype.hasOwnProperty.call(DOCUMENT_CHANGING_CALLS, call.name)) {
       onPhotoshopEvent(DOCUMENT_CHANGING_CALLS[call.name], { _isCommand: true });
+      // A click on a panel button (TextShapeR, Insert, a style) leaves the
+      // keyboard focus in the WebView, where Photoshop's shortcuts die; the
+      // user works in the document after such a change (see restoreFocus)
+      if (DOCUMENT_CHANGING_CALLS[call.name] === "set") restoreFocus();
     }
   }
 }
@@ -621,7 +654,7 @@ function attachView() {
     };
   }
   const help = document.getElementById('typer-webview-help');
-  if (help) help.onclick = () => uxp.shell.openExternal('https://helpx.adobe.com/creative-cloud/apps/integration-with-other-apps/manage-plugins/uxp-webview.html').catch((error) => showStatus(String(error.message || error)));
+  if (help) help.onclick = () => uxp.shell.openExternal(webViewHelpUrl).catch((error) => showStatus(String(error.message || error)));
   showPanelPage();
   return view;
 }
@@ -663,13 +696,17 @@ keyboard.onChange((state) => post({ type: "keys", state }));
 
 /* ========================= focus ========================= */
 
-// Photoshop's rich tooltips take the keyboard focus on Windows (keys.h): after
-// a paste on click or TextShapeR, the contextual task bar of the new text
-// layer sits under the cursor, its tooltip opens, and every shortcut dies
-// until the user clicks the document. The addon reports the theft, and the
-// focus goes back to the document: bringToFront does that, from the modal
-// scope it needs as an action. Photoshop busy (a text being edited, a
-// dialog): the user's next click restores it, as before.
+// Two things take the keyboard focus away from the document on Windows, and
+// every shortcut dies until the user clicks the document or presses the
+// Windows key. Photoshop's rich tooltips (keys.h): after a paste on click or
+// TextShapeR, the contextual task bar of the new text layer sits under the
+// cursor and its tooltip opens; the addon reports the theft. And the panel's
+// own WebView: a click on a TextShapeR shape or a button keeps the focus
+// there, and unlike a CEP panel a WebView forwards no key to Photoshop; the
+// calls that change the document (evalScript) end with a restore. The focus
+// goes back to the document: bringToFront does that, from the modal scope it
+// needs as an action. Photoshop busy (a text being edited, a dialog): the
+// user's next click restores it, as before.
 let restoringFocus = false;
 let focusRestores = 0;
 

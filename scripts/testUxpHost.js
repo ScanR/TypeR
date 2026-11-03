@@ -871,6 +871,47 @@ const pluginData = (appData) => appData + "\\Adobe\\UXP\\PluginsStorage\\PHSP\\2
   });
   ["Photoshop 27.7.0", "Loads: none", "View: 600x0", "gone: missing", "TypeR (CEP)"].forEach((part) => assert.ok(failureText.includes(part), part));
 
+  // Photoshop's UXP log names the plugin whose WebView it could not create:
+  // the newest log of any Photoshop is the running session's
+  const logTree = {
+    "C:\\Users\\ana\\AppData\\Roaming\\Adobe": [{ name: "Adobe Photoshop 2025", isFolder: true }, { name: "Adobe Photoshop 2026", isFolder: true }, { name: "Adobe Photoshop (Beta)", isFolder: true }, { name: "UXP", isFolder: true }, { name: "CEP", isFolder: true }],
+    "C:\\Users\\ana\\AppData\\Roaming\\Adobe\\Adobe Photoshop 2025\\Logs": [{ name: "UXPLogs_2026-11-03_07-00-00_1.log", isFolder: false }],
+    "C:\\Users\\ana\\AppData\\Roaming\\Adobe\\Adobe Photoshop 2026\\Logs": [{ name: "UXPLogs_2026-11-03_06-10-45_071210.log", isFolder: false }, { name: "UXPLogs_2026-11-02_19-14-32_633680.log", isFolder: false }, { name: "pslog_20260401.log", isFolder: false }, { name: "old", isFolder: true }],
+  };
+  const logFiles = {
+    "C:\\Users\\ana\\AppData\\Roaming\\Adobe\\Adobe Photoshop 2025\\Logs\\UXPLogs_2026-11-03_07-00-00_1.log": "[Info] [general] WebView2BrowserVersion:  156.0.4314.58\n",
+    "C:\\Users\\ana\\AppData\\Roaming\\Adobe\\Adobe Photoshop 2026\\Logs\\UXPLogs_2026-11-03_06-10-45_071210.log":
+      "[2026-11-03_06-10-45][39072][Info] [general] Instead of the WebView2 runtime in the system, UXP will use the WebView2 runtime in the folder: C:\\Program Files\\Common Files\\Adobe\\Microsoft\\EdgeWebView\\\r\n" +
+      "[2026-11-03_06-10-47][39072][Warn] [general] Failed to create WebView for plugin: com.scanr.typer\r\n" +
+      "[2026-11-03_06-10-51][39072][Warn] [general] Failed to create WebView for plugin: com.adobe.ccx.start\r\n",
+    "C:\\Users\\ana\\AppData\\Roaming\\Adobe\\Adobe Photoshop 2026\\Logs\\UXPLogs_2026-11-02_19-14-32_633680.log": "Failed to create WebView for plugin: com.scanr.typer\n",
+  };
+  const logReader = {
+    listFolder: async (folder) => { if (!logTree[folder]) throw new Error("no such folder " + folder); return logTree[folder]; },
+    readText: async (file) => { if (!(file in logFiles)) throw new Error("no such file " + file); return logFiles[file]; },
+    appData: "C:\\Users\\ana\\AppData\\Roaming",
+  };
+  // The newest log by name wins, whichever Photoshop wrote it (2025 here, which has no such line)
+  assert.strictEqual(await panelStart.findWebViewCreationFailure(Object.assign({}, logReader, { pluginId: "com.scanr.typer" })), null, "the newest log has no failure");
+  logTree["C:\\Users\\ana\\AppData\\Roaming\\Adobe\\Adobe Photoshop 2025\\Logs"] = [];
+  const creationFailure = await panelStart.findWebViewCreationFailure(Object.assign({}, logReader, { pluginId: "com.scanr.typer" }));
+  assert.deepStrictEqual(creationFailure, {
+    file: "C:\\Users\\ana\\AppData\\Roaming\\Adobe\\Adobe Photoshop 2026\\Logs\\UXPLogs_2026-11-03_06-10-45_071210.log",
+    line: "[2026-11-03_06-10-47][39072][Warn] [general] Failed to create WebView for plugin: com.scanr.typer",
+  });
+  assert.strictEqual(await panelStart.findWebViewCreationFailure(Object.assign({}, logReader, { pluginId: "com.other.plugin" })), null, "another plugin's failure is not ours");
+  assert.strictEqual(await panelStart.findWebViewCreationFailure(Object.assign({}, logReader, { appData: "D:\\nowhere", pluginId: "com.scanr.typer" })), null, "an unreadable log tree is no failure");
+  assert.strictEqual(await panelStart.findWebViewCreationFailure({ listFolder: async () => { throw new Error("denied"); }, readText: async () => "", appData: "C:\\x", pluginId: "com.scanr.typer" }), null);
+  const verdictText = panelStart.webViewFailureText(creationFailure, false);
+  ["Failed to create WebView for plugin: com.scanr.typer", "There is nothing to wait for", "Install WebView2", "restart Photoshop"].forEach((part) => assert.ok(verdictText.includes(part), part));
+  const verdictFrench = panelStart.webViewFailureText(creationFailure, true);
+  ["Installer WebView2", "Inutile d’attendre", "redémarrez Photoshop"].forEach((part) => assert.ok(verdictFrench.includes(part), part));
+  const reportAfterVerdict = panelStart.panelStartFailureText({
+    versions: "Photoshop 27.7.0, UXP 9.3.0, win32 10.0.19045", webViewFolders, loadEvents: ["retry"], viewSize: "600x823", webViewFailure: creationFailure,
+  });
+  ["Please send this", "Loads: retry", "gone: missing"].forEach((part) => assert.ok(reportAfterVerdict.includes(part), part));
+  assert.ok(!reportAfterVerdict.includes("did not answer"), "the guess is left out once the log told the cause");
+
   console.log("UXP host conversion, evalScript parsing, call queue, keyboard reader watchdog, host.js parity, mask sampling, Windows storage path and panel start report tests passed");
 })().catch((error) => {
   console.error(error);

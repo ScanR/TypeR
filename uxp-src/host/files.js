@@ -74,6 +74,12 @@ function resolveFolders() {
 
 const profileRoamingAppData = () => joinPath(os.homedir(), "AppData", "Roaming");
 
+// Where Photoshop keeps its own files too (its UXP logs: <AppData>\Adobe\Adobe Photoshop <year>\Logs)
+async function getRoamingAppData() {
+  await resolveFolders();
+  return isWindows() ? roamingAppData || profileRoamingAppData() : joinPath(os.homedir(), "Library", "Application Support");
+}
+
 function getStorageRoot() {
   if (isWindows()) return joinPath(roamingAppData || profileRoamingAppData(), "TypeR", "UXP");
   return joinPath(os.homedir(), "Library", "Application Support", "TypeR", "UXP");
@@ -405,6 +411,7 @@ module.exports = {
   basename,
   toUrl,
   getStorageRoot,
+  getRoamingAppData,
   resolveFolders,
   roamingAppDataOf,
   getCepStorageRoots,

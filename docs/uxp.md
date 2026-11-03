@@ -107,6 +107,29 @@ gone once the last WebView closes and starts cold), and a hidden WebView never l
 `docs/uxp-startup-reproduction.md`), so a late start still opens the panel by itself. The native
 **Reload TypeR** button saves pending settings writes and recreates the WebView.
 
+One cause is established (2026-11-03): no WebView2 runtime Photoshop can start. UXP tries the copy
+Adobe installs in `C:\Program Files\Common Files\Adobe\Microsoft\EdgeWebView` (its log says so) and
+Microsoft's Evergreen runtime in `C:\Program Files (x86)\Microsoft\EdgeWebView\Application` (the one
+that actually runs here, 156, with the Adobe copy at 140 — both display TypeR). With neither usable,
+Photoshop's UXP log (`<AppData>\Adobe\Adobe Photoshop <year>\Logs\UXPLogs_<date>_<time>_<n>.log`, one
+per session) says `Failed to create WebView for plugin: com.scanr.typer` 2 s after the panel opens,
+no load event ever reaches the host page, and Photoshop's own Home screen fails the same way: exactly
+the users' notice (`start=false, stop=false, bridge=false`). Reproduced locally by starting Photoshop
+with `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` set to a missing folder (`.update-test/webview-runtime-probe.ps1
+-Name missing -Folder C:\TypeR-no-runtime`; `-Name normal` restores the usual start). So when the deadline
+passes on Windows, `main.js` reads the newest UXP log through `panelStart.findWebViewCreationFailure`: with
+that line, the notice drops the waiting hint, quotes the line, says the WebView2 component is missing or
+damaged, and the help button becomes **Install WebView2**, which opens Microsoft's download page (then
+restart Photoshop). The collector of the debug build already copies the `webview` lines of that log.
+Likely on cracked/repacked installations without the Adobe copy, on a Windows without the Evergreen
+runtime (nothing else installed it); untested: a runtime present but damaged, or blocked by a policy.
+Users report the same computer working with Photoshop 27.4: the runtime selection is the same in every
+UXP from Photoshop 2025 (26.x) to the Beta 28 (same log lines), but each UXP links a newer WebView2 SDK,
+whose loader refuses a runtime older than its minimum ("skipped an incompatible version"), so an old
+copy (the Adobe folder held 127 from September 2024 before 140) that 27.4's UXP accepted is not enough
+for 27.7's (UXP 9.3). The notice says "too old" for that reason; Microsoft's Evergreen runtime updates
+itself. Not reproduced for lack of an old fixed runtime on disk.
+
 `npm run package:uxp:debug` writes `Releases/TypeR-DEBUG-Windows-EN.zip`: the support build adds an independent
 startup journal, an **Export diagnostic** button and a read-only Windows collector. It uses the normal plugin
 ID and preserves its data, without enabling developer code execution. Reinstall the normal build afterwards.
@@ -150,6 +173,17 @@ only call that restored it in the live tests (`performMenuCommand` 1208 and a
 document `select` did nothing; focusing the panel's own DOM also worked but moved
 the focus to the panel). Photoshop busy (a text being edited, a dialog) leaves the
 focus as it was, like before. macOS has no such reader and no report of the bug.
+
+The panel's WebView is the second thief, on every Photoshop version (seen live on
+27.7, where the tooltips take no focus): a click on a TextShapeR shape, on Insert
+or on a style leaves the keyboard focus in the WebView (`Chrome_WidgetWin_1`), and
+unlike a CEP panel a WebView forwards no key to Photoshop, so the tool keys die
+until the Windows key or, usually, a click on the document (not always: once the
+clicks did not move it either). No addon rule can tell that focus from the user
+typing in the panel, so `main.js` restores the focus after every `evalScript`
+call that changes the document (the `set` entries of `DOCUMENT_CHANGING_CALLS`):
+those are the panel actions after which the user works in the document, and a
+restore while the document already holds the focus changes nothing.
 
 The keyboard Debug tab is disabled in the settings and their search index for
 production. A previously saved Debug tab falls back to Insertion.

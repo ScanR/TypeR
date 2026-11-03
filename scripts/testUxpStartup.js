@@ -122,7 +122,7 @@ assert.match(loaded.shown.text, /start=false, stop=false, bridge=false/, 'retry 
 
 // Exercise the actual host entry against a native UXP DOM substitute, including
 // destroying/recreating the panel and a WebView that never emits loaderror.
-function hostHarness({ readWebViewFolders } = {}) {
+function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   const nodes = {};
   const timers = new Map();
   let nextTimer = 1;
@@ -130,6 +130,12 @@ function hostHarness({ readWebViewFolders } = {}) {
   let flushes = 0;
   let finishOldRequest;
   let calls = 0;
+  const opened = [];
+  const appData = 'C:\\Users\\ana\\AppData\\Roaming';
+  const logFolders = {
+    [appData + '\\Adobe']: [{ name: 'Adobe Photoshop 2026', isFolder: true }],
+    [appData + '\\Adobe\\Adobe Photoshop 2026\\Logs']: [{ name: 'UXPLogs_2026-11-03_06-10-45_071210.log', isFolder: false }],
+  };
   function element(id) {
     const listeners = {};
     return {
@@ -149,12 +155,17 @@ function hostHarness({ readWebViewFolders } = {}) {
   const nativeWindow = element('window');
   const stubs = {
     photoshop: {},
-    uxp: { host: { version: '27.0', uiLocale: 'fr_FR' }, versions: { uxp: '8.0' }, entrypoints: { setup: value => { lifecycle = value; } }, shell: {} },
+    uxp: { host: { version: '27.0', uiLocale: 'fr_FR' }, versions: { uxp: '8.0' }, entrypoints: { setup: value => { lifecycle = value; } }, shell: { openExternal: async url => { opened.push(url); } } },
     os: { platform: () => 'win32', release: () => '10.0' },
     './panelStart': Object.assign({}, require('../uxp-src/host/panelStart'), readWebViewFolders ? { readWebViewFolders } : {}),
     fs: { readdir: async () => [] },
     './photoshop': { methods: {} }, './smartPaste': { methods: {} },
-    './files': { toUrl: path => path, createMirrorWriter: () => ({ flush: async () => { flushes++; } }) },
+    './files': {
+      toUrl: path => path, createMirrorWriter: () => ({ flush: async () => { flushes++; } }),
+      getRoamingAppData: async () => appData,
+      listFolder: async folder => { if (!logFolders[folder]) throw new Error('no such folder ' + folder); return logFolders[folder]; },
+      readText: async () => uxpLog,
+    },
     './keyboard': { onChange() {} }, './keysHelper': {},
     './services': { requests: { count: () => ++calls, delayed: () => new Promise(resolve => { finishOldRequest = resolve; }) } }, './jsx': {},
     './evalScript': { createCallQueue: () => () => {} },
@@ -168,10 +179,43 @@ function hostHarness({ readWebViewFolders } = {}) {
     module: { exports: {} }, console: { ...console, error() {} }, window: nativeWindow,
     document: { getElementById: id => nodes[id] || null, createElement: () => element(''), body: { appendChild: node => { nodes[node.id] = node; } } }
   });
-  return { nodes, timers, resetDom, nativeWindow, panel: lifecycle.panels.typer, get calls() { return calls; }, get flushes() { return flushes; }, finishOldRequest: () => finishOldRequest('old result') };
+  return { nodes, timers, resetDom, nativeWindow, opened, panel: lifecycle.panels.typer, get calls() { return calls; }, get flushes() { return flushes; }, finishOldRequest: () => finishOldRequest('old result') };
 }
 
 (async () => {
+  // Photoshop's UXP log says it could not create the plugin's WebView (no
+  // WebView2 runtime it can start): the notice names the cause and the
+  // remedy, and the help button installs the runtime
+  const noRuntime = hostHarness({ uxpLog:
+    '[2026-11-03_06-10-45][39072][Info] [general] Instead of the WebView2 runtime in the system, UXP will use the WebView2 runtime in the folder: C:\\Program Files\\Common Files\\Adobe\\Microsoft\\EdgeWebView\\\r\n' +
+    '[2026-11-03_06-10-47][39072][Warn] [general] Failed to create WebView for plugin: com.scanr.typer\r\n' });
+  noRuntime.panel.show();
+  for (const tick of [...noRuntime.timers.values()]) tick();
+  await new Promise(resolve => setImmediate(resolve));
+  const noRuntimeText = noRuntime.nodes['typer-status'].textContent;
+  assert.match(noRuntimeText.split('\n')[1], /^Photoshop n’a pas pu créer la WebView/, 'the cause comes right under the title, read without scrolling');
+  assert.match(noRuntimeText, /Failed to create WebView for plugin: com\.scanr\.typer/, 'the log line is quoted');
+  assert.match(noRuntimeText, /Inutile d’attendre/, 'in the user interface language');
+  assert.match(noRuntimeText, /Installer WebView2/);
+  assert.doesNotMatch(noRuntimeText, /attend encore/, 'the waiting hint is dropped once the cause is known');
+  assert.doesNotMatch(noRuntimeText, /did not answer/);
+  assert.match(noRuntimeText, /Loads: retry/);
+  assert.strictEqual(noRuntime.nodes['typer-webview-help'].textContent, 'Installer WebView2');
+  await noRuntime.nodes['typer-webview-help'].onclick();
+  assert.deepStrictEqual(noRuntime.opened, ['https://developer.microsoft.com/microsoft-edge/webview2/']);
+  await noRuntime.panel.destroy();
+
+  const healthyLog = hostHarness({ uxpLog: '[2026-11-03_06-12-12][32848][Info] [general] WebView2BrowserVersion:  156.0.4314.58\n' });
+  healthyLog.panel.show();
+  for (const tick of [...healthyLog.timers.values()]) tick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(healthyLog.nodes['typer-status'].textContent, /attend encore/, 'a log without the failure keeps the waiting hint');
+  assert.match(healthyLog.nodes['typer-status'].textContent, /did not answer/);
+  assert.strictEqual(healthyLog.nodes['typer-webview-help'].textContent, undefined, 'the help button keeps its label');
+  await healthyLog.nodes['typer-webview-help'].onclick();
+  assert.match(healthyLog.opened[0], /helpx\.adobe\.com/);
+  await healthyLog.panel.destroy();
+
   let finishReport;
   const silent = hostHarness({ readWebViewFolders: () => new Promise(resolve => { finishReport = resolve; }) });
   silent.panel.show();
@@ -181,7 +225,8 @@ function hostHarness({ readWebViewFolders } = {}) {
   assert.strictEqual(silent.timers.size, 2);
   for (const tick of [...silent.timers.values()]) tick();
   finishReport(['Adobe runtime: 140.0']);
-  for (let i = 0; i < 6; i++) await Promise.resolve();
+  // The report reads the WebView folders and Photoshop's log before showing
+  await new Promise(resolve => setImmediate(resolve));
   assert.match(silent.nodes['typer-status'].textContent, /View: 600x400/, 'the diagnostic measures the view before hiding it');
   assert.match(silent.nodes['typer-status'].textContent, /Loads: retry/);
   assert.match(silent.nodes['typer-status'].textContent, /Adobe runtime: 140.0/);
@@ -191,7 +236,8 @@ function hostHarness({ readWebViewFolders } = {}) {
   await silent.nodes['typer-retry'].onclick();
   silent.nodes['typer-view'].emit('message', { data: JSON.stringify({ type: 'appReady' }) });
   completeStaleReport(['stale runtime report']);
-  for (let i = 0; i < 6; i++) await Promise.resolve();
+  // The report reads the WebView folders and Photoshop's log before showing
+  await new Promise(resolve => setImmediate(resolve));
   assert.strictEqual(silent.nodes['typer-status'].style.display, 'none', 'a delayed diagnostic must not cover a recovered replacement view');
   await silent.panel.destroy();
 

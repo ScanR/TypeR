@@ -19,25 +19,28 @@ function createPanelStartup({ show, environment, retry = () => {}, onFailure = (
     state = 'failed';
     const env = environment();
     const french = /^fr/i.test(env.locale || '');
-    let text = french ? 'TypeR ne peut pas afficher son interface.\n' : 'TypeR could not display its interface.\n';
-    text += String(detail) + '\nPhotoshop ' + env.photoshop + ' / UXP ' + env.uxp + ' / ' + env.platform;
-    text += '\nWebView load: start=' + loadStarted + ', stop=' + loadStopped + ', bridge=' + bridge;
-    text += french
+    // The facts first; the guesses after them are replaced when the host page
+    // finds the cause in Photoshop's log (onFailure)
+    let head = french ? 'TypeR ne peut pas afficher son interface.\n' : 'TypeR could not display its interface.\n';
+    head += String(detail) + '\nPhotoshop ' + env.photoshop + ' / UXP ' + env.uxp + ' / ' + env.platform;
+    head += '\nWebView load: start=' + loadStarted + ', stop=' + loadStopped + ', bridge=' + bridge;
+    head += french
       ? '\nVous pouvez utiliser la version Legacy : Fenêtre > Extensions > TypeR (CEP).'
       : '\nThe Legacy version may still work: Window > Extensions > TypeR (CEP).';
+    let hints = '';
     if (!bridge && !loadStarted && !loadStopped) {
       // The view is still there: Photoshop 27.7 starts its WebView slowly
-      text += french
+      hints += french
         ? '\nTypeR attend encore : le panneau peut apparaître dans un instant (depuis Photoshop 27.7, le WebView met parfois longtemps à démarrer).'
         : '\nTypeR keeps waiting: the panel may still appear in a moment (since Photoshop 27.7, the WebView can take long to start).';
     }
     if (!bridge && !loadStopped && env.platform === 'win32') {
-      text += french
+      hints += french
         ? '\nVérifiez le composant UXP WebView / Microsoft Edge WebView2 de Photoshop. S’il est absent ou endommagé, réparez l’installation Adobe, puis redémarrez Photoshop.'
         : '\nCheck Photoshop’s UXP WebView / Microsoft Edge WebView2 component. If missing or damaged, repair the Adobe installation, then restart Photoshop.';
     }
-    show(text, true);
-    onFailure(text, { bridge });
+    show(head + hints, true);
+    onFailure(head + hints, { bridge, head, french });
   };
   const watch = () => {
     stop();
