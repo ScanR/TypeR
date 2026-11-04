@@ -76,10 +76,18 @@ const FontPicker = React.memo(function FontPicker(props) {
     if (restoreFocus && triggerRef.current) triggerRef.current.focus();
   };
 
-  const openPicker = (initialQuery) => {
+  // Puts the list under (or over) the button, in the room the window has now
+  const placePopover = () => {
     const trigger = triggerRef.current;
-    if (!trigger) return;
-    const rect = trigger.getBoundingClientRect();
+    if (!trigger) return null;
+    const box = trigger.getBoundingClientRect();
+    // The button can be out of sight once the on-screen keyboard is up: the list stays in sight
+    const rect = {
+      left: box.left,
+      width: box.width,
+      top: clamp(box.top, 0, window.innerHeight),
+      bottom: clamp(box.bottom, 0, window.innerHeight),
+    };
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const width = Math.min(Math.max(rect.width, minPopoverWidth || 0), viewportWidth - VIEWPORT_MARGIN * 2);
@@ -90,14 +98,23 @@ const FontPicker = React.memo(function FontPicker(props) {
     const above = rect.top - VIEWPORT_MARGIN - 4 - chrome;
     const placeBelow = below >= Math.min(wanted, ROW_HEIGHT * 6) || below >= above;
     const listHeight = Math.max(ROW_HEIGHT * 3, Math.min(wanted, placeBelow ? below : above));
-    setLayout({
+    const placed = {
       left,
       width,
       listHeight,
       top: placeBelow ? rect.bottom + 4 : undefined,
       bottom: placeBelow ? undefined : viewportHeight - rect.top + 4,
-    });
+    };
+    setLayout(placed);
+    return placed;
+  };
+  const placeRef = React.useRef(placePopover);
+  placeRef.current = placePopover;
 
+  const openPicker = (initialQuery) => {
+    const placed = placePopover();
+    if (!placed) return;
+    const { listHeight } = placed;
     const startQuery = initialQuery || "";
     const startOptions = searchable && startQuery ? filterFontOptions(options, startQuery) : options;
     const selectedIndex = startQuery ? 0 : Math.max(0, startOptions.findIndex((option) => option.value === value));
@@ -116,13 +133,18 @@ const FontPicker = React.memo(function FontPicker(props) {
   React.useLayoutEffect(() => {
     if (!open) return;
     if (listRef.current) listRef.current.scrollTop = initialScrollRef.current;
-    const focusTarget = searchable ? inputRef.current : listRef.current;
+    // On a touch screen, focusing the search field would bring up the keyboard over half the
+    // list: the field waits for a tap there
+    const touchOnly = window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+    const focusTarget = searchable && !touchOnly ? inputRef.current : listRef.current;
     if (focusTarget) focusTarget.focus();
   }, [open]);
 
+  // The window changes size when the on-screen keyboard comes or goes (TypeR Web's sheet
+  // follows it): the list moves with the button instead of closing
   React.useEffect(() => {
     if (!open) return undefined;
-    const handleResize = () => setOpen(false);
+    const handleResize = () => placeRef.current();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [open]);
