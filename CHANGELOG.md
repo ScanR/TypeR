@@ -12,6 +12,7 @@
 - The arrow of a script line that is not the current one puts its text in the active layer without moving the current line. The arrow of the current line still moves on to the next one.
 - A paste after a Magic Wand click made without "Sample All Layers" while a text layer was active (the text just pasted) no longer puts the text in the middle of the page: the wand had read that text layer and taken nearly the whole page. As paste on click already did, TypeR turns the option on, says so and makes the click again on the page before pasting.
 - Windows: mice whose side buttons send the browser's Back and Forward keys instead of the usual mouse buttons 4 and 5 can now set them as shortcuts. The Legacy panel reads those keys as buttons 4 and 5, and so does the shortcut recorder.
+- Windows installer: an inventory (`app/package.sha256`) with a byte order mark, Windows line endings or blank lines, as an unzip tool or an editor can leave it, no longer stops the installation with "Invalid package inventory", and when a line is really wrong the error says which one.
 
 ## 3.0.1
 

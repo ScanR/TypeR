@@ -933,8 +933,17 @@ $Inventory = Join-Path $ScriptDir 'app/package.sha256'
 if (-not (Test-Path -LiteralPath $Inventory -PathType Leaf)) { throw 'Incomplete TypeR package: missing inventory' }
 $Required = @('app/index.html','app/index.js','app/modern.html','app/legacy.html','app/modern.index.js','app/legacy.index.js','app/modern.css','app/legacy.css','app/host.jsx','CSXS/manifest.xml','locale/messages.properties','icons/iconNormal.png')
 $Listed = @{}
-foreach ($Line in Get-Content -LiteralPath $Inventory) {
-    if ($Line -notmatch '^([a-f0-9]{64})  ((app|CSXS|icons|locale)/[A-Za-z0-9_@./-]+)$') { throw 'Invalid package inventory' }
+$LineNumber = 0
+foreach ($RawLine in Get-Content -LiteralPath $Inventory) {
+    $LineNumber++
+    # A byte order mark, a carriage return or spaces left by an unzip tool or an editor are not part of an entry
+    $Line = ([string]$RawLine).Trim([char]0xFEFF).TrimEnd()
+    if ($Line -eq '') { continue }
+    if ($Line -notmatch '^([a-f0-9]{64})  ((app|CSXS|icons|locale)/[A-Za-z0-9_@./-]+)$') {
+        # The line itself, so that a report says what the file holds
+        $Shown = ($Line.Substring(0, [Math]::Min(120, $Line.Length)) -replace '[^\x20-\x7E]', '?')
+        throw "Invalid package inventory (line ${LineNumber}: $Shown)"
+    }
     $Hash = $Matches[1]; $Relative = $Matches[2]
     if ($Relative -match '(^|/)\.\.?($|/)|//' -or $Relative -eq 'app/package.sha256' -or $Listed.ContainsKey($Relative)) { throw 'Unsafe or duplicate package path' }
     $File = Join-Path $ScriptDir $Relative
