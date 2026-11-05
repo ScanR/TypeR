@@ -259,6 +259,10 @@ const initialState = {
   currentLineIndex: 0,
   currentStyle: null,
   currentStyleId: null,
+  // The style a script tag put on the current line, and the one to go back to
+  // on the next line without a tag
+  tagStyleId: null,
+  tagReturnStyleId: null,
   usedLineStyles: {},
   pastePointText: false,
   ignoreLinePrefixes: ["##"],
@@ -1703,10 +1707,22 @@ const baseReducer = (state, action) => {
       // Only explicit prefix styles (and // continuations) drive the style
       // picker on line change; recorded usedStyle must not override the
       // user's manual selection when advancing in multi-bubble mode (#205)
+      // A tagged line takes its style for that line only: the next line without
+      // a tag goes back to the style in use before the tag (main → SFX → main),
+      // unless the user picked another style meanwhile or set a default style.
+      const tagged = state.tagStyleId && newState.currentStyleId === state.tagStyleId;
       if (newState.currentLine?.style) {
+        if (!tagged) newState.tagReturnStyleId = newState.currentStyleId;
         newState.currentStyleId = newState.currentLine.style.id;
-      } else if (newState.defaultStyleId) {
-        newState.currentStyleId = newState.defaultStyleId;
+        newState.tagStyleId = newState.currentLine.style.id;
+      } else {
+        if (newState.defaultStyleId) {
+          newState.currentStyleId = newState.defaultStyleId;
+        } else if (tagged && state.tagReturnStyleId) {
+          newState.currentStyleId = state.tagReturnStyleId;
+        }
+        newState.tagStyleId = null;
+        newState.tagReturnStyleId = null;
       }
       needsStyleLookup = true;
     }
