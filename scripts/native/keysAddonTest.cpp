@@ -46,6 +46,15 @@ int main() {
     assert(value.state == "aWINaCTRLaALTaSHIFTaKa");
     assert(value.mouseModifiers == "WCAS");
     assert(value.mouseDown == 1 && value.mousePressed == 3);
+    {
+        // Side buttons sent as the browser's Back and Forward keys
+        FakeInput browser;
+        browser.keys[0xA6] = static_cast<short>(0x8001);
+        browser.keys[0xA7] = 1;
+        const auto sides = typer::readSnapshot(browser);
+        assert(sides.mouseDown == 1 && sides.mousePressed == 3);
+        assert(sides.state == "a");
+    }
     input.loseFocus = true;
     value = typer::readSnapshot(input);
     assert(!value.foreground && value.state == "a" && value.mouseDown == 0);

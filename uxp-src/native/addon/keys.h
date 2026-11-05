@@ -83,8 +83,12 @@ inline Snapshot readSnapshot(const Input& input) {
         if ((vk <= 0x39 || vk >= 0x41) && down(vk)) key = static_cast<char>(vk);
     }
     if (!key.empty()) result.state += key + "a";
+    // Some mice send their side buttons as the browser's Back and Forward keys
+    // (VK_BROWSER_BACK, VK_BROWSER_FORWARD) instead of XBUTTON1/XBUTTON2: they
+    // count as mouse buttons 4 and 5 too.
+    static constexpr int browserKeys[] = { 0xA6, 0xA7 };
     for (int button = 5; button <= 6; ++button) {
-        const short value = input.keyState(button);
+        const short value = static_cast<short>(input.keyState(button) | input.keyState(browserKeys[button - 5]));
         const unsigned bit = 1u << (button - 5);
         if (value & 0x8000) result.mouseDown |= bit;
         // Best effort for a very short click; Windows does not guarantee the low bit.
