@@ -18,6 +18,7 @@ const services = require("./services");
 const { runJsx, systemCall } = require("./jsx");
 const { parseCall, callTimeout, createCallQueue } = require("./evalScript");
 const { createPanelStartup } = require("./panelStartup");
+const { createStartupLoader } = require("./startupFiles");
 const panelStart = require("./panelStart");
 const panelProbe = crashTrace ? require("./panelProbe") : null;
 const diagnostic = typeof TYPER_DIAGNOSTIC !== 'undefined' && TYPER_DIAGNOSTIC ? require('./diagnostics') : null;
@@ -94,13 +95,31 @@ async function reportPanelStartFailure(baseText, { head = baseText, french = fal
   const events = loadEvents.slice();
   const windows = os.platform() === 'win32';
   const webViewFolders = windows
-    ? await panelStart.readWebViewFolders(folder => require('fs').readdir(files.toUrl(folder))) : [];
-  const webViewFailure = windows
-    ? await panelStart.findWebViewCreationFailure({
+    ? await panelStart.readWebViewFolders(folder => require('fs').readdir(files.toUrl(folder)), panelStart.windowsWebViewFolders(os.homedir())) : [];
+  // What Photoshop's own log says about its WebViews in this session
+  const logFacts = windows
+    ? await panelStart.readUxpLogFacts({
       listFolder: files.listFolder, readText: files.readText, appData: await files.getRoamingAppData(), pluginId: PLUGIN_ID,
     }) : null;
+  const webViewFailure = logFacts && logFacts.failure ? Object.assign({ line: logFacts.failure }, logFacts) : null;
   // A report from a closed/reloaded panel must never cover its replacement.
   if (generation !== viewGeneration || webviewReady || !panelVisible || panelStartup.getState() !== 'failed') return;
+  if (logFacts) debugNote('startup.uxp-log', panelStart.uxpLogLines(logFacts).join(' | '));
+  // No sign of life from the WebView, and Photoshop's log does not say it
+  // has no runtime: Photoshop may have refused this one while it was still
+  // starting (seen 4 s after its launch; a reload later works), so a new one
+  // is asked for, a few times, before the notice
+  if (!webViewFailure && !events.some((event) => !OWN_LOAD_EVENT.test(event)) && autoRecreated < MAX_AUTO_RECREATE) {
+    autoRecreated++;
+    const attempt = autoRecreated;
+    console.error('TypeR: no WebView after 15 s, creating it again (' + attempt + '/' + MAX_AUTO_RECREATE + ')');
+    debugNote('webview.recreate', String(attempt));
+    try {
+      await reloadView(generation);
+      noteLoadEvent('recreated ' + attempt);
+    } catch (error) { panelStartup.fail(String((error && error.message) || error)); }
+    return;
+  }
   if (webViewFailure) {
     debugNote('startup.webview-failure', webViewFailure.line);
     if (crashTrace) crashTrace.note('webview', 'creation failed: ' + webViewFailure.line);
@@ -113,7 +132,7 @@ async function reportPanelStartFailure(baseText, { head = baseText, french = fal
     : baseText;
   const text = notice + '\n' + panelStart.panelStartFailureText({
     versions: ['Photoshop ' + uxp.host.version, 'UXP ' + (uxp.versions && uxp.versions.uxp), os.platform() + ' ' + os.release()].join(', '),
-    webViewFolders, loadEvents: events, viewSize: size, webViewFailure,
+    webViewFolders, loadEvents: events, viewSize: size, webViewFailure, logFacts,
   });
   console.error('TypeR:', text);
   debugNote('startup.report', text);
@@ -149,6 +168,8 @@ const panelStartup = createPanelStartup({
   },
   onFailure(text, { bridge, head, french }) {
     if (!bridge) reportPanelStartFailure(text, { head, french }).catch(error => console.error('TypeR: startup report', error));
+    // The panel answers but does not finish starting: the log says where init is
+    else console.error('TypeR: the panel did not finish starting (' + startupFiles.summary() + ')');
   },
   show(text, failed) {
     if (!failed) clearProbes();
@@ -415,19 +436,44 @@ async function evalScript(script) {
 
 /* ========================= requests ========================== */
 
-async function init() {
-  if (!mirrorFiles) {
+// The keyboard addon loads while Photoshop starts, next to the first init:
+// its state goes with every slow init line of the log
+function keyboardAddonState() {
+  const state = typeof keysHelper.diagnostics === "function" ? keysHelper.diagnostics() : null;
+  if (!state) return "";
+  return "keyboard addon " + (state.running ? "running" : state.loading ? "loading" : "stopped") + (state.error ? " (" + state.error + ")" : "");
+}
+
+const startupFiles = createStartupLoader({
+  async load(step) {
+    step("folders");
     await files.resolveFolders();
-    storageRoot = files.getStorageRoot();
-    await files.ensureFolder(storageRoot);
-    await files.recoverInterruptedWrites(storageRoot);
-    const imported = await files.importCepStorage(storageRoot).catch((error) => {
+    const root = files.getStorageRoot();
+    step("storage folder");
+    await files.ensureFolder(root);
+    step("interrupted writes");
+    await files.recoverInterruptedWrites(root);
+    step("CEP import");
+    const imported = await files.importCepStorage(root).catch((error) => {
       console.error("TypeR: CEP storage import failed", error);
       return false;
     });
     if (imported) log("storage imported from", imported);
-    const [storedFiles, locales] = await Promise.all([files.loadMirror(storageRoot), files.loadLocales()]);
-    mirrorFiles = { files: storedFiles, locales };
+    step("storage and locales");
+    const [storedFiles, locales] = await Promise.all([files.loadMirror(root), files.loadLocales()]);
+    return { root, files: storedFiles, locales };
+  },
+  describe: keyboardAddonState,
+});
+
+async function init() {
+  if (!mirrorFiles) {
+    const loaded = await startupFiles.get();
+    // The first reading to finish: a request may have waited on another one
+    if (!mirrorFiles) {
+      storageRoot = loaded.root;
+      mirrorFiles = { files: loaded.files, locales: loaded.locales };
+    }
   }
   return {
     extensionId: EXTENSION_ID,
@@ -496,7 +542,10 @@ async function handleRequest(message, generation) {
   }
   try {
     const result = await handler(...(Array.isArray(message.args) ? message.args : []));
-    if (message.method === 'init') debugNote('init.reply', message.id);
+    if (message.method === 'init') {
+      debugNote('init.reply', message.id);
+      if (generation === viewGeneration && view && webviewReady) startupFiles.answered();
+    }
     reply({ type: "reply", id: message.id, result: result === undefined ? null : result });
   } catch (error) {
     debugNote('request.error', String(message.method) + ': ' + (error.message || error));
@@ -507,6 +556,25 @@ async function handleRequest(message, generation) {
 let viewOnPanel = true;
 let loadingPanel = false;
 let panelAddress = PANEL_URL;
+// The automatic reload after an init without answer, once per start
+let autoReloaded = false;
+// The WebViews asked for again after one that gave no sign of life, per start
+// (reportPanelStartFailure); the events TypeR notes itself are no sign of life
+const MAX_AUTO_RECREATE = 3;
+const OWN_LOAD_EVENT = /^(retry|recreated \d+)$/;
+let autoRecreated = 0;
+
+// A new WebView in place of the current one (the Reload TypeR button)
+async function reloadView(generation) {
+  await mirror.flush();
+  if (generation !== viewGeneration) return;
+  panelStartup.dispose();
+  const previous = view;
+  view = null;
+  webviewReady = false;
+  if (previous) previous.remove();
+  attachView();
+}
 
 function showPanelPage() {
   clearProbes();
@@ -571,6 +639,8 @@ function attachView() {
     }
     if (message.type === "appReady") {
       debugNote('app.ready', channel);
+      autoReloaded = false;
+      autoRecreated = 0;
       panelStartup.appReady();
       return;
     }
@@ -590,6 +660,13 @@ function attachView() {
       // Runtime errors keep the working panel accessible. Only startup
       // failures replace the view with the native recovery controls.
       if (panelStartup.getState() === 'ready') showStatus(message.text);
+      else if (message.reason === 'init-timeout' && !autoReloaded) {
+        // What the Reload button does, which fixed it every time it was seen:
+        // done once, a second failure stays on screen
+        autoReloaded = true;
+        console.error('TypeR: the panel got no init answer (' + startupFiles.summary() + '), reloading it once');
+        reloadView(generation).catch((error) => panelStartup.fail(String((error && error.message) || error)));
+      }
       else panelStartup.fail(message.text);
     }
   };
@@ -640,16 +717,10 @@ function attachView() {
     retry.onclick = async () => {
       debugNote('user.reload', 'requested');
       retry.disabled = true;
-      try {
-        await mirror.flush();
-        if (generation !== viewGeneration) return;
-        panelStartup.dispose();
-        const previous = view;
-        view = null;
-        webviewReady = false;
-        if (previous) previous.remove();
-        attachView();
-      } catch (error) { panelStartup.fail(String(error && error.message || error)); }
+      // The user's reload starts a fresh batch of automatic ones
+      autoRecreated = 0;
+      try { await reloadView(generation); }
+      catch (error) { panelStartup.fail(String(error && error.message || error)); }
       finally { retry.disabled = false; }
     };
   }

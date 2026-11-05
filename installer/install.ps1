@@ -67,6 +67,7 @@ $msg_status_newer = "Installed version: {old}, newer than this archive ({new})"
 $msg_choose_update = "Which version of TypeR do you want to update or install?"
 $msg_updated = "TypeR was updated: {old} → {new}"
 $msg_uxp_failed = "Installation failed. See the error above; no success was confirmed."
+$msg_webview2_missing = "No Microsoft Edge WebView2 runtime was found on this computer: without it, Photoshop cannot display the new TypeR (nor its own Home screen). Install it from https://developer.microsoft.com/microsoft-edge/webview2/ then restart Photoshop."
 
 if ($Lang -eq "fr") {
     $msg_close    = "Photoshop est ouvert : fermez-le d'abord."
@@ -102,6 +103,7 @@ if ($Lang -eq "fr") {
     $msg_choose_update = "Quelle version de TypeR voulez-vous mettre à jour ou installer ?"
     $msg_updated = "TypeR a été mis à jour : {old} → {new}"
     $msg_uxp_failed = "L'installation a échoué. Consultez l'erreur ci-dessus ; aucun succès n'a été confirmé."
+    $msg_webview2_missing = "Aucun composant Microsoft Edge WebView2 n'a été trouvé sur cet ordinateur : sans lui, Photoshop ne peut pas afficher le nouveau TypeR (ni son écran d'accueil). Installez-le depuis https://developer.microsoft.com/microsoft-edge/webview2/ puis redémarrez Photoshop."
 }
 elseif ($Lang -eq "es") {
     $msg_close    = "Photoshop está abierto: ciérralo primero."
@@ -137,6 +139,7 @@ elseif ($Lang -eq "es") {
     $msg_choose_update = "¿Qué versión de TypeR quieres actualizar o instalar?"
     $msg_updated = "TypeR se ha actualizado: {old} → {new}"
     $msg_uxp_failed = "La instalación falló. Consulta el error anterior."
+    $msg_webview2_missing = "No se encontró el componente Microsoft Edge WebView2 en este equipo: sin él, Photoshop no puede mostrar el nuevo TypeR (ni su pantalla de inicio). Instálalo desde https://developer.microsoft.com/microsoft-edge/webview2/ y reinicia Photoshop."
 }
 elseif ($Lang -eq "pt") {
     $msg_close    = "O Photoshop está aberto: feche-o primeiro."
@@ -172,6 +175,7 @@ elseif ($Lang -eq "pt") {
     $msg_choose_update = "Qual versão do TypeR você quer atualizar ou instalar?"
     $msg_updated = "O TypeR foi atualizado: {old} → {new}"
     $msg_uxp_failed = "A instalação falhou. Consulte o erro acima."
+    $msg_webview2_missing = "Nenhum componente Microsoft Edge WebView2 foi encontrado neste computador: sem ele, o Photoshop não consegue exibir o novo TypeR (nem a sua tela inicial). Instale-o em https://developer.microsoft.com/microsoft-edge/webview2/ e reinicie o Photoshop."
 }
 
 # Whether the console can draw: colors and the arrow menu need a real one
@@ -880,6 +884,28 @@ if ($Fancy) {
     Clear-Host
     Write-TypeRHeader
 }
+# No WebView2 runtime anywhere Photoshop looks (Adobe's copy, Microsoft's per
+# machine or per user): Photoshop cannot display the new TypeR, nor its Home
+# screen. A read-only check; the warning names Microsoft's installer.
+function Test-TypeRWebView2Runtime {
+    $Roots = @()
+    foreach ($Base in @($env:CommonProgramFiles, ${env:CommonProgramFiles(x86)})) { if ($Base) { $Roots += Join-Path $Base 'Adobe\Microsoft\EdgeWebView' } }
+    foreach ($Base in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA)) { if ($Base) { $Roots += Join-Path $Base 'Microsoft\EdgeWebView\Application' } }
+    foreach ($Root in $Roots) {
+        if (-not (Test-Path -LiteralPath $Root -PathType Container)) { continue }
+        # Adobe's copy holds the runtime's files directly; Microsoft's, one folder per version
+        if (Test-Path -LiteralPath (Join-Path $Root 'msedgewebview2.exe') -PathType Leaf) { return $true }
+        foreach ($Dir in @(Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d' })) {
+            if (Test-Path -LiteralPath (Join-Path $Dir.FullName 'msedgewebview2.exe') -PathType Leaf) { return $true }
+        }
+    }
+    $Id = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+    foreach ($Key in @("HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\$Id", "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\$Id", "HKCU:\Software\Microsoft\EdgeUpdate\Clients\$Id")) {
+        if ((Get-ItemProperty -LiteralPath $Key -ErrorAction SilentlyContinue).pv) { return $true }
+    }
+    return $false
+}
+
 # --- 5. UXP: install directly and verify actual files, never trust UPIA's
 # exit code (it can report success without installing anything).
 if ($Edition -eq 'uxp') {
@@ -914,6 +940,7 @@ if ($Edition -eq 'uxp') {
         Rename-TypeRLegacyPanel
         Write-TypeRUpdateLine $PluginVersion (Get-TypeRPluginVersion)
         Write-Host "  √ $CompleteMessage" -ForegroundColor Green
+        try { if (-not (Test-TypeRWebView2Runtime)) { Write-Host "  $msg_webview2_missing" -ForegroundColor Yellow } } catch {}
         if (Test-Path -LiteralPath (Join-Path $CepTarget 'CSXS')) { Write-Host "  $msg_both" -ForegroundColor Yellow }
         Write-TypeRCredits
     }

@@ -858,11 +858,12 @@ const pluginData = (appData) => appData + "\\Adobe\\UXP\\PluginsStorage\\PHSP\\2
 
   const panelStart = require(path.join(root, "uxp-src/host/panelStart.js"));
   const webViewFolders = await panelStart.readWebViewFolders((folder) => {
-    if (folder === "adobe") return Promise.resolve(["140.0.3485.54", "SxS"]);
+    if (folder === "adobe") return Promise.resolve(["EBWebView", "Locales", "msedgewebview2.exe", "msedge.dll"]);
+    if (folder === "microsoft") return Promise.resolve(["156.0.4314.58", "SxS"]);
     if (folder === "empty") return Promise.resolve(["SxS"]);
     return Promise.reject(new Error("no such file or directory"));
-  }, ["adobe", "empty", "gone"]);
-  assert.deepStrictEqual(webViewFolders, ["adobe: 140.0.3485.54", "empty: no version", "gone: missing"]);
+  }, ["adobe", "microsoft", "empty", "gone"]);
+  assert.deepStrictEqual(webViewFolders, ["adobe: msedgewebview2.exe", "microsoft: 156.0.4314.58", "empty: no runtime inside", "gone: missing"]);
   const failureText = panelStart.panelStartFailureText({
     versions: "Photoshop 27.7.0, UXP 9.3.0, win32 10.0.22631",
     webViewFolders,
@@ -897,13 +898,37 @@ const pluginData = (appData) => appData + "\\Adobe\\UXP\\PluginsStorage\\PHSP\\2
   const creationFailure = await panelStart.findWebViewCreationFailure(Object.assign({}, logReader, { pluginId: "com.scanr.typer" }));
   assert.deepStrictEqual(creationFailure, {
     file: "C:\\Users\\ana\\AppData\\Roaming\\Adobe\\Adobe Photoshop 2026\\Logs\\UXPLogs_2026-11-03_06-10-45_071210.log",
+    name: "UXPLogs_2026-11-03_06-10-45_071210.log",
     line: "[2026-11-03_06-10-47][39072][Warn] [general] Failed to create WebView for plugin: com.scanr.typer",
+    failure: "[2026-11-03_06-10-47][39072][Warn] [general] Failed to create WebView for plugin: com.scanr.typer",
+    runtimeFolder: "C:\\Program Files\\Common Files\\Adobe\\Microsoft\\EdgeWebView\\",
+    browserVersion: null,
+    failedPlugins: ["com.adobe.ccx.start"],
   });
+  // The facts of a session whose WebView started (no failure line); the Home
+  // screen's console lines, which may quote anything, are skipped
+  logFiles["C:\\Users\\ana\\AppData\\Roaming\\Adobe\\Adobe Photoshop 2026\\Logs\\UXPLogs_2026-11-03_06-10-45_071210.log"] +=
+    "[2026-11-03_06-12-12][32848][Info] [general] WebView2BrowserVersion:  156.0.4314.58\r\n" +
+    "[2026-11-03_06-12-13][32848][Default] [console] [HS] Failed to create WebView for plugin: com.adobe.fake\r\n";
+  const facts = await panelStart.readUxpLogFacts(Object.assign({}, logReader, { pluginId: "com.scanr.typer" }));
+  assert.strictEqual(facts.browserVersion, "156.0.4314.58");
+  assert.deepStrictEqual(facts.failedPlugins, ["com.adobe.ccx.start"]);
+  assert.deepStrictEqual(panelStart.uxpLogLines(facts), [
+    "UXP log: UXPLogs_2026-11-03_06-10-45_071210.log",
+    "Runtime folder UXP uses: C:\\Program Files\\Common Files\\Adobe\\Microsoft\\EdgeWebView\\",
+    "WebView2 started in this Photoshop session: 156.0.4314.58",
+    "WebView failed for other plugins: com.adobe.ccx.start",
+  ]);
+  assert.deepStrictEqual(panelStart.uxpLogLines(null), ["UXP log: not found"]);
+  assert.deepStrictEqual(panelStart.windowsWebViewFolders("C:\\Users\\ana\\"), panelStart.WINDOWS_WEBVIEW_FOLDERS.concat(["C:\\Users\\ana\\AppData\\Local\\Microsoft\\EdgeWebView\\Application"]));
   assert.strictEqual(await panelStart.findWebViewCreationFailure(Object.assign({}, logReader, { pluginId: "com.other.plugin" })), null, "another plugin's failure is not ours");
   assert.strictEqual(await panelStart.findWebViewCreationFailure(Object.assign({}, logReader, { appData: "D:\\nowhere", pluginId: "com.scanr.typer" })), null, "an unreadable log tree is no failure");
   assert.strictEqual(await panelStart.findWebViewCreationFailure({ listFolder: async () => { throw new Error("denied"); }, readText: async () => "", appData: "C:\\x", pluginId: "com.scanr.typer" }), null);
   const verdictText = panelStart.webViewFailureText(creationFailure, false);
-  ["Failed to create WebView for plugin: com.scanr.typer", "There is nothing to wait for", "Install WebView2", "restart Photoshop"].forEach((part) => assert.ok(verdictText.includes(part), part));
+  ["Failed to create WebView for plugin: com.scanr.typer", "There is nothing to wait for", "Install WebView2", "restart Photoshop",
+    "Photoshop looks for this component in: C:\\Program Files\\Common Files\\Adobe\\Microsoft\\EdgeWebView\\",
+    "Photoshop could not display its Home screen either"].forEach((part) => assert.ok(verdictText.includes(part), part));
+  assert.ok(!panelStart.webViewFailureText({ line: "x", failedPlugins: ["com.adobe.ccx.comments-webview"] }, false).includes("either"), "only plugins the user knows are named");
   const verdictFrench = panelStart.webViewFailureText(creationFailure, true);
   ["Installer WebView2", "Inutile d’attendre", "redémarrez Photoshop"].forEach((part) => assert.ok(verdictFrench.includes(part), part));
   const reportAfterVerdict = panelStart.panelStartFailureText({

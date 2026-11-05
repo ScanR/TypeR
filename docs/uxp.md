@@ -120,7 +120,33 @@ with `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` set to a missing folder (`.update-test
 passes on Windows, `main.js` reads the newest UXP log through `panelStart.findWebViewCreationFailure`: with
 that line, the notice drops the waiting hint, quotes the line, says the WebView2 component is missing or
 damaged, and the help button becomes **Install WebView2**, which opens Microsoft's download page (then
-restart Photoshop). The collector of the debug build already copies the `webview` lines of that log.
+restart Photoshop). The notice also reports what else that log says (`panelStart.readUxpLogFacts`): the folder UXP
+says it uses, the `WebView2BrowserVersion` that started in the session (none when no WebView ran at all)
+and the other plugins whose WebView failed (the Home screen, `com.adobe.ccx.start`, named for the user).
+The collector of the debug build reads the whole log (not its tail: the decisive lines are written in the
+first seconds of a session), leaves out the Home screen's `[console]` lines, and ends with a verdict built
+from the same facts. `install.ps1` warns after a UXP install when no runtime exists in any of the folders
+or in Microsoft's registry.
+
+A second cause was found in a user's log on 2026-11-04 (Photoshop 27.9.1, Microsoft's runtime 156 present
+and running for the Home screen): `WebViewManager::createWebView() failed to create WebView because
+webViewDataStorage_ is not available`, 4 s after Photoshop's start and again at TypeR's retry. That storage
+is the per-plugin WebView data UXP keeps in `<AppData>\Adobe\UXP\PluginsStorage\PHSP\<major>\WebView\<guid>\3P`.
+Cause not established (a race with Photoshop's start, or an unusable folder). The support bundle's
+`installer/webview_rescue_win.ps1` (`3-WebView-Rescue.cmd`) runs the candidate ways out one by one and reads
+the session's UXP log after each (`createWebView() create new for thirdparty plugin` = created; the failure
+lines = refused): Reload TypeR after a minute, the panel closed and reopened, the `WebView` storage folder
+renamed (put back when it does not help), Photoshop started with `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` on
+Microsoft's runtime, then with `WEBVIEW2_USER_DATA_FOLDER` on a fresh folder (both for that Photoshop only).
+`-Analyze <log>` prints what a log says without running anything (tested). The script closes Photoshop
+itself (`CloseMainWindow`, so an unsaved document still gets its dialog, never a kill), installs the
+support build from the kit first, and asks the user for one thing only: to open the panel when Photoshop
+does not open it by itself. Since 2026-11-04 the host also asks for a new WebView by itself: a start that
+fails with no load event at all, when the log records no `Failed to create WebView for plugin` line,
+runs `reloadView` up to three times (`autoRecreated` in `main.js`, reset on app-ready and on the user's
+reload) before the notice, whose `Loads:` line counts them (`recreated 3 | retry`). A user's log showed
+Photoshop refusing the WebView 4 s after its own launch and at TypeR's +5 s retry: if a later creation
+succeeds, these attempts are the fix; if not, the rescue report says so (four refusals per session).
 Likely on cracked/repacked installations without the Adobe copy, on a Windows without the Evergreen
 runtime (nothing else installed it); untested: a runtime present but damaged, or blocked by a policy.
 Users report the same computer working with Photoshop 27.4: the runtime selection is the same in every

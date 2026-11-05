@@ -347,7 +347,7 @@ const config = createLoader()("app_src/config.js").default;
   const modal = read("app_src/components/modal/modal.jsx");
   assert(/if \(!context\.state\.notFirstTime\) \{\s*context\.dispatch\(\{type: 'showFirstRunWalkthrough'\}\);\s*\} else if \(context\.state\.whatsNewSeen !== config\.whatsNewVersion\) \{\s*context\.dispatch\(\{type: 'showWhatsNew'\}\);/.test(modal),
     "A new user gets the walkthrough, a known one only What's new");
-  assert(/const imported = await files\.importCepStorage\(storageRoot\)/.test(read("uxp-src/host/main.js")), "A Legacy user is a known user in the plugin");
+  assert(/const imported = await files\.importCepStorage\(\w+\)/.test(read("uxp-src/host/main.js")), "A Legacy user is a known user in the plugin");
   const { reducer, initial } = loadContext({});
   const first = reducer(initial, { type: "showFirstRunWalkthrough" });
   assert.strictEqual(first.whatsNewSeen, config.whatsNewVersion, "The walkthrough covers What's new: it does not open again afterwards");

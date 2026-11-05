@@ -156,7 +156,7 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   const stubs = {
     photoshop: {},
     uxp: { host: { version: '27.0', uiLocale: 'fr_FR' }, versions: { uxp: '8.0' }, entrypoints: { setup: value => { lifecycle = value; } }, shell: { openExternal: async url => { opened.push(url); } } },
-    os: { platform: () => 'win32', release: () => '10.0' },
+    os: { platform: () => 'win32', release: () => '10.0', homedir: () => 'C:\\Users\\ana' },
     './panelStart': Object.assign({}, require('../uxp-src/host/panelStart'), readWebViewFolders ? { readWebViewFolders } : {}),
     fs: { readdir: async () => [] },
     './photoshop': { methods: {} }, './smartPaste': { methods: {} },
@@ -169,6 +169,7 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
     './keyboard': { onChange() {} }, './keysHelper': {},
     './services': { requests: { count: () => ++calls, delayed: () => new Promise(resolve => { finishOldRequest = resolve; }) } }, './jsx': {},
     './evalScript': { createCallQueue: () => () => {} },
+    './startupFiles': require('../uxp-src/host/startupFiles'),
     './panelStartup': { createPanelStartup: options => createPanelStartup(Object.assign({}, options, {
       setTimer: fn => { const id = nextTimer++; timers.set(id, fn); return id; },
       clearTimer: id => timers.delete(id)
@@ -188,7 +189,8 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   // remedy, and the help button installs the runtime
   const noRuntime = hostHarness({ uxpLog:
     '[2026-11-03_06-10-45][39072][Info] [general] Instead of the WebView2 runtime in the system, UXP will use the WebView2 runtime in the folder: C:\\Program Files\\Common Files\\Adobe\\Microsoft\\EdgeWebView\\\r\n' +
-    '[2026-11-03_06-10-47][39072][Warn] [general] Failed to create WebView for plugin: com.scanr.typer\r\n' });
+    '[2026-11-03_06-10-47][39072][Warn] [general] Failed to create WebView for plugin: com.scanr.typer\r\n' +
+    '[2026-11-03_06-10-51][39072][Warn] [general] Failed to create WebView for plugin: com.adobe.ccx.start\r\n' });
   noRuntime.panel.show();
   for (const tick of [...noRuntime.timers.values()]) tick();
   await new Promise(resolve => setImmediate(resolve));
@@ -200,17 +202,42 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   assert.doesNotMatch(noRuntimeText, /attend encore/, 'the waiting hint is dropped once the cause is known');
   assert.doesNotMatch(noRuntimeText, /did not answer/);
   assert.match(noRuntimeText, /Loads: retry/);
+  assert.match(noRuntimeText, /Photoshop cherche ce composant dans : C:\\Program Files\\Common Files\\Adobe\\Microsoft\\EdgeWebView\\/, 'the folder UXP tried, from its log');
+  assert.match(noRuntimeText, /Ce n’est pas propre à TypeR : Photoshop n’a pas pu afficher non plus Home screen\./);
+  assert.match(noRuntimeText, /UXP log: UXPLogs_2026-11-03_06-10-45_071210\.log/);
+  assert.match(noRuntimeText, /WebView2 started in this Photoshop session: none/);
+  assert.match(noRuntimeText, /WebView failed for other plugins: com\.adobe\.ccx\.start/);
+  assert.match(noRuntimeText, /C:\\Users\\ana\\AppData\\Local\\Microsoft\\EdgeWebView\\Application: /, 'the per-user runtime folder is listed too');
   assert.strictEqual(noRuntime.nodes['typer-webview-help'].textContent, 'Installer WebView2');
   await noRuntime.nodes['typer-webview-help'].onclick();
   assert.deepStrictEqual(noRuntime.opened, ['https://developer.microsoft.com/microsoft-edge/webview2/']);
   await noRuntime.panel.destroy();
 
+  // Photoshop's log records no refusal: the silent WebView may be one Photoshop
+  // dropped while starting (a user's log, 2026-11-04), so TypeR asks for a new
+  // one three times before its notice
   const healthyLog = hostHarness({ uxpLog: '[2026-11-03_06-12-12][32848][Info] [general] WebView2BrowserVersion:  156.0.4314.58\n' });
   healthyLog.panel.show();
+  const silentViews = [healthyLog.nodes['typer-view']];
+  for (let cycle = 1; cycle <= 3; cycle++) {
+    for (const tick of [...healthyLog.timers.values()]) tick();
+    await new Promise(resolve => setImmediate(resolve));
+    const fresh = healthyLog.nodes['typer-view'];
+    assert.ok(!silentViews.includes(fresh), 'a WebView without any sign of life is replaced by a new one (' + cycle + ')');
+    assert.strictEqual(fresh.src, 'plugin:/web/index.html');
+    assert.strictEqual(healthyLog.flushes, cycle, 'pending writes are saved before each replacement');
+    assert.notStrictEqual(healthyLog.nodes['typer-recovery'].style.display, 'block', 'no notice while TypeR still tries');
+    silentViews.push(fresh);
+  }
   for (const tick of [...healthyLog.timers.values()]) tick();
   await new Promise(resolve => setImmediate(resolve));
+  assert.strictEqual(healthyLog.nodes['typer-view'], silentViews[3], 'after three new WebViews the notice stays');
+  assert.strictEqual(healthyLog.nodes['typer-recovery'].style.display, 'block');
+  assert.match(healthyLog.nodes['typer-status'].textContent, /Loads: recreated 3 \| retry/, 'the notice counts the WebViews asked for');
   assert.match(healthyLog.nodes['typer-status'].textContent, /attend encore/, 'a log without the failure keeps the waiting hint');
   assert.match(healthyLog.nodes['typer-status'].textContent, /did not answer/);
+  assert.match(healthyLog.nodes['typer-status'].textContent, /WebView2 started in this Photoshop session: 156\.0\.4314\.58/, 'a runtime that started is reported even without a failure line');
+  assert.match(healthyLog.nodes['typer-status'].textContent, /Runtime folder UXP uses: the system's/);
   assert.strictEqual(healthyLog.nodes['typer-webview-help'].textContent, undefined, 'the help button keeps its label');
   await healthyLog.nodes['typer-webview-help'].onclick();
   assert.match(healthyLog.opened[0], /helpx\.adobe\.com/);
@@ -223,14 +250,23 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   assert.strictEqual(silent.timers.size, 0, 'hiding a panel suspends native startup timers');
   silent.panel.show();
   assert.strictEqual(silent.timers.size, 2);
+  // Three WebViews asked for again (each report reads the folders first)
+  for (let cycle = 1; cycle <= 3; cycle++) {
+    for (const tick of [...silent.timers.values()]) tick();
+    finishReport(['Adobe runtime: 140.0']);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.strictEqual(silent.flushes, cycle);
+  }
   for (const tick of [...silent.timers.values()]) tick();
   finishReport(['Adobe runtime: 140.0']);
   // The report reads the WebView folders and Photoshop's log before showing
   await new Promise(resolve => setImmediate(resolve));
   assert.match(silent.nodes['typer-status'].textContent, /View: 600x400/, 'the diagnostic measures the view before hiding it');
-  assert.match(silent.nodes['typer-status'].textContent, /Loads: retry/);
+  assert.match(silent.nodes['typer-status'].textContent, /Loads: recreated 3 \| retry/);
   assert.match(silent.nodes['typer-status'].textContent, /Adobe runtime: 140.0/);
+  const flushesBeforeReload = silent.flushes;
   await silent.nodes['typer-retry'].onclick();
+  assert.strictEqual(silent.flushes, flushesBeforeReload + 1);
   for (const tick of [...silent.timers.values()]) tick();
   const completeStaleReport = finishReport;
   await silent.nodes['typer-retry'].onclick();
@@ -310,5 +346,42 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   assert.strictEqual(h.nodes['typer-view'].src, 'plugin:/web/index.html');
   await h.panel.destroy();
   assert.strictEqual(h.timers.size, 0);
+
+  // The page reached the host but got no init answer (seen at Photoshop's
+  // cold start, fixed every time by Reload TypeR): the host reloads the view
+  // once by itself; a second time, the failure stays on screen
+  const settle = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+  const noInit = hostHarness();
+  noInit.panel.show();
+  const stuck = noInit.nodes['typer-view'];
+  stuck.emit('message', { data: JSON.stringify({ type: 'ready' }) });
+  stuck.emit('message', { data: JSON.stringify({ type: 'panelError', text: 'TypeR could not start: Error: the plugin host does not answer', reason: 'init-timeout' }) });
+  await settle();
+  const reloaded = noInit.nodes['typer-view'];
+  assert.notStrictEqual(reloaded, stuck, 'an init without answer reloads the view once');
+  assert.strictEqual(reloaded.src, 'plugin:/web/index.html');
+  assert.strictEqual(noInit.flushes, 1, 'pending storage writes are saved before the reload');
+  assert.notStrictEqual(noInit.nodes['typer-recovery'].style.display, 'block', 'no failure is shown for the first init timeout');
+  reloaded.emit('message', { data: JSON.stringify({ type: 'ready' }) });
+  reloaded.emit('message', { data: JSON.stringify({ type: 'panelError', text: 'TypeR could not start: Error: the plugin host does not answer', reason: 'init-timeout' }) });
+  await settle();
+  assert.strictEqual(noInit.nodes['typer-view'], reloaded, 'a second init timeout is not reloaded again');
+  assert.match(noInit.nodes['typer-status'].textContent, /the plugin host does not answer/);
+  assert.strictEqual(noInit.nodes['typer-recovery'].style.display, 'block');
+  // Once the app is ready, a later start can be reloaded again
+  reloaded.emit('message', { data: JSON.stringify({ type: 'appReady' }) });
+  await noInit.panel.destroy();
+
+  // Any other startup error of the page fails at once, without a reload
+  const broken = hostHarness();
+  broken.panel.show();
+  const brokenView = broken.nodes['typer-view'];
+  brokenView.emit('message', { data: JSON.stringify({ type: 'panelError', text: 'TypeR could not start: TypeError: x is not a function', reason: 'start' }) });
+  await settle();
+  assert.strictEqual(broken.nodes['typer-view'], brokenView, 'a page error is not a reason to reload');
+  assert.strictEqual(broken.flushes, 0);
+  assert.match(broken.nodes['typer-status'].textContent, /x is not a function/);
+  assert.strictEqual(broken.nodes['typer-recovery'].style.display, 'block');
+  await broken.panel.destroy();
   console.log('UXP startup, missing renderer, recovery and panel lifecycle tests passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -36,7 +36,10 @@ async function requestInit() {
     const result = await Promise.race([request("init"), new Promise((resolve) => setTimeout(() => resolve(TIMEOUT), 1000))]);
     if (result !== TIMEOUT) return result;
   }
-  throw new Error("the plugin host does not answer");
+  // The host reloads the panel once on this reason (uxp-src/host/main.js)
+  const error = new Error("the plugin host does not answer");
+  error.reason = "init-timeout";
+  throw error;
 }
 
 // Startup milestones, in ms since the page started (perf diagnostics)
@@ -70,7 +73,10 @@ async function start() {
 }
 
 start().catch((error) => {
-  report("TypeR could not start: " + ((error && (error.stack || error.message)) || error));
+  notify("panelError", {
+    text: "TypeR could not start: " + ((error && (error.stack || error.message)) || error),
+    reason: (error && error.reason) || "start",
+  });
   const notice = document.createElement("div");
   notice.style.cssText = "padding:12px;color:#f2bc76;font:12px sans-serif";
   notice.textContent = "TypeR could not start: " + ((error && error.message) || error);

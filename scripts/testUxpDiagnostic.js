@@ -86,7 +86,11 @@ function testCollector() {
   fs.writeFileSync(path.join(logs, 'typer-startup-1.json'), createDiagnosticLog({ version: 'test' }).snapshot());
   fs.writeFileSync(path.join(logs, 'typer-startup-2.json'), '{interrupted');
   fs.writeFileSync(path.join(logs, 'storage.json'), '{"privateDocument":"DO NOT COLLECT"}');
-  fs.writeFileSync(path.join(adobeLogs, 'UXPLogs_test.log'), 'unrelated secret\nWebView failed loading https://example.test/?token=SECRET\n');
+  fs.writeFileSync(path.join(adobeLogs, 'UXPLogs_test.log'), 'unrelated secret\nWebView failed loading https://example.test/?token=SECRET\n' +
+    '[2026-11-03_06-10-45][39072][Info] [general] Instead of the WebView2 runtime in the system, UXP will use the WebView2 runtime in the folder: C:\\Adobe\\EdgeWebView\\\n' +
+    '[2026-11-03_06-10-47][39072][Warn] [general] Failed to create WebView for plugin: com.scanr.typer\n' +
+    '[2026-11-03_06-10-51][39072][Warn] [general] Failed to create WebView for plugin: com.adobe.ccx.start\n' +
+    '[2026-11-03_06-10-52][39072][Default] [console] [HS] webview console line with a private document name\n');
   const output = path.join(fixture, 'report.json');
   const before = fs.readFileSync(path.join(runtime, 'msedgewebview2.exe'));
   execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'installer/diagnose_uxp_win.ps1'), '-SkipSystem', '-AppDataPath', appdata, '-RuntimePaths', path.join(fixture, 'runtime'), '-OutputPath', output], { stdio: 'pipe', timeout: 30000 });
@@ -95,9 +99,50 @@ function testCollector() {
   assert.strictEqual(report.runtimes[0].executables.length, 1);
   assert.strictEqual(report.startupReports.length, 1);
   assert(report.errors.some(error => error.includes('typer-startup-2.json')), 'an interrupted log does not prevent collecting the other reports');
-  assert.strictEqual(report.adobeErrors[0].lines.length, 1);
-  assert(!text.includes('SECRET') && !text.includes('DO NOT COLLECT') && !text.includes('unrelated secret'));
+  assert.strictEqual(report.adobeErrors[0].lines.length, 4, 'the WebView lines, without the Home screen console output');
+  assert.deepStrictEqual(report.runtimes[0].versionFolders, ['123']);
+  assert.strictEqual(report.summary.typerWebViewFailed, true);
+  assert.deepStrictEqual(report.pluginStorage.versions.map(v => v.version), ['27']);
+  assert.deepStrictEqual(report.pluginStorage.versions[0].folders, ['External']);
+  assert.deepStrictEqual(report.pluginStorage.versions[0].webView, []);
+  assert.strictEqual(report.summary.webView2Started, null);
+  assert.strictEqual(report.summary.runtimeFolder, 'C:\\Adobe\\EdgeWebView\\');
+  assert.deepStrictEqual(report.summary.failedPlugins, ['com.scanr.typer', 'com.adobe.ccx.start']);
+  assert.match(report.summary.verdict, /could not start any WebView2 runtime/);
+  assert.match(report.summary.verdict, /com\.adobe\.ccx\.start/);
+  assert.match(report.summary.verdict, /developer\.microsoft\.com\/microsoft-edge\/webview2/);
+  assert.match(report.summary.verdict, /Photoshop looks for it in C:\\Adobe\\EdgeWebView/);
+  assert(!text.includes('SECRET') && !text.includes('DO NOT COLLECT') && !text.includes('unrelated secret') && !text.includes('private document name'));
   assert(!text.includes('private-appdata'));
   assert(fs.readFileSync(path.join(runtime, 'msedgewebview2.exe')).equals(before));
+  // The rescue script reads the same log and names what happened in it
+  const rescue = path.join(root, 'installer/webview_rescue_win.ps1');
+  const analyze = file => JSON.parse(execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', rescue, '-Analyze', file], { stdio: 'pipe', timeout: 30000 }).toString());
+  const refused = path.join(fixture, 'refused.log');
+  fs.writeFileSync(refused, '[2026-11-04_18-37-49][32952][Info] [general] Instead of the WebView2 runtime in the system, UXP will use the WebView2 runtime in the folder: C:\\Adobe\\EdgeWebView\\\n' +
+    '[2026-11-04_18-37-53][32952][Warn] [general] WebViewManager::createWebView() failed to create WebView because webViewDataStorage_ is not available\n' +
+    '[2026-11-04_18-37-54][32952][Default] [console] createWebView() create new for thirdparty plugin (quoted by the Home screen)\n' +
+    '[2026-11-04_18-37-55][32952][Warn] [general] Storage path error: access denied\n');
+  // The collector names a refusal apart from a missing runtime
+  const refusedReport = path.join(fixture, 'refused-report.json');
+  fs.writeFileSync(path.join(adobeLogs, 'UXPLogs_test.log'), '[2026-11-04_19-32-29][12800][Warn] [general] WebViewManager::createWebView() failed to create WebView because webViewDataStorage_ is not available\n[2026-11-04_19-32-26][12800][Info] [general] Plugin com.adobe.ccx.timeline : [v4] Using Default Value for Icon species\n');
+  execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(root, 'installer/diagnose_uxp_win.ps1'), '-SkipSystem', '-AppDataPath', appdata, '-RuntimePaths', path.join(fixture, 'runtime'), '-OutputPath', refusedReport], { stdio: 'pipe', timeout: 30000 });
+  const refusedSummary = JSON.parse(fs.readFileSync(refusedReport, 'utf8')).summary;
+  assert.strictEqual(refusedSummary.refusal, 'webViewDataStorage_ is not available');
+  assert.deepStrictEqual(refusedSummary.adobePlugins, ['com.adobe.ccx.timeline']);
+  assert.match(refusedSummary.verdict, /^UXP refused to create any WebView .*webViewDataStorage_ is not available.*Legacy panel/);
+  const refusedFacts = analyze(refused);
+  assert.strictEqual(refusedFacts.created, 0);
+  assert.strictEqual(refusedFacts.failures.length, 1);
+  assert.strictEqual(refusedFacts.folder, 'C:\\Adobe\\EdgeWebView\\');
+  assert.match(refusedFacts.verdict, /^FAILED: Photoshop refused the WebView 1 time\(s\): .*webViewDataStorage_ is not available/);
+  assert.deepStrictEqual(refusedFacts.other, ['[2026-11-04_18-37-55][32952][Warn] [general] Storage path error: access denied']);
+  const worked = path.join(fixture, 'worked.log');
+  fs.writeFileSync(worked, '[2026-11-04_07-54-24][12540][Info] [general] WebView2BrowserVersion:  156.0.4314.58\n[2026-11-04_07-54-24][12540][Debug] [general] createWebView() create new for thirdparty plugin\n');
+  const workedFacts = analyze(worked);
+  assert.strictEqual(workedFacts.verdict, 'WORKED: Photoshop created the TypeR WebView');
+  assert.strictEqual(workedFacts.runtime, '156.0.4314.58');
+  fs.writeFileSync(worked, 'nothing here\n');
+  assert.match(analyze(worked).verdict, /^NOTHING/);
 }
 testNative().then(() => { testCollector(); console.log('UXP diagnostic log, early script, native export and Windows collector tests passed'); }).catch(error => { console.error(error); process.exitCode = 1; });
