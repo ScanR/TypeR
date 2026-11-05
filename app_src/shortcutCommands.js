@@ -309,7 +309,7 @@ const shortcutCommands = [
     label: "shortcut_increase",
     defaultKeys: ["CTRL", "ALT", "U"],
     legacyDefaultKeys: [["CTRL", "SHIFT", "PLUS"]],
-    repeatDelay: 300,
+    repeatDelay: 0,
     handler: (ctx) => changeActiveLayerTextSize(ctx.state.textSizeIncrement || 1),
   },
   {
@@ -317,7 +317,7 @@ const shortcutCommands = [
     label: "shortcut_decrease",
     defaultKeys: ["CTRL", "ALT", "D"],
     legacyDefaultKeys: [["CTRL", "SHIFT", "MINUS"]],
-    repeatDelay: 300,
+    repeatDelay: 0,
     handler: (ctx) => changeActiveLayerTextSize(-(ctx.state.textSizeIncrement || 1)),
   },
   {
