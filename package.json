@@ -22,7 +22,7 @@
     "build:uxp:dev": "webpack --config webpack.uxp.config.js --mode=development --env dev && node scripts/buildUxp.js --dev --package",
     "build:uxp:mac": "webpack --config webpack.uxp.config.js --mode=production --env mac && node scripts/buildUxp.js --mac",
     "build:uxp:mac:dev": "webpack --config webpack.uxp.config.js --mode=development --env mac --env dev && node scripts/buildUxp.js --mac --dev --package",
-    "package:uxp:win": "npm run build:uxp && node scripts/buildUxp.js --package && node scripts/verifyKeysAddonPackage.js --release",
+    "package:uxp:win": "npm run build:uxp && node scripts/buildUxp.js --package",
     "package:uxp:mac": "npm run build:uxp:mac && node scripts/buildUxp.js --mac --package",
     "package:uxp": "npm run package:uxp:win && npm run package:uxp:mac && node scripts/verifyUxpPackages.js",
     "build:keys-addon": "node scripts/buildKeysAddon.js",

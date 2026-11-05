@@ -212,10 +212,12 @@ const loadKeysHelper = () => {
 };
 {
   const keys = loadKeysHelper();
-  assert.deepStrictEqual(keys.parseState("aWINaCTRLa|42\n"), { state: "aWINaCTRLa", beat: "42" });
-  assert.deepStrictEqual(keys.parseState("a|7"), { state: "a", beat: "7" });
-  assert.deepStrictEqual(keys.parseState("a"), { state: "a", beat: null }, "TypeR's own placeholder has no beat");
-  assert.deepStrictEqual(keys.parseState(""), { state: "a", beat: null });
+  assert.deepStrictEqual(keys.parseState("aWINaCTRLa|42\n"), { state: "aWINaCTRLa", beat: "42", focusStolen: false });
+  assert.deepStrictEqual(keys.parseState("a|7"), { state: "a", beat: "7", focusStolen: false });
+  // The Windows reader adds "|F" while a Photoshop tooltip holds the keyboard focus
+  assert.deepStrictEqual(keys.parseState("aCTRLa|8|F"), { state: "aCTRLa", beat: "8", focusStolen: true });
+  assert.deepStrictEqual(keys.parseState("a"), { state: "a", beat: null, focusStolen: false }, "TypeR's own placeholder has no beat");
+  assert.deepStrictEqual(keys.parseState(""), { state: "a", beat: null, focusStolen: false });
 
   // First start at once; a failed one is retried after 2, 5, 10 then 30 s
   const dog = keys.createWatchdog(0);

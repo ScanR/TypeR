@@ -163,7 +163,7 @@ On macOS, in **Terminal**:
 curl -fsSL https://raw.githubusercontent.com/ScanR/TypeR/master/get.sh | bash
 ```
 
-The installer finds your Photoshop and marks the version made for it as recommended. Choose with the arrow keys and press Enter. Creative Cloud is optional: without it, the plugin is installed directly and appears the next time Photoshop starts. With Creative Cloud, double-click the package for your system: [`TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx) on Windows or [`TypeR-UXP-mac.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP-mac.ccx) on macOS. Windows shortcuts now use a native UXP addon instead of TypeR Shortcuts.exe. Users upgrading from UXP 3.0.0 should use the offline installer or the correct platform CCX for this first upgrade; its old updater does not distinguish platform packages.
+The installer finds your Photoshop and marks the version made for it as recommended. Choose with the arrow keys and press Enter. Creative Cloud is optional: without it, the plugin is installed directly and appears the next time Photoshop starts. With Creative Cloud, double-click the package for your system: [`TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx) on Windows or [`TypeR-UXP-mac.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP-mac.ccx) on macOS. Users upgrading from UXP 3.0.0 should use the offline installer or the correct platform CCX for this first upgrade; its old updater does not distinguish platform packages.
 
 ### Coming from Legacy
 
@@ -358,7 +358,7 @@ Bug reports, translations, workflow suggestions and pull requests are welcome. S
 
 ### Preparing a release
 
-`npm run release` generates `Releases/TypeR.zip`, `Releases/UXP-Windows.ccx` (Windows) and `Releases/TypeR-UXP.ccx` (macOS, and the first step on Windows for clients up to 3.0.0), with their SHA-256 checksums; `build_release.cmd` runs the same pipeline on Windows. Publish all three with their checksums. New clients choose the matching platform asset. The Windows addon ships prebuilt; only rebuilding its C++ sources requires Visual Studio and the Adobe UXP Hybrid Plugin SDK. See the platform transition notes in [docs/uxp.md](docs/uxp.md) before publishing the first split release. Publish this built ZIP rather than GitHub's source archive. See [the release acceptance checklist](docs/release-3.0.0.md) for the real-Photoshop checks and recovery procedures.
+`npm run release` generates `Releases/TypeR.zip`, `Releases/UXP-Windows.ccx` (Windows) and `Releases/TypeR-UXP.ccx` (macOS, and the first step on Windows for clients up to 3.0.0), with their SHA-256 checksums; `build_release.cmd` runs the same pipeline on Windows. Publish all three with their checksums. New clients choose the matching platform asset. The Windows keyboard reader (TypeR Shortcuts.exe) ships prebuilt in `uxp-src/native/typer-keys-win.json`; the .NET SDK rebuilds it on any system when `typer-keys.cs` changes. See the platform transition notes in [docs/uxp.md](docs/uxp.md) before publishing the first split release. Publish this built ZIP rather than GitHub's source archive. See [the release acceptance checklist](docs/release-3.0.0.md) for the real-Photoshop checks and recovery procedures.
 
 ## Credits and license
 
