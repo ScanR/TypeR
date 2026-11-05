@@ -17,7 +17,7 @@ const memoryWindow = () => {
   };
 };
 
-assert.deepStrictEqual(tabs.SETTINGS_TABS, ["general", "insertion", "script", "styles", "shortcuts", "appearance", "data", "fontViewer"]);
+assert.deepStrictEqual(tabs.SETTINGS_TABS, ["general", "insertion", "script", "styles", "shortcuts", "appearance", "data", "fontViewer", "debug"]);
 assert.strictEqual(tabs.DEFAULT_SETTINGS_TAB, "insertion");
 
 const win = memoryWindow();
@@ -30,7 +30,7 @@ assert.strictEqual(tabs.readSettingsTab(win), "fontViewer");
 // Tabs of older versions, or anything else, are not written and read as Insertion
 tabs.writeSettingsTab("behavior", win);
 assert.strictEqual(tabs.readSettingsTab(win), "fontViewer", "an unknown tab is not stored");
-win.values["typer.settingsTab"] = "debug";
+win.values["typer.settingsTab"] = "profiles";
 assert.strictEqual(tabs.readSettingsTab(win), "insertion", "a removed tab falls back to Insertion");
 
 // No storage (or a storage that throws) never breaks opening the settings

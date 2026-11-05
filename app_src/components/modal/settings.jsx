@@ -43,9 +43,10 @@ import { NO_TEXT_PRESETS, toolPresetFileToImportData } from "../../toolPresetImp
 import { getFontViewerStatus } from "../../fontViewerApi";
 import { shortcutCommands } from "../../shortcutCommands";
 import { clearTypeRCache, formatCacheBytes, getTypeRCacheInfo } from "../../cepCache";
-import { DEFAULT_SETTINGS_TAB, normalizeSettingsTab, readSettingsTab, writeSettingsTab } from "../../settingsTab";
+import { DEFAULT_SETTINGS_TAB, readSettingsTab, writeSettingsTab } from "../../settingsTab";
 import { buildSettingsSearchIndex, findSettingRow, searchSettings } from "../../settingsSearch";
 import SettingsSearchResults from "./settingsSearchResults";
+import KeyboardDebug from "./keyboardDebug";
 import { FOOTER_MODE_KEYS } from "../../uiLayout";
 import { FOOTER_MODE_ICONS, footerModeLabel } from "../footer/footer";
 
@@ -155,7 +156,7 @@ const SettingsModal = React.memo(function SettingsModal() {
   }));
   // Other windows (the What's new tour) can open a given tab; otherwise the
   // settings reopen on the last tab the user looked at
-  const [activeTab, setActiveTab] = React.useState(() => normalizeSettingsTab((context.state.modalData && context.state.modalData.tab) || readSettingsTab()));
+  const [activeTab, setActiveTab] = React.useState(() => (context.state.modalData && context.state.modalData.tab) || readSettingsTab());
   const [pastePointText, setPastePointText] = React.useState(context.state.pastePointText ? "1" : "");
   const [ignoreLinePrefixes, setIgnoreLinePrefixes] = React.useState(
     context.state.ignoreLinePrefixes.join("\n")
@@ -1335,6 +1336,7 @@ const SettingsModal = React.memo(function SettingsModal() {
       disabled: !fontViewerAvailable,
       disabledTitle: locale.fontViewerUnavailable,
     },
+    { id: "debug", label: locale.settingsTabDebug, icon: FaKeyboard },
   ];
 
   const searchIndex = React.useMemo(() => buildSettingsSearchIndex({
@@ -2511,6 +2513,9 @@ const SettingsModal = React.memo(function SettingsModal() {
 
       case "fontViewer":
         return <FontViewer />;
+
+      case "debug":
+        return <KeyboardDebug />;
 
       default:
         return null;

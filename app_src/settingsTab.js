@@ -9,6 +9,7 @@ export const SETTINGS_TABS = [
   "appearance",
   "data",
   "fontViewer",
+  "debug",
 ];
 
 // Opened when the user has no last tab yet: the one used most while working

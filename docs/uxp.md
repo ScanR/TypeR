@@ -185,8 +185,9 @@ call that changes the document (the `set` entries of `DOCUMENT_CHANGING_CALLS`):
 those are the panel actions after which the user works in the document, and a
 restore while the document already holds the focus changes nothing.
 
-The keyboard Debug tab is disabled in the settings and their search index for
-production. A previously saved Debug tab falls back to Insertion.
+Settings > Debug displays live held keys, the last combination, sample count,
+foreground status and loading errors. TypeR shortcuts are suspended while settings
+are open; click the Photoshop canvas to test detection without panel focus.
 The user confirmed loading and shortcut operation on Windows Photoshop. Automated
 tests cover asynchronous loading, cancellation/restart, focus and mouse edges.
 This does not establish compatibility with every Photoshop build or remove the

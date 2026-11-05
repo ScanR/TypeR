@@ -163,7 +163,7 @@ On macOS, in **Terminal**:
 curl -fsSL https://raw.githubusercontent.com/ScanR/TypeR/master/get.sh | bash
 ```
 
-The installer finds your Photoshop and marks the version made for it as recommended. Choose with the arrow keys and press Enter. Creative Cloud is optional: without it, the plugin is installed directly and appears the next time Photoshop starts. With Creative Cloud, double-click the package for your system: [`TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx) on Windows or [`TypeR-UXP-mac.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP-mac.ccx) on macOS. Windows shortcuts now use a native UXP addon instead of TypeR Shortcuts.exe. Users upgrading from UXP 3.0.0 should use the offline installer or the correct platform CCX for this first upgrade; its old updater does not distinguish platform packages.
+The installer finds your Photoshop and marks the version made for it as recommended. Choose with the arrow keys and press Enter. Creative Cloud is optional: without it, the plugin is installed directly and appears the next time Photoshop starts. With Creative Cloud, double-click the package for your system: [`TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx) on Windows or [`TypeR-UXP-mac.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP-mac.ccx) on macOS. Windows shortcuts now use a native UXP addon instead of TypeR Shortcuts.exe. Settings > Debug shows detected keys and reader errors. Users upgrading from UXP 3.0.0 should use the offline installer or the correct platform CCX for this first upgrade; its old updater does not distinguish platform packages.
 
 ### Coming from Legacy
 

@@ -22,7 +22,7 @@ const readLocale = (relativePath) => {
 const en = readLocale("locale/messages.properties");
 const fr = { ...en, ...readLocale("locale/fr_FR/messages.properties") };
 
-const TAB_IDS = ["general", "insertion", "script", "styles", "shortcuts", "appearance", "data", "fontViewer"];
+const TAB_IDS = ["general", "insertion", "script", "styles", "shortcuts", "appearance", "data", "fontViewer", "debug"];
 const tabKey = (id) => "settingsTab" + id[0].toUpperCase() + id.slice(1);
 const makeTabs = (strings, disabled = []) => TAB_IDS.map((id) => ({ id, label: strings[tabKey(id)], disabled: disabled.includes(id) }));
 
@@ -41,7 +41,7 @@ const makeIndex = (strings, options = {}) => search.buildSettingsSearchIndex({
 
 const indexFr = makeIndex(fr);
 const indexEn = makeIndex(en);
-assert(!indexFr.some((entry) => entry.tab === "debug"));
+assert.strictEqual(search.searchSettings(indexFr, "debug clavier")[0].entry.tab, "debug");
 const titles = (index, query) => search.searchSettings(index, query).map((result) => result.entry.title);
 const first = (index, query) => titles(index, query)[0];
 
