@@ -92,6 +92,7 @@ const storeFields = [
   "shortcut",
   "language",
   "direction",
+  "readingOrder",
   "lastOpenedImagePath",
   "multiBubbleMode",
   "autoCenterMode",
@@ -320,6 +321,9 @@ const initialState = {
   smartPasteDistribute: storage.data?.smartPasteDistribute !== false,
   smartPasteMinScale: normalizeSmartPasteMinScale(storage.data?.smartPasteMinScale),
   smartPasteHyphenation: normalizeSmartPasteHyphenation(storage.data?.smartPasteHyphenation),
+  // How the page reads, for the parts of a double or triple bubble: manga
+  // (right to left) unless the user picked comics and manhwa (left to right)
+  readingOrder: storage.data?.readingOrder === "ltr" ? "ltr" : "rtl",
   refontRules: normalizeRefontRules(storage.data?.refontRules),
   // Never persisted: a toast only belongs to the current session
   notice: null,
@@ -470,6 +474,9 @@ const baseReducer = (state, action) => {
       }
       if ("smartPasteHyphenation" in action.data) {
         newState.smartPasteHyphenation = normalizeSmartPasteHyphenation(action.data.smartPasteHyphenation);
+      }
+      if ("readingOrder" in action.data) {
+        newState.readingOrder = action.data.readingOrder === "ltr" ? "ltr" : "rtl";
       }
       if ("refontRules" in action.data) {
         newState.refontRules = normalizeRefontRules(action.data.refontRules);
@@ -1022,6 +1029,11 @@ const baseReducer = (state, action) => {
 
   case "setDirection": {
     newState.direction = action.direction || "ltr";
+    break;
+  }
+
+  case "setReadingOrder": {
+    newState.readingOrder = action.value === "ltr" ? "ltr" : "rtl";
     break;
   }
 

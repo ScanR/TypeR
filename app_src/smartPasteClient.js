@@ -114,6 +114,7 @@ export const buildSmartPasteRequest = (state, trigger, options = {}) => {
         minScale: state.smartPasteMinScale > 0 ? state.smartPasteMinScale : 0.75,
         hyphenation: resolveHyphenationLanguage(state.smartPasteHyphenation || "auto", uiLanguage(state), (state.lines || []).map((line) => line.text).join("\n")),
         direction: state.direction,
+        readingOrder: state.readingOrder === "ltr" ? "ltr" : "rtl",
         padding: state.internalPadding || 0,
         keepSize: options.preserveActiveTextSize === true,
         pointText: resolveStylePointText(state.currentStyle, state.pastePointText),

@@ -12,7 +12,7 @@
 //   lines: [{ text, richTextRuns, style, styleLocked }],   // N, N+1, N+2
 //   roleStyles: { shout: style | null, narration: style | null },
 //   settings: { autoClean, distribute, minScale, hyphenation ("fr"|"en"|"off"),
-//               direction, padding, keepSize, pointText, forceSplit },
+//               direction, readingOrder, padding, keepSize, pointText, forceSplit },
 //   forceSplit: split the bubble at its likeliest neck even when it does not
 //   look double (the user clicked it again after a one-line paste)
 // }
@@ -133,7 +133,7 @@ export const prepareSmartPaste = async (request, adapter) => {
   clearGeometryCaches();
   const input = await adapter.capture(request.trigger || { source: "manual" });
   if (!input) throw new SmartPasteError("noSelection");
-  input.direction = settings.direction;
+  input.readingOrder = settings.readingOrder === "ltr" ? "ltr" : "rtl";
   const page = { width: input.width, height: input.height, resolution: input.resolution };
   let plan;
   let subpaths = null;

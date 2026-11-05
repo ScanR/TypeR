@@ -107,8 +107,11 @@ const baseState = () => ({
   assert.strictEqual(request.lines[1].styleLocked, true, "a prefix style is locked");
   assert.strictEqual(request.lines[1].style.id, "s");
   assert.deepStrictEqual(request.settings, {
-    autoClean: true, distribute: true, minScale: 0.8, hyphenation: "fr", direction: "rtl", padding: 4, keepSize: true, pointText: false,
+    autoClean: true, distribute: true, minScale: 0.8, hyphenation: "fr", direction: "rtl", readingOrder: "rtl", padding: 4, keepSize: true, pointText: false,
   });
+  // The reading order of the page is its own setting, not the text direction
+  assert.strictEqual(client.buildSmartPasteRequest({ ...state, direction: "ltr" }, null).request.settings.readingOrder, "rtl", "manga by default");
+  assert.strictEqual(client.buildSmartPasteRequest({ ...state, readingOrder: "ltr" }, null).request.settings.readingOrder, "ltr", "comics and manhwa");
   assert.strictEqual(client.buildSmartPasteRequest({ ...state, smartPasteDistribute: false }, null).lineIndexes.length, 1);
   assert.strictEqual(client.buildSmartPasteRequest({ ...state, smartPasteHyphenation: "off" }, null).request.settings.hyphenation, "off");
   // A style recorded by an earlier paste never beats the selected style

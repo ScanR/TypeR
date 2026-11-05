@@ -46,6 +46,13 @@ const SECTIONS = [
       { title: "settingsTextItemKindLabel", also: ["settingsTextItemKindBox", "settingsTextItemKindPoint"], keywords: "paragraph paragraphe" },
       { title: "settingsSmartPasteLabel", hint: "settingsSmartPasteHelp", keywords: "intelligent auto" },
       { title: "settingsSmartPasteDistributeLabel", hint: "settingsSmartPasteDistributeHelp", parent: "settingsSmartPasteLabel", keywords: "double triple" },
+      {
+        title: "settingsReadingOrderLabel",
+        hint: "settingsReadingOrderHelp",
+        parent: "settingsSmartPasteLabel",
+        also: ["settingsReadingOrderRtl", "settingsReadingOrderLtr"],
+        keywords: "sens lecture ordre manga comic comics manhwa webtoon droite gauche right left double triple",
+      },
       { title: "settingsSmartPasteAutoCleanLabel", hint: "settingsSmartPasteAutoCleanHelp", parent: "settingsSmartPasteLabel", keywords: "cleaning nettoyage nettoyer effacer erase" },
       { title: "settingsSmartPasteMinScaleLabel", hint: "settingsSmartPasteMinScaleHelp", parent: "settingsSmartPasteLabel", keywords: "shrink reduire" },
       {

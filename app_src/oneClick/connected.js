@@ -164,9 +164,10 @@ const boundaryNeck = (poly, neck) => {
   return null;
 };
 
-// The clicked chamber first, then reading order: side by side chambers by
-// x (right first in RTL), stacked ones by y
-export const orderChambers = (plans, click, direction) => {
+// The clicked chamber first, then reading order: stacked chambers top first,
+// side by side ones right first in a manga and left first in a comic or a
+// manhwa (readingOrder "ltr"), whatever the text direction
+export const orderChambers = (plans, click, readingOrder) => {
   const current = plans.find((plan) => contains(plan.cleanPolygon, click));
   if (!current) return null;
   const remaining = plans.filter((plan) => plan !== current);
@@ -174,7 +175,7 @@ export const orderChambers = (plans, click, direction) => {
     const x = p.selection;
     const y = q.selection;
     const verticalOverlap = Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top);
-    if (verticalOverlap > Math.min(x.height, y.height) * 0.5) return direction === "rtl" ? y.xMid - x.xMid : x.xMid - y.xMid;
+    if (verticalOverlap > Math.min(x.height, y.height) * 0.5) return readingOrder === "ltr" ? x.xMid - y.xMid : y.xMid - x.xMid;
     return x.yMid - y.yMid;
   });
   return [current, ...remaining];
@@ -249,7 +250,7 @@ export const deriveTriplePlans = (input, plan, subpaths, options = {}) => {
       });
     }
     if (!verifyTriple(plans, partition.necks, click)) return null;
-    return orderChambers(plans, click, input.direction);
+    return orderChambers(plans, click, input.readingOrder);
   } catch (uncertain) {
     return null;
   }

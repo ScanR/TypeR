@@ -1035,11 +1035,11 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
 // the bubble outlines (alignCapture), the smart paste's neck finder cuts them
 // (oneClick/alignPlan.js) and Align centres each text on its chamber. Any
 // failure there leaves the classic Align, centred on the whole bubble.
-const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback = () => {}, direction = "ltr") => {
+const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback = () => {}, readingOrder = "rtl") => {
   const align = (capture) => {
     let placements = [];
     try {
-      placements = capture && !capture.error ? planAlignment(capture, direction) : [];
+      placements = capture && !capture.error ? planAlignment(capture, readingOrder) : [];
     } catch (planError) {
       placements = [];
     }

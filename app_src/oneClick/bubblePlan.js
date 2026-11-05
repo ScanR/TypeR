@@ -10,7 +10,7 @@
 //     rawPath,                         // work path of the selection, actionJSON
 //     fill: { fill: 0 | 255, rgb } | null, // tone of the selected pixels
 //     sample,                          // optional sync (point) => rgb (UXP)
-//     direction,                       // "rtl" picks the right chamber first
+//     readingOrder,                    // "ltr" (comics, manhwa) or manga's "rtl"
 //   }
 // and holds everything the layout and the paste need: the outline polygon,
 // its tail-free body, the bubble kind, the neck of a connected bubble, the
@@ -124,11 +124,13 @@ const interiorPoint = (polygon) => {
   return null;
 };
 
-// Reading order of two points: top first, then right first in RTL (manga)
-// and left first otherwise
-const readsBefore = (a, b, direction, tolerance) => {
+// Reading order of two points: top first, then right first in a manga and
+// left first in a comic or a manhwa (readingOrder "ltr"). The text direction
+// (LTR for French, RTL for Arabic) says how a line is written, not how the
+// page is read.
+const readsBefore = (a, b, readingOrder, tolerance) => {
   if (Math.abs(a.y - b.y) > tolerance) return a.y < b.y;
-  return direction === "rtl" ? a.x > b.x : a.x < b.x;
+  return readingOrder === "ltr" ? a.x < b.x : a.x > b.x;
 };
 
 // Without a click (a lasso, or a CEP event without coordinates) the bubble is
@@ -149,7 +151,7 @@ export const resolveClick = (input, subpaths) => {
   const sides = [1, -1].map((side) => interiorPoint(clipToSide(polygon, a, b, side))).filter(Boolean);
   if (!sides.length) return seed;
   const tolerance = Math.min(input.selectionBounds.bottom - input.selectionBounds.top, input.selectionBounds.right - input.selectionBounds.left) * 0.15;
-  sides.sort((p, q) => (readsBefore(p, q, input.direction, tolerance) ? -1 : 1));
+  sides.sort((p, q) => (readsBefore(p, q, input.readingOrder, tolerance) ? -1 : 1));
   return sides[0];
 };
 

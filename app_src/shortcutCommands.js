@@ -229,7 +229,7 @@ const shortcutCommands = [
       ctx.state.resizeTextBoxOnCenter,
       ctx.state.internalPadding || 0,
       undefined,
-      ctx.state.direction
+      ctx.state.readingOrder
     ),
   },
   {
