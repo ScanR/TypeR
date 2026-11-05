@@ -129,10 +129,18 @@ assert.strictEqual(host.context._smartAtlasMetrics(outline(), 25), null);
 const crossesRows = outline();
 crossesRows.pathContents.pathComponents[0].subpathListKey[0].points[0].anchor.vertical._value = 1100;
 assert.strictEqual(host.context._smartAtlasMetrics(crossesRows, 3), null, 'Glyphs crossing a row boundary fall back');
-// Cached native identifiers must preserve anchors, optional handles and units.
+// Every measured request carries its cost, for the panel's atlas / line choice
 {
+  const timed = makeHost();
+  timed.run([line, atlas]).forEach(reply => assert.ok(typeof reply.ms === 'number' && reply.ms >= 0, 'a reply says what it cost'));
+}
+
+// Cached native identifiers must preserve anchors and optional handles. A
+// point's handles share the unit of its anchor, read once per point.
+{
+  let typeReads = 0;
   const coordinate = (x, y, unit) => ({
-    getUnitDoubleType: () => unit,
+    getUnitDoubleType: () => { typeReads++; return unit; },
     getUnitDoubleValue: key => key === 'horizontal' ? x : y,
   });
   const descriptor = values => ({
@@ -153,16 +161,24 @@ assert.strictEqual(host.context._smartAtlasMetrics(crossesRows, 3), null, 'Glyph
     charIDToTypeID: value => { identifiers.push(value); return value; },
     charID: { Horizontal: 'horizontal', Vertical: 'vertical' },
   });
-  ['_smartUnit', '_smartPathPoint', '_smartReadPath'].forEach(name => vm.runInContext(extract(name), context));
+  ['_smartUnitOf', '_smartUnit', '_smartPathPoint', '_smartReadPath'].forEach(name => vm.runInContext(extract(name), context));
   const result = JSON.parse(JSON.stringify(context._smartReadPath({}, 2)));
   const subpath = result.pathContents.pathComponents[0].subpathListKey[0];
   const xy = (x, y, unit) => ({ horizontal: { _unit: unit, _value: x }, vertical: { _unit: unit, _value: y } });
   assert.deepStrictEqual(subpath, { closedSubpath: true, points: [
-    { anchor: xy(1, 2, 'distanceUnit'), forward: xy(3, 4, 'distanceUnit'), backward: xy(5, 6, 'pixelsUnit') },
+    { anchor: xy(1, 2, 'distanceUnit'), forward: xy(3, 4, 'distanceUnit'), backward: xy(5, 6, 'distanceUnit') },
     { anchor: xy(7, 8, 'pixelsUnit') },
   ] });
+  assert.strictEqual(typeReads, 2, 'One unit read per point, on its anchor');
   assert.deepStrictEqual(identifiers, ['#Rlt', '#Pnt'], 'Resolve unit ids once per path, not per coordinate');
   assert.throws(() => context._smartReadPath({}, 1), /pathBudget/);
+  // A dense work path (a spiky or noisy outline) is read without its handles
+  const dense = JSON.parse(JSON.stringify(context._smartReadPath({}, 2, 1)));
+  assert.deepStrictEqual(dense.pathContents.pathComponents[0].subpathListKey[0].points, [
+    { anchor: xy(1, 2, 'distanceUnit') }, { anchor: xy(7, 8, 'pixelsUnit') },
+  ], 'anchors only above the threshold');
+  const sparse = JSON.parse(JSON.stringify(context._smartReadPath({}, 2, 2)));
+  assert.ok(sparse.pathContents.pathComponents[0].subpathListKey[0].points[0].forward, 'handles kept at or under the threshold');
 }
 
 // The group must be invisible from creation; older hosts that ignore its

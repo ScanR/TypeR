@@ -536,7 +536,9 @@ function _jointInkClearance297(lines, size, axis, poly, selection) {
     sw = Math.max(1, selection.width),
     sh = Math.max(1, selection.height);
   if (!cache || cache.poly !== poly || cache.sw !== sw || cache.sh !== sh) {
-    var seg = [];
+    var seg = [],
+      minY = Infinity,
+      maxY = -Infinity;
     for (var pi = 0; pi < poly.length; pi++) {
       var a = poly[pi],
         b = poly[(pi + 1) % poly.length],
@@ -553,9 +555,26 @@ function _jointInkClearance297(lines, size, axis, poly, selection) {
         right: Math.max(x1, x2),
         top: Math.min(y1, y2),
         bottom: Math.max(y1, y2),
+        seen: -1,
       });
+      minY = Math.min(minY, y1, y2);
+      maxY = Math.max(maxY, y1, y2);
     }
-    cache = _jointProfiles._inkSegments297 = { poly: poly, sw: sw, sh: sh, segments: seg };
+    // Segments by row of normalized height: a line only looks at the rows
+    // its band can reach with the clearance still worth measuring (0.24)
+    var rowCount = Math.max(1, Math.min(64, seg.length >> 3)),
+      rowStep = Math.max(0.000001, (maxY - minY) / rowCount),
+      rows = [],
+      ri;
+    for (ri = 0; ri < rowCount; ri++) rows.push([]);
+    for (var sj = 0; sj < seg.length; sj++) {
+      var lo = Math.max(0, Math.min(rowCount - 1, Math.floor((seg[sj].top - minY) / rowStep))),
+        hi = Math.max(0, Math.min(rowCount - 1, Math.floor((seg[sj].bottom - minY) / rowStep)));
+      for (ri = lo; ri <= hi; ri++) rows[ri].push(seg[sj]);
+    }
+    cache = _jointProfiles._inkSegments297 = {
+      poly: poly, sw: sw, sh: sh, segments: seg, rows: rows, minY: minY, rowStep: rowStep, stamp: 0,
+    };
   }
   var best = 0.24 * 0.24;
   for (var li = 0; li < lines.length; li++) {
@@ -565,9 +584,19 @@ function _jointInkClearance297(lines, size, axis, poly, selection) {
       right = (axis + m.right * size) / sw,
       top = (line.baseline + m.top * size) / sh,
       bottom = (line.baseline + m.bottom * size) / sh;
-    for (var si = 0; si < cache.segments.length; si++) {
-      var s = cache.segments[si],
-        bx = Math.max(0, left - s.right, s.left - right),
+    // Rows the band can reach: a segment further away than the clearance
+    // found so far cannot improve it (the box test below says the same)
+    var reach = Math.sqrt(best),
+      stamp = ++cache.stamp,
+      rowLo = Math.max(0, Math.min(cache.rows.length - 1, Math.floor((top - reach - cache.minY) / cache.rowStep))),
+      rowHi = Math.max(0, Math.min(cache.rows.length - 1, Math.floor((bottom + reach - cache.minY) / cache.rowStep)));
+    for (var rj = rowLo; rj <= rowHi; rj++) {
+    var row = cache.rows[rj];
+    for (var si = 0; si < row.length; si++) {
+      var s = row[si];
+      if (s.seen === stamp) continue;
+      s.seen = stamp;
+      var bx = Math.max(0, left - s.right, s.left - right),
         by = Math.max(0, top - s.bottom, s.top - bottom);
       if (bx * bx + by * by >= best) continue;
       var dx = Math.max(left - s.x1, 0, s.x1 - right),
@@ -584,6 +613,7 @@ function _jointInkClearance297(lines, size, axis, poly, selection) {
         _jointPointSegment297(right, bottom, s),
       );
       if (best < 0.00000001) return 0;
+    }
     }
   }
   return Math.sqrt(best);
@@ -1016,7 +1046,9 @@ function solve(batch) {
   for (var n = 0; n < batch.models.length; n++) {
     var m = batch.models[n],
       opts = Object.assign({}, m.opts);
-    _jointProfiles = {};
+    // The band and profile caches depend on the polygon and the padding
+    // only: _jointSearch starts them afresh when either changes, and the
+    // size ladder of one chamber reuses them from one solve to the next
     opts.deadline = Date.now() + 2500;
     var plain = _jointSearch(m.variants[0], m.poly, m.selection, opts),
       plainExhausted = !!opts.exhausted,

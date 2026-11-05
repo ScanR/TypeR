@@ -78,10 +78,22 @@ These follow from what ExtendScript can do; the behaviour stays the same otherwi
 
 - CEP reads no pixels: the fill comes from the channel histograms of the selection. The cleanup checks that need
   pixels (fading edges) and open bubbles run in UXP only; in CEP an open bubble falls back to the classic paste.
-- Both hosts read up to 24 compatible lines at once from a vector atlas, with individual measurements as fallback.
-  CEP reduces the outlines to metrics before returning them across its bridge.
+- Both hosts can read up to 24 compatible lines at once from a vector atlas, with individual measurements as
+  fallback. CEP reduces the outlines to metrics before returning them across its bridge. In CEP the atlas outline
+  is read point by point through the Action Manager, so an atlas is not always cheaper than single lines
+  (one text update and one bounds read each): the host times every request and the panel uses the kind that
+  measured a line faster, once it has seen both (`preferAtlas`, `measurementCosts()` in smartPasteClient.js).
+- CEP measures lean (`leanMeasure`, layout.js): when no estimated line set fits a size, the engine does not measure
+  every candidate line (dozens to hundreds, each a round trip or an atlas) before giving up on that size. It
+  searches once more with the estimated lines narrowed by 3% (the estimates run that wide: the widest space, no
+  kerning across words) and the native verification measures the chosen lines. Before the size ladder, a text that
+  cannot fit at the smallest size by the estimates is refused at once. UXP keeps the exhaustive measurement.
 - UXP reports history moves live; CEP checks the history before a paste, after Photoshop events and when the
-  panel gets the focus.
+  panel gets the focus. That reading costs one get per history state, so the host answers "unchanged" when the
+  current state and the count are those of the panel's last reading, and a paste moves that reading forward
+  without a new one (`getHistorySnapshot({ known })`, `noteHistoryAfterPaste`).
+- CEP reads a work path denser than 512 points (a spiky or noisy outline) without its Bézier handles, a third of
+  the Action Manager calls; the unit of a point is read once, on its anchor.
 
 ## Testing
 
@@ -89,5 +101,8 @@ These follow from what ExtendScript can do; the behaviour stays the same otherwi
   double, triple, RTL, black) with a simulated measurement.
 - `scripts/testSmartPasteClient.js` covers the panel client, multi-bubble replay and the paste-on-click gate.
 - `scripts/testSmartPasteSettings.js` covers the settings state.
+- `scripts/benchSmartPasteCep.js` counts, on synthetic bubbles, what a paste costs the Legacy panel: measurement
+  round trips, atlas and single-line requests, solver searches and engine time (`--uxp` for the UXP host's
+  exhaustive measurement, `--json` to keep the numbers).
 - Checked in Photoshop 2026 on the test pages: oval, cloud, shout and double bubbles, a black bubble, Auto clean,
   through the UXP host and through the CEP host.

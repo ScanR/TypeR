@@ -166,6 +166,13 @@ const notePerfRender = (label) => {
   record(stats.render, label, 0);
 };
 
+// A cost measured inside ExtendScript (a part of a round-trip, as the text
+// measurements of the smart paste): listed with the host calls
+const notePerfHost = (label, ms) => {
+  if (!enabled) return;
+  record(stats.host, label, Number(ms) || 0);
+};
+
 const resetPerfDebug = () => {
   stats.host.clear();
   stats.dispatch.clear();
@@ -227,6 +234,7 @@ export {
   setPerfDebugEnabled,
   perfMeasure,
   notePerfRender,
+  notePerfHost,
   reportPerfDebug,
   resetPerfDebug,
 };

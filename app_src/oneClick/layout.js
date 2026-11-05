@@ -239,16 +239,54 @@ const verifyNativeChoice = async (graph, model, choice, exact, measure) => {
   return { verified: null, cache };
 };
 
+// Estimated lines run a little wide: the widest space of the text and no
+// kerning across words. A lean search narrows them by this much before giving
+// up on a size, and the native verification measures the chosen lines exactly.
+const ESTIMATE_SLACK = 0.03;
+
+// The estimated search of variant 0 again, with the still-estimated lines
+// narrowed by the slack (the exact ones keep their metrics)
+const narrowedSearch = (graph, model, estimated) => {
+  const variant = model.variants[0];
+  const sources = graph.variants[0].edges;
+  for (let i = 0; i < variant.edges.length; i++) {
+    if (!estimated[sources[i].key]) continue;
+    const m = variant.edges[i].metric;
+    variant.edges[i].metric = { ...m, left: m.left * (1 - ESTIMATE_SLACK), right: m.right * (1 - ESTIMATE_SLACK) };
+  }
+  return packChoice(solverInternals.search(variant, model.poly, model.selection, { ...model.opts, deadline: Date.now() + 2500 }), 0, model);
+};
+
+// Could any lines fit at this size, by the estimates alone? No measurement:
+// a probe before the size ladder, so that a text too long for the smallest
+// size never pays the ladder (every size costs searches and round trips)
+const estimatedFit = (graph, plan, data, size, cache, probes, estimated) => {
+  for (let fine = 0; fine < 2; fine++) {
+    const model = solverModel(graph, plan, cache, probes, { min: size, max: size }, data);
+    if (fine) model.opts.fineCentres = true;
+    const solved = solve({ id: 1, models: [model] }).plans[0];
+    if (solved && (solved.plain || (solved.alternatives && solved.alternatives.length))) return true;
+    if (narrowedSearch(graph, model, estimated)) return true;
+  }
+  return false;
+};
+
 // One search pass between sizes.min and sizes.max (pixels); fine scans the
 // block centre in small steps instead of 5% ones
-const searchPass = async (graph, plan, data, sizes, cache, probes, estimated, measure, fine) => {
+const searchPass = async (graph, plan, data, sizes, cache, probes, estimated, measure, fine, lean) => {
   const model = solverModel(graph, plan, cache, probes, sizes, data);
   if (fine) model.opts.fineCentres = true;
   const solved = solve({ id: 1, models: [model] }).plans[0];
   let exact = new Map();
   cache.forEach((value, key) => { if (!estimated[key]) exact.set(key, value); });
   let plain = solved && solved.plain;
-  if (!plain) {
+  if (!plain && lean) {
+    // No estimated fit. Measuring every whole-word line (dozens to hundreds
+    // of lines, one round trip per atlas or per line in the Legacy panel)
+    // rescues only the lines the estimates ran wide on: search those with
+    // the narrowed estimates instead, the verification below measures them.
+    plain = narrowedSearch(graph, model, estimated);
+  } else if (!plain) {
     // No estimated fit: measure every whole-word line and search again
     exact = (await measure(graph.variants[0].edges, exact)).cache;
     const variant = model.variants[0];
@@ -275,8 +313,11 @@ const searchPass = async (graph, plan, data, sizes, cache, probes, estimated, me
 // planText(plan, payload, context) -> { params, renderedText, size, stroke,
 // candidate, model, hyphenated, timing }
 // context = { page: { width, height, resolution }, measure (nativeMeasure),
-//   useAtlas, resolveRunStyle, breakPoints (null = no hyphenation),
+//   useAtlas, leanMeasure, resolveRunStyle, breakPoints (null = no hyphenation),
 //   sizePolicy: { maxPx, minScale, fixed } }
+// leanMeasure (the Legacy panel, where every measurement is an ExtendScript
+// round trip): no exhaustive measurement of the candidate lines, and a text
+// too long for the smallest size is refused before the size ladder.
 export const planText = async (plan, payload, context) => {
   const started = now();
   const page = context.page;
@@ -313,17 +354,22 @@ export const planText = async (plan, payload, context) => {
     const maxPx = policy.maxPx > 0 ? policy.maxPx : policy.smallest ? stylePx * (policy.minScale || 0.75) : stylePx;
     // Native measurements outlive a pass: later sizes reuse them
     const known = new Map();
+    const lean = !!context.leanMeasure;
+    const seed = () => {
+      const seeded = new Map(cache);
+      const guessed = {};
+      known.forEach((value, key) => seeded.set(key, value));
+      Object.keys(estimated).forEach((key) => { if (!known.has(key)) guessed[key] = true; });
+      return { seeded, guessed };
+    };
     const fitAt = async (size) => {
       const sizes = { min: size, max: size };
       let pass = null;
       // The coarse block centres first, then the fine scan of the same band
       for (let fine = 0; fine < 2 && !(pass && pass.best); fine++) {
-        const seeded = new Map(cache);
-        const guessed = {};
-        known.forEach((value, key) => seeded.set(key, value));
-        Object.keys(estimated).forEach((key) => { if (!known.has(key)) guessed[key] = true; });
+        const { seeded, guessed } = seed();
         const mark = now();
-        pass = await searchPass(graph, plan, payload, sizes, seeded, probes, guessed, measure, fine === 1);
+        pass = await searchPass(graph, plan, payload, sizes, seeded, probes, guessed, measure, fine === 1, lean);
         timing.solve += now() - mark;
         pass.exact.forEach((value, key) => known.set(key, value));
       }
@@ -336,6 +382,17 @@ export const planText = async (plan, payload, context) => {
     // last step down to half a percent. Shrinking the least keeps the sizes
     // of a page consistent, so a better silhouette never buys a smaller size.
     const minPx = maxPx * (policy.minScale || 0.75);
+    // A minimum at the style size (the user wants no shrinking): no ladder
+    if (!(minPx < maxPx - 0.001)) return null;
+    if (lean) {
+      // Nothing fits at the smallest size by the estimates: no size above it
+      // can, and the ladder of paddings and hyphenation moves on at once
+      const { seeded, guessed } = seed();
+      const mark = now();
+      const possible = estimatedFit(graph, plan, payload, minPx, seeded, probes, guessed);
+      timing.solve += now() - mark;
+      if (!possible) return null;
+    }
     const step = maxPx * 0.02;
     const tolerance = Math.max(0.1, maxPx * 0.005);
     let failed = maxPx;

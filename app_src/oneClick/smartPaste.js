@@ -4,6 +4,7 @@
 //   adapter.measure(requests) -> replies (see measureSpec.js)
 //   adapter.resolveRunStyle(textStyle, run) -> textStyle (optional)
 //   adapter.useAtlas -> boolean
+//   adapter.leanMeasure -> boolean (see layout.js: no exhaustive measurement)
 // The result is a list of paste sessions the host commits in one history
 // state (see commitSmartPaste in each host).
 //
@@ -178,6 +179,7 @@ export const prepareSmartPaste = async (request, adapter) => {
       page,
       measure: adapter.measure,
       useAtlas: !!adapter.useAtlas,
+      leanMeasure: !!adapter.leanMeasure,
       resolveRunStyle: adapter.resolveRunStyle,
       breakPoints,
       sizePolicy: { minScale: (settings.minScale > 0 ? settings.minScale : 0.75) / enlargedBy, fixed: !!settings.keepSize },

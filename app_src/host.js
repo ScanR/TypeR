@@ -5174,23 +5174,35 @@ function launchInstaller(filePath) {
 var _SMART_CLEAN_LAYER = "TypeR Clean";
 var _SMART_HISTORY_NAME = "TyperTools Smart Paste";
 
-function _smartUnit(desc, key, units) {
+// The unit of a coordinate ("pixelsUnit" or "distanceUnit", points)
+function _smartUnitOf(desc, key, units) {
   var type = desc.getUnitDoubleType(key);
-  var unit = "pixelsUnit";
-  if (type === units.distance || type === units.points) unit = "distanceUnit";
-  return { _unit: unit, _value: desc.getUnitDoubleValue(key) };
+  return type === units.distance || type === units.points ? "distanceUnit" : "pixelsUnit";
 }
 
-function _smartPathPoint(desc, units) {
+function _smartUnit(desc, key, units, unit) {
+  return { _unit: unit || _smartUnitOf(desc, key, units), _value: desc.getUnitDoubleValue(key) };
+}
+
+// A path point's anchor and handles share their unit: it is read once, on
+// the anchor (every type read is a crossing into Photoshop)
+function _smartPathPoint(desc, units, unit) {
   return {
-    horizontal: _smartUnit(desc, charID.Horizontal, units),
-    vertical: _smartUnit(desc, charID.Vertical, units)
+    horizontal: _smartUnit(desc, charID.Horizontal, units, unit),
+    vertical: _smartUnit(desc, charID.Vertical, units, unit)
   };
 }
 
+// Above this many points, a work path is read without its handles
+var _SMART_ANCHORS_ONLY_ABOVE = 512;
+
 // The work path as the actionJSON UXP returns: pathContents > pathComponents
-// > subpathListKey > points { anchor, forward, backward }
-function _smartReadPath(reference, maxPoints) {
+// > subpathListKey > points { anchor, forward, backward }. Every point costs
+// several Action Manager calls, each a crossing into Photoshop: when
+// anchorsOnlyAbove is given, a path denser than that (a spiky or noisy wand
+// outline, already nearly a polyline at the 2 px tolerance) is read without
+// its handles, a third of the calls.
+function _smartReadPath(reference, maxPoints, anchorsOnlyAbove) {
   var descriptor = executeActionGet(reference);
   var contentsKey = stringIDToTypeID("pathContents");
   if (!descriptor.hasKey(contentsKey)) return null;
@@ -5207,11 +5219,24 @@ function _smartReadPath(reference, maxPoints) {
   var closedKey = stringIDToTypeID("closedSubpath");
   var components = [];
   var total = 0;
-  for (var c = 0; c < componentList.count; c++) {
+  var c, s;
+  var anchorsOnly = false;
+  if (anchorsOnlyAbove > 0) {
+    // The counts come before the points: the handles are decided on once
+    var counted = 0;
+    for (c = 0; c < componentList.count && !anchorsOnly; c++) {
+      var countedList = componentList.getObjectValue(c).getList(subpathsKey);
+      for (s = 0; s < countedList.count; s++) {
+        counted += countedList.getObjectValue(s).getList(pointsKey).count;
+        if (counted > anchorsOnlyAbove) { anchorsOnly = true; break; }
+      }
+    }
+  }
+  for (c = 0; c < componentList.count; c++) {
     var component = componentList.getObjectValue(c);
     var subList = component.getList(subpathsKey);
     var subpaths = [];
-    for (var s = 0; s < subList.count; s++) {
+    for (s = 0; s < subList.count; s++) {
       var sub = subList.getObjectValue(s);
       var pointList = sub.getList(pointsKey);
       var points = [];
@@ -5219,9 +5244,13 @@ function _smartReadPath(reference, maxPoints) {
       if (total > maxPoints) throw new Error("pathBudget");
       for (var p = 0; p < pointList.count; p++) {
         var pointDesc = pointList.getObjectValue(p);
-        var point = { anchor: _smartPathPoint(pointDesc.getObjectValue(anchorKey), units) };
-        if (pointDesc.hasKey(forwardKey)) point.forward = _smartPathPoint(pointDesc.getObjectValue(forwardKey), units);
-        if (pointDesc.hasKey(backwardKey)) point.backward = _smartPathPoint(pointDesc.getObjectValue(backwardKey), units);
+        var anchorDesc = pointDesc.getObjectValue(anchorKey);
+        var unit = _smartUnitOf(anchorDesc, charID.Horizontal, units);
+        var point = { anchor: _smartPathPoint(anchorDesc, units, unit) };
+        if (!anchorsOnly) {
+          if (pointDesc.hasKey(forwardKey)) point.forward = _smartPathPoint(pointDesc.getObjectValue(forwardKey), units, unit);
+          if (pointDesc.hasKey(backwardKey)) point.backward = _smartPathPoint(pointDesc.getObjectValue(backwardKey), units, unit);
+        }
         points.push(point);
       }
       subpaths.push({ closedSubpath: sub.hasKey(closedKey) && sub.getBoolean(closedKey), points: points });
@@ -5235,7 +5264,7 @@ function _smartReadWorkPath() {
   var reference = new ActionReference();
   // 'WrPt' (not charID.WorkPath, 'WrkP') is the work path a get accepts
   reference.putProperty(charID.Path, charIDToTypeID("WrPt"));
-  return _smartReadPath(reference, 4096);
+  return _smartReadPath(reference, 4096, _SMART_ANCHORS_ONLY_ABOVE);
 }
 
 // Reduce a vector atlas here, before crossing the CEP bridge. Sending all
@@ -5381,6 +5410,8 @@ function smartPasteMeasure(data) {
       for (var i = 0; i < requests.length; i++) {
         var request = requests[i];
         var params = request.params;
+        // The panel compares what an atlas and a single line cost here
+        var started = new Date().getTime();
         if (request.kind === "atlas" && params.typeUnit === "pixelsUnit") {
           // The shared atlas generator expresses its 256px row advance in
           // points. JAM honours typeUnit for leading too; pixel styles need
@@ -5416,7 +5447,7 @@ function smartPasteMeasure(data) {
             }), DialogModes.NO);
             var reference = new ActionReference();
             reference.putEnumerated(charID.Path, charID.Path, stringIDToTypeID("vectorMask"));
-            replies.push({ metrics: _smartAtlasMetrics(_smartReadPath(reference, 65536), request.count) });
+            replies.push({ metrics: _smartAtlasMetrics(_smartReadPath(reference, 65536), request.count), ms: new Date().getTime() - started });
           } catch (atlasError) {
             // The engine retries unsupported fonts/conversions individually.
             replies.push(null);
@@ -5432,7 +5463,7 @@ function smartPasteMeasure(data) {
           staging = false;
         } else {
           var box = _currentLayerBox();
-          replies.push(box ? { bounds: { left: box.left, top: box.top, right: box.right, bottom: box.bottom } } : null);
+          replies.push(box ? { bounds: { left: box.left, top: box.top, right: box.right, bottom: box.bottom }, ms: new Date().getTime() - started } : null);
         }
       }
       return { replies: replies };
@@ -5615,22 +5646,33 @@ function smartPasteCommit(data) {
     return jamJSON.stringify({ error: "commit", message: state.error });
   }
   var after = null;
+  var countAfter = null;
   try { after = _smartCurrentHistoryKey(); } catch (afterError) {}
-  return jamJSON.stringify({ layerIds: state.layerIds, history: { documentId: doc.id, before: before, after: after } });
+  try { countAfter = doc.historyStates.length; } catch (countError) {}
+  return jamJSON.stringify({ layerIds: state.layerIds, history: { documentId: doc.id, before: before, after: after, count: countAfter } });
 }
 
-function getHistorySnapshot() {
+// data.known = { documentId, current, count }: the panel's last reading. The
+// same current state and count mean the same list (a new action after an
+// undo changes the current state), so the states are not read again: every
+// state costs a get, and the panel asks before each paste and on focus.
+function getHistorySnapshot(data) {
   if (!app.documents.length) return jamJSON.stringify(null);
   try {
     var doc = app.activeDocument;
     var count = doc.historyStates.length;
+    var current = _smartCurrentHistoryKey();
+    var known = data && data.known;
+    if (known && String(known.documentId) === String(doc.id) && known.count === count && known.current === current) {
+      return jamJSON.stringify({ documentId: doc.id, current: current, count: count, unchanged: true });
+    }
     var states = [];
     for (var i = 1; i <= count; i++) {
       var reference = new ActionReference();
       reference.putIndex(stringIDToTypeID("historyState"), i);
       states.push(_smartHistoryKey(executeActionGet(reference)));
     }
-    return jamJSON.stringify({ documentId: doc.id, current: _smartCurrentHistoryKey(), states: states });
+    return jamJSON.stringify({ documentId: doc.id, current: current, count: count, states: states });
   } catch (snapshotError) {
     return jamJSON.stringify(null);
   }

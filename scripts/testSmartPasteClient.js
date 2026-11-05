@@ -461,6 +461,54 @@ const baseState = () => ({
   assert.strictEqual(await sampling.prepare({ source: "wand", x: 2, y: 2 }), false);
   assert.strictEqual(await sampling.prepare({ source: "wand", x: 1, y: 1 }), true);
   assert.deepStrictEqual(sampledReplays, [1, 1], "the classic paste selects it again too");
+  // The history list is read once: the host answers "unchanged" on the
+  // panel's last cursor and the panel keeps its list; a paste moves the
+  // cursor without a reading; a cursor the host does not confirm is read again
+  {
+    client.forgetHistorySnapshot();
+    const asked = [];
+    let listed = 0;
+    hostReplies = {
+      getHistorySnapshot: (script) => {
+        const sent = JSON.parse(script.slice("getHistorySnapshot(".length, -1));
+        asked.push(sent.known);
+        if (sent.known && sent.known.documentId === 3 && sent.known.current === 11 && sent.known.count === 3) {
+          return JSON.stringify({ documentId: 3, current: 11, count: 3, unchanged: true });
+        }
+        listed++;
+        return JSON.stringify({ documentId: 3, current: 11, count: 3, states: [9, 10, 11] });
+      },
+    };
+    assert.deepStrictEqual(await client.getHistorySnapshot(), { documentId: 3, current: 11, count: 3, states: [9, 10, 11] });
+    assert.deepStrictEqual(await client.getHistorySnapshot(), { documentId: 3, current: 11, count: 3, states: [9, 10, 11] }, "the unchanged list is reused");
+    assert.strictEqual(listed, 1, "one full reading");
+    assert.deepStrictEqual(asked, [null, { documentId: 3, current: 11, count: 3 }]);
+    client.noteHistoryAfterPaste({ documentId: 3, before: 11, after: 12, count: 4 });
+    assert.deepStrictEqual(client.knownHistorySnapshot(), { documentId: 3, current: 12, count: 4, states: [9, 10, 11, 12] }, "a paste adds its state to the list");
+    client.noteHistoryAfterPaste({ documentId: 3, before: 10, after: 13, count: 3 });
+    assert.deepStrictEqual(client.knownHistorySnapshot(), { documentId: 3, current: 13, count: 3, states: [9, 10, 13] }, "a paste after an undo drops the redo states");
+    client.noteHistoryAfterPaste({ documentId: 3, before: 13, after: 14, count: 3 });
+    assert.strictEqual(client.knownHistorySnapshot(), null, "a count that does not add up (history at capacity) forgets the list");
+    await client.getHistorySnapshot();
+    assert.strictEqual(listed, 2, "and the next check reads it again");
+    client.forgetHistorySnapshot();
+  }
+
+  // The Legacy panel measures with the cheaper kind: the atlas first, then
+  // single lines once, then whichever measured a line faster
+  {
+    client.resetMeasurementCosts();
+    assert.strictEqual(client.preferAtlas(), true, "the atlas first");
+    client.noteMeasureCosts([{ kind: "atlas", count: 4 }], [{ metrics: [], ms: 400 }]);
+    assert.strictEqual(client.preferAtlas(), false, "then single lines, to compare");
+    client.noteMeasureCosts([{ kind: "line" }, { kind: "line" }, { kind: "atlas", count: 2 }], [{ bounds: {}, ms: 50 }, { bounds: {}, ms: 50 }, null]);
+    assert.strictEqual(client.preferAtlas(), false, "100 ms a line through the atlas, 50 ms alone");
+    assert.deepStrictEqual(client.measurementCosts(), { atlas: { ms: 400, lines: 4, perLine: 100 }, line: { ms: 100, lines: 2, perLine: 50 }, atlasPreferred: false });
+    client.noteMeasureCosts([{ kind: "atlas", count: 24 }], [{ metrics: [], ms: 240 }]);
+    assert.strictEqual(client.preferAtlas(), true, "a cheaper atlas wins back");
+    client.resetMeasurementCosts();
+  }
+
   // CEP must preserve the atlas protocol: losing kind/count would silently
   // measure a multi-line atlas as one ordinary line.
   const uxp = window.typerUXP;
@@ -476,6 +524,7 @@ const baseState = () => ({
       "./oneClick/smartPaste": {
         prepareSmartPaste: async (request, adapter) => {
           assert.strictEqual(adapter.useAtlas, true);
+          assert.strictEqual(adapter.leanMeasure, true, "every measurement is a round trip: no exhaustive one");
           assert.deepStrictEqual(await adapter.measure([{ kind: "atlas", count: 1, params: { text: "probe" } }]), [{ metrics }]);
           const call = evalCalls[evalCalls.length - 1];
           assert.deepStrictEqual(JSON.parse(call.slice("smartPasteMeasure(".length, -1)), { requests: [{ kind: "atlas", count: 1, params: { text: "probe" } }] });

@@ -12,7 +12,7 @@ const { applyRefont, normalizeRefontRules, refontTextStyle } = load("app_src/one
 const { classifySelectionEvent, parseCepEventData, triggerSourceForTool } = load("app_src/oneClick/selectionEvent.js");
 const { createPasteHistory, lineAfterHistoryMove } = load("app_src/oneClick/pasteHistory.js");
 const { breakPointsFor, resolveHyphenationLanguage } = load("app_src/oneClick/hyphenation.js");
-const { metricFromBounds, atlasMetrics } = load("app_src/oneClick/measureSpec.js");
+const { metricFromBounds, atlasMetrics, clearMetricCache } = load("app_src/oneClick/measureSpec.js");
 
 const px = (value) => ({ _unit: "pixelsUnit", _value: value });
 const point = (xy) => ({ horizontal: px(xy[0]), vertical: px(xy[1]) });
@@ -195,6 +195,43 @@ const linesInside = (session) => {
   await assert.rejects(prepareSmartPaste({
     trigger: { source: "wand" }, lines: [line("Une phrase beaucoup trop longue pour une si petite bulle de rien du tout.")], roleStyles: {}, settings: { hyphenation: "off" },
   }, adapterFor(tinyInput)), (error) => error.code === "noPlacement");
+
+  // Lean measurement (the Legacy panel): the same placements, without the
+  // exhaustive measurement of every candidate line, and a text too long for
+  // the smallest size is refused before the size ladder
+  const counting = (input) => {
+    // Words measured for the tests above are cached across pastes: a cold start
+    clearMetricCache();
+    const stats = { calls: 0, lines: 0 };
+    const measure = makeMeasure(page);
+    const adapter = {
+      ...adapterFor(input),
+      measure: async (requests) => {
+        stats.calls++;
+        requests.forEach((request) => { stats.lines += request.kind === "atlas" ? request.count : 1; });
+        return measure(requests);
+      },
+    };
+    return { stats, adapter };
+  };
+  const shrinkRequest = { trigger: { source: "wand" }, lines: [line("Attends-moi devant la porte du magasin.")], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.7 } };
+  const full = counting(smallInput);
+  const fullShrink = await prepareSmartPaste(shrinkRequest, full.adapter);
+  const lean = counting(smallInput);
+  const leanShrink = await prepareSmartPaste(shrinkRequest, { ...lean.adapter, leanMeasure: true });
+  assert.strictEqual(leanShrink.sessions[0].text.size, fullShrink.sessions[0].text.size, "the lean search finds the same size");
+  assert.strictEqual(leanShrink.sessions[0].text.params.layerText.textKey, fullShrink.sessions[0].text.params.layerText.textKey, "and the same lines");
+  assert.ok(lean.stats.lines < full.stats.lines, "with fewer lines measured: " + lean.stats.lines + " < " + full.stats.lines);
+  linesInside(leanShrink.sessions[0]);
+  const refused = counting(tinyInput);
+  await assert.rejects(prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Une phrase beaucoup trop longue pour une si petite bulle de rien du tout.")], roleStyles: {}, settings: { hyphenation: "off" },
+  }, { ...refused.adapter, leanMeasure: true }), (error) => error.code === "noPlacement");
+  assert.ok(refused.stats.lines <= 30, "a refusal measures the words, not every candidate line: " + refused.stats.lines);
+  // Minimum size 100%: the style size or nothing, no ladder
+  const noShrink = counting(smallInput);
+  const kept100 = await prepareSmartPaste({ ...shrinkRequest, settings: { hyphenation: "off", minScale: 1 } }, { ...noShrink.adapter, leanMeasure: true });
+  assert.ok(Math.abs(kept100.sessions[0].text.size - 24) < 1e-6, "no shrinking at 100%: " + kept100.sessions[0].text.size);
 
   // The style size fits only in a vertical window between the coarse block
   // centres: the fine retry finds it instead of shrinking the text
