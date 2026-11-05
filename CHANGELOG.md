@@ -11,6 +11,7 @@
 - A script tag now sets the style of its own line only: the next line without a tag goes back to the style in use before it (main → SFX → main), unless another style was picked meanwhile or a default style is set.
 - The arrow of a script line that is not the current one puts its text in the active layer without moving the current line. The arrow of the current line still moves on to the next one.
 - A paste after a Magic Wand click made without "Sample All Layers" while a text layer was active (the text just pasted) no longer puts the text in the middle of the page: the wand had read that text layer and taken nearly the whole page. As paste on click already did, TypeR turns the option on, says so and makes the click again on the page before pasting.
+- Windows: mice whose side buttons send the browser's Back and Forward keys instead of the usual mouse buttons 4 and 5 can now set them as shortcuts. The Legacy panel reads those keys as buttons 4 and 5, and so does the shortcut recorder.
 
 ## 3.0.1
 

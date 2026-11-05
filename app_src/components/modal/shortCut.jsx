@@ -4,7 +4,9 @@ import { FiX } from "react-icons/fi";
 import { locale, getHotkeyPressed } from "../../utils";
 
 const MODIFIERS = ["WIN", "CTRL", "ALT", "SHIFT"];
-const SPECIAL_KEYS = { "+": "PLUS", "-": "MINUS", "=": "EQUAL", "/": "DIVIDE", "*": "MULTIPLY" };
+// Mice whose side buttons send the browser's Back and Forward keys record them
+// as mouse buttons 4 and 5, which the keyboard readers report the same way
+const SPECIAL_KEYS = { "+": "PLUS", "-": "MINUS", "=": "EQUAL", "/": "DIVIDE", "*": "MULTIPLY", BrowserBack: "MOUSE4", BrowserForward: "MOUSE5" };
 const IGNORED_KEYS = ["Meta", "Control", "Alt", "Shift", "AltGraph", "CapsLock", "Dead", "Process", "Unidentified"];
 const hasMainKey = (keys) => (keys || []).some((key) => !MODIFIERS.includes(String(key).toUpperCase()));
 
