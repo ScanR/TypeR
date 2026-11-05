@@ -107,8 +107,11 @@ const baseState = () => ({
   assert.strictEqual(request.lines[1].styleLocked, true, "a prefix style is locked");
   assert.strictEqual(request.lines[1].style.id, "s");
   assert.deepStrictEqual(request.settings, {
-    autoClean: true, distribute: true, minScale: 0.8, hyphenation: "fr", direction: "rtl", padding: 4, keepSize: true, pointText: false,
+    autoClean: true, distribute: true, minScale: 0.8, hyphenation: "fr", direction: "rtl", readingOrder: "rtl", padding: 4, keepSize: true, pointText: false,
   });
+  // The reading order of the page is its own setting, not the text direction
+  assert.strictEqual(client.buildSmartPasteRequest({ ...state, direction: "ltr" }, null).request.settings.readingOrder, "rtl", "manga by default");
+  assert.strictEqual(client.buildSmartPasteRequest({ ...state, readingOrder: "ltr" }, null).request.settings.readingOrder, "ltr", "comics and manhwa");
   assert.strictEqual(client.buildSmartPasteRequest({ ...state, smartPasteDistribute: false }, null).lineIndexes.length, 1);
   assert.strictEqual(client.buildSmartPasteRequest({ ...state, smartPasteHyphenation: "off" }, null).request.settings.hyphenation, "off");
   // A style recorded by an earlier paste never beats the selected style
@@ -440,6 +443,27 @@ const baseState = () => ({
   assert.deepStrictEqual(client.withSampleAll({ source: "wand", x: 1, y: 2, options: { tolerance: 20 } }).options, { tolerance: 20, merged: true });
   assert.deepStrictEqual(client.withSampleAll({ source: "wand", x: 1, y: 2, options: { merged: false } }).options, { merged: true });
   assert.deepStrictEqual(client.withSampleAll({ source: "rectangle", left: 1 }), { source: "rectangle", left: 1 });
+
+  // A manual paste after a wand click made without the option (on the text
+  // just pasted): the option goes on and the click is selected again, once
+  evalCalls.length = 0;
+  hostReplies = { ensureWandSampleAll: JSON.stringify({ wasOff: true }), replaySelectionTrigger: JSON.stringify({ ok: true }) };
+  client.rememberSelectionTrigger({ source: "wand", x: 5, y: 6, options: { merged: false, tolerance: 20 } });
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), true);
+  const replayCall = evalCalls.find((call) => call.startsWith("replaySelectionTrigger("));
+  assert.ok(replayCall && /"merged":true/.test(replayCall) && /"x":5/.test(replayCall), "the click again, with Sample All Layers");
+  evalCalls.length = 0;
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), true);
+  assert.strictEqual(evalCalls.length, 0, "the selection made again is the remembered one now");
+  client.rememberSelectionTrigger({ source: "wand", x: 5, y: 6, options: { merged: true } });
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), true);
+  client.rememberSelectionTrigger({ source: "rectangle", left: 0, top: 0, right: 9, bottom: 9 });
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), true);
+  assert.strictEqual(evalCalls.length, 0, "nothing to fix with the option on, or another tool");
+  hostReplies = { ensureWandSampleAll: JSON.stringify({ wasOff: true }), replaySelectionTrigger: JSON.stringify({ error: "noSelection" }) };
+  client.rememberSelectionTrigger({ source: "wand", x: 5, y: 6, options: { merged: false } });
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), false, "no paste when the click cannot be made again");
+  client.rememberSelectionTrigger(null);
 
   const sampledOrder = [];
   const sampledReplays = [];

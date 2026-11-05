@@ -224,7 +224,7 @@ const PasteOnClick = () => {
         if (state.smartPaste === true) clicks.push(trigger);
         else {
           clicks.prepare(trigger).then((ready) => {
-            if (ready) pasteInSelection({ state: getState(), dispatch, getState });
+            if (ready) pasteInSelection({ state: getState(), dispatch, getState }, [], { selectionChecked: true });
           });
         }
       };

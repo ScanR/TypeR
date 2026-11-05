@@ -32,8 +32,11 @@ const hostConfig = (env, argv, entry, filename, library) => ({
       },
     ],
   },
-  plugins: [new webpack.DefinePlugin({ TYPER_DEV: JSON.stringify(!!env.dev), TYPER_TRACE: JSON.stringify(!!env.trace), TYPER_DIAGNOSTIC: JSON.stringify(!!env.diagnostic) }),
-    ...(!env.mac ? [new webpack.NormalModuleReplacementPlugin(/^\.\/keysHelper$/, path.join(__dirname, "uxp-src/host/keysAddon.js"))] : [])],
+  // Windows reads the keyboard with "TypeR Shortcuts.exe" (keysHelper.js), started from
+  // UXP-Windows.ccx only. The native addon (keysAddon.js) is kept for its preview package.
+  plugins: [new webpack.DefinePlugin({ TYPER_DEV: JSON.stringify(!!env.dev), TYPER_TRACE: JSON.stringify(!!env.trace), TYPER_DIAGNOSTIC: JSON.stringify(!!env.diagnostic),
+    TYPER_WINDOWS_READER: JSON.stringify(!env.mac && !env.addon) }),
+    ...(env.addon ? [new webpack.NormalModuleReplacementPlugin(/^\.\/keysHelper$/, path.join(__dirname, "uxp-src/host/keysAddon.js"))] : [])],
   optimization: { minimize: false },
   performance: { hints: false },
 });

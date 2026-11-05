@@ -98,6 +98,8 @@ function colorClass(value) {
   return undefined;
 }
 
+const isEnumKey = (key) => SELF_ENUM_KEYS.has(key) || key === "antiAlias" || key === "warpRotate" || key === "alignment" || key === "singleWordJustification";
+
 // ActionDescriptor.putInteger truncates, so does this
 const toInteger = (value) => (typeof value === "number" && isFinite(value) ? Math.trunc(value) : value);
 
@@ -106,6 +108,11 @@ function restoreDesc(desc, typeUnit, hintUnit) {
   for (const key in desc) {
     if (!Object.prototype.hasOwnProperty.call(desc, key)) continue;
     const value = desc[key];
+    // A cleared option (the style editor stores fontCaps: null when All Caps
+    // is turned off) is no value at all: batchPlay refuses an enumeration whose
+    // value is not a string with "NAPI API failure: String expected"
+    if (value === null || value === undefined) continue;
+    if (isEnumKey(key) && typeof value !== "string") continue;
     let typed;
     if (key === "bookKey") typed = { _rawData: value };
     else if (BOOLEAN_KEYS.has(key) || STRING_KEYS.has(key)) typed = value;

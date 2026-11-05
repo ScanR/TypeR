@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Windows keyboard reader (typer-keys.cs), built by scripts/buildUxp.js
+       into typer-keys-win.json. WinExe: no console window. The name, icon
+       and description are what the Task Manager shows. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>TypeR Shortcuts</AssemblyName>
+    <RootNamespace>TypeR</RootNamespace>
+    <ApplicationIcon>typer-keys.ico</ApplicationIcon>
+    <!-- The manifest of the 3.0.0 program, fixed: the SDK's default one has CRLF line
+         endings on Windows and LF elsewhere, which changed the program's bytes -->
+    <ApplicationManifest>typer-keys.manifest</ApplicationManifest>
+    <AssemblyTitle>TypeR shortcuts for Photoshop</AssemblyTitle>
+    <Product>TypeR</Product>
+    <Company>ScanR</Company>
+    <Authors>Sakushi, SeanR</Authors>
+    <Copyright>MIT License</Copyright>
+    <Version>3.0.2</Version>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <Deterministic>true</Deterministic>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="typer-keys.cs" />
+  </ItemGroup>
+</Project>

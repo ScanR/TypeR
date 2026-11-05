@@ -2,6 +2,8 @@
 // locales, icons and the native keyboard reader. `--package` also writes the
 // installable package: Releases/UXP-Windows.ccx, or with --mac Releases/TypeR-UXP.ccx,
 // which runs on every system and replaces itself on Windows (app_src/updateLogic.js).
+// The Windows package reads the keyboard with "TypeR Shortcuts.exe" (typer-keys.cs);
+// --addon builds the preview package with the native addon instead.
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -15,6 +17,8 @@ const out = path.join(root, macBuild ? "uxp-mac" : addonBuild ? "uxp-addon" : "u
 const pkg = require(path.join(root, "package.json"));
 const nativeSource = path.join(root, "uxp-src/native/typer-keys.m");
 const nativePacked = path.join(root, "uxp-src/native/typer-keys.json");
+const windowsSources = ["typer-keys.cs", "typer-keys.csproj", "typer-keys.ico", "typer-keys.manifest"].map((name) => path.join(root, "uxp-src/native", name));
+const windowsPacked = path.join(root, "uxp-src/native/typer-keys-win.json");
 
 const copyDir = (from, to) => {
   fs.mkdirSync(to, { recursive: true });
@@ -59,10 +63,52 @@ function buildNativeHelper() {
   fs.writeFileSync(path.join(out, "native/typer-keys.json"), JSON.stringify({ sha256: packed.sha256, binary: packed.binary }));
 }
 
+const hasDotnet = () => {
+  try {
+    execFileSync("dotnet", ["--version"], { stdio: "ignore" });
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+// The Windows reader is a .NET Framework 4.8 Windows application
+// (uxp-src/native/typer-keys.cs), shipped prebuilt in typer-keys-win.json
+// and rebuilt whenever its source changed on a system with the .NET SDK
+// (any OS: the reference assemblies come from NuGet).
+function buildWindowsHelper() {
+  const sourceHash = sha256(Buffer.concat(windowsSources.map((file) => fs.readFileSync(file))));
+  let packed = null;
+  try {
+    packed = JSON.parse(fs.readFileSync(windowsPacked, "utf8"));
+  } catch (error) {}
+  if ((!packed || packed.sourceHash !== sourceHash) && hasDotnet()) {
+    const work = fs.mkdtempSync(path.join(require("os").tmpdir(), "typer-keys-win-"));
+    try {
+      windowsSources.forEach((file) => fs.copyFileSync(file, path.join(work, path.basename(file))));
+      execFileSync("dotnet", ["build", "typer-keys.csproj", "-c", "Release", "-o", "out", "-nologo", "-v", "quiet"], { cwd: work, stdio: "inherit" });
+      const bytes = fs.readFileSync(path.join(work, "out/TypeR Shortcuts.exe"));
+      packed = { sourceHash, sha256: sha256(bytes), binary: bytes.toString("base64") };
+      fs.writeFileSync(windowsPacked, JSON.stringify(packed) + "\n");
+      console.log("Windows keyboard reader rebuilt (" + bytes.length + " bytes)");
+    } finally {
+      fs.rmSync(work, { recursive: true, force: true });
+    }
+  }
+  if (!packed) throw new Error("uxp-src/native/typer-keys-win.json is missing: build once with the .NET SDK");
+  if (packed.sourceHash !== sourceHash) console.warn("Warning: the prebuilt Windows keyboard reader is older than typer-keys.cs");
+  if (sha256(Buffer.from(packed.binary, "base64")) !== packed.sha256) throw new Error("Corrupt typer-keys-win.json");
+  // Emptied first: only this reader is in the Windows package
+  fs.rmSync(path.join(out, "native"), { recursive: true, force: true });
+  fs.rmSync(path.join(out, "win"), { recursive: true, force: true });
+  fs.mkdirSync(path.join(out, "native"), { recursive: true });
+  fs.writeFileSync(path.join(out, "native/typer-keys-win.json"), JSON.stringify({ sha256: packed.sha256, binary: packed.binary }));
+}
+
 function writeManifest() {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "uxp-src/manifest.json"), "utf8"));
   manifest.version = pkg.version;
-  if (!macBuild) {
+  if (addonBuild) {
     manifest.manifestVersion = 6;
     manifest.addon = { name: "typer-keys.uxpaddon" };
     manifest.requiredPermissions.enableAddon = true;
@@ -104,12 +150,16 @@ function packageCcx(manifest) {
     else if (!/(^|\/)\.DS_Store$|^host-test\.js$|\.map$/.test(relative)) files[relative] = fs.readFileSync(absolute);
   };
   walk("");
-  const nativeFiles = macBuild ? ["native/typer-keys.json"] : ["win/x64/typer-keys.uxpaddon"];
+  const nativeFiles = macBuild ? ["native/typer-keys.json"] : addonBuild ? ["win/x64/typer-keys.uxpaddon"] : ["native/typer-keys-win.json"];
   ["manifest.json", "index.html", "host.js", "web/index.html", "web/index.js", "locale/messages.properties", ...nativeFiles].forEach((name) => {
     if (!files[name]) throw new Error("Incomplete UXP build: " + name);
   });
-  if (!macBuild && Object.keys(files).some((name) => /^native\//.test(name) || /\.(exe|ps1)$/i.test(name))) {
-    throw new Error("The Windows package must not contain an external keyboard helper");
+  if (addonBuild && Object.keys(files).some((name) => /^native\//.test(name) || /\.(exe|ps1)$/i.test(name))) {
+    throw new Error("The addon package must not contain an external keyboard helper");
+  }
+  // The reader ships base64-encoded in a JSON file: a .ccx may not carry an executable
+  if (!addonBuild && Object.keys(files).some((name) => /\.(exe|ps1|uxpaddon)$/i.test(name))) {
+    throw new Error("The package must not contain an executable or a native addon");
   }
   if (Object.keys(files).some((name) => /\.(jsx|jsxinc)$/.test(name))) throw new Error("The UXP package must not contain ExtendScript files");
   // Creative Cloud expects the manifest as the first entry of the archive
@@ -139,7 +189,9 @@ const diagnosticBuild = process.argv.includes('--diagnostic');
 if (macBuild && addonBuild) throw new Error('Choose either macOS or Windows addon packaging');
 if (addonBuild && (diagnosticBuild || process.argv.includes('--dev') || process.argv.includes('--trace'))) throw new Error('Build the Windows addon preview separately');
 const addonHost = fs.readFileSync(path.join(out, 'host.js'), 'utf8').includes('TypeR UXP addon reader v1');
-if ((!macBuild) !== addonHost) throw new Error('UXP addon build mode mismatch: use matching --env mac / --mac flags');
+if (addonBuild !== addonHost) throw new Error('UXP addon build mode mismatch: use matching --env addon / --addon flags');
+const windowsHost = /WINDOWS_PACKAGE =\s*true && true;/.test(fs.readFileSync(path.join(out, 'host.js'), 'utf8'));
+if ((!macBuild && !addonBuild) !== windowsHost) throw new Error('UXP build mode mismatch: rebuild the host with matching --env mac / --mac flags');
 if (diagnosticBuild && (process.argv.includes('--dev') || process.argv.includes('--trace'))) throw new Error('Choose one UXP diagnostic, developer, or trace build');
 const diagnosticHost = fs.readFileSync(path.join(out, 'host.js'), 'utf8').includes('TypeR startup diagnostic v1');
 const diagnosticPanel = fs.readFileSync(path.join(out, 'web/index.html'), 'utf8').includes('html.script');
@@ -150,7 +202,9 @@ if (process.argv.includes('--diagnostic')) {
   fs.writeFileSync(debugMarker, JSON.stringify({ build: 'startup-debug', version: pkg.version, builtAt: new Date().toISOString(), hostSha256: sha256(fs.readFileSync(path.join(out, 'host.js'))), panelSha256: sha256(fs.readFileSync(path.join(out, 'web/index.js'))) }, null, 2));
 } else if (fs.existsSync(debugMarker)) fs.unlinkSync(debugMarker);
 copyAssets();
-if (!macBuild) {
+if (!macBuild && !addonBuild) {
+  buildWindowsHelper();
+} else if (addonBuild) {
   const bytes = require('./buildKeysAddon').verifiedBinary();
   // out is one of the fixed build directories above, never a user path.
   fs.rmSync(path.join(out, 'native'), { recursive: true, force: true });

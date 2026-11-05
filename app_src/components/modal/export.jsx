@@ -30,6 +30,7 @@ const ExportModal = React.memo(function ExportModal() {
     smartPasteDistribute: state.smartPasteDistribute,
     smartPasteMinScale: state.smartPasteMinScale,
     smartPasteHyphenation: state.smartPasteHyphenation,
+    readingOrder: state.readingOrder,
     refontRules: state.refontRules,
   }));
   const profileRegistry = React.useMemo(getProfileRegistry, []);
@@ -172,6 +173,7 @@ const ExportModal = React.memo(function ExportModal() {
       data.smartPasteDistribute = exportSource.smartPasteDistribute;
       data.smartPasteMinScale = exportSource.smartPasteMinScale;
       data.smartPasteHyphenation = exportSource.smartPasteHyphenation;
+      data.readingOrder = exportSource.readingOrder;
       data.refontRules = exportSource.refontRules;
     }
     if (withFontFiles) {

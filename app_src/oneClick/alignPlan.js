@@ -9,7 +9,7 @@
 //   texts: [{ id, index, box: { left, top, right, bottom } }],  // index: stack position
 //   bubbles: [{ selectionBounds, rawPath, textIds }],            // one per outline
 // }
-// planAlignment(capture, direction) -> [{ id, rect }], rect being the
+// planAlignment(capture, readingOrder) -> [{ id, rect }], rect being the
 // chamber's body (left, top, right, bottom, width, height, xMid, yMid). A
 // text left out keeps the classic Align: its bubble is single, a rectangle,
 // or the split is uncertain.
@@ -65,14 +65,14 @@ const nearestChamber = (point, chambers) => {
   return best;
 };
 
-// Reading order of the chambers: top first, then right first in RTL and left
-// first otherwise (as the smart paste distributes the script lines)
-const readingOrder = (chambers, selectionBounds, direction) => {
+// Order of the chambers as the smart paste distributes the script lines: top
+// first, then right first in a manga and left first in a comic or a manhwa
+const chambersInReadingOrder = (chambers, selectionBounds, readingOrder) => {
   const tolerance = Math.min(selectionBounds.bottom - selectionBounds.top, selectionBounds.right - selectionBounds.left) * 0.15;
   const order = chambers.map((chamber, index) => ({ index, x: chamber.selection.xMid, y: chamber.selection.yMid }));
   order.sort((p, q) => {
     if (Math.abs(p.y - q.y) > tolerance) return p.y - q.y;
-    return direction === "rtl" ? q.x - p.x : p.x - q.x;
+    return readingOrder === "ltr" ? p.x - q.x : q.x - p.x;
   });
   return order.map((entry) => entry.index);
 };
@@ -98,12 +98,12 @@ const piled = (texts) => {
 // text already inside its own chamber stays there; one text goes to the
 // chamber holding it or the nearest; texts sharing a chamber or piled on
 // each other follow the reading order, the first pasted in the first chamber.
-export const assignChambers = (texts, chambers, selectionBounds, direction) => {
+export const assignChambers = (texts, chambers, selectionBounds, readingOrder) => {
   const centres = texts.map((text) => centreOf(text.box));
   const inside = centres.map((point) => chambers.findIndex((chamber) => contains(chamber.cleanPolygon, point)));
   if (inside.every((index) => index >= 0) && new Set(inside).size === inside.length && !piled(texts)) return inside;
   if (texts.length === 1) return [nearestChamber(centres[0], chambers)];
-  if (texts.length <= chambers.length) return readingOrder(chambers, selectionBounds, direction).slice(0, texts.length);
+  if (texts.length <= chambers.length) return chambersInReadingOrder(chambers, selectionBounds, readingOrder).slice(0, texts.length);
   return centres.map((point, i) => (inside[i] >= 0 ? inside[i] : nearestChamber(point, chambers)));
 };
 
@@ -118,7 +118,7 @@ const rectOf = (selection) => ({
   yMid: selection.yMid,
 });
 
-export const planAlignment = (capture, direction) => {
+export const planAlignment = (capture, readingOrder) => {
   const placements = [];
   if (!capture || !Array.isArray(capture.texts) || !Array.isArray(capture.bubbles)) return placements;
   clearGeometryCaches();
@@ -141,7 +141,7 @@ export const planAlignment = (capture, direction) => {
       selectionBounds: { ...bubble.selectionBounds },
       rawPath: bubble.rawPath,
       fill: null,
-      direction,
+      readingOrder,
     };
     let chambers;
     try {
@@ -150,7 +150,7 @@ export const planAlignment = (capture, direction) => {
       chambers = null;
     }
     if (!chambers || chambers.length < 2) return;
-    const assigned = assignChambers(texts, chambers, input.selectionBounds, direction);
+    const assigned = assignChambers(texts, chambers, input.selectionBounds, readingOrder);
     texts.forEach((text, i) => {
       placed[text.id] = true;
       placements.push({ id: text.id, rect: rectOf(chambers[assigned[i]].selection) });

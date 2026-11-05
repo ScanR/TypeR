@@ -101,6 +101,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
     pastePointText: state.pastePointText,
     internalPadding: state.internalPadding,
     direction: state.direction,
+    readingOrder: state.readingOrder,
     resizeTextBoxOnCenter: state.resizeTextBoxOnCenter,
     textSizeIncrement: state.textSizeIncrement,
     showTips: state.showTips,
@@ -1012,7 +1013,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         resetStoredSelections(true);
       }
       if (ok) context.dispatch({ type: "showFeatureTip", id: "alignWithoutSelection" });
-    }, context.state.direction);
+    }, context.state.readingOrder);
   }, [context.state, resetStoredSelections]);
 
   const handleDecrease = React.useCallback(() => {

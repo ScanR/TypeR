@@ -1,7 +1,12 @@
-// Starts the external macOS keyboard reader and follows its reports.
-// This module is bundled in TypeR-UXP.ccx, which also runs on Windows (clients up
-// to 3.0.0 install it there): it starts no reader there, and the panel replaces
-// the package with UXP-Windows.ccx, whose reader is keysAddon.js.
+// Starts the native keyboard reader (uxp-src/native) and follows its reports.
+// Both readers are small programs shipped base64-encoded (a .ccx may not
+// carry an unsigned executable) and exit with Photoshop; their state file is
+// read every 25 ms. macOS: started through ExtendScript's app.system.
+// Windows: "TypeR Shortcuts.exe", a windowed .NET application started through
+// ExtendScript's File.execute(), as a double click would: app.system goes
+// through cmd.exe, whose console window flashes on screen. It ships only in
+// UXP-Windows.ccx: TypeR-UXP.ccx, which clients up to 3.0.0 also installed on
+// Windows, starts no reader there, and the panel replaces it with that package.
 //
 // The reader writes "<state>|<beat>" and moves the beat at least once a
 // second. A beat that stops means a dead reader: its last state is dropped
@@ -32,19 +37,29 @@ const HEALTHY_MS = 30000;
 
 let timer = null;
 let mouseListener = null;
+let focusListener = null;
+// A theft that lasts is reported again this often: Photoshop may have been
+// busy when the focus was first given back
+const FOCUS_RETRY_MS = 1000;
+let lastFocusReport = 0;
+let focusReports = 0;
+let lastReport = null;
+let readerSamples = 0;
+let readerError = "";
 let lastMouseLine = "";
 let started = false;
 let accessPath = null;
 
 const shellQuote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
 
-// "<state>|<beat>"; anything else (the "a" TypeR writes before the first
+// "<state>|<beat>", with "|F" while a Photoshop tooltip holds the keyboard
+// focus (Windows reader); anything else (the "a" TypeR writes before the first
 // start) has no beat
 function parseState(text) {
   const value = String(text || "").trim();
-  const match = /^(.*)\|(\d+)$/.exec(value);
-  if (!match) return { state: value || "a", beat: null };
-  return { state: match[1].trim() || "a", beat: match[2] };
+  const match = /^(.*?)\|(\d+)(\|F)?$/.exec(value);
+  if (!match) return { state: value || "a", beat: null, focusStolen: false };
+  return { state: match[1].trim() || "a", beat: match[2], focusStolen: !!match[3] };
 }
 
 // When to (re)start the reader and whether its last state is still current.
@@ -128,6 +143,57 @@ async function startMac(folder, statePath) {
   await runSystem(command);
 }
 
+// Named for the Task Manager, which also shows its description and icon
+const WINDOWS_READER = "TypeR Shortcuts.exe";
+
+async function startWindows(folder, statePath) {
+  const packed = JSON.parse(await readPluginFile("native/typer-keys-win.json"));
+  const binaryPath = files.joinPath(folder, WINDOWS_READER);
+  const bytes = base64ToBytes(packed.binary);
+  let current = null;
+  try {
+    current = await files.readBinary(binaryPath);
+  } catch (error) {}
+  const same = current && current.length === bytes.length && current.every((value, index) => value === bytes[index]);
+  if (!same) await replaceWindowsReader(binaryPath, statePath, bytes, current !== null);
+  // The reader takes its state file from its own folder: File.execute()
+  // passes no argument
+  if (statePath !== files.joinPath(folder, "state")) throw new Error("Unexpected keyboard state path");
+  // A reader still running stops by itself once the new one has started
+  // (the ".owner" file in typer-keys.cs)
+  const result = await runJsx(
+    "var reader = new File(" + JSON.stringify(binaryPath) + ");" +
+      " reader.exists ? (reader.execute() ? 'OK' : 'ERR execute failed') : 'ERR missing reader';"
+  );
+  if (String(result || "") !== "OK") throw new Error(result || "Keyboard reader did not start");
+  removeOldWindowsReaders(folder);
+}
+
+// A running reader keeps its .exe locked: an update first asks it to stop
+// (any other ".owner" value makes it exit within ~1.5 s)
+async function replaceWindowsReader(binaryPath, statePath, bytes, existed) {
+  if (existed) await files.writeText(statePath + ".owner", "update");
+  const until = Date.now() + 5000;
+  for (;;) {
+    try {
+      await files.writeBinary(binaryPath, bytes);
+      return;
+    } catch (error) {
+      if (!existed || Date.now() > until) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+}
+
+// Readers of earlier test builds and the former PowerShell reader
+async function removeOldWindowsReaders(folder) {
+  try {
+    for (const entry of await files.listFolder(folder)) {
+      if (/^typer-keys(-[0-9a-f]+\.exe|\.ps1)$/i.test(entry.name)) await files.remove(files.joinPath(folder, entry.name));
+    }
+  } catch (error) {}
+}
+
 function readState(path) {
   try {
     return String(fs.readFileSync(path, { encoding: "utf-8" }) || "").trim();
@@ -139,14 +205,18 @@ function readState(path) {
 // True once per run of the plugin: a panel reload must not install it again
 let platformPackageAsked = false;
 function needsPlatformPackage() {
-  if (os.platform() !== "win32" || platformPackageAsked) return false;
+  if (os.platform() !== "win32" || WINDOWS_PACKAGE || platformPackageAsked) return false;
   platformPackageAsked = true;
   return true;
 }
 
-async function start(onMouseLine) {
-  if (os.platform() === "win32") return false;
+// Set at build time: only UXP-Windows.ccx carries the Windows reader
+const WINDOWS_PACKAGE = typeof TYPER_WINDOWS_READER !== "undefined" && TYPER_WINDOWS_READER;
+
+async function start(onMouseLine, onFocusStolen) {
+  if (os.platform() === "win32" && !WINDOWS_PACKAGE) return false;
   mouseListener = onMouseLine || null;
+  focusListener = onFocusStolen || null;
   if (started) return true;
   started = true;
   let statePath;
@@ -171,10 +241,12 @@ async function start(onMouseLine) {
     watchdog.state.starting = true;
     let ok = false;
     try {
-      await startMac(folder, statePath);
+      if (os.platform() === "win32") await startWindows(folder, statePath);
+      else await startMac(folder, statePath);
       ok = true;
     } catch (error) {
-      console.error("TypeR keyboard helper:", (error && error.message) || error);
+      readerError = (error && error.message) || String(error);
+      console.error("TypeR keyboard helper:", readerError);
     } finally {
       watchdog.state.starting = false;
     }
@@ -188,8 +260,16 @@ async function start(onMouseLine) {
     const text = readState(statePath);
     // A file being replaced may not read: keep the last report
     if (text !== null) last = parseState(text);
-    watchdog.read(last.beat, now);
-    keyboard.setState(watchdog.fresh(now) ? last.state : "a");
+    if (watchdog.read(last.beat, now)) readerSamples++;
+    const fresh = watchdog.fresh(now);
+    keyboard.setState(fresh ? last.state : "a");
+    lastReport = fresh ? last : null;
+    // A tooltip took the focus: reported once, then again while it lasts
+    if (fresh && last.focusStolen && focusListener && now - lastFocusReport >= FOCUS_RETRY_MS) {
+      lastFocusReport = now;
+      focusReports++;
+      focusListener();
+    }
     if (watchdog.shouldStart(now)) launch();
     if (mouseListener) {
       const line = readState(statePath + ".mouse");
@@ -219,4 +299,13 @@ function access() {
   return value === "0" ? "missing" : "unknown";
 }
 
-module.exports = { start, stop, access, needsPlatformPackage, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };
+// What Settings > Debug shows (app_src/components/modal/keyboardDebug.jsx)
+function diagnostics() {
+  return {
+    source: "helper", running: !!lastReport, loading: false, error: readerError, samples: readerSamples,
+    foreground: null, state: lastReport ? lastReport.state : "a", lastKeys: "",
+    focusStolen: !!(lastReport && lastReport.focusStolen), focusReports,
+  };
+}
+
+module.exports = { start, stop, access, needsPlatformPackage, diagnostics, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };

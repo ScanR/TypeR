@@ -179,6 +179,8 @@ const mockRequire = (request) => {
       smartPasteInSelection: (...args) => utilityCalls.push(["smartPaste", ...args]),
       smartPasteStoredSelections: (...args) => utilityCalls.push(["smartPasteStored", ...args]),
       canSmartPasteStoredSelections: () => false,
+      needsWandReselect: () => false,
+      reselectWandOnPage: async () => true,
     };
   }
   throw new Error(`Unexpected shortcutCommands dependency: ${request}`);

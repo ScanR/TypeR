@@ -1035,11 +1035,11 @@ const createTextLayersInStoredSelections = (texts, styles, selections, pointText
 // the bubble outlines (alignCapture), the smart paste's neck finder cuts them
 // (oneClick/alignPlan.js) and Align centres each text on its chamber. Any
 // failure there leaves the classic Align, centred on the whole bubble.
-const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback = () => {}, direction = "ltr") => {
+const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback = () => {}, readingOrder = "rtl") => {
   const align = (capture) => {
     let placements = [];
     try {
-      placements = capture && !capture.error ? planAlignment(capture, direction) : [];
+      placements = capture && !capture.error ? planAlignment(capture, readingOrder) : [];
     } catch (planError) {
       placements = [];
     }
@@ -1219,7 +1219,7 @@ const startForegroundWatcher = () => {
     "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class FW { [DllImport(\"user32.dll\")] public static extern IntPtr GetForegroundWindow(); [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid); [DllImport(\"user32.dll\")] public static extern short GetAsyncKeyState(int vk); }';",
     // GetAsyncKeyState's low bit means "pressed since the previous call", so
     // prime it once: otherwise a click made before the panel opened replays here
-    "[void][FW]::GetAsyncKeyState(5); [void][FW]::GetAsyncKeyState(6);",
+    "[void][FW]::GetAsyncKeyState(5); [void][FW]::GetAsyncKeyState(6); [void][FW]::GetAsyncKeyState(0xA6); [void][FW]::GetAsyncKeyState(0xA7);",
     "$lastH = [IntPtr]::Zero; $n = ''; $tick = 0;",
     "while ($true) {",
     "$h = [FW]::GetForegroundWindow();",
@@ -1227,9 +1227,12 @@ const startForegroundWatcher = () => {
     // a transient Get-Process failure cannot wedge the gate shut
     "if ($h -ne $lastH -or $n -eq '') { $lastH = $h; $procId = [uint32]0; [void][FW]::GetWindowThreadProcessId($h, [ref]$procId); $n = ''; try { $n = (Get-Process -Id $procId -ErrorAction Stop).ProcessName } catch {} }",
     // 5 = XBUTTON1 (button4), 6 = XBUTTON2 (button5). The low bit is an edge,
-    // so a click shorter than one tick is still caught and holding never repeats
+    // so a click shorter than one tick is still caught and holding never repeats.
+    // Some mice send their side buttons as the browser's Back and Forward keys
+    // (0xA6, 0xA7) instead: they count as buttons 4 and 5 too, once per press
     "foreach ($b in 5, 6) {",
-    "if (([FW]::GetAsyncKeyState($b) -band 1) -ne 0) {",
+    "$hit = (([FW]::GetAsyncKeyState($b) -band 1) -ne 0); if ((([FW]::GetAsyncKeyState($b + 0xA1) -band 1) -ne 0)) { $hit = $true };",
+    "if ($hit) {",
     "$m = '';",
     "if (([FW]::GetAsyncKeyState(0x5B) -band 0x8000) -ne 0 -or ([FW]::GetAsyncKeyState(0x5C) -band 0x8000) -ne 0) { $m += 'W' }",
     "if (([FW]::GetAsyncKeyState(0x11) -band 0x8000) -ne 0) { $m += 'C' }",

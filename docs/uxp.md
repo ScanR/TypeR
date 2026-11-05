@@ -22,13 +22,15 @@ runtime around it differs:
     `.cep-import`, marked complete, then moved in, so an import cut short is finished or retried at the
     next start).
   - `services.js` — file dialogs, files the user picks, font files, font installation, updates, fetch.
-  - `keysAddon.js` (Windows), `keysHelper.js` (macOS), `keyboard.js` — start and follow the keyboard reader.
+  - `keysHelper.js` (Windows and macOS), `keyboard.js` — start and follow the keyboard reader. `keysAddon.js`
+    is the native addon's reader, built only for its preview package.
   - `jsx.js` — the few ExtendScript calls UXP cannot replace (`app.system`, `app.refreshFonts`).
   - `devChannel.js` — development builds only, see *Testing in Photoshop*.
 - `uxp-src/web/` — the panel's entry: rebuilds the CEP environment the application expects
   (`CSInterface`, `cep.fs`, `cep.util`, `__adobe_cep__`) before loading `app_src/index.jsx`,
   plus `webkit.scss` for the few places WebKit lays the same CSS out differently.
-- `uxp-src/native/` ? the Windows addon (native DLL) and the macOS external reader
+- `uxp-src/native/` — the Windows reader (`typer-keys.cs`, packed as `typer-keys-win.json`), the native
+  addon kept for its preview package (`addon/`) and the macOS external reader
   (`typer-keys.m`, packed as `typer-keys.json`). On macOS the reader counts
   as Photoshop for privacy: without Input Monitoring for Photoshop, it only sees modifiers and keys
   such as Return, Tab or function keys. Asking from it does not add Photoshop to that list, so it
@@ -170,30 +172,31 @@ or debug build's `uxp/` folder must not be shipped: run `npm run build:uxp` afte
 
 ## Keyboard reader
 
-### Windows: UXP native addon
+### Windows: TypeR Shortcuts.exe
 
-Windows uses the C++ addon in every UXP build, including the ordinary release,
-development and trace builds. No TypeR Shortcuts.exe is packaged or launched.
-The plugin loads win/x64/typer-keys.uxpaddon asynchronously through Adobe's require,
-then polls every 25 ms. Failure stops polling and clears held keys; it never
-falls back to an external executable.
+`UXP-Windows.ccx` reads the keyboard with "TypeR Shortcuts.exe", a .NET Framework 4.8
+Windows application (`uxp-src/native/typer-keys.cs`, part of Windows 10 and 11): no
+console window, no hook, no network. A .ccx may not carry an executable, so the program
+ships base64-encoded in `native/typer-keys-win.json`; `keysHelper.js` writes it to the
+`keys` folder of TypeR's storage and starts it with ExtendScript's `File.execute()`.
+It polls `GetAsyncKeyState` every 30 ms while Photoshop is in front, writes the state
+(`<state>|<beat>`) and the mouse side buttons (`<state file>.mouse`), and exits with
+Photoshop. A reader whose beat stops is started again. Some mice send their side buttons
+as the browser's Back and Forward keys: they count as buttons 4 and 5 too.
 
-The foreground window must belong to the current Photoshop process, checked both
-before and after sampling. The panel does not need focus. No keyboard hooks,
-background processes, network calls or keyboard state files are used. Mouse side
-buttons use edges; very short taps can be missed while the UXP scripting thread
-is busy. The existing key aliases and shortcut formats are preserved.
+Microsoft cleared the 3.0.0 program of Defender's detection (submission of 1 November
+2026, "Incorrect detection"), so 3.0.2 went back to it from the native addon of 3.0.1.
 
-The snapshot also carries `focusStolen` (issue #214). Photoshop's rich tooltips, the
+The reader also reports a focus theft (issue #214), as `|F` after the beat in its state file. Photoshop's rich tooltips, the
 contextual task bar's among them, are dialog-class (`#32770`) layered popups shown
 without `WS_EX_NOACTIVATE`: on Windows they take the keyboard focus, and every
 shortcut (tool keys, `Ctrl+T`) dies until the user clicks the document or switches
 applications. After a paste on click or TextShapeR, that bar settles under the
-cursor with the new text layer, so its tooltip opens at once. The addon reads the
+cursor with the new text layer, so its tooltip opens at once. The reader reads the
 focus window of the foreground thread (`GetGUIThreadInfo`, read only) and reports a
 captionless layered `#32770` owned by the enabled main window; a real dialog,
 Photoshop's (`PSFloatC`) or UXP's, has a caption and disables its owner.
-`keysAddon.js` reports a theft once, then once a second while it lasts, and
+`keysHelper.js` reports a theft once, then once a second while it lasts, and
 `main.js` gives the focus back with `app.bringToFront()` from a modal scope: the
 only call that restored it in the live tests (`performMenuCommand` 1208 and a
 document `select` did nothing; focusing the panel's own DOM also worked but moved
@@ -205,40 +208,44 @@ The panel's WebView is the second thief, on every Photoshop version (seen live o
 or on a style leaves the keyboard focus in the WebView (`Chrome_WidgetWin_1`), and
 unlike a CEP panel a WebView forwards no key to Photoshop, so the tool keys die
 until the Windows key or, usually, a click on the document (not always: once the
-clicks did not move it either). No addon rule can tell that focus from the user
+clicks did not move it either). No reader rule can tell that focus from the user
 typing in the panel, so `main.js` restores the focus after every `evalScript`
 call that changes the document (the `set` entries of `DOCUMENT_CHANGING_CALLS`):
 those are the panel actions after which the user works in the document, and a
 restore while the document already holds the focus changes nothing.
 
-Settings > Debug displays live held keys, the last combination, sample count,
+Settings > Debug displays the reader in use (TypeR Helper for TypeR Shortcuts.exe, UXP Addon
+in the addon preview package), live held keys, the last combination, sample count,
 foreground status and loading errors. TypeR shortcuts are suspended while settings
 are open; click the Photoshop canvas to test detection without panel focus.
-The user confirmed loading and shortcut operation on Windows Photoshop. Automated
-tests cover asynchronous loading, cancellation/restart, focus and mouse edges.
-This does not establish compatibility with every Photoshop build or remove the
-remaining antivirus detections. The addon is currently unsigned.
 
-The prebuilt AMD64 DLL and its source/binary checksums are committed under
-uxp-src/native/addon/win-x64/. Ordinary builds work without the Adobe SDK or C++
-compiler, on Windows, macOS and Linux. Source checksums normalize line endings.
-If native sources or the build script change, rebuild on Windows and commit both
-the binary and build.json. Do not commit the downloaded Adobe SDK.
+The build is reproducible: `dotnet build` of the same `typer-keys.cs`, `.csproj`, `.ico`
+and `.manifest` gives the same bytes on macOS and Windows. The manifest is fixed because
+the SDK's default one has CRLF line endings on Windows and LF elsewhere, and
+`.gitattributes` keeps these sources byte for byte through `core.autocrlf`.
+`npm run build:uxp` rebuilds `typer-keys-win.json` when those sources changed and the .NET
+SDK is installed; otherwise it ships the committed one and warns if it is older. Every
+new program has a new hash: submit it to Microsoft
+(https://www.microsoft.com/wdsi/filesubmission) and check it on VirusTotal before a release.
 
-To rebuild the native module, install Visual Studio C++ Build Tools and the Windows
-SDK, then download the UXP Hybrid Plugin SDK from Adobe Developer Console:
+The native addon (`uxp-src/native/addon/`, `keysAddon.js`) is kept for its preview
+package (`npm run package:uxp:addon`) and is no longer in the release. Its prebuilt
+AMD64 DLL and its source/binary checksums are committed under
+uxp-src/native/addon/win-x64/: ordinary builds need neither the Adobe SDK nor a C++
+compiler. If the addon's sources or build script change, rebuild it on Windows (Visual
+Studio C++ Build Tools, Windows SDK and Adobe's UXP Hybrid Plugin SDK, not committed) and
+commit both the binary and build.json:
 
 ```powershell
 $env:UXP_HYBRID_SDK = 'C:\SDKs\uxp-hybrid-plugin-sdk'
 npm run build:keys-addon
 npm run test:keys-addon:native
-npm run package:uxp
 ```
 
 ### Separate platform packages
 
 npm run package:uxp builds and verifies both packages:
-- Releases/UXP-Windows.ccx: Windows x64, manifest v6 with enableAddon.
+- Releases/UXP-Windows.ccx: Windows, manifest v5, with TypeR Shortcuts.exe (packed).
 - Releases/TypeR-UXP.ccx: macOS with the external reader, manifest v5. It also runs on Windows, only to replace itself (see below).
 
 The updater, the installers and Legacy-to-UXP migration choose the platform's exact
@@ -260,7 +267,6 @@ its Legacy panel and standalone updaters ask for `TypeR-UXP.ccx` by name. So:
   (`app_src/uxpPlatformPackage.js`), through the ordinary update path. It says so if
   Photoshop must restart or if it failed, and tries again at the next start. A release's
   tag must therefore be its version.
-- The Windows version then removes the `keys` folder of the 3.0.0 reader.
 - Without Creative Cloud's installer, the package of the running version goes to
   `com.scanr.typer_<version>.win`: the running folder cannot be replaced on Windows.
 

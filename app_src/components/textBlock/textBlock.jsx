@@ -80,13 +80,15 @@ const LineItem = React.memo(function LineItem({ line, direction, isCurrent, disp
     dispatch({ type: "setCurrentLineIndex", index: line.rawIndex });
   }, [dispatch, line.rawIndex]);
 
+  // The arrow of the current line moves on to the next one, as a paste does. The arrow of
+  // another line only puts its text in the active layer: the current line stays where it is.
   const handleInsert = React.useCallback(() => {
     setActiveLayerText(line.text, null, direction, (ok) => {
-      if (ok) {
+      if (ok && isCurrent) {
         dispatch({ type: "nextLine", add: true });
       }
     });
-  }, [dispatch, line.text, direction]);
+  }, [dispatch, line.text, direction, isCurrent]);
 
   return (
     <div className={className} data-line-index={line.rawIndex} style={height ? { height: rowStyleHeight(height) } : undefined}>

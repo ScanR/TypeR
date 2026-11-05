@@ -142,7 +142,8 @@ const bubble = (textIds) => ({ selectionBounds: boundsOf(outline), rawPath: path
   assert.ok(inRect(middle[0].rect, 540, 400) && !inRect(middle[0].rect, 300, 400) && !inRect(middle[0].rect, 780, 400));
 }
 
-// Reading order: right chamber first in RTL when the chambers are side by side
+// Reading order of side by side chambers: right first in a manga (the default),
+// left first in a comic or a manhwa
 {
   const square = (x0, y0) => [[x0, y0], [x0 + 10, y0], [x0 + 10, y0 + 10], [x0, y0 + 10]];
   const chambers = [
@@ -151,8 +152,9 @@ const bubble = (textIds) => ({ selectionBounds: boundsOf(outline), rawPath: path
   ];
   const texts = [{ box: boxAt(50, 5, 4, 4) }, { box: boxAt(52, 5, 4, 4) }];
   const bounds = { left: 0, top: 0, right: 110, bottom: 10 };
-  assert.deepStrictEqual(assignChambers(texts, chambers, bounds, "ltr"), [0, 1]);
+  assert.deepStrictEqual(assignChambers(texts, chambers, bounds), [1, 0]);
   assert.deepStrictEqual(assignChambers(texts, chambers, bounds, "rtl"), [1, 0]);
+  assert.deepStrictEqual(assignChambers(texts, chambers, bounds, "ltr"), [0, 1]);
 }
 
 // Garbage in: nothing placed, nothing thrown

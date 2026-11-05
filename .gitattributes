@@ -1,1 +1,7 @@
 *.sh text eol=lf
+# The Windows keyboard reader's sources, byte for byte on every system: they decide
+# the bytes of TypeR Shortcuts.exe, which antivirus vendors clear by hash
+uxp-src/native/typer-keys.cs -text
+uxp-src/native/typer-keys.csproj -text
+uxp-src/native/typer-keys.manifest -text
+uxp-src/native/typer-keys.ico binary

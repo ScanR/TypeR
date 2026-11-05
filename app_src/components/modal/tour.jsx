@@ -532,7 +532,7 @@ const TourModal = React.memo(function TourModal({ course }) {
     if (action.type === "editStyle") return currentStyle ? dispatch({ type: "setModal", modal: "editStyle", data: currentStyle }) : undefined;
     if (action.type === "align") {
       const current = getState();
-      return alignTextLayerToSelection(current.resizeTextBoxOnCenter, current.internalPadding || 0, undefined, current.direction);
+      return alignTextLayerToSelection(current.resizeTextBoxOnCenter, current.internalPadding || 0, undefined, current.readingOrder);
     }
     return undefined;
   };

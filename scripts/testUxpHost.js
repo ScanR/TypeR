@@ -63,6 +63,21 @@ assert.deepStrictEqual(
   { _obj: "grayscale", gray: 100 }
 );
 
+// All Caps turned off in the style editor is stored as fontCaps: null. As an
+// enumeration it made batchPlay throw "NAPI API failure: String expected" on
+// every paste with that style; an enumeration that is not a string is left out
+{
+  const cleared = jamText.toLayerTextObject({ layerText: { textKey: "Hi", textStyleRange: [{ from: 0, to: 2, textStyle: { fontCaps: null, autoKern: true, baselineDirection: 2, underline: undefined, fontName: "Arial", textLanguage: "turkishLanguage" } }], paragraphStyleRange: [{ from: 0, to: 2, paragraphStyle: { alignment: null } }] } });
+  const textStyle = cleared.textStyleRange[0].textStyle;
+  assert.strictEqual("fontCaps" in textStyle, false);
+  assert.strictEqual("autoKern" in textStyle, false);
+  assert.strictEqual("baselineDirection" in textStyle, false);
+  assert.strictEqual("underline" in textStyle, false);
+  assert.strictEqual(textStyle.fontName, "Arial");
+  assert.deepStrictEqual(textStyle.textLanguage, { _enum: "textLanguage", _value: "turkishLanguage" });
+  assert.strictEqual("alignment" in cleared.paragraphStyleRange[0].paragraphStyle, false);
+}
+
 // Middle Eastern keys are written back by both hosts: dropping directionType
 // sent every right-to-left layer back to left-to-right
 {
@@ -197,10 +212,12 @@ const loadKeysHelper = () => {
 };
 {
   const keys = loadKeysHelper();
-  assert.deepStrictEqual(keys.parseState("aWINaCTRLa|42\n"), { state: "aWINaCTRLa", beat: "42" });
-  assert.deepStrictEqual(keys.parseState("a|7"), { state: "a", beat: "7" });
-  assert.deepStrictEqual(keys.parseState("a"), { state: "a", beat: null }, "TypeR's own placeholder has no beat");
-  assert.deepStrictEqual(keys.parseState(""), { state: "a", beat: null });
+  assert.deepStrictEqual(keys.parseState("aWINaCTRLa|42\n"), { state: "aWINaCTRLa", beat: "42", focusStolen: false });
+  assert.deepStrictEqual(keys.parseState("a|7"), { state: "a", beat: "7", focusStolen: false });
+  // The Windows reader adds "|F" while a Photoshop tooltip holds the keyboard focus
+  assert.deepStrictEqual(keys.parseState("aCTRLa|8|F"), { state: "aCTRLa", beat: "8", focusStolen: true });
+  assert.deepStrictEqual(keys.parseState("a"), { state: "a", beat: null, focusStolen: false }, "TypeR's own placeholder has no beat");
+  assert.deepStrictEqual(keys.parseState(""), { state: "a", beat: null, focusStolen: false });
 
   // First start at once; a failed one is retried after 2, 5, 10 then 30 s
   const dog = keys.createWatchdog(0);

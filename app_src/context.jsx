@@ -92,6 +92,7 @@ const storeFields = [
   "shortcut",
   "language",
   "direction",
+  "readingOrder",
   "lastOpenedImagePath",
   "multiBubbleMode",
   "autoCenterMode",
@@ -258,6 +259,10 @@ const initialState = {
   currentLineIndex: 0,
   currentStyle: null,
   currentStyleId: null,
+  // The style a script tag put on the current line, and the one to go back to
+  // on the next line without a tag
+  tagStyleId: null,
+  tagReturnStyleId: null,
   usedLineStyles: {},
   pastePointText: false,
   ignoreLinePrefixes: ["##"],
@@ -320,6 +325,9 @@ const initialState = {
   smartPasteDistribute: storage.data?.smartPasteDistribute !== false,
   smartPasteMinScale: normalizeSmartPasteMinScale(storage.data?.smartPasteMinScale),
   smartPasteHyphenation: normalizeSmartPasteHyphenation(storage.data?.smartPasteHyphenation),
+  // How the page reads, for the parts of a double or triple bubble: manga
+  // (right to left) unless the user picked comics and manhwa (left to right)
+  readingOrder: storage.data?.readingOrder === "ltr" ? "ltr" : "rtl",
   refontRules: normalizeRefontRules(storage.data?.refontRules),
   // Never persisted: a toast only belongs to the current session
   notice: null,
@@ -470,6 +478,9 @@ const baseReducer = (state, action) => {
       }
       if ("smartPasteHyphenation" in action.data) {
         newState.smartPasteHyphenation = normalizeSmartPasteHyphenation(action.data.smartPasteHyphenation);
+      }
+      if ("readingOrder" in action.data) {
+        newState.readingOrder = action.data.readingOrder === "ltr" ? "ltr" : "rtl";
       }
       if ("refontRules" in action.data) {
         newState.refontRules = normalizeRefontRules(action.data.refontRules);
@@ -1022,6 +1033,11 @@ const baseReducer = (state, action) => {
 
   case "setDirection": {
     newState.direction = action.direction || "ltr";
+    break;
+  }
+
+  case "setReadingOrder": {
+    newState.readingOrder = action.value === "ltr" ? "ltr" : "rtl";
     break;
   }
 
@@ -1691,10 +1707,22 @@ const baseReducer = (state, action) => {
       // Only explicit prefix styles (and // continuations) drive the style
       // picker on line change; recorded usedStyle must not override the
       // user's manual selection when advancing in multi-bubble mode (#205)
+      // A tagged line takes its style for that line only: the next line without
+      // a tag goes back to the style in use before the tag (main → SFX → main),
+      // unless the user picked another style meanwhile or set a default style.
+      const tagged = state.tagStyleId && newState.currentStyleId === state.tagStyleId;
       if (newState.currentLine?.style) {
+        if (!tagged) newState.tagReturnStyleId = newState.currentStyleId;
         newState.currentStyleId = newState.currentLine.style.id;
-      } else if (newState.defaultStyleId) {
-        newState.currentStyleId = newState.defaultStyleId;
+        newState.tagStyleId = newState.currentLine.style.id;
+      } else {
+        if (newState.defaultStyleId) {
+          newState.currentStyleId = newState.defaultStyleId;
+        } else if (tagged && state.tagReturnStyleId) {
+          newState.currentStyleId = state.tagReturnStyleId;
+        }
+        newState.tagStyleId = null;
+        newState.tagReturnStyleId = null;
       }
       needsStyleLookup = true;
     }

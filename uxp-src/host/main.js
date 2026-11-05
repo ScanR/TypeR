@@ -436,12 +436,12 @@ async function evalScript(script) {
 
 /* ========================= requests ========================== */
 
-// The keyboard addon loads while Photoshop starts, next to the first init:
-// its state goes with every slow init line of the log
+// The keyboard reader (TypeR Shortcuts.exe, or the addon of its preview package) starts
+// while Photoshop starts, next to the first init: its state goes with every slow init line of the log
 function keyboardAddonState() {
   const state = typeof keysHelper.diagnostics === "function" ? keysHelper.diagnostics() : null;
   if (!state) return "";
-  return "keyboard addon " + (state.running ? "running" : state.loading ? "loading" : "stopped") + (state.error ? " (" + state.error + ")" : "");
+  return (state.source === "uxpaddon" ? "keyboard addon " : "keyboard reader ") + (state.running ? "running" : state.loading ? "loading" : "stopped") + (state.error ? " (" + state.error + ")" : "");
 }
 
 const startupFiles = createStartupLoader({
