@@ -10,6 +10,7 @@
 - The new TypeR no longer fails with "NAPI API failure: String expected" on every paste with a style whose All Caps (or another option) was turned off in the style editor: that option, stored empty, is left out instead of being sent to Photoshop. The smart paste said "unexpected error" and the classic paste, multi-bubble included, showed that Photoshop alert.
 - A script tag now sets the style of its own line only: the next line without a tag goes back to the style in use before it (main → SFX → main), unless another style was picked meanwhile or a default style is set.
 - The arrow of a script line that is not the current one puts its text in the active layer without moving the current line. The arrow of the current line still moves on to the next one.
+- A paste after a Magic Wand click made without "Sample All Layers" while a text layer was active (the text just pasted) no longer puts the text in the middle of the page: the wand had read that text layer and taken nearly the whole page. As paste on click already did, TypeR turns the option on, says so and makes the click again on the page before pasting.
 
 ## 3.0.1
 

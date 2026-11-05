@@ -14,7 +14,7 @@ import {
   toggleCleaningLayers,
 } from "./utils";
 import { buildSelectedLayerPayload, buildStoredSelectionPayload, getScaledStyle } from "./textLayerPayload";
-import { canSmartPasteStoredSelections, smartPasteInSelection, smartPasteStoredSelections } from "./smartPasteClient";
+import { canSmartPasteStoredSelections, needsWandReselect, reselectWandOnPage, smartPasteInSelection, smartPasteStoredSelections } from "./smartPasteClient";
 import { isStyleStrokeOn } from "./styleStroke";
 import { isWindowTooShortForTextShapeR } from "./uiLayout";
 
@@ -135,6 +135,15 @@ const pasteInSelection = (ctx, preferredOrder = [], options = {}) => {
   getTypeRSelectionSnapshot(({ selection, layers }) => {
     if (!selection && layers.length >= 2) {
       applyLinesToLayers(ctx, layers, preferredOrder, options);
+      return;
+    }
+
+    // With a text layer active, a Magic Wand click without "Sample All
+    // Layers" took the page around that text, not the bubble
+    if (selection && layers.length && !options.selectionChecked && needsWandReselect()) {
+      reselectWandOnPage(ctx.dispatch).then((ready) => {
+        if (ready) pasteInSelection(ctx, preferredOrder, { ...options, selectionChecked: true });
+      });
       return;
     }
 

@@ -444,6 +444,27 @@ const baseState = () => ({
   assert.deepStrictEqual(client.withSampleAll({ source: "wand", x: 1, y: 2, options: { merged: false } }).options, { merged: true });
   assert.deepStrictEqual(client.withSampleAll({ source: "rectangle", left: 1 }), { source: "rectangle", left: 1 });
 
+  // A manual paste after a wand click made without the option (on the text
+  // just pasted): the option goes on and the click is selected again, once
+  evalCalls.length = 0;
+  hostReplies = { ensureWandSampleAll: JSON.stringify({ wasOff: true }), replaySelectionTrigger: JSON.stringify({ ok: true }) };
+  client.rememberSelectionTrigger({ source: "wand", x: 5, y: 6, options: { merged: false, tolerance: 20 } });
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), true);
+  const replayCall = evalCalls.find((call) => call.startsWith("replaySelectionTrigger("));
+  assert.ok(replayCall && /"merged":true/.test(replayCall) && /"x":5/.test(replayCall), "the click again, with Sample All Layers");
+  evalCalls.length = 0;
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), true);
+  assert.strictEqual(evalCalls.length, 0, "the selection made again is the remembered one now");
+  client.rememberSelectionTrigger({ source: "wand", x: 5, y: 6, options: { merged: true } });
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), true);
+  client.rememberSelectionTrigger({ source: "rectangle", left: 0, top: 0, right: 9, bottom: 9 });
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), true);
+  assert.strictEqual(evalCalls.length, 0, "nothing to fix with the option on, or another tool");
+  hostReplies = { ensureWandSampleAll: JSON.stringify({ wasOff: true }), replaySelectionTrigger: JSON.stringify({ error: "noSelection" }) };
+  client.rememberSelectionTrigger({ source: "wand", x: 5, y: 6, options: { merged: false } });
+  assert.strictEqual(await client.reselectWandOnPage(dispatch), false, "no paste when the click cannot be made again");
+  client.rememberSelectionTrigger(null);
+
   const sampledOrder = [];
   const sampledReplays = [];
   const answers = { 1: "reselect", 2: "skip", 3: "ok" };

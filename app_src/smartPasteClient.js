@@ -304,6 +304,28 @@ export const withSampleAll = (trigger) => (
   trigger && trigger.source === "wand" ? { ...trigger, options: { ...trigger.options, merged: true } } : trigger
 );
 
+// A manual paste after a Magic Wand click made without "Sample All Layers"
+// while a text layer was active (the one just pasted): the wand read that
+// layer, not the page, and took nearly the whole page. As for paste on click,
+// TypeR turns the option on and selects the click again before pasting.
+// Answers false when the paste must not go on.
+const wandClickWithoutSampleAll = () => {
+  const trigger = lastTrigger && lastTrigger.trigger;
+  return trigger && trigger.source === "wand" && trigger.options && trigger.options.merged === false ? trigger : null;
+};
+export const needsWandReselect = () => !!wandClickWithoutSampleAll();
+export const reselectWandOnPage = async (dispatch) => {
+  const trigger = wandClickWithoutSampleAll();
+  if (!trigger) return true;
+  const sampled = await imposeSampleAll(trigger, dispatch);
+  if (sampled === "skip") return false;
+  if (sampled !== "reselect") return true;
+  const fixed = withSampleAll(trigger);
+  if (!(await replaySelection(fixed, dispatch))) return false;
+  rememberSelectionTrigger(fixed);
+  return true;
+};
+
 const classicPaste = (state, dispatch, options, textColor) => new Promise((resolve) => {
   const line = state.currentLine || { text: "" };
   const style = styleWithTextColor(getScaledStyle(state.currentStyle, state.textScale), textColor);
