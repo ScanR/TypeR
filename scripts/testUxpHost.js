@@ -63,6 +63,21 @@ assert.deepStrictEqual(
   { _obj: "grayscale", gray: 100 }
 );
 
+// All Caps turned off in the style editor is stored as fontCaps: null. As an
+// enumeration it made batchPlay throw "NAPI API failure: String expected" on
+// every paste with that style; an enumeration that is not a string is left out
+{
+  const cleared = jamText.toLayerTextObject({ layerText: { textKey: "Hi", textStyleRange: [{ from: 0, to: 2, textStyle: { fontCaps: null, autoKern: true, baselineDirection: 2, underline: undefined, fontName: "Arial", textLanguage: "turkishLanguage" } }], paragraphStyleRange: [{ from: 0, to: 2, paragraphStyle: { alignment: null } }] } });
+  const textStyle = cleared.textStyleRange[0].textStyle;
+  assert.strictEqual("fontCaps" in textStyle, false);
+  assert.strictEqual("autoKern" in textStyle, false);
+  assert.strictEqual("baselineDirection" in textStyle, false);
+  assert.strictEqual("underline" in textStyle, false);
+  assert.strictEqual(textStyle.fontName, "Arial");
+  assert.deepStrictEqual(textStyle.textLanguage, { _enum: "textLanguage", _value: "turkishLanguage" });
+  assert.strictEqual("alignment" in cleared.paragraphStyleRange[0].paragraphStyle, false);
+}
+
 // Middle Eastern keys are written back by both hosts: dropping directionType
 // sent every right-to-left layer back to left-to-right
 {
