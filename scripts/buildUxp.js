@@ -17,7 +17,7 @@ const out = path.join(root, macBuild ? "uxp-mac" : addonBuild ? "uxp-addon" : "u
 const pkg = require(path.join(root, "package.json"));
 const nativeSource = path.join(root, "uxp-src/native/typer-keys.m");
 const nativePacked = path.join(root, "uxp-src/native/typer-keys.json");
-const windowsSources = ["typer-keys.cs", "typer-keys.csproj", "typer-keys.ico"].map((name) => path.join(root, "uxp-src/native", name));
+const windowsSources = ["typer-keys.cs", "typer-keys.csproj", "typer-keys.ico", "typer-keys.manifest"].map((name) => path.join(root, "uxp-src/native", name));
 const windowsPacked = path.join(root, "uxp-src/native/typer-keys-win.json");
 
 const copyDir = (from, to) => {

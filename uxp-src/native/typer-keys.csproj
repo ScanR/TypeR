@@ -8,6 +8,9 @@
     <AssemblyName>TypeR Shortcuts</AssemblyName>
     <RootNamespace>TypeR</RootNamespace>
     <ApplicationIcon>typer-keys.ico</ApplicationIcon>
+    <!-- The manifest of the 3.0.0 program, fixed: the SDK's default one has CRLF line
+         endings on Windows and LF elsewhere, which changed the program's bytes -->
+    <ApplicationManifest>typer-keys.manifest</ApplicationManifest>
     <AssemblyTitle>TypeR shortcuts for Photoshop</AssemblyTitle>
     <Product>TypeR</Product>
     <Company>ScanR</Company>

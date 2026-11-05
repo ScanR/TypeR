@@ -188,8 +188,10 @@ call that changes the document (the `set` entries of `DOCUMENT_CHANGING_CALLS`):
 those are the panel actions after which the user works in the document, and a
 restore while the document already holds the focus changes nothing.
 
-The build is reproducible: `dotnet build` of the same `typer-keys.cs`, `.csproj` and
-`.ico` gives the same bytes on macOS and Windows (checked against the 3.0.0 program).
+The build is reproducible: `dotnet build` of the same `typer-keys.cs`, `.csproj`, `.ico`
+and `.manifest` gives the same bytes on macOS and Windows. The manifest is fixed because
+the SDK's default one has CRLF line endings on Windows and LF elsewhere, and
+`.gitattributes` keeps these sources byte for byte through `core.autocrlf`.
 `npm run build:uxp` rebuilds `typer-keys-win.json` when those sources changed and the .NET
 SDK is installed; otherwise it ships the committed one and warns if it is older. Every
 new program has a new hash: submit it to Microsoft
