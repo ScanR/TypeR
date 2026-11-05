@@ -16,4 +16,17 @@ const haveSameLayerSize = (first, second) =>
   roundedDimension(first.width) === roundedDimension(second.width) &&
   roundedDimension(first.height) === roundedDimension(second.height);
 
-export { getBubbleCacheKey, haveSameLayerSize };
+// A selection that does not touch the text layer belongs to another bubble
+// (the next one to paste into, with the last text still active): it is no
+// shape for this text. Unknown bounds never refuse a read.
+const selectionTouchesLayer = (selection, bounds) => {
+  if (!selection || !bounds) return true;
+  const sides = ["left", "top", "right", "bottom"];
+  for (let i = 0; i < sides.length; i++) {
+    if (!Number.isFinite(Number(selection[sides[i]])) || !Number.isFinite(Number(bounds[sides[i]]))) return true;
+  }
+  return Number(selection.left) < Number(bounds.right) && Number(selection.right) > Number(bounds.left) &&
+    Number(selection.top) < Number(bounds.bottom) && Number(selection.bottom) > Number(bounds.top);
+};
+
+export { getBubbleCacheKey, haveSameLayerSize, selectionTouchesLayer };

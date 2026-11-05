@@ -16,7 +16,16 @@ const loadModule = (relativePath) => {
 };
 
 const { PS_EVENT_MOVE, isPhotoshopMoveEvent } = loadModule("app_src/photoshopEvents.js");
-const { getBubbleCacheKey, haveSameLayerSize } = loadModule("app_src/textShapeRTracking.js");
+const { getBubbleCacheKey, haveSameLayerSize, selectionTouchesLayer } = loadModule("app_src/textShapeRTracking.js");
+
+// A selection on another bubble is no shape for the active text
+const text = { left: 100, top: 100, right: 300, bottom: 160 };
+assert.strictEqual(selectionTouchesLayer({ left: 80, top: 60, right: 320, bottom: 200 }, text), true, "the bubble around the text");
+assert.strictEqual(selectionTouchesLayer({ left: 250, top: 150, right: 500, bottom: 400 }, text), true, "a corner overlap");
+assert.strictEqual(selectionTouchesLayer({ left: 400, top: 100, right: 700, bottom: 300 }, text), false, "the next bubble");
+assert.strictEqual(selectionTouchesLayer({ left: 100, top: 160, right: 300, bottom: 260 }, text), false, "touching edges do not overlap");
+assert.strictEqual(selectionTouchesLayer({ left: 400, top: 100, right: 700, bottom: 300 }, null), true, "unknown layer bounds never refuse");
+assert.strictEqual(selectionTouchesLayer({ xMid: 1, yMid: 2, width: 3, height: 4 }, text), true, "a selection without sides never refuses");
 
 assert.strictEqual(PS_EVENT_MOVE, 1836021349);
 assert.strictEqual(isPhotoshopMoveEvent({ data: `{"eventID":${PS_EVENT_MOVE}}` }), true);

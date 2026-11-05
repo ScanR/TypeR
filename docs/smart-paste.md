@@ -94,6 +94,10 @@ These follow from what ExtendScript can do; the behaviour stays the same otherwi
   without a new one (`getHistorySnapshot({ known })`, `noteHistoryAfterPaste`).
 - CEP reads a work path denser than 512 points (a spiky or noisy outline) without its Bézier handles, a third of
   the Action Manager calls; the unit of a point is read once, on its anchor.
+- The panel's inline TextShapeR reads the outline of a selection made while a text layer is active
+  (`getCurrentSelectionShape`, a point-by-point path read). A selection that does not touch that layer is the next
+  bubble, not the text's: it is not read, so the paste does not wait behind it. Photoshop events sent for the
+  measurements of a smart paste refresh the panel once, after the paste.
 
 ## Testing
 

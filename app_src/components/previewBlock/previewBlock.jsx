@@ -9,9 +9,9 @@ import { FaMagic } from "react-icons/fa";
 import { csInterface, locale, nativeConfirm, setActiveLayerText, setLayerTextFast, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, isPanelIdle, isPanelInteracting, notePanelActivity, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, alignTextLayerToSelection, changeActiveLayerTextSize, getStyleObject, getUserFonts, refreshUserFonts, scrollToLine, parseMarkdownRuns } from "../../utils";
 import { useContext } from "../../context";
 import { getScaledStyle } from "../../textLayerPayload";
-import { getBubbleCacheKey, haveSameLayerSize } from "../../textShapeRTracking";
+import { getBubbleCacheKey, haveSameLayerSize, selectionTouchesLayer } from "../../textShapeRTracking";
 import { isShortcutActiveForEvent, pasteInSelection, withShortcutHint } from "../../shortcutCommands";
-import { isSmartPasteSettling, recentSelectionTrigger } from "../../smartPasteClient";
+import { isSmartPasteBusy, isSmartPasteSettling, recentSelectionTrigger } from "../../smartPasteClient";
 import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPreview";
 import { notePerfRender } from "../../perfDebug";
 import TextShapeRFitPreview from "../textShapeRFitPreview";
@@ -382,6 +382,17 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           setInlineSelectionShape((current) => (current ? null : current));
           return;
         }
+        // The selection of another bubble, the next one to paste into while
+        // the last text is still the active layer: no shape for this text.
+        // The outline read it would start takes seconds on a spiky bubble
+        // (the path is read point by point) and the paste waits behind it.
+        if (!selectionTouchesLayer(selection, inlineLayerBoundsRef.current)) {
+          inlineShapePending.current = false;
+          inlineShapeKey.current = "";
+          clearInlineShapeSettle();
+          setInlineSelectionShape((current) => (current ? null : current));
+          return;
+        }
         // A manual selection always wins over the automatic bubble detection
         const boundsHash = `selection:${getSelectionBoundsHash(selection)}`;
         if (boundsHash === inlineShapeKey.current) {
@@ -663,11 +674,19 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         inlineMoveDebounce.current = null;
       }
       if (inlineEventDebounce.current) clearTimeout(inlineEventDebounce.current);
-      inlineEventDebounce.current = setTimeout(() => {
+      // A smart paste makes and removes staging layers to measure the text,
+      // and Photoshop reports each as an event: one refresh after the paste,
+      // not one full layer read per measurement
+      const refresh = () => {
+        if (isSmartPasteBusy()) {
+          inlineEventDebounce.current = setTimeout(refresh, 120);
+          return;
+        }
         inlineEventDebounce.current = null;
         refreshInlineLayerSource();
         refreshInlineSelectionShape();
-      }, 120);
+      };
+      inlineEventDebounce.current = setTimeout(refresh, 120);
     });
 
     // No focus-triggered refresh: the panel regains focus on every click
