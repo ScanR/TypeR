@@ -130,25 +130,23 @@ first seconds of a session), leaves out the Home screen's `[console]` lines, and
 from the same facts. `install.ps1` warns after a UXP install when no runtime exists in any of the folders
 or in Microsoft's registry.
 
-A second cause was found in a user's log on 2026-11-04 (Photoshop 27.9.1, Microsoft's runtime 156 present
-and running for the Home screen): `WebViewManager::createWebView() failed to create WebView because
-webViewDataStorage_ is not available`, 4 s after Photoshop's start and again at TypeR's retry. That storage
-is the per-plugin WebView data UXP keeps in `<AppData>\Adobe\UXP\PluginsStorage\PHSP\<major>\WebView\<guid>\3P`.
-Cause not established (a race with Photoshop's start, or an unusable folder). The support bundle's
-`installer/webview_rescue_win.ps1` (`3-WebView-Rescue.cmd`) runs the candidate ways out one by one and reads
-the session's UXP log after each (`createWebView() create new for thirdparty plugin` = created; the failure
-lines = refused): Reload TypeR after a minute, the panel closed and reopened, the `WebView` storage folder
-renamed (put back when it does not help), Photoshop started with `WEBVIEW2_BROWSER_EXECUTABLE_FOLDER` on
-Microsoft's runtime, then with `WEBVIEW2_USER_DATA_FOLDER` on a fresh folder (both for that Photoshop only).
-`-Analyze <log>` prints what a log says without running anything (tested). The script closes Photoshop
-itself (`CloseMainWindow`, so an unsaved document still gets its dialog, never a kill), installs the
-support build from the kit first, and asks the user for one thing only: to open the panel when Photoshop
-does not open it by itself. Since 2026-11-04 the host also asks for a new WebView by itself: a start that
-fails with no load event at all, when the log records no `Failed to create WebView for plugin` line,
-runs `reloadView` up to three times (`autoRecreated` in `main.js`, reset on app-ready and on the user's
-reload) before the notice, whose `Loads:` line counts them (`recreated 3 | retry`). A user's log showed
-Photoshop refusing the WebView 4 s after its own launch and at TypeR's +5 s retry: if a later creation
-succeeds, these attempts are the fix; if not, the rescue report says so (four refusals per session).
+A second cause was found in a user's log on 2026-11-04 and established on 2026-11-07 (Photoshop 27.9.1,
+UXP 9.3, reproduced on a test machine): `WebViewManager::createWebView() failed to create WebView because
+webViewDataStorage_ is not available`. UXP builds the WebView data storage of third-party plugins
+(`<AppData>\Adobe\UXP\PluginsStorage\PHSP\<major>\WebView\<user hash>\3P`) from the signed-in Adobe
+user; a Photoshop without one (Feature Restricted Licensing, `FRL user. No access token present` in the
+same log; offline or modified installations) never has it, and every third-party WebView is refused, on
+any runtime and with any WebView2 variable. Since then **TypeR runs without a WebView** when it has to:
+the same application, built a second time for UXP's own panel DOM (`uxp/inpanel/`), is started in the
+panel by `uxp-src/host/inPanel.js` with a direct message channel instead of postMessage. The host
+switches as soon as the UXP log shows the refusal (read 1.5, 3.5 and 7 s after asking for the WebView),
+and on every platform when a WebView gives no sign of life at all within 15 s (this replaced the three
+automatic re-creations of the WebView). The first cause (no runtime) ends the same way: TypeR no longer
+needs a runtime to open. Everything about it (cause, evidence, the mode, UXP's DOM limits and the crash
+it avoids, tests) is in `docs/uxp-webview-refused.md`. The support bundle's
+`installer/webview_rescue_win.ps1` (`3-WebView-Rescue.cmd`) still runs the ways out of a refused WebView
+one by one and reads the session's UXP log after each (`createWebView() create new for thirdparty plugin`
+= created; the failure lines = refused); `-Analyze <log>` prints what a log says without running anything.
 Likely on cracked/repacked installations without the Adobe copy, on a Windows without the Evergreen
 runtime (nothing else installed it); untested: a runtime present but damaged, or blocked by a policy.
 Users report the same computer working with Photoshop 27.4: the runtime selection is the same in every

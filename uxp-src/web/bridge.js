@@ -1,15 +1,22 @@
-// Message bridge between the panel (this WebView) and the plugin host
-// (uxp-src/host/main.js). Messages travel as JSON strings both ways.
+// Message bridge between the panel and the plugin host (uxp-src/host/main.js).
+// Messages travel as JSON strings both ways. In a WebView they go through
+// postMessage; when Photoshop refuses the WebView, the application runs in
+// the panel's own DOM, in the host's JavaScript context, and the host hands
+// over a direct channel instead (window.__typerInPanel, uxp-src/host/inPanel.js).
 const pending = new Map();
 const handlers = {};
 let nextId = 1;
 
-function hostWindow() {
-  return window.uxpHost || null;
-}
+const inPanel = typeof window !== "undefined" ? window.__typerInPanel || null : null;
+
+export const runsInPanel = !!inPanel;
 
 function send(message) {
-  const host = hostWindow();
+  if (inPanel) {
+    inPanel.toHost(JSON.stringify(message));
+    return;
+  }
+  const host = window.uxpHost || null;
   if (!host) throw new Error("TypeR: the plugin host is not reachable");
   host.postMessage(JSON.stringify(message));
 }
@@ -37,8 +44,8 @@ export function on(type, handler) {
   (handlers[type] = handlers[type] || []).push(handler);
 }
 
-window.addEventListener("message", (event) => {
-  let message = event.data;
+function receive(data) {
+  let message = data;
   for (let depth = 0; typeof message === "string" && depth < 2; depth++) {
     try {
       message = JSON.parse(message);
@@ -62,4 +69,7 @@ window.addEventListener("message", (event) => {
       console.error("TypeR:", message.type, error);
     }
   });
-});
+}
+
+if (inPanel) inPanel.toPanel = receive;
+else window.addEventListener("message", (event) => receive(event.data));

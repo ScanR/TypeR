@@ -176,6 +176,15 @@ const Modal = React.memo(function Modal() {
     const coached = !floating && whatsNewSession.active && !!whatsNewSession.coach &&
         whatsNewSession.coach.modal === modalType;
 
+    // A window covers the panel. In Photoshop's own panel DOM (no WebView,
+    // uxp-src/web/inpanel/style.scss), form fields are native widgets drawn
+    // above everything: the panel's own fields under the window are hidden
+    const covering = !!modalType && !floating;
+    React.useEffect(() => {
+        document.body.classList.toggle('typer-modal-open', covering);
+        return () => document.body.classList.remove('typer-modal-open');
+    }, [covering]);
+
     React.useEffect(() => {
         if (!modalType || stylesReady) return undefined;
         let active = true;

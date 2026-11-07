@@ -151,7 +151,7 @@ function packageCcx(manifest) {
   };
   walk("");
   const nativeFiles = macBuild ? ["native/typer-keys.json"] : addonBuild ? ["win/x64/typer-keys.uxpaddon"] : ["native/typer-keys-win.json"];
-  ["manifest.json", "index.html", "host.js", "web/index.html", "web/index.js", "locale/messages.properties", ...nativeFiles].forEach((name) => {
+  ["manifest.json", "index.html", "host.js", "web/index.html", "web/index.js", "inpanel/inpanel.js", "inpanel/inpanel.css", "locale/messages.properties", ...nativeFiles].forEach((name) => {
     if (!files[name]) throw new Error("Incomplete UXP build: " + name);
   });
   if (addonBuild && Object.keys(files).some((name) => /^native\//.test(name) || /\.(exe|ps1)$/i.test(name))) {

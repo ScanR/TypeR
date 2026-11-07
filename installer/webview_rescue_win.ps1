@@ -6,8 +6,8 @@
 #
 # As automatic as it can be: it closes Photoshop itself (the way the close
 # button does, so an unsaved document still gets its dialog), installs the
-# support build of TypeR from the kit (which asks Photoshop for a new WebView
-# three times by itself), starts Photoshop for each try and reads the result in
+# support build of TypeR from the kit (which opens in the panel itself when
+# Photoshop refuses its WebView), starts Photoshop for each try and reads the result in
 # the log. The user is asked for one thing only: to open the TypeR panel when
 # Photoshop does not open it by itself. The folder it renames is put back when
 # the try does not help; the environment variables only apply to the Photoshop
@@ -40,13 +40,13 @@ $T = @{
     save = 'Save your documents in Photoshop, then press Enter'
     stillOpen = 'Photoshop is still open (a dialog asks about a document?). Close it, then press Enter'
     noPhotoshop = 'Photoshop.exe was not found. Run again with -PhotoshopPath "C:\...\Photoshop.exe".'
-    installing = 'Installing the TypeR support build (it asks Photoshop for its WebView several times)...'
+    installing = 'Installing the TypeR support build...'
     starting = 'Starting Photoshop'
     watching = 'reading Photoshop''s log'
     openPanel = 'Photoshop did not open the TypeR panel by itself. Open it: Plugins > TypeR > TypeR, then press Enter'
     worked = 'This try WORKED: TypeR has its WebView.'
     failed = 'This try did not help.'
-    try1 = 'Try 1: a normal start (TypeR asks for a new WebView three times by itself)'
+    try1 = 'Try 1: a normal start (when refused, TypeR opens without its WebView, in the panel itself)'
     try2 = 'Try 2: a fresh plugin WebView cache folder'
     try3 = 'Try 3: Photoshop started on Microsoft''s WebView2 runtime instead of Adobe''s copy'
     try4 = 'Try 4: Photoshop started with a fresh WebView2 data folder'
@@ -69,13 +69,13 @@ if ($French) {
         save = 'Enregistrez vos documents dans Photoshop, puis appuyez sur Entrée'
         stillOpen = 'Photoshop est encore ouvert (une boîte de dialogue demande quelque chose ?). Fermez-le, puis appuyez sur Entrée'
         noPhotoshop = 'Photoshop.exe est introuvable. Relancez avec -PhotoshopPath "C:\...\Photoshop.exe".'
-        installing = 'Installation de la version de support de TypeR (elle redemande son WebView plusieurs fois à Photoshop)...'
+        installing = 'Installation de la version de support de TypeR...'
         starting = 'Lancement de Photoshop'
         watching = 'lecture du journal de Photoshop'
         openPanel = 'Photoshop n''a pas ouvert le panneau TypeR tout seul. Ouvrez-le : Plug-ins > TypeR > TypeR, puis appuyez sur Entrée'
         worked = 'Cet essai a MARCHÉ : TypeR a son WebView.'
         failed = 'Cet essai n''a rien changé.'
-        try1 = 'Essai 1 : démarrage normal (TypeR redemande son WebView trois fois tout seul)'
+        try1 = 'Essai 1 : démarrage normal (en cas de refus, TypeR s''ouvre sans son WebView, dans le panneau lui-même)'
         try2 = 'Essai 2 : dossier de cache WebView des plugins remis à neuf'
         try3 = 'Essai 3 : Photoshop lancé sur le WebView2 de Microsoft au lieu de la copie d''Adobe'
         try4 = 'Essai 4 : Photoshop lancé avec un dossier de données WebView2 neuf'

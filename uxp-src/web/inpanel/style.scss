@@ -1,0 +1,105 @@
+// TypeR in the panel's own DOM (uxp-src/host/inPanel.js): what UXP's layout
+// engine needs on top of the application's stylesheets. This file comes first
+// in the stylesheet (uxp-src/web/inpanel/entry.js).
+
+// --- What Chromium's own stylesheet gives, that UXP's does not -------------
+// Plain selectors, one class at most: the application's rules, which come
+// later, win over them as they win over a browser's defaults.
+
+// The application's <button> elements are <div class="typer-button"> here
+// (elements.js): they get a button's defaults back (Chromium's, light scheme)
+.typer-button {
+  display: inline-block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 1px 6px;
+  border: 2px outset #767676;
+  background-color: #efefef;
+  color: #000;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 13.3333px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-align: center;
+  text-indent: 0;
+  text-transform: none;
+  text-shadow: none;
+  cursor: default;
+}
+
+// An <svg> is a block in UXP, an inline box in a browser: an icon before a
+// label went on a line of its own. UXP lays an inline icon at the top of its
+// line where a browser's button centres its content: middle does that.
+svg {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+html.typer-inpanel {
+  // Icons: UXP's SVG renderer has no currentColor (it draws black). The
+  // react-icons root carries fill="currentColor"; a stylesheet rule wins over
+  // it, and var() works there. --typer-icon follows the text colour: every
+  // colour the application sets sets it too (scripts/inPanelCss.js,
+  // themeManager.js, elements.js), and it inherits as the colour does.
+  --typer-icon: #e6e6e6;
+  svg[fill="currentColor"] {
+    fill: var(--typer-icon, #e6e6e6);
+  }
+
+  // Square icon buttons: an 18 px icon overflows their 27 px box by a pixel
+  // once padded. A browser's button centres overflowing content; UXP starts
+  // it on the left. Without the side padding it fits, centred.
+  .topcoat-icon-button,
+  .topcoat-icon-button--quiet,
+  .topcoat-icon-button--large,
+  .topcoat-icon-button--large--quiet {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  // The line arrows: two buttons in a column. In a browser the flex item
+  // shrinks to their min-content width, so they wrap one under the other;
+  // UXP keeps them side by side.
+  .preview-nav {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+  }
+
+  // Form fields are native widgets in UXP, drawn above every element, a
+  // window included: those of the panel under a window are hidden while it
+  // is open (modal.jsx). UXP has no sibling combinator, hence the body class.
+  body.typer-modal-open .app-body input,
+  body.typer-modal-open .app-body select,
+  body.typer-modal-open .app-body textarea {
+    visibility: hidden;
+  }
+  body.typer-modal-open .app-modal input,
+  body.typer-modal-open .app-modal select,
+  body.typer-modal-open .app-modal textarea {
+    visibility: visible;
+  }
+
+  // Script editor. Its textarea is a native field in UXP, opaque and always
+  // drawn above the page: it cannot lie transparent over the highlighted
+  // lines. It is shown only while editing (textBlock.jsx), over the visible
+  // part of the sheet, and the lines are what is seen the rest of the time.
+  .text-area {
+    display: none;
+  }
+  // Its box (top, width, height) is set in pixels by textBlock.jsx
+  .text-area.m-inpanel-editing {
+    display: block;
+    position: absolute;
+    left: 50px;
+    margin: 0;
+    min-height: 0;
+    color: #000;
+    -webkit-text-fill-color: currentColor;
+    background: #fff;
+    z-index: 10;
+  }
+}

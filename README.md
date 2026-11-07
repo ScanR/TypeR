@@ -91,7 +91,7 @@ SFX: BOOM!
 ## Translator note: keep the sign in the background.
 ```
 
-`Page 12`, `Page 12 :`, `Page 12 : title`, `Page 12 - title`, `[Page 12]` and `## Page 12` are all recognized. Import `.psd`, `.png`, `.jpg` or `.jpeg` pages and TypeR opens the matching one as you advance. It can also save and close the previous PSD to keep long chapters manageable.
+`Page 12`, `Page 12 :`, `Page 12 : title`, `Page 12 - title`, `[Page 12]` and `## Page 12` are all recognized. Import `.psd`, `.png`, `.jpg` or `.jpeg` pages (and `.webp` in the UXP plugin) and TypeR opens the matching one as you advance. It can also save and close the previous PSD to keep long chapters manageable.
 
 Work tabs keep separate series in one panel, name themselves after their PSD folder or chapter until you rename them, and can be reordered by dragging them. Saved work states restore a script, its pages, the current line and the active style. Bold and italic Markdown or rich text carry over to Photoshop.
 
@@ -289,7 +289,9 @@ A shortcut made of modifier keys only (`Win + Ctrl`, `Win + Shift`, `Win + Alt`)
 <details>
 <summary><strong>TypeR UXP opens as an empty panel</strong></summary>
 
-TypeR UXP renders its interface in Photoshop's WebView. If it stays silent, TypeR retries the address once after 5 seconds and shows a native diagnostic after 15 seconds. Once the WebView answers, the interface has up to 15 seconds to finish initializing. These deadlines pause while the panel is hidden. Copy the message and the Photoshop/UXP versions for support. **Reload TypeR** recreates the WebView and preserves pending settings writes.
+TypeR UXP renders its interface in Photoshop's WebView. In 3.0.2, a WebView refused by Photoshop (or silent for 15 seconds) falls back to an interface rendered directly in the panel. Once a WebView answers, its interface has up to 15 seconds to finish initializing. These deadlines pause while the panel is hidden. **Reload TypeR** preserves pending settings writes.
+
+On Windows, when Photoshop's log confirms missing WebView storage, TypeR automatically prepares a repair if the installed Photoshop/UXP binary is one it recognizes exactly. This detection is included in every UXP package, so it works after a direct CCX installation, a normal installation, migration from Legacy, or an update. Follow the TypeR message, accept Windows administrator permission, save your work, close Photoshop, wait for the completion message and reopen it. TypeR stays usable in fallback mode until then. Unknown binaries are left unchanged, and declining permission does not cause repeated prompts. The repair backs up Photoshop's original DLL; see [the technical details and restore command](docs/uxp-webview-refused.md#native-storage-repair-in-302-windows).
 
 On Windows, a missing or damaged **UXP WebView / Microsoft Edge WebView2** component is one possible cause, especially with an incomplete Photoshop installation. Adobe documents its shared runtime at `C:\Program Files\Common Files\Adobe\Microsoft\EdgeWebView\`. Repair the Adobe installation if that component is missing or damaged, then restart Photoshop; reinstalling TypeR alone cannot restore an Adobe runtime. See [Adobe's UXP WebView documentation](https://helpx.adobe.com/creative-cloud/apps/integration-with-other-apps/manage-plugins/uxp-webview.html).
 

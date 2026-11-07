@@ -10,7 +10,7 @@ const HEADING_SEARCH_LINES = 15;
 // Folders that say how the pages are stored, not what they are: the name is
 // looked for one level up
 const GENERIC_FOLDERS = new Set([
-  "psd", "psds", "png", "pngs", "jpg", "jpeg", "raw", "raws", "clean", "cleans", "cleaned",
+  "psd", "psds", "png", "pngs", "jpg", "jpeg", "webp", "raw", "raws", "clean", "cleans", "cleaned",
   "final", "finals", "typeset", "ts", "export", "exports", "output", "images", "pages", "scans",
   "new folder", "nouveau dossier", "untitled folder",
 ]);

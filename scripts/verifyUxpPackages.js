@@ -8,11 +8,14 @@ const root = path.resolve(__dirname, '..');
 // system (app_src/updateLogic.js)
 assert(!/typer/i.test('UXP-Windows.ccx'));
 const windowsReader = JSON.parse(fs.readFileSync(path.join(root, 'uxp-src/native/typer-keys-win.json'), 'utf8'));
+const repairSource = fs.readFileSync(path.join(root, 'installer/repair_uxp_webview_win.ps1'), 'utf8');
+const repairHash = crypto.createHash('sha256').update(repairSource).digest('hex');
 for (const name of ['UXP-Windows.ccx', 'TypeR-UXP.ccx']) {
   const bytes = fs.readFileSync(path.join(root, 'Releases', name));
   const entries = unzipSync(bytes);
   const manifest = JSON.parse(Buffer.from(entries['manifest.json']).toString('utf8'));
   const host = Buffer.from(entries['host.js']).toString('utf8');
+  assert(host.includes(JSON.stringify(repairSource)) && host.includes(repairHash), name + ': the current common repair must be embedded, including for old Windows updaters');
   assert.strictEqual(manifest.id, 'com.scanr.typer');
   assert.strictEqual(manifest.name, 'TypeR');
   assert.strictEqual(manifest.version, require('../package.json').version);

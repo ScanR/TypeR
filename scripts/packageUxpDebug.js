@@ -49,8 +49,8 @@ start any WebView2 runtime, the fix is on your side: install Microsoft Edge WebV
 from https://developer.microsoft.com/microsoft-edge/webview2/ and restart Photoshop.
 
 3-WebView-Rescue.cmd tries the known ways out, one after the other, and checks each
-one in Photoshop's own log: a normal start (the support build asks Photoshop for its
-WebView three times by itself), a fresh plugin WebView cache folder, Microsoft's
+one in Photoshop's own log: a normal start (refused, the support build opens without
+its WebView, in the panel itself), a fresh plugin WebView cache folder, Microsoft's
 WebView2 runtime instead of Adobe's copy, a fresh WebView2 data folder. It installs
 the support build, closes and restarts Photoshop by itself (an unsaved document still
 gets its dialog), puts back what did not help, and writes TypeR-webview-rescue-<date>.txt

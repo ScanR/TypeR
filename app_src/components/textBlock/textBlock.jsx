@@ -56,9 +56,13 @@ const getTextAreaSelectionRects = (textArea) => {
 
   let rects = [];
   try {
-    const range = document.createRange();
-    range.selectNodeContents(selected);
-    rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+    // Photoshop's panel DOM (no WebView) has a Range without these: the
+    // selected span's own box is the fallback
+    const range = typeof document.createRange === "function" ? document.createRange() : null;
+    if (range && typeof range.selectNodeContents === "function" && typeof range.getClientRects === "function") {
+      range.selectNodeContents(selected);
+      rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+    }
     if (!rects.length) {
       const rect = selected.getBoundingClientRect();
       if (rect.height > 0) rects = [rect];
@@ -127,6 +131,23 @@ LineItem.propTypes = {
   renderHighlightedText: PropTypes.func.isRequired,
   lineNum: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   height: PropTypes.number,
+};
+
+// TypeR in Photoshop's own panel DOM, without a WebView (uxp-src/host/inPanel.js):
+// the textarea is a native field there, opaque and drawn above the page, so it
+// cannot lie transparent over the highlighted lines. It is shown only while
+// editing, over the visible part of the sheet, from a click on the text.
+const IN_PANEL = typeof document !== "undefined" && document.documentElement.classList.contains("typer-inpanel");
+
+// Where a raw line of the script starts in its text
+const rawLineOffset = (text, rawIndex) => {
+  let offset = 0;
+  for (let index = 0; index < rawIndex; index++) {
+    const next = text.indexOf("\n", offset);
+    if (next === -1) return text.length;
+    offset = next + 1;
+  }
+  return offset;
 };
 
 const TextBlock = React.memo(function TextBlock() {
@@ -528,10 +549,44 @@ const TextBlock = React.memo(function TextBlock() {
     [renderMarkdownOverlay, context.state.text]
   );
   const handleFocus = React.useCallback(() => setFocused(true), []);
+  // In the panel's DOM: the raw line clicked, while the textarea is shown (IN_PANEL)
+  const [inPanelEditing, setInPanelEditing] = React.useState(null);
   const handleBlur = React.useCallback(() => {
     setFocused(false);
     setSelection({ start: 0, end: 0 });
+    if (IN_PANEL) setInPanelEditing(null);
   }, []);
+  // A click anywhere on the sheet but its controls: UXP hit-tests the sheet
+  // itself rather than the layers drawn over it, so it is listened to there
+  React.useEffect(() => {
+    const sheet = IN_PANEL && textAreaRef.current ? textAreaRef.current.parentElement : null;
+    if (!sheet || inPanelEditing) return undefined;
+    const onMouseDown = (event) => {
+      let rawIndex = -1;
+      for (let node = event.target; node && node !== sheet.parentNode; node = node.parentNode) {
+        const classes = node.classList;
+        if (classes && (classes.contains("text-line-select") || classes.contains("text-line-insert") || classes.contains("text-format-toolbar") || classes.contains("text-area"))) return;
+        if (node.getAttribute && node.getAttribute("data-line-index") !== null && rawIndex === -1) rawIndex = Number(node.getAttribute("data-line-index"));
+      }
+      setInPanelEditing({ rawIndex });
+    };
+    sheet.addEventListener("mousedown", onMouseDown);
+    return () => sheet.removeEventListener("mousedown", onMouseDown);
+  }, [inPanelEditing]);
+  React.useLayoutEffect(() => {
+    const textArea = textAreaRef.current;
+    if (!IN_PANEL || !inPanelEditing || !textArea) return;
+    const sheet = textArea.parentElement;
+    // A native field: its box is set in pixels (it ignores left/right with auto width)
+    textArea.style.top = (sheet ? sheet.scrollTop : 0) + "px";
+    textArea.style.height = (sheet ? sheet.clientHeight : 300) + "px";
+    textArea.style.width = Math.max(80, (sheet ? sheet.clientWidth : 300) - 70) + "px";
+    textArea.focus();
+    if (inPanelEditing.rawIndex >= 0) {
+      const offset = rawLineOffset(textArea.value, inPanelEditing.rawIndex);
+      try { textArea.setSelectionRange(offset, offset); } catch (error) { /* not supported */ }
+    }
+  }, [inPanelEditing]);
   const hasSelection = markdownEnabled && focused && selection.end > selection.start;
 
   const updateFormatToolbarPosition = React.useCallback(() => {
@@ -612,7 +667,7 @@ const TextBlock = React.memo(function TextBlock() {
       <div ref={rowMirrorRef} className="text-area-overlay text-row-mirror" dir={direction} aria-hidden="true" />
       <textarea
         ref={textAreaRef}
-        className={"text-area" + (focused ? " m-focused" : "")}
+        className={"text-area" + (focused ? " m-focused" : "") + (inPanelEditing ? " m-inpanel-editing" : "")}
         dir={direction}
         value={context.state.text}
         onChange={handleTextChange}

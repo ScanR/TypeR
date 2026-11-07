@@ -1308,7 +1308,8 @@ const resizeTextArea = (defer = false) => {
   }
   const textArea = document.querySelector(".text-area");
   const textLines = document.querySelector(".text-lines");
-  if (textArea && textLines) {
+  // Without a WebView, the textarea covers the visible sheet only while editing (textBlock.jsx)
+  if (textArea && textLines && !textArea.classList.contains("m-inpanel-editing")) {
     // A hidden panel measures 0: applying it would collapse the textarea and
     // make it unclickable until the next sync, so keep the previous height
     const height = textLines.offsetHeight;

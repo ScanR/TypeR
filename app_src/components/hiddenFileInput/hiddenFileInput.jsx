@@ -1,16 +1,21 @@
 import React from "react";
 import { useContext } from "../../context";
 
-const allowed = ".psd,.png,.jpg,.jpeg";
+// Photoshop opens WebP natively from 23.2. The UXP plugin needs 26.0, the CEP
+// panel still runs on older versions that would fail to open it.
+const allowedTypes = () => {
+  const types = [".psd", ".png", ".jpg", ".jpeg"];
+  if (typeof window !== "undefined" && window.typerUXP) types.push(".webp");
+  return types;
+};
 
 export default React.forwardRef(function HiddenFileInput(props, ref) {
   const context = useContext(() => ({}));
+  const allowed = allowedTypes();
 
   const onChange = (e) => {
     const files = Array.from(e.target.files || []).filter((f) =>
-      allowed
-        .split(",")
-        .includes("." + f.name.split(".").pop().toLowerCase())
+      allowed.includes("." + f.name.split(".").pop().toLowerCase())
     );
     if (!files.length) return;
 
@@ -35,7 +40,7 @@ export default React.forwardRef(function HiddenFileInput(props, ref) {
       ref={ref}
       {...props}
       type="file"
-      accept={allowed}
+      accept={allowed.join(",")}
       multiple
       style={{ display: "none" }}
       onChange={onChange}

@@ -1,7 +1,7 @@
 // Panel boot: the application reads its storage, locale and host environment
 // while its modules evaluate, so the CEP environment is rebuilt from the
 // host's init payload first, and only then is the application loaded.
-import { request, notify, on } from "./bridge";
+import { request, notify, on, runsInPanel } from "./bridge";
 import { installCepEnvironment } from "./cepShim";
 import { installErrorReporting, installFetchFallback, installFileInputs, installInputCentering, installLocalStorage } from "./domShims";
 import "./webkit.scss";
@@ -10,7 +10,9 @@ import "./webkit.scss";
 // layout fixes of webkit.scss only apply to the first
 const IS_WEBKIT = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent);
 document.documentElement.classList.add("typer-uxp");
-if (IS_WEBKIT) document.documentElement.classList.add("typer-webkit");
+if (IS_WEBKIT && !runsInPanel) document.documentElement.classList.add("typer-webkit");
+// No WebView: the panel's own DOM, UXP's layout engine (uxp-src/host/inPanel.js)
+if (runsInPanel) document.documentElement.classList.add("typer-inpanel");
 
 const report = (text) => notify("panelError", { text: String(text) });
 
@@ -64,8 +66,10 @@ async function start() {
     (name, text) => window.cep.fs.writeFile(root + "/" + name, text)
   );
   installFileInputs();
-  installFetchFallback();
-  if (IS_WEBKIT) installInputCentering();
+  // In the panel, fetch is UXP's own, without CORS, and the host's fetchUrl
+  // uses it: the fallback would call itself
+  if (!runsInPanel) installFetchFallback();
+  if (IS_WEBKIT && !runsInPanel) installInputCentering();
   await import(/* webpackMode: "eager" */ "../../app_src/index.jsx");
   mark("app");
   notify("appReady");

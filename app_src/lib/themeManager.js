@@ -54,15 +54,31 @@ function toHex(color, delta) {
     return hex;
 }
 
+// Rules of the stylesheets without CSSOM, by stylesheet id, then by selector
+// and property, in the order they were first set
+var textRules = {};
+
 function addRule(stylesheetId, selector, rule) {
-    var stylesheet = document.getElementById(stylesheetId);
-    if (stylesheet) {
-        stylesheet = stylesheet.sheet;
-        if (stylesheet.addRule) {
-            stylesheet.addRule(selector, rule);
-        } else if (stylesheet.insertRule) {
-            stylesheet.insertRule(selector + ' { ' + rule + ' }', stylesheet.cssRules.length);
-        }
+    var element = document.getElementById(stylesheetId);
+    if (!element) return;
+    var stylesheet = element.sheet;
+    if (stylesheet && stylesheet.addRule) {
+        stylesheet.addRule(selector, rule);
+    } else if (stylesheet && stylesheet.insertRule) {
+        stylesheet.insertRule(selector + ' { ' + rule + ' }', stylesheet.cssRules.length);
+    } else {
+        // UXP's own DOM (TypeR when Photoshop refuses its WebView,
+        // uxp-src/host/inPanel.js) has no CSSOM: the element's text is
+        // rewritten, with the latest value of each property, and only
+        // when it changes (the theme is applied again on Photoshop events)
+        var rules = textRules[stylesheetId] = textRules[stylesheetId] || {};
+        var property = rule.split(':')[0].trim();
+        rules[selector + '|' + property] = selector + ' { ' + rule + ' }';
+        // Its icons have no currentColor: they take this property instead
+        // (uxp-src/web/inpanel/style.scss)
+        if (property === 'color') rules[selector + '|--typer-icon'] = selector + ' { --typer-icon' + rule.slice(rule.indexOf(':')) + ' }';
+        var text = Object.keys(rules).map(function (key) { return rules[key]; }).join('\n');
+        if (element.textContent !== text) element.textContent = text;
     }
 }
 

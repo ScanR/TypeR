@@ -109,6 +109,45 @@ async function findWebViewCreationFailure(reader) {
   return Object.assign({ file: facts.file, line: facts.failure }, facts);
 }
 
+// UXP refuses every third-party WebView while its WebView data storage does
+// not exist (WebViewManager::createWebView, docs/uxp-webview-refused.md). The
+// line does not name the plugin: any refusal means TypeR's WebView will not come.
+const WEBVIEW_STORAGE_REFUSAL = "failed to create WebView because webViewDataStorage_ is not available";
+// "[2026-11-07_19-25-25][2984][Warn] ...": the local time of the line
+const LOG_STAMP = /^\[(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})\]/;
+
+function logLineTime(line) {
+  const match = LOG_STAMP.exec(String(line));
+  if (!match) return null;
+  return new Date(+match[1], match[2] - 1, +match[3], +match[4], +match[5], +match[6]).getTime();
+}
+
+// The newest line of the running session's UXP log, written at or after
+// `since` (ms, a second's tolerance: the log has whole seconds), by which
+// UXP refused a WebView TypeR asked for: its storage refusal, or the failure
+// line naming TypeR. Null when there is none or the log cannot be read.
+async function findWebViewRefusalSince({ listFolder, readText, appData, pluginId, since }) {
+  try {
+    const newest = await findNewestUxpLog({ listFolder, appData });
+    if (!newest) return null;
+    const failure = WEBVIEW_CREATION_FAILURE + String(pluginId);
+    const lines = String(await readText(newest.path)).split(/\r?\n/);
+    let found = null;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (line.indexOf("[console]") !== -1) continue;
+      const storage = line.indexOf(WEBVIEW_STORAGE_REFUSAL) !== -1;
+      if (!storage && line.indexOf(failure) === -1) continue;
+      const time = logLineTime(line);
+      if (time === null || time < since - 1000) continue;
+      found = { file: newest.path, line, kind: storage ? "storage" : "creation" };
+    }
+    return found;
+  } catch (error) {
+    return null;
+  }
+}
+
 // What the log line means, and the remedy, for the user
 function webViewFailureText(webViewFailure, french) {
   const head = french
@@ -161,6 +200,7 @@ function panelStartFailureText({ versions, webViewFolders, loadEvents, viewSize,
 
 module.exports = {
   PANEL_RETRY_MS, PANEL_START_LIMIT_MS, WINDOWS_WEBVIEW_FOLDERS, WEBVIEW2_DOWNLOAD_URL, WEBVIEW_CREATION_FAILURE,
+  WEBVIEW_STORAGE_REFUSAL, logLineTime, findWebViewRefusalSince,
   windowsWebViewFolders, readWebViewFolders, findNewestUxpLog, readUxpLogFacts, findWebViewCreationFailure,
   webViewFailureText, uxpLogLines, panelStartFailureText,
 };

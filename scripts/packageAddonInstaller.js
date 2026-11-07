@@ -51,6 +51,7 @@ const files = {
   'Installer-TypeR-Addon.cmd': Buffer.from(launcher),
   'installer/install_addon.ps1': read('installer/install_addon.ps1'),
   'installer/install.ps1': read('installer/install.ps1'),
+  'installer/repair_uxp_webview_win.ps1': read('installer/repair_uxp_webview_win.ps1'),
   'CSXS/manifest.xml': read('CSXS/manifest.xml'),
   'TypeR-UXP-addon-win.ccx': read('Releases/TypeR-UXP-addon-win.ccx'),
   'TypeR-UXP-addon-win.ccx.sha256': read('Releases/TypeR-UXP-addon-win.ccx.sha256'),

@@ -61,6 +61,7 @@ export function installLocalStorage(readMirror, writeMirror) {
 // picker nor paths, so file inputs open the host's dialog and receive
 // File-like objects carrying the native path.
 export function installFileInputs() {
+  if (typeof HTMLInputElement === "undefined") return;
   const nativeClick = HTMLInputElement.prototype.click;
   HTMLInputElement.prototype.click = function click() {
     if (this.type !== "file") return nativeClick.call(this);

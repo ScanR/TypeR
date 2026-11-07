@@ -20,6 +20,14 @@ const { parseCall, callTimeout, createCallQueue } = require("./evalScript");
 const { createPanelStartup } = require("./panelStartup");
 const { createStartupLoader } = require("./startupFiles");
 const panelStart = require("./panelStart");
+const { startInPanel } = require("./inPanel");
+const { createWebViewRepair } = require('./webViewRepair');
+const webViewRepair = createWebViewRepair({
+  platform: os.platform(), files, runJsx,
+  source: typeof TYPER_WEBVIEW_REPAIR_SCRIPT === 'string' ? TYPER_WEBVIEW_REPAIR_SCRIPT : '',
+  sourceId: typeof TYPER_WEBVIEW_REPAIR_ID === 'string' ? TYPER_WEBVIEW_REPAIR_ID : '',
+  encodeBase64: value => btoa(value), wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
+});
 const panelProbe = crashTrace ? require("./panelProbe") : null;
 const diagnostic = typeof TYPER_DIAGNOSTIC !== 'undefined' && TYPER_DIAGNOSTIC ? require('./diagnostics') : null;
 const debugNote = (stage, detail) => { if (diagnostic) diagnostic.note(stage, detail); };
@@ -57,6 +65,13 @@ let webviewReady = false;
 const loadEvents = [];
 let stopProbes = null;
 let startupViewSize = 'unknown';
+// The application's channel when it runs in the panel's own DOM, because
+// Photoshop refused its WebView (inPanel.js); null while it uses a WebView.
+// Once in the panel, it stays there until the plugin is reloaded.
+let inPanel = null;
+let inPanelReason = '';
+// Photoshop destroyed the panel the application ran in: the next one gets it
+let restartInPanel = false;
 
 function clearProbes() {
   if (stopProbes) stopProbes();
@@ -105,19 +120,12 @@ async function reportPanelStartFailure(baseText, { head = baseText, french = fal
   // A report from a closed/reloaded panel must never cover its replacement.
   if (generation !== viewGeneration || webviewReady || !panelVisible || panelStartup.getState() !== 'failed') return;
   if (logFacts) debugNote('startup.uxp-log', panelStart.uxpLogLines(logFacts).join(' | '));
-  // No sign of life from the WebView, and Photoshop's log does not say it
-  // has no runtime: Photoshop may have refused this one while it was still
-  // starting (seen 4 s after its launch; a reload later works), so a new one
-  // is asked for, a few times, before the notice
-  if (!webViewFailure && !events.some((event) => !OWN_LOAD_EVENT.test(event)) && autoRecreated < MAX_AUTO_RECREATE) {
-    autoRecreated++;
-    const attempt = autoRecreated;
-    console.error('TypeR: no WebView after 15 s, creating it again (' + attempt + '/' + MAX_AUTO_RECREATE + ')');
-    debugNote('webview.recreate', String(attempt));
-    try {
-      await reloadView(generation);
-      noteLoadEvent('recreated ' + attempt);
-    } catch (error) { panelStartup.fail(String((error && error.message) || error)); }
+  // No sign of life from the WebView at all, whatever the cause (refused by
+  // UXP, no runtime it can start, never started): the application runs in
+  // the panel itself (docs/uxp-webview-refused.md). A WebView that loaded
+  // something and failed keeps the notice.
+  if (!events.some((event) => !OWN_LOAD_EVENT.test(event))) {
+    enterInPanel(webViewFailure ? webViewFailure.line.replace(/^(\[[^\]]*\])+\s*/, '') : 'no sign of life from the WebView in 15 s');
     return;
   }
   if (webViewFailure) {
@@ -162,6 +170,8 @@ const panelStartup = createPanelStartup({
   initiallyVisible: false,
   environment: () => ({ photoshop: String(uxp.host.version || 'unknown'), uxp: String(uxp.versions && uxp.versions.uxp || 'unknown'), platform: os.platform(), locale: uxp.host.uiLocale }),
   retry() {
+    // In the panel itself there is no WebView to ask again
+    if (inPanel || !view) return;
     noteLoadEvent('retry');
     loadingPanel = true;
     view.src = PANEL_URL;
@@ -190,6 +200,10 @@ const panelStartup = createPanelStartup({
 /* ======================= panel messages ======================= */
 
 function post(message) {
+  if (inPanel) {
+    inPanel.deliver(message);
+    return;
+  }
   if (!view || !webviewReady) return;
   try {
     view.postMessage(JSON.stringify(message));
@@ -558,11 +572,8 @@ let loadingPanel = false;
 let panelAddress = PANEL_URL;
 // The automatic reload after an init without answer, once per start
 let autoReloaded = false;
-// The WebViews asked for again after one that gave no sign of life, per start
-// (reportPanelStartFailure); the events TypeR notes itself are no sign of life
-const MAX_AUTO_RECREATE = 3;
-const OWN_LOAD_EVENT = /^(retry|recreated \d+)$/;
-let autoRecreated = 0;
+// The load events TypeR notes itself are no sign of life from the WebView
+const OWN_LOAD_EVENT = /^retry$/;
 
 // A new WebView in place of the current one (the Reload TypeR button)
 async function reloadView(generation) {
@@ -584,11 +595,128 @@ function showPanelPage() {
   webviewReady = false;
   recentRequestIds.clear();
   panelStartup.begin();
+  watchWebViewRefusal(viewGeneration, Date.now());
   try { view.src = PANEL_URL; }
   catch (error) { panelStartup.fail(String(error && error.message || error)); }
 }
 
+// A message of the application, from its WebView or from the panel's DOM
+function handlePanelMessage(message, generation, channel) {
+  if (generation !== viewGeneration) return;
+  if (message.type === 'diagnostic' && diagnostic) {
+    panelStartup.bridgeReady();
+    diagnostic.note('web.' + String(message.stage).slice(0, 60), message.detail);
+    return;
+  }
+  if (!['ready', 'appReady', 'request', 'devResult', 'panelError'].includes(message.type)) return;
+  if (crashTrace && !webviewReady) crashTrace.note('webview', 'panel answered, view ' + (inPanel ? 'in panel' : viewSize()));
+  webviewReady = true;
+  panelStartup.bridgeReady();
+  if (message.type === "ready") {
+    debugNote('bridge.ready', channel);
+    return;
+  }
+  if (message.type === "appReady") {
+    debugNote('app.ready', channel);
+    autoReloaded = false;
+    panelStartup.appReady();
+    return;
+  }
+  if (message.type === "request") {
+    // Some hosts deliver the same message to both the element and window.
+    // Never run a paste (or any other request) twice. Keep a bounded recent
+    // history; ids are monotonic within a page and restart on navigation.
+    if (typeof message.id !== 'number' || !Number.isSafeInteger(message.id) || message.id < 1) return;
+    if (recentRequestIds.has(message.id)) return;
+    recentRequestIds.add(message.id);
+    if (recentRequestIds.size > 512) recentRequestIds.delete(recentRequestIds.values().next().value);
+    handleRequest(message, generation);
+  }
+  else if (message.type === "devResult") devResultListeners.forEach((listener) => listener(message));
+  else if (message.type === "panelError") {
+    console.error("TypeR panel:", message.text);
+    // Runtime errors keep the working panel accessible. Only startup
+    // failures replace the view with the native recovery controls.
+    if (panelStartup.getState() === 'ready') showStatus(message.text);
+    else if (inPanel) panelStartup.fail(message.text);
+    else if (message.reason === 'init-timeout' && !autoReloaded) {
+      // What the Reload button does, which fixed it every time it was seen:
+      // done once, a second failure stays on screen
+      autoReloaded = true;
+      console.error('TypeR: the panel got no init answer (' + startupFiles.summary() + '), reloading it once');
+      reloadView(generation).catch((error) => panelStartup.fail(String((error && error.message) || error)));
+    }
+    else panelStartup.fail(message.text);
+  }
+}
+
+// Photoshop refused the WebView (or never started one): the application
+// runs in the panel's own DOM instead, for the rest of the plugin's life
+function enterInPanel(reason) {
+  if (inPanel) return;
+  const generation = ++viewGeneration;
+  inPanelReason = String(reason || 'no WebView');
+  console.error('TypeR: no WebView (' + inPanelReason + '), running in the panel itself');
+  debugNote('inpanel.start', inPanelReason);
+  if (crashTrace) crashTrace.note('webview', 'in panel: ' + inPanelReason);
+  panelStartup.dispose();
+  clearProbes();
+  detachWindowMessages();
+  const previous = view;
+  view = null;
+  webviewReady = false;
+  recentRequestIds.clear();
+  if (previous) { try { previous.remove(); } catch (error) {} }
+  const recovery = document.getElementById('typer-recovery');
+  if (recovery) recovery.style.display = 'none';
+  panelStartup.begin();
+  // The page is there at once: no WebView to ask for again, only the
+  // application's own start to wait for
+  panelStartup.loadStarted();
+  try {
+    inPanel = startInPanel({
+      document,
+      window,
+      receive: (message) => handlePanelMessage(message, generation, 'inpanel'),
+      // UXP's own require: the bundle is a file of the plugin, not a module of host.js
+      requireModule: (path) => __non_webpack_require__(path),
+    });
+  } catch (error) {
+    inPanel = null;
+    console.error('TypeR: the panel could not start without a WebView', error);
+    panelStartup.fail('TypeR could not start without a WebView: ' + ((error && (error.stack || error.message)) || error));
+  }
+}
+
+// Windows: UXP writes its refusal to its log the moment the WebView is
+// asked for. Looked for a few times in the first seconds of a WebView that
+// gives no sign of life, so that the panel opens without waiting 15 s.
+const REFUSAL_CHECKS_MS = [1500, 3500, 7000];
+function watchWebViewRefusal(generation, since) {
+  if (os.platform() !== 'win32') return;
+  REFUSAL_CHECKS_MS.forEach((delay) => setTimeout(async () => {
+    if (inPanel || generation !== viewGeneration || webviewReady || loadEvents.some((event) => !OWN_LOAD_EVENT.test(event))) return;
+    const refusal = await panelStart.findWebViewRefusalSince({
+      listFolder: files.listFolder, readText: files.readText, appData: await files.getRoamingAppData(), pluginId: PLUGIN_ID, since,
+    });
+    if (!refusal || inPanel || generation !== viewGeneration || webviewReady) return;
+    debugNote('startup.webview-refused', refusal.line);
+    enterInPanel(refusal.line.replace(/^(\[[^\]]*\])+\s*/, ''));
+    // Shared by direct CCX installs, CEP migration, platform swaps and updates.
+    // Only this session's explicit missing-storage refusal qualifies for repair.
+    if (refusal.kind === 'storage') {
+      webViewRepair.start('storage').catch(error => console.error('TypeR: WebView repair', String(error && error.message || error)));
+    }
+  }, delay));
+}
+
 function attachView() {
+  if (inPanel) return null;
+  if (restartInPanel) {
+    restartInPanel = false;
+    enterInPanel(inPanelReason);
+    return null;
+  }
   if (diagnostic) diagnostic.attachUI();
   // Photoshop may recreate the panel DOM after closing it. A cached detached
   // WebView cannot render or receive replies in the newly created panel.
@@ -623,52 +751,7 @@ function attachView() {
       }
     }
     if (!message || typeof message !== "object") return;
-    if (message.type === 'diagnostic' && diagnostic) {
-      panelStartup.bridgeReady();
-      diagnostic.note('web.' + String(message.stage).slice(0, 60), message.detail);
-      return;
-    }
-    if (!['ready', 'appReady', 'request', 'devResult', 'panelError'].includes(message.type)) return;
-    if (crashTrace && !webviewReady) crashTrace.note('webview', 'panel answered, view ' + viewSize());
-    webviewReady = true;
-    panelStartup.bridgeReady();
-    if (message.type === "ready") {
-      debugNote('bridge.ready', channel);
-      panelStartup.bridgeReady();
-      return;
-    }
-    if (message.type === "appReady") {
-      debugNote('app.ready', channel);
-      autoReloaded = false;
-      autoRecreated = 0;
-      panelStartup.appReady();
-      return;
-    }
-    if (message.type === "request") {
-      // Some hosts deliver the same message to both the element and window.
-      // Never run a paste (or any other request) twice. Keep a bounded recent
-      // history; ids are monotonic within a page and restart on navigation.
-      if (typeof message.id !== 'number' || !Number.isSafeInteger(message.id) || message.id < 1) return;
-      if (recentRequestIds.has(message.id)) return;
-      recentRequestIds.add(message.id);
-      if (recentRequestIds.size > 512) recentRequestIds.delete(recentRequestIds.values().next().value);
-      handleRequest(message, generation);
-    }
-    else if (message.type === "devResult") devResultListeners.forEach((listener) => listener(message));
-    else if (message.type === "panelError") {
-      console.error("TypeR panel:", message.text);
-      // Runtime errors keep the working panel accessible. Only startup
-      // failures replace the view with the native recovery controls.
-      if (panelStartup.getState() === 'ready') showStatus(message.text);
-      else if (message.reason === 'init-timeout' && !autoReloaded) {
-        // What the Reload button does, which fixed it every time it was seen:
-        // done once, a second failure stays on screen
-        autoReloaded = true;
-        console.error('TypeR: the panel got no init answer (' + startupFiles.summary() + '), reloading it once');
-        reloadView(generation).catch((error) => panelStartup.fail(String((error && error.message) || error)));
-      }
-      else panelStartup.fail(message.text);
-    }
+    handlePanelMessage(message, generation, channel);
   };
   view.addEventListener("message", event => onPanelMessage(event, 'element'));
   // Adobe documents window as the receiver of WebView postMessage events.
@@ -717,8 +800,6 @@ function attachView() {
     retry.onclick = async () => {
       debugNote('user.reload', 'requested');
       retry.disabled = true;
-      // The user's reload starts a fresh batch of automatic ones
-      autoRecreated = 0;
       try { await reloadView(generation); }
       catch (error) { panelStartup.fail(String(error && error.message || error)); }
       finally { retry.disabled = false; }
@@ -826,7 +907,7 @@ async function startOnce() {
 const devResultListeners = [];
 if (typeof TYPER_DEV !== "undefined" && TYPER_DEV) {
   require("./devChannel").start(post, (listener) => devResultListeners.push(listener));
-  globalThis.__typer = { photoshop, files, keyboard, services, methods, requests, post, mirror, getMirror: () => mirrorFiles, getHostEnvironment, onThemeChanged };
+  globalThis.__typer = { photoshop, files, keyboard, services, methods, requests, post, mirror, getMirror: () => mirrorFiles, getHostEnvironment, onThemeChanged, enterInPanel };
 }
 
 
@@ -879,6 +960,12 @@ uxp.entrypoints.setup({
         view = null;
         statusElement = null;
         webviewReady = false;
+        // The application in the panel goes with it: a new one starts in the
+        // panel Photoshop creates next, without asking for a WebView again
+        if (inPanel) {
+          inPanel = null;
+          restartInPanel = true;
+        }
         return mirror.flush();
       },
     },
