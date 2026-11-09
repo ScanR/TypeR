@@ -1,9 +1,6 @@
-// The panel only exists inside the WebView, so a WebView that never starts
-// leaves an empty panel with nothing to tell why (WebView2 on Windows, whose
-// runtime Photoshop's installer provides). The host page does not depend on it:
-// it says so there, with what is needed to find the cause.
-const PANEL_RETRY_MS = 5000;
-const PANEL_START_LIMIT_MS = 15000;
+// Native-host diagnostics do not depend on a working WebView. Keep a generous
+// cold-start deadline before recovering with the panel's own renderer.
+const PANEL_START_LIMIT_MS = 30000;
 
 // Where Adobe's installer and Microsoft's put the WebView2 runtime (per machine)
 const WINDOWS_WEBVIEW_FOLDERS = [
@@ -72,19 +69,46 @@ async function findNewestUxpLog({ listFolder, appData }) {
   return newest;
 }
 
+// A marker written by THIS host binds diagnostics to its session, including
+// when several Photoshop versions (or a beta) are open simultaneously.
+// Timestamps and the newest filename alone cannot establish that identity.
+async function readSessionLog({ listFolder, readText, appData, sessionMarker }) {
+  if (!sessionMarker) return null;
+  const adobe = String(appData) + "\\Adobe";
+  const folders = (await listFolder(adobe)).filter(entry => entry.isFolder && PHOTOSHOP_FOLDER.test(entry.name));
+  const candidates = [];
+  for (const folder of folders) {
+    try {
+      for (const entry of await listFolder(adobe + "\\" + folder.name + "\\Logs")) {
+        if (!entry.isFolder && UXP_LOG_NAME.test(entry.name)) candidates.push({ name: entry.name, path: adobe + "\\" + folder.name + "\\Logs\\" + entry.name });
+      }
+    } catch (error) {}
+  }
+  candidates.sort((a, b) => b.name.localeCompare(a.name));
+  for (const file of candidates) {
+    try {
+      const lines = String(await readText(file.path)).split(/\r?\n/);
+      const index = lines.findIndex(line => line.includes('[console]') && line.trim().endsWith(sessionMarker));
+      if (index !== -1) return { file, lines: lines.slice(index + 1), allLines: lines };
+    } catch (error) {}
+  }
+  return null;
+}
+
 const afterMarker = (line, marker) => line.slice(line.indexOf(marker) + marker.length).trim();
 
 // What the running session's UXP log says about WebViews: the line about this
 // plugin's WebView (failure, or null), the runtime folder UXP chose, the
 // version that started (null when none did in the whole session) and the
 // other plugins whose WebView failed. Null when the log cannot be read.
-async function readUxpLogFacts({ listFolder, readText, appData, pluginId }) {
+async function readUxpLogFacts({ listFolder, readText, appData, pluginId, sessionMarker }) {
   try {
-    const newest = await findNewestUxpLog({ listFolder, appData });
+    const session = sessionMarker ? await readSessionLog({ listFolder, readText, appData, sessionMarker }) : null;
+    const newest = sessionMarker ? session && session.file : await findNewestUxpLog({ listFolder, appData });
     if (!newest) return null;
     const facts = { file: newest.path, name: newest.name, failure: null, runtimeFolder: null, browserVersion: null, failedPlugins: [] };
     const needle = WEBVIEW_CREATION_FAILURE + String(pluginId);
-    const lines = String(await readText(newest.path)).split(/\r?\n/);
+    const lines = session ? session.allLines : String(await readText(newest.path)).split(/\r?\n/);
     for (const raw of lines) {
       // The Home screen's console output goes to the same log, with anything
       const line = raw.trim();
@@ -122,25 +146,28 @@ function logLineTime(line) {
   return new Date(+match[1], match[2] - 1, +match[3], +match[4], +match[5], +match[6]).getTime();
 }
 
-// The newest line of the running session's UXP log, written at or after
+// The newest line after our attempt marker in THIS session's UXP log, written at or after
 // `since` (ms, a second's tolerance: the log has whole seconds), by which
 // UXP refused a WebView TypeR asked for: its storage refusal, or the failure
 // line naming TypeR. Null when there is none or the log cannot be read.
-async function findWebViewRefusalSince({ listFolder, readText, appData, pluginId, since }) {
+async function findWebViewRefusalSince({ listFolder, readText, appData, pluginId, since, sessionMarker }) {
   try {
-    const newest = await findNewestUxpLog({ listFolder, appData });
-    if (!newest) return null;
+    const session = await readSessionLog({ listFolder, readText, appData, sessionMarker });
+    if (!session) return null;
     const failure = WEBVIEW_CREATION_FAILURE + String(pluginId);
-    const lines = String(await readText(newest.path)).split(/\r?\n/);
     let found = null;
-    for (const raw of lines) {
+    for (const raw of session.lines) {
       const line = raw.trim();
       if (line.indexOf("[console]") !== -1) continue;
       const storage = line.indexOf(WEBVIEW_STORAGE_REFUSAL) !== -1;
       if (!storage && line.indexOf(failure) === -1) continue;
       const time = logLineTime(line);
       if (time === null || time < since - 1000) continue;
-      found = { file: newest.path, line, kind: storage ? "storage" : "creation" };
+      // UXP can follow the storage cause with a generic plugin failure. Keep
+      // the specific cause; the generic line must not disable storage repair.
+      if (storage || !found || found.kind !== "storage") {
+        found = { file: session.file.path, line, kind: storage ? "storage" : "creation" };
+      }
     }
     return found;
   } catch (error) {
@@ -199,7 +226,7 @@ function panelStartFailureText({ versions, webViewFolders, loadEvents, viewSize,
 }
 
 module.exports = {
-  PANEL_RETRY_MS, PANEL_START_LIMIT_MS, WINDOWS_WEBVIEW_FOLDERS, WEBVIEW2_DOWNLOAD_URL, WEBVIEW_CREATION_FAILURE,
+  PANEL_START_LIMIT_MS, WINDOWS_WEBVIEW_FOLDERS, WEBVIEW2_DOWNLOAD_URL, WEBVIEW_CREATION_FAILURE,
   WEBVIEW_STORAGE_REFUSAL, logLineTime, findWebViewRefusalSince,
   windowsWebViewFolders, readWebViewFolders, findNewestUxpLog, readUxpLogFacts, findWebViewCreationFailure,
   webViewFailureText, uxpLogLines, panelStartFailureText,

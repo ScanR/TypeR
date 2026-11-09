@@ -27,16 +27,15 @@ function monitor(platform = 'win32') {
 const absent = monitor();
 absent.startup.begin();
 assert(absent.active);
-absent.tick(5000);
-assert.strictEqual(absent.retries, 1, 'a silent WebView gets one address retry');
-assert.strictEqual(absent.timers.size, 1, 'retry keeps the original failure deadline');
+assert.strictEqual(absent.retries, 0, 'a cold WebView is never navigated again');
+assert.deepStrictEqual([...absent.timers.values()].map(timer => timer.ms), [30000], 'cold renderer gets 30 s');
 absent.tick();
 assert(absent.shown.failed);
 assert.match(absent.shown.text, /No response from the WebView/);
 assert.match(absent.shown.text, /WebView2/);
 assert.match(absent.shown.text, /Photoshop 27.0/);
 assert(!absent.active);
-assert.match(absent.shown.text, /15 s/);
+assert.match(absent.shown.text, /30 s/);
 assert.match(absent.shown.text, /TypeR \(CEP\)/);
 
 const hidden = monitor();
@@ -47,7 +46,7 @@ hidden.startup.setVisible(true);
 assert(hidden.active);
 hidden.startup.loadStarted();
 assert.strictEqual(hidden.timers.size, 1, 'a loading WebView must not be navigated again');
-hidden.tick(15000);
+hidden.tick(30000);
 assert.strictEqual(hidden.retries, 0);
 hidden.startup.bridgeReady();
 assert.strictEqual(hidden.startup.getState(), 'loading', 'a late bridge restores the page so it can finish initializing');
@@ -122,7 +121,7 @@ assert.match(loaded.shown.text, /start=false, stop=false, bridge=false/, 'retry 
 
 // Exercise the actual host entry against a native UXP DOM substitute, including
 // destroying/recreating the panel and a WebView that never emits loaderror.
-function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
+function hostHarness({ readWebViewFolders, uxpLog = '', readLog, platform = 'win32', appDataError = false } = {}) {
   const nodes = {};
   const timers = new Map();
   // main.js's own timers (the readings of Photoshop's log), apart from the startup deadlines
@@ -133,6 +132,7 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   const inPanelStarts = [];
   const repairKinds = [];
   const errors = [];
+  let marker = "";
   const delivered = [];
   let lifecycle;
   let flushes = 0;
@@ -164,19 +164,19 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   const stubs = {
     photoshop: {},
     uxp: { host: { version: '27.0', uiLocale: 'fr_FR' }, versions: { uxp: '8.0' }, entrypoints: { setup: value => { lifecycle = value; } }, shell: { openExternal: async url => { opened.push(url); } } },
-    os: { platform: () => 'win32', release: () => '10.0', homedir: () => 'C:\\Users\\ana' },
+    os: { platform: () => platform, release: () => '10.0', homedir: () => 'C:\\Users\\ana' },
     './panelStart': Object.assign({}, require('../uxp-src/host/panelStart'), readWebViewFolders ? { readWebViewFolders } : {}),
     './webViewRepair': { createWebViewRepair: () => ({ start: async kind => { repairKinds.push(kind); return true; } }) },
     fs: { readdir: async () => [] },
     './photoshop': { methods: {} }, './smartPaste': { methods: {} },
     './files': {
       toUrl: path => path, createMirrorWriter: () => ({ flush: async () => { flushes++; } }),
-      getRoamingAppData: async () => appData,
+      getRoamingAppData: async () => { if (appDataError) throw new Error('unavailable'); return appData; },
       listFolder: async folder => { if (!logFolders[folder]) throw new Error('no such folder ' + folder); return logFolders[folder]; },
-      readText: async () => uxpLog,
+      readText: async () => readLog ? readLog(marker) : '[console] ' + marker + '\n' + uxpLog,
     },
-    './keyboard': { onChange() {} }, './keysHelper': {},
-    './services': { requests: { count: () => ++calls, delayed: () => new Promise(resolve => { finishOldRequest = resolve; }) } }, './jsx': {},
+    './keyboard': { onChange() {} }, './keysHelper': { start: async () => {} },
+    './services': { removeStalePluginFolders: async () => {}, removeUpdateFolder: async () => {}, renameLegacyPanel: async () => {}, requests: { count: () => ++calls, delayed: () => new Promise(resolve => { finishOldRequest = resolve; }) } }, './jsx': {},
     './evalScript': { createCallQueue: () => () => {} },
     './startupFiles': require('../uxp-src/host/startupFiles'),
     './inPanel': { startInPanel: options => { inPanelStarts.push(options); return { deliver: message => delivered.push(message) }; } },
@@ -187,7 +187,7 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../uxp-src/host/main.js'), 'utf8'), {
     require: name => { assert(Object.hasOwn(stubs, name), name); return stubs[name]; },
-    module: { exports: {} }, console: { ...console, error: (...args) => errors.push(args.map(String).join(' ')) }, window: nativeWindow,
+    module: { exports: {} }, console: { ...console, log: value => { if (String(value).startsWith('TypeR WebView attempt ')) marker = value; }, error: (...args) => errors.push(args.map(String).join(' ')) }, window: nativeWindow,
     setTimeout: (fn) => { const id = nextTimer++; hostTimers.set(id, () => { hostTimers.delete(id); return fn(); }); return id; },
     clearTimeout: id => hostTimers.delete(id),
     document: { getElementById: id => nodes[id] || null, createElement: () => element(''), body: { appendChild: node => { nodes[node.id] = node; } } }
@@ -213,9 +213,9 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   assert.strictEqual(noRuntime.inPanelStarts.length, 0, 'a refusal written before the WebView was asked for does not count');
   for (const tick of [...noRuntime.timers.values()]) tick();
   await settle();
-  assert.strictEqual(noRuntime.inPanelStarts.length, 1, 'no WebView after 15 s: the application runs in the panel');
+  assert.strictEqual(noRuntime.inPanelStarts.length, 1, 'no WebView after 30 s: the application runs in the panel');
   assert.deepStrictEqual(noRuntime.repairKinds, [], 'runtime failure or stale refusal must not patch Photoshop');
-  assert.match(noRuntime.inPanelReason(), /Failed to create WebView for plugin: com\.scanr\.typer/);
+  assert.match(noRuntime.inPanelReason(), /No response from the WebView/);
   assert.strictEqual(noRuntime.nodes['typer-view'], undefined, 'the refused WebView is removed');
   assert.notStrictEqual(noRuntime.nodes['typer-recovery'].style.display, 'block', 'no failure notice: TypeR works');
   await noRuntime.panel.destroy();
@@ -231,7 +231,7 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   for (const tick of [...refused.hostTimers.values()]) await tick();
   await settle();
   assert.strictEqual(refused.inPanelStarts.length, 1, 'the refusal switches to the panel once');
-  assert.deepStrictEqual(refused.repairKinds, ['storage'], 'a current native storage refusal starts the common repair');
+  assert.deepStrictEqual(refused.repairKinds, [], 'repair waits until the fallback app is usable');
   assert.match(refused.inPanelReason(), /webViewDataStorage_ is not available/);
   assert.strictEqual(refused.timers.size, 1, 'only the in-panel start deadline is left');
   // The application's messages reach the host's requests, the replies go back
@@ -242,6 +242,7 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   assert.strictEqual(refused.calls, 1, 'a request runs once');
   assert.strictEqual(JSON.stringify(refused.delivered.filter(message => message.type === 'reply')), JSON.stringify([{ type: 'reply', id: 1, result: 1 }]));
   refused.receive({ type: 'appReady' });
+  assert.deepStrictEqual(refused.repairKinds, ['storage'], 'a confirmed refusal and a usable fallback start repair');
   assert.strictEqual(refused.nodes['typer-status'].style.display, 'none');
   assert.strictEqual(refused.timers.size, 0);
   refused.panel.hide();
@@ -264,39 +265,85 @@ function hostHarness({ readWebViewFolders, uxpLog = '' } = {}) {
   assert.strictEqual(refused.calls, 2, 'the new one is, with its own request ids');
   await refused.panel.destroy();
 
-  // A WebView that loaded something keeps the notice: the panel would not help
-  const loaded = hostHarness({ uxpLog: '[2026-11-03_06-12-12][32848][Info] [general] WebView2BrowserVersion:  156.0.4314.58\n' });
-  loaded.panel.show();
-  loaded.nodes['typer-view'].emit('loadstart', { url: 'plugin:/web/index.html' });
-  for (const tick of [...loaded.timers.values()]) tick();
-  await settle();
-  assert.strictEqual(loaded.inPanelStarts.length, 0);
-  assert.strictEqual(loaded.nodes['typer-recovery'].style.display, 'block');
-  assert.match(loaded.nodes['typer-status'].textContent, /Loads: start plugin:\/web\/index\.html/);
-  assert.match(loaded.nodes['typer-status'].textContent, /WebView2 started in this Photoshop session: 156\.0\.4314\.58/, 'a runtime that started is reported even without a failure line');
-  assert.strictEqual(loaded.nodes['typer-webview-help'].textContent, undefined, 'the help button keeps its label');
-  await loaded.nodes['typer-webview-help'].onclick();
-  assert.match(loaded.opened[0], /helpx\.adobe\.com/);
-  await loaded.panel.destroy();
+  // Loading an HTML document is not proof the bridge will ever answer.
+  for (const platform of ['win32', 'darwin']) {
+    for (const event of ['loadstart', 'loadstop', 'loaderror']) {
+      const loaded = hostHarness({ platform });
+      loaded.panel.show();
+      loaded.nodes['typer-view'].emit(event, { url: 'plugin:/web/index.html', message: 'renderer failed' });
+      if (event !== 'loaderror') for (const tick of [...loaded.timers.values()]) tick();
+      await settle();
+      assert.strictEqual(loaded.inPanelStarts.length, 1, platform + ' ' + event + ': fallback must recover an unusable renderer');
+      assert.deepStrictEqual(loaded.repairKinds, [], 'rendering failures do not prove DLL storage failure');
+      await loaded.panel.destroy();
+    }
+  }
 
-  let finishReport;
-  const silent = hostHarness({ readWebViewFolders: () => new Promise(resolve => { finishReport = resolve; }) });
-  silent.panel.show();
-  silent.panel.hide();
-  assert.strictEqual(silent.timers.size, 0, 'hiding a panel suspends native startup timers');
-  silent.panel.show();
-  assert.strictEqual(silent.timers.size, 2);
-  for (const tick of [...silent.timers.values()]) tick();
-  // The user reloads while the report still reads the WebView folders, and
-  // the new WebView answers: the late report must not switch to the panel
-  await silent.nodes['typer-retry'].onclick();
-  assert.strictEqual(silent.flushes, 1, 'the reload saves pending writes');
-  silent.nodes['typer-view'].emit('message', { data: JSON.stringify({ type: 'appReady' }) });
-  finishReport(['stale runtime report']);
+  // Hidden/zero-sized views cannot load; they must not be mistaken for a failure.
+  const hiddenFailure = hostHarness();
+  hiddenFailure.panel.show();
+  hiddenFailure.panel.hide();
+  hiddenFailure.nodes['typer-view'].emit('loaderror', { message: 'hidden failure' });
+  assert.strictEqual(hiddenFailure.inPanelStarts.length, 0);
+  hiddenFailure.panel.show();
+  assert.strictEqual(hiddenFailure.inPanelStarts.length, 1);
+  await hiddenFailure.panel.destroy();
+  const zero = hostHarness();
+  zero.panel.show();
+  zero.nodes['typer-view'].getBoundingClientRect = () => ({ width: 0, height: 0 });
+  for (const tick of [...zero.timers.values()]) tick();
+  assert.strictEqual(zero.inPanelStarts.length, 0, 'a collapsed view is not a failed renderer');
+  zero.nodes['typer-view'].getBoundingClientRect = () => ({ width: 600, height: 400 });
+  for (const tick of [...zero.timers.values()]) tick();
+  assert.strictEqual(zero.inPanelStarts.length, 1);
+  await zero.panel.destroy();
+
+  const nativeRefusal = stamp(new Date()) + '[264][Warn] [general] WebViewManager::createWebView() failed to create WebView because webViewDataStorage_ is not available';
+  const delayedOpen = hostHarness({ uxpLog: nativeRefusal });
+  delayedOpen.panel.create();
+  assert.strictEqual(delayedOpen.hostTimers.size, 0, 'a panel created hidden has no refusal grace period yet');
+  delayedOpen.panel.show();
+  const firstWatch = [...delayedOpen.hostTimers.values()];
+  await firstWatch[0]();
+  delayedOpen.panel.hide();
+  delayedOpen.panel.show();
+  for (const tick of firstWatch.slice(1)) await tick();
+  assert.strictEqual(delayedOpen.inPanelStarts.length, 0, 'old checks cannot count hidden time toward the new grace period');
+  const visibleWatch = [...delayedOpen.hostTimers.values()];
+  await visibleWatch[0]();
+  assert.strictEqual(delayedOpen.inPanelStarts.length, 0, 'a reopened panel needs two fresh observations');
+  for (const tick of visibleWatch.slice(1)) await tick();
+  assert.strictEqual(delayedOpen.inPanelStarts.length, 1);
+  await delayedOpen.panel.destroy();
+
+  const transient = hostHarness({ uxpLog: nativeRefusal });
+  transient.panel.show();
+  const checks = [...transient.hostTimers.values()];
+  await checks[0]();
+  assert.strictEqual(transient.inPanelStarts.length, 0, 'an early identity delay is not a permanent refusal');
+  transient.nodes['typer-view'].emit('message', { data: { type: 'appReady' } });
+  for (const tick of checks.slice(1)) await tick();
+  assert.strictEqual(transient.inPanelStarts.length, 0);
+  assert.deepStrictEqual(transient.repairKinds, []);
+  await transient.panel.destroy();
+
+  let finishRead;
+  const racing = hostHarness({ readLog: marker => new Promise(resolve => { finishRead = () => resolve('[console] ' + marker + '\n' + nativeRefusal); }) });
+  racing.panel.show();
+  const pendingCheck = [...racing.hostTimers.values()][0]();
   await settle();
-  assert.strictEqual(silent.inPanelStarts.length, 0, 'a delayed report must not replace a recovered WebView');
-  assert.strictEqual(silent.nodes['typer-status'].style.display, 'none');
-  await silent.panel.destroy();
+  racing.nodes['typer-view'].emit('message', { data: { type: 'appReady' } });
+  finishRead();
+  await pendingCheck;
+  assert.strictEqual(racing.inPanelStarts.length, 0, 'a late log read cannot replace a recovered WebView');
+  await racing.panel.destroy();
+
+  const inaccessible = hostHarness({ appDataError: true });
+  inaccessible.panel.show();
+  for (const tick of [...inaccessible.hostTimers.values()]) await tick();
+  for (const tick of [...inaccessible.timers.values()]) tick();
+  assert.strictEqual(inaccessible.inPanelStarts.length, 1, 'log access failure cannot block renderer recovery');
+  await inaccessible.panel.destroy();
 
   const globalOnly = hostHarness();
   globalOnly.panel.show();

@@ -54,15 +54,29 @@ function fixture(platform = 'win32', failPath = 0) {
   // older clients select on Windows and the hybrid/addon package.
   const configs = require('../webpack.uxp.config');
   const source = fs.readFileSync(path.join(__dirname, '../installer/repair_uxp_webview_win.ps1'), 'utf8');
+  const profiles = JSON.parse(source.match(/\$RepairProfiles = @'\r?\n([\s\S]*?)\r?\n'@ \| ConvertFrom-Json/)[1]);
+  const hashes = profiles.flatMap(profile => [profile.originalHash, profile.patchedHash]);
+  assert.strictEqual(new Set(hashes).size, hashes.length, 'ambiguous profile hashes must never select an arbitrary repair');
+  for (const profile of profiles) {
+    assert.match(profile.originalHash, /^[a-f0-9]{64}$/);
+    assert.match(profile.patchedHash, /^[a-f0-9]{64}$/);
+    assert.strictEqual(profile.before.length, profile.after.length, 'a repair must not move the PE sections');
+    assert(profile.offset >= profile.functionOffset && profile.offset + profile.after.length / 2 <= profile.functionOffset + profile.functionSize);
+  }
   for (const env of [{}, { mac: true }, { addon: true }]) {
     const host = configs(env, { mode: 'production' })[0];
     const definitions = host.plugins.find(p => p.definitions && p.definitions.TYPER_WEBVIEW_REPAIR_SCRIPT).definitions;
     assert.strictEqual(JSON.parse(definitions.TYPER_WEBVIEW_REPAIR_SCRIPT), source);
   }
-  if (process.platform === 'win32') {
-    const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'testUxpWebViewRepair.ps1')], { encoding: 'utf8' });
-    assert.strictEqual(result.status, 0, result.stdout + result.stderr);
-    process.stdout.write(result.stdout);
+  const powershell = process.env.TYPER_POWERSHELL || (process.platform === 'win32' ? 'powershell.exe' : null);
+  if (powershell) {
+    for (const profile of profiles) {
+      const result = spawnSync(powershell, ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'testUxpWebViewRepair.ps1'), '-ProfileId', profile.id], { encoding: 'utf8' });
+      assert.strictEqual(result.status, 0, String(result.error || '') + result.stdout + result.stderr);
+      process.stdout.write(profile.id + ': ' + result.stdout);
+    }
+  } else {
+    console.log('PowerShell repair tests skipped on this OS; set TYPER_POWERSHELL to run them.');
   }
   console.log('WebView repair: all package variants, refusal gating, launch quoting, concurrency and bounded retries passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,20 +1,17 @@
 // Runs in native UXP, outside the WebView: diagnostics still work when the
 // renderer is missing, blocked, or never executes the panel's JavaScript.
-const { PANEL_RETRY_MS, PANEL_START_LIMIT_MS } = require('./panelStart');
+const { PANEL_START_LIMIT_MS } = require('./panelStart');
 const APP_START_LIMIT_MS = 15000;
 
-function createPanelStartup({ show, environment, retry = () => {}, onFailure = () => {}, initiallyVisible = true, setTimer = setTimeout, clearTimer = clearTimeout }) {
+function createPanelStartup({ show, environment, onFailure = () => {}, canRender = () => true, initiallyVisible = true, setTimer = setTimeout, clearTimer = clearTimeout }) {
   let timer = null;
-  let retryTimer = null;
   let visible = initiallyVisible;
-  let retried = false;
   let state = 'idle';
   let bridge = false;
   let loadStarted = false;
   let loadStopped = false;
-  const stopRetry = () => { if (retryTimer !== null) clearTimer(retryTimer); retryTimer = null; };
-  const stop = () => { if (timer !== null) clearTimer(timer); timer = null; stopRetry(); };
-  const fail = (detail) => {
+  const stop = () => { if (timer !== null) clearTimer(timer); timer = null; };
+  const fail = (detail, reason = 'application') => {
     stop();
     state = 'failed';
     const env = environment();
@@ -40,21 +37,17 @@ function createPanelStartup({ show, environment, retry = () => {}, onFailure = (
         : '\nCheck Photoshop’s UXP WebView / Microsoft Edge WebView2 component. If missing or damaged, repair the Adobe installation, then restart Photoshop.';
     }
     show(head + hints, true);
-    onFailure(head + hints, { bridge, head, french });
+    onFailure(head + hints, { bridge, head, french, reason });
   };
   const watch = () => {
     stop();
     if (!visible || state !== 'loading') return;
-    if (!bridge && !loadStarted && !loadStopped && !retried) {
-      retryTimer = setTimer(() => {
-        retryTimer = null;
-        if (!visible || state !== 'loading' || bridge || loadStarted || loadStopped) return;
-        retried = true;
-        try { retry(); } catch (error) { fail(String(error && error.message || error)); }
-      }, PANEL_RETRY_MS);
-    }
+    // A cold WebView can take more than 15 s. Keep the same view alive:
+    // assigning src again can restart the very load we are waiting for.
+    // Load events alone cannot prove the bridge will ever become usable.
     timer = setTimer(() => {
-      fail(bridge ? 'The panel did not finish initializing (15 s).' : 'No response from the WebView (15 s).');
+      if (!bridge && !canRender()) { watch(); return; }
+      fail(bridge ? 'The panel did not finish initializing (15 s).' : 'No response from the WebView (30 s).', bridge ? 'application' : 'renderer-timeout');
     }, bridge ? APP_START_LIMIT_MS : PANEL_START_LIMIT_MS);
   };
   return {
@@ -63,7 +56,6 @@ function createPanelStartup({ show, environment, retry = () => {}, onFailure = (
       bridge = false;
       loadStarted = false;
       loadStopped = false;
-      retried = false;
       state = 'loading';
       show(/^fr/i.test(environment().locale || '') ? 'Chargement de TypeR…' : 'Loading TypeR…', false);
       watch();
@@ -76,8 +68,8 @@ function createPanelStartup({ show, environment, retry = () => {}, onFailure = (
       if (state === 'failed') { state = 'loading'; show('Loading TypeR…', false); }
       watch();
     },
-    loadStarted() { loadStarted = true; stopRetry(); },
-    loadStopped() { loadStopped = true; stopRetry(); },
+    loadStarted() { loadStarted = true; },
+    loadStopped() { loadStopped = true; },
     appReady() { stop(); bridge = true; state = 'ready'; show('', false); },
     setVisible(value) {
       if (visible === value) return;
@@ -88,7 +80,7 @@ function createPanelStartup({ show, environment, retry = () => {}, onFailure = (
     loadError(event) {
       fail('WebView: ' + (event.message || 'load error') +
         (event.code !== undefined ? ' (code ' + event.code + ')' : '') +
-        (event.url ? '\n' + event.url : ''));
+        (event.url ? '\n' + event.url : ''), bridge ? 'application' : 'renderer-error');
     },
     dispose() { stop(); state = 'idle'; },
     getState() { return state; }

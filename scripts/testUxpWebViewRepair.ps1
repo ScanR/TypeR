@@ -1,31 +1,53 @@
 # Exercise the real patch/restore script on disposable copies, never Photoshop.
-param([string]$OriginalDll)
+param([string]$OriginalDll, [string]$ProfileId = 'photoshop-27.9-win-x64', [switch]$Adaptive, [int]$AdaptiveOffset = -1)
 $ErrorActionPreference = 'Stop'
-$testOriginalHash = 'cded92ca1e7563126e1433ecbca50cb9a8e141f48a15d1a4c6739c44f8d9f714'
-$testPatchedHash = 'c2974a41e0a479fb588308f500e6548870fa758115b3f5c16beb523ebec78440'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('typer-native-storage-test-' + [Guid]::NewGuid().ToString('N'))
 $testScript = Join-Path $PSScriptRoot '../installer/repair_uxp_webview_win.ps1'
+$testSource = [IO.File]::ReadAllText($testScript)
+# Single-quoted regex: PowerShell must not expand the catalog variable.
+$testCatalogPattern = '(?s)\$RepairProfiles = @\x27\r?\n(.*?)\r?\n\x27@ \| ConvertFrom-Json'
+$testMatch = [regex]::Match($testSource, $testCatalogPattern)
+if (-not $testMatch.Success) { throw 'Repair profile catalog missing' }
+$testProfiles = @($testMatch.Groups[1].Value | ConvertFrom-Json)
+$testProfile = $testProfiles | Where-Object { $_.id -eq $ProfileId } | Select-Object -First 1
+if (-not $testProfile) { throw 'Unknown test profile' }
+$testOriginalHash = $testProfile.originalHash
+$testPatchedHash = $testProfile.patchedHash
 New-Item -ItemType Directory -Path $testRoot | Out-Null
-if (-not $OriginalDll) {
-    # No Adobe binary in CI: exercise the unchanged installer logic against a
-    # synthetic DLL, with hashes/offset changed ONLY in a disposable script copy.
-    $testSource = [IO.File]::ReadAllText($testScript)
-    $testBeforeHex = [regex]::Match($testSource, "\`$BeforeHex = '([a-f0-9]+)'").Groups[1].Value
-    $testAfterHex = [regex]::Match($testSource, "\`$AfterHex = '([a-f0-9]+)'").Groups[1].Value
-    $testBytes = New-Object byte[] 4096
-    for ($i = 0; $i -lt $testBeforeHex.Length; $i += 2) { $testBytes[256 + $i / 2] = [Convert]::ToByte($testBeforeHex.Substring($i, 2), 16) }
+if ($Adaptive) {
+    if (-not $OriginalDll) { throw 'Adaptive tests require a PE fixture or an original DLL.' }
+    # Change an unused DOS header byte in a disposable copy, forcing recognition
+    # without a catalog hash. Never change the supplied original.
+    $testBytes = [IO.File]::ReadAllBytes([IO.Path]::GetFullPath($OriginalDll))
+    $testBytes[32] = $testBytes[32] -bxor 1
     $OriginalDll = Join-Path $testRoot 'fixture-original.dll'
     [IO.File]::WriteAllBytes($OriginalDll, $testBytes)
-    $testFixtureOriginal = (Get-FileHash -LiteralPath $OriginalDll).Hash.ToLowerInvariant()
-    for ($i = 0; $i -lt $testAfterHex.Length; $i += 2) { $testBytes[256 + $i / 2] = [Convert]::ToByte($testAfterHex.Substring($i, 2), 16) }
+    $testOriginalHash = (Get-FileHash -LiteralPath $OriginalDll).Hash.ToLowerInvariant()
+    $testOffset = if ($AdaptiveOffset -ge 0) { $AdaptiveOffset } else { $testProfile.offset }
+    for ($i = 0; $i -lt $testProfile.after.Length; $i += 2) { $testBytes[$testOffset + $i / 2] = [Convert]::ToByte($testProfile.after.Substring($i, 2), 16) }
     $testHashAlgorithm = [Security.Cryptography.SHA256]::Create()
-    try { $testFixturePatched = [BitConverter]::ToString($testHashAlgorithm.ComputeHash($testBytes)).Replace('-', '').ToLowerInvariant() }
+    try { $testPatchedHash = [BitConverter]::ToString($testHashAlgorithm.ComputeHash($testBytes)).Replace('-', '').ToLowerInvariant() }
     finally { $testHashAlgorithm.Dispose() }
-    $testSource = $testSource.Replace($testOriginalHash, $testFixtureOriginal).Replace($testPatchedHash, $testFixturePatched).Replace('$PatchOffset = 37673245', '$PatchOffset = 256')
+    $ProfileId = 'adaptive-storage-layout-v1'
+}
+if (-not $OriginalDll) {
+    # Exercise the unchanged installer logic on synthetic bytes, for each profile.
+    $testBytes = New-Object byte[] 4096
+    for ($i = 0; $i -lt $testProfile.before.Length; $i += 2) { $testBytes[256 + $i / 2] = [Convert]::ToByte($testProfile.before.Substring($i, 2), 16) }
+    $OriginalDll = Join-Path $testRoot 'fixture-original.dll'
+    [IO.File]::WriteAllBytes($OriginalDll, $testBytes)
+    $testProfile.originalHash = (Get-FileHash -LiteralPath $OriginalDll).Hash.ToLowerInvariant()
+    for ($i = 0; $i -lt $testProfile.after.Length; $i += 2) { $testBytes[256 + $i / 2] = [Convert]::ToByte($testProfile.after.Substring($i, 2), 16) }
+    $testHashAlgorithm = [Security.Cryptography.SHA256]::Create()
+    try { $testProfile.patchedHash = [BitConverter]::ToString($testHashAlgorithm.ComputeHash($testBytes)).Replace('-', '').ToLowerInvariant() }
+    finally { $testHashAlgorithm.Dispose() }
+    $testProfile.offset = 256
+    $testProfile.size = 4096
+    $testSource = $testSource.Replace($testMatch.Groups[1].Value, (ConvertTo-Json -InputObject $testProfiles -Depth 5))
     $testScript = Join-Path $testRoot 'repair.ps1'
     [IO.File]::WriteAllText($testScript, $testSource)
-    $testOriginalHash = $testFixtureOriginal
-    $testPatchedHash = $testFixturePatched
+    $testOriginalHash = $testProfile.originalHash
+    $testPatchedHash = $testProfile.patchedHash
 }
 if ((Get-FileHash -LiteralPath $OriginalDll).Hash.ToLowerInvariant() -ne $testOriginalHash) { throw 'Supply the supported ORIGINAL DLL (or its verified backup).' }
 $testExe = Join-Path $testRoot 'Photoshop.exe'
@@ -49,6 +71,7 @@ function Expect-Failure([scriptblock]$Operation, [string]$Pattern) {
 try {
     $testInspection = & $testScript -PhotoshopPath $testExe
     Assert-Test ($testInspection.state -eq 'original-supported') 'Inspect did not recognize original'
+    Assert-Test ($testInspection.profile -eq $ProfileId) 'Inspect selected the wrong profile'
     Assert-Test (-not (Test-Path -LiteralPath $testBackup)) 'Inspect wrote a backup'
     $global:TypeRNativeStorageTestRunning = $true
     Expect-Failure { & $testScript -Action Apply -PhotoshopPath $testExe } 'Close Photoshop'
@@ -65,11 +88,11 @@ try {
     Assert-Test ((Get-Content -LiteralPath $testReport -Raw | ConvertFrom-Json).status -eq 'applied') 'Auto did not recognize the installed repair'
 
     [IO.File]::Move($testBackup, $testBackup + '.held')
-    Expect-Failure { & $testScript -Action Restore -PhotoshopPath $testExe } 'backup'
-    Expect-Failure { & $testScript -Action Apply -PhotoshopPath $testExe } 'backup'
+    Expect-Failure { & $testScript -Action Restore -PhotoshopPath $testExe } 'backup|Unsupported DLL hash'
+    Expect-Failure { & $testScript -Action Apply -PhotoshopPath $testExe } 'backup|Unsupported DLL hash'
     Assert-Test ((Test-DllHash) -eq $testPatchedHash) 'Missing-backup failure changed DLL'
     [IO.File]::WriteAllText($testBackup, 'corrupted backup')
-    Expect-Failure { & $testScript -Action Restore -PhotoshopPath $testExe } 'backup'
+    Expect-Failure { & $testScript -Action Restore -PhotoshopPath $testExe } 'backup|Unsupported DLL hash'
     [IO.File]::Delete($testBackup)
     [IO.File]::Move($testBackup + '.held', $testBackup)
 
@@ -105,7 +128,7 @@ try {
 } finally {
     # All contents were created by this test; validate the absolute directory before deletion.
     $testResolved = [IO.Path]::GetFullPath($testRoot)
-    $testTempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    $testTempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
     if ($testResolved.StartsWith($testTempRoot, [StringComparison]::OrdinalIgnoreCase) -and (Split-Path -Leaf $testResolved) -match '^typer-native-storage-test-[a-f0-9]{32}$') {
         Remove-Item -LiteralPath $testResolved -Recurse -Force
     }

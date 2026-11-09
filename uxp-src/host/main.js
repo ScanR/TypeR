@@ -72,6 +72,10 @@ let inPanel = null;
 let inPanelReason = '';
 // Photoshop destroyed the panel the application ran in: the next one gets it
 let restartInPanel = false;
+let webViewAttempt = null;
+let pendingRendererFailure = null;
+let storageRefusal = null;
+let refusalWatchGeneration = 0;
 
 function clearProbes() {
   if (stopProbes) stopProbes();
@@ -108,26 +112,19 @@ async function reportPanelStartFailure(baseText, { head = baseText, french = fal
   const generation = viewGeneration;
   const size = startupViewSize;
   const events = loadEvents.slice();
+  const sessionMarker = webViewAttempt && webViewAttempt.sessionMarker;
   const windows = os.platform() === 'win32';
   const webViewFolders = windows
     ? await panelStart.readWebViewFolders(folder => require('fs').readdir(files.toUrl(folder)), panelStart.windowsWebViewFolders(os.homedir())) : [];
   // What Photoshop's own log says about its WebViews in this session
   const logFacts = windows
     ? await panelStart.readUxpLogFacts({
-      listFolder: files.listFolder, readText: files.readText, appData: await files.getRoamingAppData(), pluginId: PLUGIN_ID,
+      listFolder: files.listFolder, readText: files.readText, appData: await files.getRoamingAppData(), pluginId: PLUGIN_ID, sessionMarker,
     }) : null;
   const webViewFailure = logFacts && logFacts.failure ? Object.assign({ line: logFacts.failure }, logFacts) : null;
   // A report from a closed/reloaded panel must never cover its replacement.
   if (generation !== viewGeneration || webviewReady || !panelVisible || panelStartup.getState() !== 'failed') return;
   if (logFacts) debugNote('startup.uxp-log', panelStart.uxpLogLines(logFacts).join(' | '));
-  // No sign of life from the WebView at all, whatever the cause (refused by
-  // UXP, no runtime it can start, never started): the application runs in
-  // the panel itself (docs/uxp-webview-refused.md). A WebView that loaded
-  // something and failed keeps the notice.
-  if (!events.some((event) => !OWN_LOAD_EVENT.test(event))) {
-    enterInPanel(webViewFailure ? webViewFailure.line.replace(/^(\[[^\]]*\])+\s*/, '') : 'no sign of life from the WebView in 15 s');
-    return;
-  }
   if (webViewFailure) {
     debugNote('startup.webview-failure', webViewFailure.line);
     if (crashTrace) crashTrace.note('webview', 'creation failed: ' + webViewFailure.line);
@@ -169,14 +166,17 @@ function showStatus(text) {
 const panelStartup = createPanelStartup({
   initiallyVisible: false,
   environment: () => ({ photoshop: String(uxp.host.version || 'unknown'), uxp: String(uxp.versions && uxp.versions.uxp || 'unknown'), platform: os.platform(), locale: uxp.host.uiLocale }),
-  retry() {
-    // In the panel itself there is no WebView to ask again
-    if (inPanel || !view) return;
-    noteLoadEvent('retry');
-    loadingPanel = true;
-    view.src = PANEL_URL;
+  canRender() {
+    if (!view) return true;
+    const box = view.getBoundingClientRect();
+    return box.width > 0 && box.height > 0;
   },
-  onFailure(text, { bridge, head, french }) {
+  onFailure(text, { bridge, head, french, reason }) {
+    if (!bridge && !inPanel && /^renderer-/.test(reason)) {
+      pendingRendererFailure = { generation: viewGeneration, reason: head };
+      recoverRenderer();
+      return;
+    }
     if (!bridge) reportPanelStartFailure(text, { head, french }).catch(error => console.error('TypeR: startup report', error));
     // The panel answers but does not finish starting: the log says where init is
     else console.error('TypeR: the panel did not finish starting (' + startupFiles.summary() + ')');
@@ -196,6 +196,16 @@ const panelStartup = createPanelStartup({
     if (view) view.style.display = 'block';
   }
 });
+
+// Rendering errors and an exhausted bridge deadline can use the native UI.
+// Application/init errors keep their diagnostic: changing renderers does not
+// repair storage or host operations, and must not execute them a second time.
+function recoverRenderer() {
+  const failure = pendingRendererFailure;
+  if (!failure || !panelVisible || inPanel || webviewReady || failure.generation !== viewGeneration) return;
+  pendingRendererFailure = null;
+  enterInPanel(failure.reason);
+}
 
 /* ======================= panel messages ======================= */
 
@@ -572,8 +582,6 @@ let loadingPanel = false;
 let panelAddress = PANEL_URL;
 // The automatic reload after an init without answer, once per start
 let autoReloaded = false;
-// The load events TypeR notes itself are no sign of life from the WebView
-const OWN_LOAD_EVENT = /^retry$/;
 
 // A new WebView in place of the current one (the Reload TypeR button)
 async function reloadView(generation) {
@@ -594,10 +602,15 @@ function showPanelPage() {
   loadingPanel = true;
   webviewReady = false;
   recentRequestIds.clear();
+  pendingRendererFailure = null;
+  storageRefusal = null;
+  webViewAttempt = { since: Date.now(), sessionMarker: 'TypeR WebView attempt ' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2) + '-' + viewGeneration };
+  // Adobe writes console output to this Photoshop session's UXP log.
+  console.log(webViewAttempt.sessionMarker);
   panelStartup.begin();
-  watchWebViewRefusal(viewGeneration, Date.now());
+  watchWebViewRefusal(viewGeneration, webViewAttempt);
   try { view.src = PANEL_URL; }
-  catch (error) { panelStartup.fail(String(error && error.message || error)); }
+  catch (error) { panelStartup.fail(String(error && error.message || error), 'renderer-error'); }
 }
 
 // A message of the application, from its WebView or from the panel's DOM
@@ -611,6 +624,7 @@ function handlePanelMessage(message, generation, channel) {
   if (!['ready', 'appReady', 'request', 'devResult', 'panelError'].includes(message.type)) return;
   if (crashTrace && !webviewReady) crashTrace.note('webview', 'panel answered, view ' + (inPanel ? 'in panel' : viewSize()));
   webviewReady = true;
+  pendingRendererFailure = null;
   panelStartup.bridgeReady();
   if (message.type === "ready") {
     debugNote('bridge.ready', channel);
@@ -620,6 +634,10 @@ function handlePanelMessage(message, generation, channel) {
     debugNote('app.ready', channel);
     autoReloaded = false;
     panelStartup.appReady();
+    // The fallback must be usable before starting any optional native repair.
+    if (inPanel && storageRefusal) {
+      webViewRepair.start(storageRefusal.kind).catch(error => console.error('TypeR: WebView repair', String(error && error.message || error)));
+    }
     return;
   }
   if (message.type === "request") {
@@ -690,22 +708,32 @@ function enterInPanel(reason) {
 
 // Windows: UXP writes its refusal to its log the moment the WebView is
 // asked for. Looked for a few times in the first seconds of a WebView that
-// gives no sign of life, so that the panel opens without waiting 15 s.
-const REFUSAL_CHECKS_MS = [1500, 3500, 7000];
-function watchWebViewRefusal(generation, since) {
-  if (os.platform() !== 'win32') return;
+// has no bridge. Confirmed refusals get a 15 s grace period; other failures
+// use the 30 s renderer deadline, independently of diagnostic I/O.
+const REFUSAL_CHECKS_MS = [1500, 7000, 15000];
+function watchWebViewRefusal(generation, attempt) {
+  const watchGeneration = ++refusalWatchGeneration;
+  if (os.platform() !== 'win32' || !panelVisible || !view || webviewReady) return;
+  storageRefusal = null;
   REFUSAL_CHECKS_MS.forEach((delay) => setTimeout(async () => {
-    if (inPanel || generation !== viewGeneration || webviewReady || loadEvents.some((event) => !OWN_LOAD_EVENT.test(event))) return;
-    const refusal = await panelStart.findWebViewRefusalSince({
-      listFolder: files.listFolder, readText: files.readText, appData: await files.getRoamingAppData(), pluginId: PLUGIN_ID, since,
-    });
-    if (!refusal || inPanel || generation !== viewGeneration || webviewReady) return;
-    debugNote('startup.webview-refused', refusal.line);
-    enterInPanel(refusal.line.replace(/^(\[[^\]]*\])+\s*/, ''));
-    // Shared by direct CCX installs, CEP migration, platform swaps and updates.
-    // Only this session's explicit missing-storage refusal qualifies for repair.
-    if (refusal.kind === 'storage') {
-      webViewRepair.start('storage').catch(error => console.error('TypeR: WebView repair', String(error && error.message || error)));
+    try {
+      if (inPanel || generation !== viewGeneration || watchGeneration !== refusalWatchGeneration || attempt !== webViewAttempt || webviewReady || !panelVisible) return;
+      const refusal = await panelStart.findWebViewRefusalSince({
+        listFolder: files.listFolder, readText: files.readText, appData: await files.getRoamingAppData(), pluginId: PLUGIN_ID, ...attempt,
+      });
+      if (!refusal || inPanel || generation !== viewGeneration || watchGeneration !== refusalWatchGeneration || attempt !== webViewAttempt || webviewReady || !panelVisible) return;
+      // An early refusal can recover when Adobe's identity arrives. Require
+      // two observations and 15 s without a bridge before giving up this view.
+      const confirmed = storageRefusal && storageRefusal.file === refusal.file && storageRefusal.kind === refusal.kind;
+      storageRefusal = refusal;
+      const box = view && view.getBoundingClientRect();
+      if (delay < 15000 || !confirmed || !box || box.width <= 0 || box.height <= 0) return;
+      debugNote('startup.webview-refused', refusal.line);
+      pendingRendererFailure = { generation, reason: refusal.line.replace(/^(\[[^\]]*\])+\s*/, '') };
+      recoverRenderer();
+    } catch (error) {
+      // Diagnostic I/O cannot prevent the ordinary renderer deadline.
+      debugNote('startup.log-unavailable', String(error && error.message || error));
     }
   }, delay));
 }
@@ -937,14 +965,20 @@ uxp.entrypoints.setup({
       },
       show() {
         if (crashTrace) crashTrace.note("lifecycle", "panel show");
+        const wasVisible = panelVisible;
         attachView();
         panelVisible = true;
         panelStartup.setVisible(true);
+        // A panel may be created hidden long before the user opens it.
+        // Start a fresh visible grace period and invalidate old async reads.
+        if (!wasVisible && webViewAttempt) watchWebViewRefusal(viewGeneration, webViewAttempt);
+        recoverRenderer();
         post({ type: "visibility", hidden: false });
       },
       hide() {
         if (crashTrace) crashTrace.note("lifecycle", "panel hide");
         panelVisible = false;
+        refusalWatchGeneration++;
         panelStartup.setVisible(false);
         clearProbes();
         post({ type: "visibility", hidden: true });

@@ -17,13 +17,13 @@ const root = path.join(__dirname, '..');
 
   const appData = 'C:\\Users\\ana\\AppData\\Roaming';
   const reader = (text) => ({
-    appData, pluginId: 'com.scanr.typer',
+    appData, pluginId: 'com.scanr.typer', sessionMarker: 'TypeR WebView attempt fixture-1',
     listFolder: async (folder) => {
       if (folder === appData + '\\Adobe') return [{ name: 'Adobe Photoshop 2026', isFolder: true }];
       if (folder === appData + '\\Adobe\\Adobe Photoshop 2026\\Logs') return [{ name: 'UXPLogs_2026-11-07_19-25-23_260492.log', isFolder: false }];
       throw new Error('no such folder ' + folder);
     },
-    readText: async () => text,
+    readText: async () => '[console] TypeR WebView attempt fixture-1\n' + text,
   });
   const since = new Date(2026, 10, 7, 19, 25, 25).getTime();
   const storage = '[2026-11-07_19-25-25][2984][Warn] [general] WebViewManager::createWebView() failed to create WebView because webViewDataStorage_ is not available';
@@ -35,11 +35,27 @@ const root = path.join(__dirname, '..');
   assert.strictEqual(await panelStart.findWebViewRefusalSince(Object.assign(reader(storage), { since: since + 1500 })), null, 'a refusal older than the WebView does not count');
   const creation = await panelStart.findWebViewRefusalSince(Object.assign(reader('[2026-11-07_19-25-26][1][Warn] [general] Failed to create WebView for plugin: com.scanr.typer'), { since }));
   assert.strictEqual(creation.kind, 'creation');
+  const followedByCreation = await panelStart.findWebViewRefusalSince(Object.assign(reader(storage + '\n' + creation.line), { since }));
+  assert.strictEqual(followedByCreation.kind, 'storage', 'a later generic creation failure must preserve the confirmed storage cause');
+  assert.strictEqual(followedByCreation.line, storage);
   assert.strictEqual(await panelStart.findWebViewRefusalSince(Object.assign(reader('[2026-11-07_19-25-26][1][Warn] [general] Failed to create WebView for plugin: com.adobe.ccx.start'), { since })), null, 'another plugin\'s failure is not TypeR\'s');
   assert.strictEqual(await panelStart.findWebViewRefusalSince(Object.assign(reader('[2026-11-07_19-25-26][1][Error] [console] ' + storage.slice(storage.indexOf('WebViewManager'))), { since })), null, 'console output may quote anything');
   const unreadable = reader('');
   unreadable.readText = async () => { throw new Error('locked'); };
   assert.strictEqual(await panelStart.findWebViewRefusalSince(Object.assign(unreadable, { since })), null);
+
+  // A newer log from another installation must not authorize fallback/repair.
+  const multi = Object.assign(reader(storage), { since });
+  multi.listFolder = async folder => folder === appData + '\\Adobe'
+    ? [{ name: 'Adobe Photoshop 2025', isFolder: true }, { name: 'Adobe Photoshop 2026', isFolder: true }]
+    : [{ name: folder.includes('2025') ? 'UXPLogs_2026-11-07_19-25-20.log' : 'UXPLogs_2026-11-07_19-25-24.log', isFolder: false }];
+  multi.readText = async file => file.includes('2025') ? '[console] ' + multi.sessionMarker + '\n' : storage;
+  assert.strictEqual(await panelStart.findWebViewRefusalSince(multi), null, 'another Photoshop storage refusal is not ours');
+  multi.readText = async file => file.includes('2025') ? '[console] ' + multi.sessionMarker + '\n' + storage : '';
+  assert.match((await panelStart.findWebViewRefusalSince(multi)).file, /Photoshop 2025/);
+  multi.readText = async () => storage + '\n[console] ' + multi.sessionMarker;
+  assert.strictEqual(await panelStart.findWebViewRefusalSince(multi), null, 'refusals preceding the attempt marker are stale');
+  assert.strictEqual(await panelStart.findWebViewRefusalSince({ ...multi, sessionMarker: null }), null, 'no identity means no native repair');
 
   // Stylesheet of the panel's own DOM
   const css = (await postcss([inPanelCss()]).process([

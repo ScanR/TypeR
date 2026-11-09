@@ -71,7 +71,7 @@ In `dynamic-torqnative.dll` 9.3.0.0 (Photoshop 27.9.1), disassembled:
 
 No manifest setting, environment variable, runtime or folder tested here makes unmodified UXP create
 the WebView. TypeR can work without it. The native storage repair below additionally fixes the
-initialization on one verified Windows DLL; it is not a universal UXP binary patch.
+initialization on explicitly reviewed Windows DLLs; it is not a universal UXP binary patch.
 
 The earlier causes stay what `docs/uxp.md` says (no WebView2 runtime Photoshop can start:
 `Failed to create WebView for plugin: com.scanr.typer`). The fix below covers them too.
@@ -88,15 +88,17 @@ refused.
 `uxp-src/host/main.js`:
 
 1. The WebView is asked for as before (`attachView`, `showPanelPage`).
-2. **Windows:** `watchWebViewRefusal` reads the running session's UXP log 1.5 s, 3.5 s and 7 s later
-   (`panelStart.findWebViewRefusalSince`). It looks for the storage refusal or
-   `Failed to create WebView for plugin: com.scanr.typer`, written at or after the request (one second
-   of tolerance; `[console]` lines ignored). Found, and no load event yet: `enterInPanel`. On the VM, the switch
-   came **about 2 s after the refusal** was logged.
-3. **Every platform:** when the 15 s deadline passes without any load event of the WebView,
-   `reportPanelStartFailure` calls `enterInPanel` instead of showing the notice. This replaces the
-   three automatic re-creations of the WebView, which could not help here. A WebView that loaded
-   something and then failed still gets the notice.
+2. **Windows:** a unique console marker identifies the current WebView attempt in the actual
+   Photoshop session log. `watchWebViewRefusal` reads it at 1.5, 7 and 15 seconds. Two observations
+   of a refusal, no bridge, a visible nonzero view and 15 seconds of grace are required to switch.
+   A refusal from another installation or before the marker cannot authorize a repair. Hiding the
+   panel invalidates pending reads; showing it starts a fresh visible grace period, including when
+   Photoshop created the panel hidden long before it was opened.
+3. **Every platform:** a WebView with no bridge after **30 seconds** uses the native panel, even if
+   it emitted `loadstart`/`loadstop`. Explicit `loaderror` before the bridge also uses the fallback.
+   There is no forced navigation at 5 seconds. Application errors and a bridge whose host init
+   stalls retain their diagnostics instead of being misidentified as a renderer failure. Diagnostic
+   log failures do not delay fallback. A zero-sized view is allowed another waiting period.
 4. `enterInPanel` removes the `<webview>`, bumps the view generation (late WebView messages are
    ignored) and calls `inPanel.startInPanel`. From then on `post()` delivers to the application
    directly, and its messages go through the same `handlePanelMessage` as the WebView's (requests,
@@ -185,9 +187,9 @@ arrows, line icons, style list, footer, settings match; the differences left are
   Windows.
 - Development builds: dev channel `.update-test/dev-eval.ps1`, panel target included.
 
-`npm test`: 81 suites, including `scripts/testUxpStartup.js` (log refusal → panel; 15 s without a
-sign of life → panel; a refusal older than the WebView ignored; messages, requests run once,
-replies, visibility; destroyed and recreated panel; a WebView that loaded keeps the notice; a late
+Regression tests include `scripts/testUxpStartup.js` (confirmed session-log refusal → panel; 30 s without a
+bridge → panel; a refusal older than the WebView ignored; messages, requests run once,
+replies, visibility; destroyed and recreated panel; load events without a bridge still recover; application errors keep the notice; a late
 report cannot replace a recovered WebView) and `scripts/testUxpInPanel.js` (log line times, refusal
 detection, stylesheet rewrite including the placeholder rules, every stroke icon of `app_src`
 replaced by an existing Remix icon).
@@ -195,7 +197,7 @@ replaced by an existing Remix icon).
 ## Not verified
 
 - **macOS**: same UXP code and the same in-panel build in `TypeR-UXP.ccx`, but not run on a Mac.
-  There, without the log reading, the switch happens at the 15 s deadline.
+  There, without the log reading, the switch happens at the 30 s deadline or on an explicit pre-bridge load error.
 - The signed-in user whose identity arrives late: TypeR switches to the panel instead of waiting
   for a WebView that might come a few seconds later. It works, in the panel mode, for that session.
 - Windows other than the ones the application opens in this check (font viewer, FontScanR, export,
@@ -225,6 +227,78 @@ WebView creation while the Adobe panels still reported FRL/no access token. Type
 state. The first cold launch still exceeded TypeR's 15-second limit and used the fallback; a subsequent
 restart displayed the WebView normally. These page timings are not total Photoshop launch times.
 
+### Additional DLL profiles (2026-11-09)
+
+The user supplied DLLs under folders `27.7`, `27.9`, and `27.10`. Their embedded versions are
+UXP 9.3.0, 9.3.0 and 9.4.1 respectively. The supplied `27.9/dynamic-torqnative.dll` was already
+patched; its accompanying verified `.bak` was used as the original. No supplied file was modified.
+
+The initializer's 640-byte region is identical in the 27.7 and original 27.9 DLLs. The 27.10
+initializer retains the same stack-local string (`rsp+0x48`, length at `rsp+0x58`), empty-name branch,
+locked storage construction, and cleanup. Its call relocations and addresses differ. Each profile
+records full original/patched SHA256, length, patch bytes, offset and the analyzed function region.
+
+| Supplied version | File patch offset | Initializer RVA | Resume RVA | Original SHA256 | Patched SHA256 |
+| --- | --- | --- | --- | --- | --- |
+| 27.7 | `0x23ed91d` | `0x23ee3d0` | `0x23ee420` | `2a57cb50444945b9d3a7f05b5ee40970930e31dd80e5de132a026e1068b7cded` | `5dedd8c31986a87e18b29aac41d51fd70264bbba1762383e1a0bfcd6365acc22` |
+| 27.9 | `0x23ed91d` | `0x23ee3d0` | `0x23ee420` | `cded92ca1e7563126e1433ecbca50cb9a8e141f48a15d1a4c6739c44f8d9f714` | `c2974a41e0a479fb588308f500e6548870fa758115b3f5c16beb523ebec78440` |
+| 27.10 | `0x3ace57d` | `0x3acf030` | `0x3acf080` | `45c7e9b7c4512f2322bbc7ba7c5efb1786a51f666977ce2da511d9ce6473ca2a` | `951afe306f43e8849532ac5d28d19e01e91121f1dc775b0bc7a63d36fcb01aef` |
+
+The existing 45-byte replacement can be used for each reviewed profile because the stack layout
+and relative jump back to the constructor are identical. It still modifies ONLY the empty-name
+branch. The real user-info provider, licensing and the createWebView null check are unchanged.
+Version strings and short instruction patterns alone never authorize a repair.
+
+### Structural recognition for subsequent builds
+
+An unknown hash can also be recognized by `adaptive-storage-layout-v1`. The helper locates a unique
+511-byte initializer in executable x64 PE sections, then verifies its complete storage constructor
+(446 bytes), string-copy function (195 bytes), and user-info provider (291 bytes). These four function
+layouts match across the supplied originals after normalizing only relative call/RIP displacements.
+Opcodes, stack offsets, constants and internal branches must match exactly. The helper also checks
+PE exception-table function boundaries, mapped call/data destinations, expected imported function
+names, the UTF-16 `WebView` literal and shared call/data relationships. Call trampolines are followed
+with a bounded limit. Ambiguous matches, changed logic and unsupported architectures are refused.
+
+This supports relocation and unrelated binary changes without adding each new SHA256 to the catalog.
+It does not prove compatibility with every future Photoshop: a compiler or implementation change can
+require a new reviewed layout, and unchanged callers do not prove all their dependencies unchanged.
+The confirmed current-session storage refusal remains required for the automatic offer.
+
+The adaptive profile computes full original and expected patched hashes before writing and uses the
+same staged replacement and exact-backup checks as catalog profiles. Recognizing an already patched
+adaptive DLL requires its verified original backup, re-analyzed from scratch; a receipt alone never
+authorizes restoration. An Adobe update that changes the installed patched hash is never overwritten
+with an older backup. `Inspect` reports the selected profile or a structural refusal reason.
+
+Regression fixtures exercise relocated functions, changed headers, incompatible function bodies,
+imports, storage literals, call relationships, function boundaries, ambiguous matches, trampoline
+loops, wrong architecture and truncated files. Adaptive Apply/Restore is also tested on disposable
+copies of the supplied originals with changed unused DOS-header bytes to force an unknown hash:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/testUxpWebViewRepair.ps1 -ProfileId photoshop-27.10-win-x64 -OriginalDll 'D:\copies\dynamic-torqnative.dll' -Adaptive
+```
+
+Validation for the added profiles: disassembly and actual PowerShell Apply/Restore tests on temporary
+copies of all three originals, including exact output hashes, byte-identical restoration and backup
+failure cases. These tests run on macOS with PowerShell 7; they do **not** validate Windows UAC or
+actual Photoshop 27.7/27.10 execution. The earlier 27.9.1 VM results above remain separate evidence.
+
+To test a reviewed original without modifying the installation or the input file:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/testUxpWebViewRepair.ps1 -ProfileId photoshop-27.10-win-x64 -OriginalDll 'D:\copies\dynamic-torqnative.dll'
+```
+
+Without `-OriginalDll`, the test uses a disposable synthetic fixture. `npm test` runs every profile
+on Windows; on another OS, set `TYPER_POWERSHELL` to the PowerShell executable to enable these tests.
+
+Adobe confirmed the same FRL failure as **UXP-24381**, fixed in **UXP 9.5**, on
+[2026-10-15](https://forums.creativeclouddeveloper.com/t/uxp-webview-component-doenst-work/12307/14).
+That announcement is not evidence that every Photoshop already contains the fix. Prefer Adobe's
+fixed runtime when available; retain the native fallback for older or otherwise failing renderers.
+
 ### All installation and update routes
 
 `webViewRepair.js` is part of the common plugin host. Webpack embeds the same repair script and its
@@ -234,16 +308,18 @@ the repair installs a plugin that can perform it. Direct CCX, manual/local insta
 UXP updates and the automatic Windows package swap converge on this same detection at first launch.
 
 Only a current-session native `webViewDataStorage_` refusal triggers it. A runtime failure, generic
-timeout or macOS does not. The fallback starts immediately; the repair runs separately. The helper:
+timeout or macOS does not. The fallback starts after the confirmed refusal grace period; repair is offered only after its
+`appReady` message. A generic timeout never authorizes a DLL write. The helper:
 
 1. Identifies the Photoshop executable that actually hosts TypeR and checks the entire DLL hash.
-2. Leaves unknown binaries unchanged, without requesting elevation.
-3. Explains the repair, requests Windows UAC, and waits for Photoshop to close normally (up to 24 hours).
+2. For unknown hashes, requires the complete compatible storage layout above; otherwise leaves the binary unchanged without requesting elevation.
+3. Explains that it changes a Photoshop file, offers Cancel, requests Windows UAC only after OK, and waits for Photoshop to close normally (up to 24 hours).
 4. Verifies and preserves an exact original backup, stages and verifies the repaired file, checks
    Photoshop is still closed and the original unchanged, then replaces the DLL and verifies it again.
 5. Reports completion before the user restarts Photoshop. It never closes or kills Photoshop or documents.
 
-A per-user/per-installation mutex prevents overlapping helpers. Receipts under
+A per-user/per-installation mutex prevents overlapping helpers. A separate mutation mutex serializes
+Apply and Restore, including explicit support commands. Worker failure/timeout receipts are preserved. Receipts under
 `%APPDATA%\TypeR\UXP\webview-repair\<script hash>\<path key>\status.json` record the outcome.
 Declined UAC, failures and timeouts are not retried automatically by the same helper revision.
 An already repaired DLL needs no UAC or restart. Tests cover original/repaired/unknown binaries,
@@ -267,8 +343,8 @@ a DLL that changed since the experiment, including an Adobe update, or to use a 
 Restore also writes an opt-out marker beside the DLL so the plugin will not automatically reapply
 the repair. An explicit `Apply` re-enables it. This opt-out is independent of the plugin/helper version.
 
-Limits: only the exact hash above is currently supported. Other Photoshop/UXP versions and macOS
-keep the fallback. Patching changes the DLL's signed contents, and Adobe updates may replace it.
+Limits: exact catalog hashes and strictly recognized Windows x64 layouts are supported. Unrecognized
+Photoshop/UXP binaries and macOS keep the fallback. Patching changes the DLL's signed contents, and Adobe updates may replace it.
 Late Adobe sign-in/account switching, all other plugins, and other native builds have not been
 validated. The empty-name path no longer waits for a late identity: testing those transitions is
 required before claiming universal compatibility.
