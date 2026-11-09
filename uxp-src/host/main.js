@@ -896,10 +896,11 @@ keyboard.onChange((state) => post({ type: "keys", state }));
 // cursor and its tooltip opens; the addon reports the theft. And the panel's
 // own WebView: a click on a TextShapeR shape or a button keeps the focus
 // there, and unlike a CEP panel a WebView forwards no key to Photoshop; the
-// calls that change the document (evalScript) end with a restore. The focus
-// goes back to the document: bringToFront does that, from the modal scope it
-// needs as an action. Photoshop busy (a text being edited, a dialog): the
-// user's next click restores it, as before.
+// calls that change the document (evalScript) end with a restore. Release
+// the native WebView before bringing Photoshop forward from a modal scope;
+// bringing the application forward alone does not release its WebView.
+// Photoshop busy (a text being edited, a dialog): the user's next click
+// restores it, as before.
 let restoringFocus = false;
 let focusRestores = 0;
 
@@ -907,6 +908,10 @@ async function restoreFocus() {
   if (restoringFocus) return;
   restoringFocus = true;
   try {
+    // Blurring an HTML button only moves focus to the WebView's body.
+    // Release the native WebView too: bringToFront alone leaves it as the
+    // keyboard responder on macOS, swallowing Photoshop's tool shortcuts.
+    if (view && typeof view.blur === "function") view.blur();
     await photoshop._internals.modal("TypeR", () => ps.app.bringToFront());
     focusRestores++;
   } catch (error) {
