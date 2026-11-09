@@ -1,4 +1,4 @@
-// Accepts CEP paths ("/pages/01.psd") and UXP picks ({name, path}), where the
+// Accepts CEP paths ("/pages/01.psd", .psb too) and UXP picks ({name, path}), where the
 // path is an opaque "psfile:" token and only the name carries the extension
 export const normalizeTrainingFiles = (picks) => {
   const seen = new Set();
@@ -7,7 +7,7 @@ export const normalizeTrainingFiles = (picks) => {
       : pick && typeof pick.path === "string" ? { path: pick.path, name: String(pick.name || pick.path.split(/[\\/]/).pop()) }
       : null
   )).filter((file) => {
-    if (!file || !/\.psd$/i.test(file.name) || seen.has(file.path)) return false;
+    if (!file || !/\.ps[db]$/i.test(file.name) || seen.has(file.path)) return false;
     seen.add(file.path);
     return true;
   }).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));

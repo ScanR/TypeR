@@ -218,8 +218,20 @@
     padding: 6px;
 }
 
+.export-font-item .topcoat-checkbox__checkmark,
+.export-settings-item .topcoat-checkbox__checkmark {
+    // Long hint text would otherwise squeeze the box to zero width
+    flex: 0 0 auto;
+}
+
+// A margin, not gap: the legacy bundle (Chromium < 84) drops gap
+.export-settings-item .topcoat-checkbox__checkmark {
+    margin-right: 8px;
+}
+
 .export-font-content,
 .export-settings-content {
+    flex: 1 1 auto;
     min-width: 0;
 }
 

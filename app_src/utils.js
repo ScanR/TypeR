@@ -1,4 +1,5 @@
 import { fetchBody } from "./network";
+import { htmlNodeToMarkdown } from "./markdownFormatting";
 import { createLatestTaskQueue } from "./latestTaskQueue";
 import { mergeLocaleBundle } from "./localeBundle";
 import { readJsonStorage, writeJsonStorage, reportStorageIssue } from "./storageIO";
@@ -648,79 +649,11 @@ const buildRichTextPayload = (text, allowMarkdown = isMarkdownEnabled()) => {
   };
 };
 
-const escapeMarkdownText = (text) => {
-  return text.replace(/\\/g, "\\\\").replace(/\*/g, "\\*").replace(/_/g, "\\_");
-};
-
-const applyMarkdownStyle = (text, bold, italic) => {
-  if (!bold && !italic) return text;
-  const marker = bold && italic ? "***" : bold ? "**" : "*";
-  const parts = text.split("\n");
-  return parts.map((part) => (part === "" ? part : `${marker}${part}${marker}`)).join("\n");
-};
-
+// The clipboard's HTML as Markdown (see markdownFormatting.js)
 const convertHtmlToMarkdown = (html) => {
   if (!html) return "";
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
-  const runs = [];
-
-  const pushRun = (text, style) => {
-    if (!text) return;
-    const last = runs[runs.length - 1];
-    if (last && last.bold === style.bold && last.italic === style.italic) {
-      last.text += text;
-    } else {
-      runs.push({ text, bold: style.bold, italic: style.italic });
-    }
-  };
-
-  const walk = (node, style) => {
-    if (node.nodeType === 3) {
-      const value = (node.nodeValue || "").replace(/\u00a0/g, " ");
-      pushRun(value, style);
-      return;
-    }
-    if (node.nodeType !== 1) return;
-    const tag = node.tagName.toLowerCase();
-    if (tag === "br") {
-      pushRun("\n", style);
-      return;
-    }
-
-    const nextStyle = { bold: style.bold, italic: style.italic };
-    if (tag === "b" || tag === "strong") nextStyle.bold = true;
-    if (tag === "i" || tag === "em") nextStyle.italic = true;
-
-    const inlineStyle = node.getAttribute("style") || "";
-    if (/font-weight\s*:\s*(bold|[6-9]00)/i.test(inlineStyle)) nextStyle.bold = true;
-    if (/font-weight\s*:\s*(normal|[1-5]00)/i.test(inlineStyle)) nextStyle.bold = false;
-    if (/font-style\s*:\s*italic/i.test(inlineStyle)) nextStyle.italic = true;
-    if (/font-style\s*:\s*normal/i.test(inlineStyle)) nextStyle.italic = false;
-
-    const isBlock = /^(p|div|li|ul|ol|tr)$/i.test(tag);
-    if (isBlock && runs.length && !runs[runs.length - 1].text.endsWith("\n")) {
-      pushRun("\n", style);
-    }
-    for (const child of Array.from(node.childNodes)) {
-      walk(child, nextStyle);
-    }
-    if (isBlock) {
-      pushRun("\n", style);
-    }
-  };
-
-  walk(doc.body, { bold: false, italic: false });
-
-  let markdown = runs
-    .map((run) => {
-      const escaped = escapeMarkdownText(run.text);
-      return applyMarkdownStyle(escaped, run.bold, run.italic);
-    })
-    .join("");
-
-  markdown = markdown.replace(/\n{3,}/g, "\n\n");
-  return markdown;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return htmlNodeToMarkdown(doc && doc.body);
 };
 
 const setActiveLayerText = (text, style, direction, callback = () => {}, options = {}) => {
@@ -1318,21 +1251,41 @@ const resizeTextArea = (defer = false) => {
   }
 };
 
+// Scrolls the script sheet so that the line sits a few rows under its top.
+// The sheet (.text-block, the parent of .text-lines) is scrolled by itself:
+// scrollIntoView() also scrolls every ancestor and, in the new TypeR's
+// WebView, left the sheet where it was after a paste (3.0.1). The row's top
+// comes from the row when it is mounted, from the row layout otherwise (rows
+// far from the view are not rendered), and the scroll is set again on the
+// next frame, after a textarea resize or a caret reveal that follows it.
+const SCROLL_CONTEXT_LINES = 5;
+const scriptRowTop = (textLines, index) => {
+  const row = textLines.querySelector(`.text-line[data-line-index="${index}"]`);
+  if (row) return row.offsetTop;
+  const layout = textLines.__typerRowLayout;
+  if (layout && layout.offsets && layout.offsets[index] != null) {
+    return layout.offsets[index] + (parseFloat(getComputedStyle(textLines).paddingTop) || 0);
+  }
+  return null;
+};
 const scrollToLine = (lineIndex, delay = 100) => {
-  lineIndex = lineIndex < 5 ? 0 : lineIndex - 5;
-  setTimeout(() => {
-    const line = document.querySelector(`.text-line[data-line-index="${lineIndex}"]`);
-    if (line) {
-      line.scrollIntoView();
-      return;
-    }
+  let cancelled = false;
+  const target = Math.max(0, (Number(lineIndex) || 0) - SCROLL_CONTEXT_LINES);
+  const scroll = () => {
+    if (cancelled) return false;
     const textLines = document.querySelector(".text-lines");
-    const layout = textLines && textLines.__typerRowLayout;
-    const scrollContainer = textLines && textLines.parentElement;
-    if (layout && scrollContainer && layout.offsets[lineIndex] != null) {
-      scrollContainer.scrollTop = layout.offsets[lineIndex];
-    }
+    const sheet = textLines && textLines.parentElement;
+    if (!sheet) return false;
+    const top = scriptRowTop(textLines, target);
+    if (top == null) return false;
+    sheet.scrollTop = Math.max(0, Math.round(top));
+    return true;
+  };
+  const timer = setTimeout(() => {
+    if (!scroll()) return;
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(scroll);
   }, delay);
+  return () => { cancelled = true; clearTimeout(timer); };
 };
 
 const scrollToStyle = (styleId, delay = 100) => {

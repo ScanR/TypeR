@@ -142,6 +142,8 @@ const SettingsModal = React.memo(function SettingsModal() {
     showQuickStyleSize: state.showQuickStyleSize,
     inlineTextShapeR: state.inlineTextShapeR,
     dehyphenateTextShapeR: state.dehyphenateTextShapeR,
+    preserveTextShapeRSpaces: state.preserveTextShapeRSpaces,
+    autoScrollText: state.autoScrollText,
     styleSizeStep: state.styleSizeStep,
     internalPadding: state.internalPadding,
     interpretMarkdown: state.interpretMarkdown,
@@ -215,6 +217,8 @@ const SettingsModal = React.memo(function SettingsModal() {
   const [inlineTextShapeR, setInlineTextShapeR] = React.useState(
     context.state.inlineTextShapeR === true
   );
+  const [preserveTextShapeRSpaces, setPreserveTextShapeRSpaces] = React.useState(context.state.preserveTextShapeRSpaces === true);
+  const [autoScrollText, setAutoScrollText] = React.useState(context.state.autoScrollText !== false);
   const [dehyphenateTextShapeR, setDehyphenateTextShapeR] = React.useState(
     context.state.dehyphenateTextShapeR === true
   );
@@ -1019,6 +1023,12 @@ const SettingsModal = React.memo(function SettingsModal() {
         value: inlineTextShapeR,
       });
     }
+    if (autoScrollText !== context.state.autoScrollText) {
+      context.dispatch({ type: "setAutoScrollText", value: autoScrollText });
+    }
+    if (preserveTextShapeRSpaces !== context.state.preserveTextShapeRSpaces) {
+      context.dispatch({ type: "setPreserveTextShapeRSpaces", value: preserveTextShapeRSpaces });
+    }
     if (dehyphenateTextShapeR !== context.state.dehyphenateTextShapeR) {
       context.dispatch({
         type: "setDehyphenateTextShapeR",
@@ -1661,6 +1671,8 @@ const SettingsModal = React.memo(function SettingsModal() {
             </div>
             <div className="settings-group">
               <div className="settings-group-title">TextShapeR</div>
+              {renderToggle(preserveTextShapeRSpaces, (e) => { setPreserveTextShapeRSpaces(e.target.checked); setEdited(true); },
+                locale.settingsPreserveTextShapeRSpacesLabel, locale.settingsPreserveTextShapeRSpacesHint)}
               <div className="settings-checkbox-grid">
                 {renderToggle(
                   inlineTextShapeR,
@@ -1688,6 +1700,8 @@ const SettingsModal = React.memo(function SettingsModal() {
           <div className="fields">
             <div className="settings-group">
               <div className="settings-group-title">{locale.settingsGroupTextScript || "Script & tags"}</div>
+              {renderToggle(autoScrollText, (e) => { setAutoScrollText(e.target.checked); setEdited(true); },
+                locale.settingsAutoScrollTextLabel, locale.settingsAutoScrollTextHint)}
               <div className="field">
                 <div className="field-label">{locale.settingsLinePrefixesLabel}</div>
                 <div className="field-input">

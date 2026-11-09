@@ -73,7 +73,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
   global.window = { cep: { fs: { showOpenDialogEx(multiple, folders, title, start, extensions) {
     assert.strictEqual(multiple, true);
     assert.strictEqual(folders, false);
-    assert.deepStrictEqual(extensions, ["psd"]);
+    assert.deepStrictEqual(extensions, ["psd", "psb"]);
     return { err: 0, data: ["/pages/2.psd", "/pages/1.psd"] };
   } } } };
   try {

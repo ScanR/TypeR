@@ -1,12 +1,12 @@
 import React from "react";
 import { useContext } from "../../context";
 
-// Photoshop opens WebP natively from 23.2. The UXP plugin needs 26.0, the CEP
-// panel still runs on older versions that would fail to open it.
+import { imageFileTypes } from "../../imageFileTypes";
+
 const allowedTypes = () => {
-  const types = [".psd", ".png", ".jpg", ".jpeg"];
-  if (typeof window !== "undefined" && window.typerUXP) types.push(".webp");
-  return types;
+  let version = "";
+  try { version = JSON.parse(window.__adobe_cep__.getHostEnvironment()).appVersion; } catch (error) { /* Unknown host. */ }
+  return imageFileTypes(version, typeof window !== "undefined" && !!window.typerUXP);
 };
 
 export default React.forwardRef(function HiddenFileInput(props, ref) {

@@ -378,23 +378,7 @@ function placeText(session, pointText) {
   host._makeTextLayer(params);
   const firstStyle = params.layerText.textStyleRange[0] && params.layerText.textStyleRange[0].textStyle;
   host._applyMiddleEast(firstStyle);
-  // Paragraph text keeps the composed lines: convert, then restore the ink
-  if (!pointText) {
-    const before = layerInk();
-    host._changeToBoxText();
-    const after = layerInk();
-    if (before && after) {
-      // The box must not re-wrap the composed lines; point text otherwise
-      if (Math.abs(before.right - before.left - (after.right - after.left)) > 1.5 ||
-          Math.abs(before.bottom - before.top - (after.bottom - after.top)) > 1.5) {
-        host._changeToPointText();
-        const back = layerInk();
-        if (back) translateLayer(before.left - back.left, before.top - back.top);
-      } else {
-        translateLayer(before.left - after.left, before.top - after.top);
-      }
-    }
-  }
+  if (!pointText) host._smartConvertToParagraph();
   let ink = layerInk();
   if (!inkFits(plan, ink, text.pad) && ink) {
     const dx = Math.max(-2, Math.min(2, text.axis - (ink.left + ink.right) / 2));
@@ -489,8 +473,17 @@ async function smartPaste(request) {
       sessions: prepared.sessions.map((session) => ({ kind: session.plan.kind, role: session.role, styleId: session.styleId, size: session.text.size, tier: session.text.tier, hyphenated: session.text.hyphenated })),
     });
   } catch (error) {
-    return JSON.stringify({ ok: false, code: (error && error.code) || "error", message: String((error && error.message) || error), textColor: (error && error.textColor) || null });
+    return JSON.stringify({ ok: false, code: failureCode(error), message: String((error && error.message) || error), textColor: (error && error.textColor) || null });
   }
+}
+
+// The reason the panel shows: the engine's own codes, or "photoshop" for a
+// step Photoshop refused (a PhotoshopError carries its numeric result as code)
+function failureCode(error) {
+  const code = error && error.code;
+  if (typeof code === "string" && code) return code;
+  if (error instanceof PhotoshopError || typeof code === "number") return "photoshop";
+  return "error";
 }
 
 function getHistorySnapshot() {

@@ -6,8 +6,8 @@ const load = require("./helpers/loadAppModule")();
 const { normalizeTrainingFiles, makeTrainingPage, selectedTrainingEntries, trainTextShapeREntries } = load("app_src/textShapeRTraining.js");
 
 async function testLearning() {
-  const files = normalizeTrainingFiles(["/pages/10.psd", "/pages/2.psd", "/pages/2.psd", "/pages/no.png", null]);
-  assert.deepStrictEqual(files.map((file) => file.name), ["2.psd", "10.psd"]);
+  const files = normalizeTrainingFiles(["/pages/10.psd", "/pages/2.psd", "/pages/2.psd", "/pages/no.png", null, "/pages/11.PSB"]);
+  assert.deepStrictEqual(files.map((file) => file.name), ["2.psd", "10.psd", "11.PSB"], "large documents (.psb) train too");
   // Picks may also be { name, path } objects whose path is an opaque token:
   // the name alone carries the extension and the sort key
   assert.deepStrictEqual(normalizeTrainingFiles([

@@ -101,7 +101,7 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
           scanFiles(normalizeTrainingFiles(result.data || []));
         };
         // The UXP plugin's dialog answers asynchronously, CEP's at once
-        const result = window.cep.fs.showOpenDialogEx(true, false, locale.textShapeRTrainPick, "", ["psd"]);
+        const result = window.cep.fs.showOpenDialogEx(true, false, locale.textShapeRTrainPick, "", ["psd", "psb"]);
         if (result && typeof result.then === "function") {
           busyRef.current = true;
           result.then((value) => { busyRef.current = false; picked(value); }, () => { busyRef.current = false; setMessage(locale.textShapeRTrainFileError); });
@@ -188,7 +188,7 @@ export default function TextShapeRTraining({ onImportLearning, onExportLearning 
           <input type="checkbox" checked={autoTrain} disabled={busy} onChange={() => setAutoTrain(!autoTrain)} />
           {locale.textShapeRTrainAuto}
         </label>
-        <input ref={fileInput} type="file" accept=".psd" multiple onChange={onFilesPicked} style={{ display: "none" }} />
+        <input ref={fileInput} type="file" accept=".psd,.psb" multiple onChange={onFilesPicked} style={{ display: "none" }} />
         <div className="textshaper-training-actions">
           <button type="button" className="topcoat-button--large--cta" disabled={busy} onClick={pickFiles}>
             <FiFolderPlus size={14} /> {locale.textShapeRTrainPick}

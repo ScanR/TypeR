@@ -5,7 +5,7 @@
 // notice. Every paste is recorded for the undo sync (pasteHistory.js).
 
 import {
-  buildRichTextPayload, createTextLayerInSelection, csInterface, getUserFonts, locale, safeJsonParse, trackHostAction,
+  buildRichTextPayload, createTextLayerInSelection, createTextLayersInStoredSelections, csInterface, getUserFonts, locale, safeJsonParse, trackHostAction,
 } from "./utils";
 import { getScaledStyle, resolveStylePointText } from "./textLayerPayload";
 import { parsePageMarker } from "./pageMarker";
@@ -536,7 +536,8 @@ export const smartPasteInSelection = async (getState, dispatch, options = {}) =>
       notice(dispatch, reasonText(code), "warning");
       return false;
     }
-    notice(dispatch, String(locale.smartPasteFallback || "{reason}").replace("{reason}", reasonText(code)), "warning");
+    // The classic paste takes over silently: the line is pasted all the same,
+    // and a warning reads as a bug to the user
     const before = await getHistorySnapshot();
     const lineBefore = getState().currentLineIndex;
     const ok = await runFallback(() => classicPaste(getState(), dispatch, options, result && result.textColor));
@@ -576,7 +577,10 @@ export const smartPasteStoredSelections = async (getState, dispatch, options = {
       const lineIndex = typeof selection.lineIndex === "number" ? selection.lineIndex : state.currentLineIndex;
       const line = state.lines && state.lines[lineIndex];
       if (!line || line.ignore) continue;
-      const trigger = { ...selection.trigger, documentKey: selection.documentKey || selection.trigger.documentKey };
+      // The click is made again with "Sample All Layers", as paste on click
+      // does: the text just pasted is the active layer, and a wand reading it
+      // alone takes nearly the whole page (reported as an open bubble)
+      const trigger = withSampleAll({ ...selection.trigger, documentKey: selection.documentKey || selection.trigger.documentKey });
       const replayed = safeJsonParse(await evalHost("replaySelectionTrigger(" + JSON.stringify(trigger) + ")", 15000, true), { error: "error" });
       if (replayed.error) {
         notice(dispatch, reasonText(replayed.error), "warning");
@@ -601,8 +605,11 @@ export const smartPasteStoredSelections = async (getState, dispatch, options = {
           notice(dispatch, reasonText(result.code), "warning");
           break;
         }
-        notice(dispatch, String(locale.smartPasteFallback || "{reason}").replace("{reason}", reasonText((result && result.code) || "error")), "warning");
-        await new Promise((resolve) => createTextLayerInSelection(line.text, styleWithTextColor(getScaledStyle(style || state.currentStyle, state.textScale), result && result.textColor), state.pastePointText, state.internalPadding || 0, state.direction, (ok) => {
+        // Silently, as for a single paste. The classic paste of this bubble uses the bounds stored with it, as
+        // the batch without smart paste does: the live selection may be gone
+        // (a failed commit deselects) or leaking after the failed smart paste
+        const fallbackStyle = styleWithTextColor(getScaledStyle(style || state.currentStyle, state.textScale), result && result.textColor);
+        await new Promise((resolve) => createTextLayersInStoredSelections([line.text], [fallbackStyle], [selection], state.pastePointText, state.internalPadding || 0, state.direction, (ok) => {
           if (ok) { pasted++; completed.push(selection); }
           resolve();
         }, { preserveActiveTextSize: options.preserveActiveTextSize === true }));

@@ -114,6 +114,8 @@ const storeFields = [
   "textShapeRLearnTipShown",
   "textShapeRBubbleAware",
   "dehyphenateTextShapeR",
+  "preserveTextShapeRSpaces",
+  "autoScrollText",
   "textShapeRTuning",
   "internalPadding",
   "interpretMarkdown",
@@ -280,6 +282,8 @@ const initialState = {
   textShapeRPerformanceTipShown: storage.data?.textShapeRPerformanceTipShown === true,
   textShapeRPerformanceTipVisible: false,
   textShapeRBubbleAware: storage.data?.textShapeRBubbleAware === true,
+  preserveTextShapeRSpaces: storage.data?.preserveTextShapeRSpaces === true,
+  autoScrollText: storage.data?.autoScrollText !== false,
   dehyphenateTextShapeR: storage.data?.dehyphenateTextShapeR === true,
   textShapeRTuning: storage.data?.textShapeRTuning || null,
   modalType: null,
@@ -1262,6 +1266,16 @@ const baseReducer = (state, action) => {
       break;
     }
 
+    case "setAutoScrollText": {
+      newState.autoScrollText = action.value !== false;
+      break;
+    }
+
+    case "setPreserveTextShapeRSpaces": {
+      newState.preserveTextShapeRSpaces = action.value === true;
+      break;
+    }
+
     case "setDehyphenateTextShapeR": {
       newState.dehyphenateTextShapeR = action.value === true;
       break;
@@ -1754,7 +1768,7 @@ const baseReducer = (state, action) => {
       scrollToStyle(newState.currentStyleId);
     }
   }
-  if (thenScroll) {
+  if (thenScroll && newState.autoScrollText !== false) {
     scrollToLine(newState.currentLineIndex);
   }
 
@@ -1920,13 +1934,14 @@ const ContextProvider = React.memo(function ContextProvider(props) {
     loadTextShapeREngine().then((engine) => {
       if (!active) return;
       engine.setDehyphenationEnabled(state.dehyphenateTextShapeR === true);
+      engine.setPreserveTextShapeRSpaces(state.preserveTextShapeRSpaces === true);
       engine.setTextShapeRInterfaceLanguage(getInterfaceLanguage(state));
       engine.setTextShapeRTuning(state.textShapeRTuning);
     });
     return () => {
       active = false;
     };
-  }, [state.inlineTextShapeR, state.dehyphenateTextShapeR, state.textShapeRTuning, state.language]);
+  }, [state.inlineTextShapeR, state.preserveTextShapeRSpaces, state.dehyphenateTextShapeR, state.textShapeRTuning, state.language]);
   React.useEffect(() => {
     const version = state.stylePrefixRefreshVersion || 0;
     if (!version) return undefined;

@@ -2347,14 +2347,36 @@ function _applyRichTextRanges(textParams, textRuns, textLength) {
   return true;
 }
 
-// Photoshop makes a layer right above the active one, so under whatever is
-// higher up, and clipped when the active one is. A new text must not stay
-// there: it is released from the clipping mask, then brought to the front,
-// which Photoshop keeps inside the layer's folder (Layer > Arrange > Bring to
-// Front). No index arithmetic: layer indexes shift with a background layer and
-// with every folder, and the 3.0.1 index move misplaced texts under the clean
-// layer. It only decides where the text sits, so a refusal must not fail the
-// paste; Photoshop refuses the move when the layer is already in front.
+// Photoshop makes a layer right above the active one: a new text stays
+// there, as before 3.0, so the active layer decides where it goes in the
+// stack. Two cases move it: a text clipped by the active layer's clipping
+// mask is released from it, and a text made under the document's "TypeR
+// Clean" layer (the user on the page layer, the clean fill above it) is
+// brought to the front, which Photoshop keeps inside the layer's folder
+// (Layer > Arrange > Bring to Front): the fill would hide it (3.0.1 moved
+// every text to the front, and 3.0.0 by a computed index, which misplaced
+// texts under the clean layer). It only decides where the text sits, so a
+// refusal must not fail the paste; Photoshop refuses the move when the
+// layer is already in front.
+function _cleanLayerAbove() {
+  try {
+    var doc = app.activeDocument;
+    var layers = doc.layers;
+    var clean = null;
+    for (var i = 0; i < layers.length; i++) {
+      var layer = layers[i];
+      if (layer.typename === "ArtLayer" && layer.name === _SMART_CLEAN_LAYER && layer.kind === LayerKind.NORMAL) {
+        clean = layer;
+        break;
+      }
+    }
+    if (!clean) return false;
+    return clean.itemIndex > doc.activeLayer.itemIndex;
+  } catch (e) {
+    return false;
+  }
+}
+
 function _raiseNewTextLayer() {
   var target = new ActionReference();
   target.putEnumerated(charID.Layer, charID.Ordinal, charID.Target);
@@ -2366,6 +2388,7 @@ function _raiseNewTextLayer() {
       executeAction(charIDToTypeID("Ungr"), release, DialogModes.NO);
     }
   } catch (releaseError) {}
+  if (!_cleanLayerAbove()) return;
   try {
     var destination = new ActionReference();
     destination.putEnumerated(charID.Layer, charID.Ordinal, charIDToTypeID("Frnt"));
@@ -5619,27 +5642,43 @@ function _smartMakeText(params) {
   }
 }
 
+// Keep the requested paragraph type even when Photoshop's automatic box
+// clips or rewraps the already composed lines. Size in displayed pixels,
+// including glyph bearings/leading, then restore the original ink position.
+function _smartConvertToParagraph() {
+  var before = _currentLayerBox();
+  var size = _currentDisplayedTextPixels();
+  if (!(size > 0)) size = 24;
+  _changeToBoxText();
+  var after = _currentLayerBox();
+  if (before && after) {
+    var width = before.width + size * 2;
+    for (var attempt = 0; attempt < 3 &&
+        (Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5); attempt++) {
+      _setTextBoxSize(width, before.height + size * 2);
+      after = _currentLayerBox();
+      if (!after) break;
+      width *= 1.5;
+    }
+
+  }
+  // A failed fit must roll the smart commit back and use its visible classic
+  // fallback, never leave clipped text or silently switch to point text.
+  if (before && (!after || Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5)) {
+    throw new Error("Paragraph text could not preserve the composed lines");
+  }
+  if (before && after && (Math.abs(before.left - after.left) > 0.01 || Math.abs(before.top - after.top) > 0.01)) {
+    _moveLayer(before.left - after.left, before.top - after.top);
+  }
+}
+
 function _smartPlaceText(session, pointText) {
   var params = session.text.params;
   _smartMakeText(params);
   _raiseNewTextLayer();
   var ranges = params.layerText.textStyleRange;
   if (ranges && ranges[0]) _applyMiddleEast(ranges[0].textStyle);
-  if (!pointText) {
-    // Paragraph text keeps the composed lines; point text otherwise
-    var before = _currentLayerBox();
-    _changeToBoxText();
-    var after = _currentLayerBox();
-    if (before && after) {
-      if (Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5) {
-        _changeToPointText();
-        var back = _currentLayerBox();
-        if (back) _moveLayer(before.left - back.left, before.top - back.top);
-      } else if (Math.abs(before.left - after.left) > 0.01 || Math.abs(before.top - after.top) > 0.01) {
-        _moveLayer(before.left - after.left, before.top - after.top);
-      }
-    }
-  }
+  if (!pointText) _smartConvertToParagraph();
   if (session.text.stroke) _setLayerStroke(session.text.stroke);
   return _getActiveLayerId();
 }

@@ -166,6 +166,8 @@ const COMPOUND_BREAK_COST = 0.3;
 // The list always offers one good cesure and the classic scorer's favourites
 const CESURE_SLOT = 4;
 
+let preserveSpaces = false;
+const setPreserveTextShapeRSpaces = (enabled) => { preserveSpaces = enabled === true; };
 let dehyphenationEnabled = false;
 const setDehyphenationEnabled = (enabled) => {
   dehyphenationEnabled = enabled === true;
@@ -681,7 +683,8 @@ const joinShapedText = (text) => {
   ));
 };
 
-const normalizeText = (text) => dehyphenate(String(text || "").replace(/\s+/g, " ").trim());
+const normalizeText = (text) => dehyphenate(String(text || "")
+  .replace(preserveSpaces ? /[ \t]*[\r\n]+[ \t]*/g : /\s+/g, " ").trim());
 
 const stripMarkdownForMeasure = (text) => String(text || "")
   .replace(/\\([\\*_])/g, "$1")
@@ -761,8 +764,16 @@ const findClosingMarkdownToken = (text, token, start) => {
 const splitWordsPreservingMarkdown = (text) => {
   const words = [];
   let index = 0;
+  const pushWord = (word, gap) => {
+    // Deliberate spacing is indivisible: keep both surrounding words on the
+    // same line so serialization and width scoring use the exact same text.
+    if (preserveSpaces && words.length && gap && gap !== " ") words[words.length - 1] += gap + word;
+    else words.push(word);
+  };
   while (index < text.length) {
+    const gapStart = index;
     while (index < text.length && /\s/.test(text[index])) index++;
+    const gap = text.slice(gapStart, index);
     if (index >= text.length) break;
 
     const markdownToken = findMarkdownTokenAt(text, index);
@@ -770,7 +781,7 @@ const splitWordsPreservingMarkdown = (text) => {
       const contentStart = index + markdownToken.length;
       const closeIndex = findClosingMarkdownToken(text, markdownToken, contentStart);
       if (closeIndex !== -1) {
-        words.push(text.slice(index, closeIndex + markdownToken.length));
+        pushWord(text.slice(index, closeIndex + markdownToken.length), gap);
         index = closeIndex + markdownToken.length;
         continue;
       }
@@ -778,7 +789,7 @@ const splitWordsPreservingMarkdown = (text) => {
 
     let nextSpace = index;
     while (nextSpace < text.length && !/\s/.test(text[nextSpace])) nextSpace++;
-    words.push(text.slice(index, nextSpace));
+    pushWord(text.slice(index, nextSpace), gap);
     index = nextSpace;
   }
   return words.filter(Boolean);
@@ -2438,6 +2449,7 @@ const addCandidate = (resultMap, seenTargets, tokens, lineCount, curve, shift, b
 const generateHyphenTokenSets = (words, baseTokens, language) => {
   const sets = [];
   words.forEach((word, wordIndex) => {
+    if (preserveSpaces && /\s/.test(word)) return;
     getHyphenSplits(word, language).forEach((split) => {
       // A lone short word is never worth a cesure
       if (words.length === 1 && !split.compound && stripMarkdownForMeasure(word).length < CLASSIC_MIN_CESURE_WORD) return;
@@ -2467,6 +2479,7 @@ const variantCache = new Map();
 const getVariantCacheKey = (text, options) => JSON.stringify([
   // The toggle changes normalization, so cached entries must not cross it
   dehyphenationEnabled,
+  preserveSpaces,
   // Short texts follow the interface language
   getInterfaceHint(),
   // Feedback tuning changes scoring: cached lists must not survive it
@@ -2787,6 +2800,7 @@ const rankTextShapeRVariants = (normalized, options) => {
   if (tuning.exemplars && tuning.exemplars.length) {
     tuning.exemplars.forEach((exemplar) => {
       if (joinShapedText(exemplar.lines.join(" ")) !== joinShapedText(normalized)) return;
+      if (preserveSpaces && normalizeText(exemplar.lines.join(" ")) !== normalized) return;
       if (!exemplarContextMatches(exemplar, aspect, bubbleSignature)) return;
       const exemplarText = exemplar.lines.join("\n");
       if (resultMap.has(exemplarText)) {
@@ -3185,4 +3199,4 @@ const recordTextShapeRFeedback = (layerText, options = {}, currentTuning = null)
   };
 };
 
-export { registerTextShapeRPatterns, setTextShapeRInterfaceLanguage, frenchHyphenPoints, generateTextShapeRVariants, generateManualTextShapeRVariant, estimateManualLineCount, setDehyphenationEnabled, setTextShapeRTuning, sanitizeTuning as sanitizeTextShapeRTuning, recordTextShapeRFeedback, retrainTextShapeRRanker, isTextShapeRLineModelStale, refitTextShapeRLineModel, scheduleTextShapeRLineModelRefit, visibleLength, visibleWidth };
+export { setPreserveTextShapeRSpaces, registerTextShapeRPatterns, setTextShapeRInterfaceLanguage, frenchHyphenPoints, generateTextShapeRVariants, generateManualTextShapeRVariant, estimateManualLineCount, setDehyphenationEnabled, setTextShapeRTuning, sanitizeTuning as sanitizeTextShapeRTuning, recordTextShapeRFeedback, retrainTextShapeRRanker, isTextShapeRLineModelStale, refitTextShapeRLineModel, scheduleTextShapeRLineModelRefit, visibleLength, visibleWidth };

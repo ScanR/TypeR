@@ -473,12 +473,22 @@ const rememberedMeasure = (nativeMeasure) => {
 
 // A bubble too small for the user's padding at the smallest size: a tighter
 // margin beats the classic paste, which ignores the bubble and the smaller size.
+// A text too long for the bubble even without margin overflows it as little as
+// possible at the smallest size, on the bubble's centre, as a chamber does: the
+// classic paste would overflow it too, at the style size.
 export const planBubbleText = async (plan, payload, context) => {
   const measure = rememberedMeasure(context.measure);
-  const steps = [payload, { ...payload, padding: 0 }, { ...payload, padding: 0, noMargin: true }];
+  const bare = { ...payload, padding: 0, noMargin: true };
+  const smallest = { ...context.sizePolicy, smallest: true };
+  const steps = [
+    { plan, payload },
+    { plan, payload: { ...payload, padding: 0 } },
+    { plan, payload: bare },
+    ...OVERFLOW_STEPS.map((ratio) => ({ plan: overflowPlan(plan, ratio), payload: bare, sizePolicy: smallest })),
+  ];
   for (let i = 0; i < steps.length; i++) {
     try {
-      return await planText(plan, steps[i], { ...context, measure });
+      return await planText(steps[i].plan, steps[i].payload, { ...context, measure, ...steps[i] });
     } catch (error) {
       if (!(error instanceof NoPlacementError)) throw error;
     }

@@ -189,12 +189,17 @@ const linesInside = (session) => {
   assert.strictEqual(shrunk.sessions[0].text.tier, "range");
   linesInside(shrunk.sessions[0]);
 
-  // Too much text for a tiny bubble: no placement (the panel falls back)
+  // Too much text for a tiny bubble: it overflows the bubble at the smallest
+  // size, on its centre, instead of leaving it to the classic paste
   const tiny = ellipseNodes(300, 300, 45, 35);
   const tinyInput = { source: "wand", click: { x: 300, y: 300 }, selectionBounds: boundsOf(geometry.flatten(tiny)), rawPath: pathOf([tiny]), fill: white };
-  await assert.rejects(prepareSmartPaste({
+  const overflowed = await prepareSmartPaste({
     trigger: { source: "wand" }, lines: [line("Une phrase beaucoup trop longue pour une si petite bulle de rien du tout.")], roleStyles: {}, settings: { hyphenation: "off" },
-  }, adapterFor(tinyInput)), (error) => error.code === "noPlacement");
+  }, adapterFor(tinyInput));
+  assert.strictEqual(overflowed.consumed, 1);
+  assert.ok(Math.abs(overflowed.sessions[0].text.size - 24 * 0.75) < 1e-6, "the smallest size: " + overflowed.sessions[0].text.size);
+  const overflowAxis = overflowed.sessions[0].text.axis;
+  assert.ok(Math.abs(overflowAxis - 300) < 20, "centred on the bubble: " + overflowAxis);
 
   // Lean measurement (the Legacy panel): the same placements, without the
   // exhaustive measurement of every candidate line, and a text too long for
@@ -224,10 +229,10 @@ const linesInside = (session) => {
   assert.ok(lean.stats.lines < full.stats.lines, "with fewer lines measured: " + lean.stats.lines + " < " + full.stats.lines);
   linesInside(leanShrink.sessions[0]);
   const refused = counting(tinyInput);
-  await assert.rejects(prepareSmartPaste({
+  const leanOverflow = await prepareSmartPaste({
     trigger: { source: "wand" }, lines: [line("Une phrase beaucoup trop longue pour une si petite bulle de rien du tout.")], roleStyles: {}, settings: { hyphenation: "off" },
-  }, { ...refused.adapter, leanMeasure: true }), (error) => error.code === "noPlacement");
-  assert.ok(refused.stats.lines <= 30, "a refusal measures the words, not every candidate line: " + refused.stats.lines);
+  }, { ...refused.adapter, leanMeasure: true });
+  assert.strictEqual(leanOverflow.sessions[0].text.params.layerText.textKey, overflowed.sessions[0].text.params.layerText.textKey, "the lean search overflows the same way");
   // Minimum size 100%: the style size or nothing, no ladder
   const noShrink = counting(smallInput);
   const kept100 = await prepareSmartPaste({ ...shrinkRequest, settings: { hyphenation: "off", minScale: 1 } }, { ...noShrink.adapter, leanMeasure: true });

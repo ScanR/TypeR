@@ -6,6 +6,7 @@ const assert = require("assert");
 const evalCalls = [];
 let hostReplies = {};
 const classicCalls = [];
+const storedClassicCalls = [];
 global.window = { typerUXP: { request() {} }, __adobe_cep__: { getHostEnvironment: () => JSON.stringify({ appUILocale: "fr_FR" }) } };
 global.navigator = { language: "fr-FR" };
 
@@ -32,9 +33,12 @@ const utilsStub = {
     classicCalls.push(args);
     args[5](true);
   },
+  createTextLayersInStoredSelections: (...args) => {
+    storedClassicCalls.push(args);
+    args[6](true);
+  },
   getUserFonts: () => [],
   locale: {
-    smartPasteFallback: "Smart paste unavailable ({reason}): pasted the classic way.",
     smartPasteReason_noPlacement: "the text does not fit this bubble",
     smartPasteReason_error: "unexpected error",
     smartPasteReason_noSelection: "no selection",
@@ -163,7 +167,8 @@ const baseState = () => ({
   client.applyHistorySnapshot({ documentId: 3, current: 11, states: [9, 10, 11] }, getState, dispatch);
   assert.deepStrictEqual(dispatched, [{ type: "setCurrentLineIndex", index: 4 }]);
 
-  // A refusal falls back to the classic paste with a notice
+  // A refusal falls back to the classic paste, without a notice: a warning
+  // reads as a bug, and the line is pasted all the same
   dispatched.length = 0;
   classicCalls.length = 0;
   current = { ...baseState(), currentLine: line(1, "Première") };
@@ -174,7 +179,7 @@ const baseState = () => ({
   };
   assert.strictEqual(await client.smartPasteInSelection(getState, dispatch, {}), true);
   assert.strictEqual(classicCalls.length, 1);
-  assert.ok(dispatched.some((action) => action.type === "showNotice" && /does not fit/.test(action.text)));
+  assert.ok(!dispatched.some((action) => action.type === "showNotice"));
   assert.ok(dispatched.some((action) => action.type === "nextLine"));
 
   // No selection: only a notice, no classic paste
@@ -269,10 +274,36 @@ const baseState = () => ({
   };
   assert.strictEqual(await client.smartPasteStoredSelections(getState, dispatch, {}), true);
   assert.deepStrictEqual(evalCalls.map((call) => call.slice(0, call.indexOf("("))), ["replaySelectionTrigger", "smartPaste", "replaySelectionTrigger", "smartPaste", "deselectDocumentSelection"]);
+  // The stored click is made again with Sample All Layers: the text just
+  // pasted is the active layer, and a wand reading it alone leaks over the page
+  const replayedWand = JSON.parse(evalCalls[0].slice("replaySelectionTrigger(".length, -1));
+  assert.deepStrictEqual(replayedWand.options, { tolerance: 20, merged: true });
+  assert.strictEqual(JSON.parse(evalCalls[2].slice("replaySelectionTrigger(".length, -1)).options, undefined, "a rectangle is replayed as stored");
   const second = JSON.parse(evalCalls[3].slice("smartPaste(".length, -1));
   assert.strictEqual(second.lines.length, 1, "one line per stored selection");
   assert.strictEqual(second.lines[0].text, "Deuxième");
   assert.ok(dispatched.some((action) => action.type === "clearSelections"));
+
+  // A stored bubble whose smart paste fails is pasted the classic way into
+  // its stored bounds, not into the live selection (gone or leaking after the
+  // failure), and the batch goes on with the next bubble
+  dispatched.length = 0;
+  evalCalls.length = 0;
+  classicCalls.length = 0;
+  storedClassicCalls.length = 0;
+  let pastes = 0;
+  hostReplies = {
+    replaySelectionTrigger: JSON.stringify({ ok: true }),
+    smartPaste: () => JSON.stringify(++pastes === 1 ? { ok: false, code: "photoshop", message: "refused" } : { ok: true, consumed: 1, sessions: [{ styleId: "s" }] }),
+    deselectDocumentSelection: "",
+  };
+  assert.strictEqual(await client.smartPasteStoredSelections(getState, dispatch, {}), true);
+  assert.strictEqual(classicCalls.length, 0, "the fallback never pastes into the live selection");
+  assert.strictEqual(storedClassicCalls.length, 1);
+  assert.strictEqual(storedClassicCalls[0][0][0], "Première **ligne**", "the raw line: the batch paste reads its Markdown");
+  assert.deepStrictEqual(storedClassicCalls[0][2], [current.storedSelections[0]], "the fallback uses the bounds stored with the bubble");
+  assert.ok(!dispatched.some((action) => action.type === "showNotice"), "the classic paste takes over silently");
+  assert.deepStrictEqual(dispatched.find((action) => action.type === "clearSelections").completed, current.storedSelections);
 
   // A failed replay keeps every unprocessed bubble and never pastes elsewhere.
   dispatched.length = 0;

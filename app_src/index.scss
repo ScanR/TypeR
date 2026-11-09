@@ -246,6 +246,19 @@ body[data-editor-theme]:not([data-editor-theme="system"]) {
     }
   }
 
+  // Persistent formatting states must remain visible in every editor theme.
+  .style-edit-props button[aria-pressed="true"] {
+    background: var(--editor-accent) !important;
+    border-color: var(--editor-accent) !important;
+    color: var(--editor-accentText) !important;
+    box-shadow: inset 0 -2px 0 var(--editor-accentText) !important;
+
+    &:hover:not(:disabled) {
+      background: var(--editor-accentHover) !important;
+      border-color: var(--editor-accentHover) !important;
+    }
+  }
+
   .topcoat-button--cta,
   .topcoat-button--large--cta,
   .style-item.m-current {

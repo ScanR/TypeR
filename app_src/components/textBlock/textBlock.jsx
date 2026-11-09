@@ -161,6 +161,7 @@ const TextBlock = React.memo(function TextBlock() {
     lines: state.lines,
     images: state.images,
     autoClosePSD: state.autoClosePSD,
+    autoScrollText: state.autoScrollText,
   }));
   const direction = context.state.direction || "ltr";
   const markdownEnabled = context.state.interpretMarkdown !== false;
@@ -199,8 +200,9 @@ const TextBlock = React.memo(function TextBlock() {
   }, []);
 
   React.useEffect(() => {
-    scrollToLine(context.state.currentLineIndex, 1000);
-  }, [context.state.currentLineIndex]);
+    if (context.state.autoScrollText === false) return undefined;
+    return scrollToLine(context.state.currentLineIndex, 1000);
+  }, [context.state.currentLineIndex, context.state.autoScrollText]);
 
   const ignoreTags = React.useMemo(
     () => (context.state.ignoreTags || []).filter((tag) => tag),

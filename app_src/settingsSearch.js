@@ -89,6 +89,7 @@ const SECTIONS = [
     groupText: "TextShapeR",
     entries: [
       { title: "settingsInlineTextShapeRLabel", hint: "settingsInlineTextShapeRHint", keywords: "forme shape suggestion" },
+      { title: "settingsPreserveTextShapeRSpacesLabel", hint: "settingsPreserveTextShapeRSpacesHint", keywords: "espaces spacing whitespace" },
       { title: "settingsDehyphenateLabel", hint: "settingsDehyphenateHint", parent: "settingsInlineTextShapeRLabel", keywords: "cesure tiret hyphen" },
     ],
   },
@@ -105,6 +106,7 @@ const SECTIONS = [
     tab: "script",
     group: "settingsGroupTextScript",
     entries: [
+      { title: "settingsAutoScrollTextLabel", hint: "settingsAutoScrollTextHint", keywords: "defilement scroll suivi" },
       { title: "settingsLinePrefixesLabel", hint: "settingsLinePrefixesDescr", keywords: "ignorer ignore commentaire comment" },
       { title: "settingsIgnoreTagsLabel", hint: "settingsIgnoreTagsDescr", keywords: "balise ignorer ignore" },
       { title: "settingsMarkdownLabel", hint: "settingsMarkdownHint", keywords: "gras italique bold italic" },

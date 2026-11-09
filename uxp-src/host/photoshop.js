@@ -93,6 +93,9 @@ async function modal(name, fn) {
 
 // doc.suspendHistory(name, fn): one history state for the whole run. With
 // rollback, the run leaves no history state and no document change at all.
+// A run that throws is rolled back too: a smart paste commit that failed
+// halfway left its clean fill and a deselected document, and the classic
+// paste that followed found "No selected area".
 async function suspendHistory(context, name, fn, options = {}) {
   const documentID = activeDocument().id;
   const suspensionID = await context.hostControl.suspendHistory({ documentID, name });
@@ -101,6 +104,9 @@ async function suspendHistory(context, name, fn, options = {}) {
   try {
     result = await fn();
     if (options.shouldCommit) commit = options.shouldCommit(result);
+  } catch (error) {
+    commit = false;
+    throw error;
   } finally {
     await context.hostControl.resumeHistory(suspensionID, commit);
   }
@@ -1880,22 +1886,43 @@ function _stripDirection(paragraphRanges) {
   }
 }
 
-// Photoshop makes a layer right above the active one, so under whatever is
-// higher up, and clipped when the active one is. A new text must not stay
-// there: it is released from the clipping mask, then brought to the front,
-// which Photoshop keeps inside the layer's folder (Layer > Arrange > Bring to
-// Front). No index arithmetic: layer indexes shift with a background layer and
-// with every folder, and the 3.0.1 index move misplaced texts under the clean
-// layer. It only decides where the text sits, so a refusal must not fail the
-// paste; Photoshop refuses the move when the layer is already in front.
-function _raiseNewTextLayer() {
+// Photoshop makes a layer right above the active one: a new text stays
+// there, as before 3.0, so the active layer decides where it goes in the
+// stack. Two cases move it: a text clipped by the active layer's clipping
+// mask is released from it, and a text made under the document's "TypeR
+// Clean" layer (the user on the page layer, the clean fill above it) is
+// brought to the front, which Photoshop keeps inside the layer's folder
+// (Layer > Arrange > Bring to Front): the fill would hide it (3.0.1 moved
+// every text to the front, and 3.0.0 by a computed index, which misplaced
+// texts under the clean layer). It only decides where the text sits, so a
+// refusal must not fail the paste; Photoshop refuses the move when the
+// layer is already in front.
+const CLEAN_LAYER_NAME = "TypeR Clean";
+
+// The clean layer is a top-level pixel layer (smartPaste.js ensureCleanLayer)
+function _cleanLayerAbove() {
   try {
-    if (get([{ _property: "group" }, TARGET_LAYER]).group) {
-      play({ _obj: "ungroup", _target: [TARGET_LAYER] });
-    }
+    const doc = ps.app && ps.app.activeDocument;
+    const layers = Array.from((doc && doc.layers) || []);
+    const clean = layers.find((layer) => layer.name === CLEAN_LAYER_NAME && layer.kind === "pixel");
+    if (!clean) return false;
+    const textIndex = integerValue(get([{ _property: "itemIndex" }, TARGET_LAYER]).itemIndex);
+    const cleanIndex = integerValue(get([{ _property: "itemIndex" }, { _ref: "layer", _id: clean.id }]).itemIndex);
+    return cleanIndex > textIndex;
+  } catch (error) {
+    return false;
+  }
+}
+
+function _raiseNewTextLayer() {
+  let clipped = false;
+  try {
+    clipped = !!get([{ _property: "group" }, TARGET_LAYER]).group;
+    if (clipped) play({ _obj: "ungroup", _target: [TARGET_LAYER] });
   } catch (releaseError) {
     if (!(releaseError instanceof PhotoshopError)) console.warn("TypeR: clipping release", (releaseError && releaseError.message) || releaseError);
   }
+  if (!_cleanLayerAbove()) return;
   try {
     play({ _obj: "move", _target: [TARGET_LAYER], to: { _ref: "layer", _enum: "ordinal", _value: "front" } });
   } catch (moveError) {
@@ -1957,6 +1984,36 @@ function _createAndSetLayerText(data, width, height) {
   }
   if (data.direction && !directionBaked) {
     _applyTextDirection(data.direction);
+  }
+}
+
+// Keep the requested paragraph type even when Photoshop's automatic box
+// clips or rewraps the already composed lines. Size in displayed pixels,
+// including glyph bearings/leading, then restore the original ink position.
+function _smartConvertToParagraph() {
+  var before = _currentLayerBox();
+  var size = _currentDisplayedTextPixels();
+  if (!(size > 0)) size = 24;
+  _changeToBoxText();
+  var after = _currentLayerBox();
+  if (before && after) {
+    var width = before.width + size * 2;
+    for (var attempt = 0; attempt < 3 &&
+        (Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5); attempt++) {
+      _setTextBoxSize(width, before.height + size * 2);
+      after = _currentLayerBox();
+      if (!after) break;
+      width *= 1.5;
+    }
+
+  }
+  // A failed fit must roll the smart commit back and use its visible classic
+  // fallback, never leave clipped text or silently switch to point text.
+  if (before && (!after || Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5)) {
+    throw new Error("Paragraph text could not preserve the composed lines");
+  }
+  if (before && after && (Math.abs(before.left - after.left) > 0.01 || Math.abs(before.top - after.top) > 0.01)) {
+    _moveLayer(before.left - after.left, before.top - after.top);
   }
 }
 
@@ -4071,7 +4128,7 @@ module.exports = {
   _internals: {
     play, get, modal, suspendHistory, jamText, _hostState, _getLayerStroke, _getLayerText, _setTextContentsOnly,
     // smart paste (uxp-src/host/smartPaste.js)
-    _makeTextLayer, _applyMiddleEast, _changeToBoxText, _changeToPointText, _setLayerStroke, _getActiveLayerId,
+    _smartConvertToParagraph, _makeTextLayer, _applyMiddleEast, _changeToBoxText, _changeToPointText, _setLayerStroke, _getActiveLayerId,
     _layerIsTextLayer, _getTextLayerSize, _getFontList,
     _getCurrentTextLayerBounds, _getCurrentSelectionBounds, _getActiveHistoryIndex,
     // pure helpers, compared with host.js by scripts/testUxpHost.js

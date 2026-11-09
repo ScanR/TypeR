@@ -42,3 +42,48 @@ assert.deepStrictEqual(formatMarkdownSelection("hello", 2, 2, "bold"), {
 });
 
 console.log("markdown formatting tests passed");
+
+// HTML paste: Word's source line breaks and inter-tag whitespace are not line
+// breaks, blocks and <br> are, "*" and "_" are kept, formatting is marked
+const { htmlNodeToMarkdown, applyMarkdownStyle } = mod.exports;
+const text = (value) => ({ nodeType: 3, nodeValue: value });
+const el = (tagName, children, attrs = {}) => ({
+  nodeType: 1,
+  tagName,
+  childNodes: children,
+  getAttribute: (name) => (name in attrs ? attrs[name] : null),
+});
+const body = (...children) => el("BODY", children);
+
+assert.strictEqual(
+  htmlNodeToMarkdown(body(
+    text("\n\n"),
+    el("P", [text("Mariclage"), el("O:P", [])]),
+    text("\n\n"),
+    el("P", [text("Réincarnée en méchante dans un roman adoré de\nsa vie passée. Comtesse célibataire qui gouverne une grande ville\nde l'Empire\nd'Orlea."), el("O:P", [])]),
+    text("\n\n"),
+  )),
+  "Mariclage\nRéincarnée en méchante dans un roman adoré de sa vie passée. Comtesse célibataire qui gouverne une grande ville de l'Empire d'Orlea.\n",
+);
+assert.strictEqual(
+  htmlNodeToMarkdown(body(el("P", [text("* *: Yoon Ari."), el("BR", []), text("\"\": Dad...!!!")]))),
+  "* *: Yoon Ari.\n\"\": Dad...!!!\n",
+);
+assert.strictEqual(
+  htmlNodeToMarkdown(body(el("P", [el("B", [text("Page 5")])]), el("P", [text("Plain "), el("I", [text("soft ")]), text("word")]))),
+  "**Page 5**\nPlain *soft* word\n",
+);
+assert.strictEqual(
+  htmlNodeToMarkdown(body(el("P", [text("Bold ")], { style: "font-weight:700" }), el("P", [text("x")], { style: "font-weight:400" }))),
+  "**Bold**\nx\n",
+);
+assert.strictEqual(
+  htmlNodeToMarkdown(body(el("STYLE", [text("p { color: red }")]), el("DIV", [text("A")]), el("DIV", [text(" ")]), el("DIV", [text("B")]))),
+  "A\n\nB\n",
+);
+assert.strictEqual(htmlNodeToMarkdown(body(el("PRE", [text("a\n  b")]))), "a\nb\n");
+assert.strictEqual(htmlNodeToMarkdown(null), "");
+assert.strictEqual(applyMarkdownStyle("  hi there  ", true, false), "  **hi there**  ");
+assert.strictEqual(applyMarkdownStyle("one\n\ntwo", false, true), "*one*\n\n*two*");
+
+console.log("Markdown formatting tests passed");
