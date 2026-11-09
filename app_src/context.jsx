@@ -17,6 +17,7 @@ import { collectDescendantIds, getAutomaticTagStyles } from "./folderUtils";
 import { perfMeasure } from "./perfDebug";
 import { useKeyboardAccessPrompt } from "./keyboardAccess";
 import { useUxpPlatformPackage } from "./uxpPlatformPackage";
+import { useStudioScript } from "./studioScript";
 import { TAB_FIELDS, createTab, migrateTabStorage, moveTab } from "./tabStorage";
 import { applyAutoTabNames, getNextDefaultTabName } from "./tabNames";
 import { getInterfaceLanguage } from "./interfaceLanguage";
@@ -1996,6 +1997,8 @@ const ContextProvider = React.memo(function ContextProvider(props) {
     }).catch(error => console.warn("Automatic update check failed:", error));
   }, [state.checkUpdates, state.autoUpdate]);
   useUxpPlatformPackage();
+  // A script sent by TypeR Studio with the pages it opens here
+  useStudioScript(dispatch, () => stateRef.current);
   useKeyboardAccessPrompt(state.modalType);
   // Legacy panel: called "TypeR (CEP)", or "TypeR (old)" while TypeR UXP is installed (uxpMigration.js)
   React.useEffect(() => {

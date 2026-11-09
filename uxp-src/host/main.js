@@ -923,6 +923,13 @@ async function startOnce() {
   } catch (error) {
     console.error("TypeR: history listener", error);
   }
+  // A document opened: TypeR Studio may have left a script with it (app_src/studioScript.js).
+  // Apart from the CEP-style events, which every panel listener reacts to.
+  try {
+    await ps.action.addNotificationListener(["open"], () => post({ type: "documentOpened" }));
+  } catch (error) {
+    console.error("TypeR: open listener", error);
+  }
   try {
     document.theme.onUpdated.addListener(onThemeChanged);
   } catch (error) {}

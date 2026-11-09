@@ -262,6 +262,8 @@ export function installCepEnvironment(init) {
   /* ---------------------- host notifications ---------------------- */
 
   on("psEvent", (message) => dispatch("com.adobe.PhotoshopJSONCallback" + init.extensionId, message.data));
+  // CEP's own event for a document coming to the front, as Photoshop sends it to the Legacy panel
+  on("documentOpened", () => dispatch("documentAfterActivate", ""));
   // Every change of the keyboard reader's state goes straight to the
   // shortcut matcher (app_src/hotkeys.jsx): a press shorter than a poll
   // interval, or one made while a poll backs off, is otherwise never seen
