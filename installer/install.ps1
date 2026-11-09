@@ -976,7 +976,7 @@ foreach ($RawLine in Get-Content -LiteralPath $Inventory) {
     $File = Join-Path $ScriptDir $Relative
     if (-not (Test-Path -LiteralPath $File -PathType Leaf)) { throw "Missing file: $Relative" }
     if ((Get-TypeRFileHash $File) -ne $Hash) { throw "Checksum mismatch: $Relative" }
-    $Listed[$Relative] = $true
+    $Listed[$Relative] = $Hash
 }
 foreach ($Relative in $Required) {
     if (-not $Listed.ContainsKey($Relative) -or (Get-Item -LiteralPath (Join-Path $ScriptDir $Relative)).Length -eq 0) { throw "Incomplete package: $Relative" }
@@ -1008,9 +1008,9 @@ $Moved = @(); $Installed = @(); $KeepBackup = $false
 try {
     New-Item -ItemType Directory -Path $Stage, $Backup -Force | Out-Null
     foreach ($Folder in $Folders) { Copy-Item -LiteralPath (Join-Path $ScriptDir $Folder) -Destination $Stage -Recurse }
-    foreach ($Line in Get-Content -LiteralPath $Inventory) {
-        $Parts = $Line -split '  ', 2
-        if ((Get-TypeRFileHash (Join-Path $Stage $Parts[1])) -ne $Parts[0]) { throw 'Staged package verification failed' }
+    # Reuse validated paths and hashes; raw inventory formatting is not a path.
+    foreach ($Relative in $Listed.Keys) {
+        if ((Get-TypeRFileHash (Join-Path $Stage $Relative)) -ne $Listed[$Relative]) { throw 'Staged package verification failed' }
     }
     foreach ($Folder in $Folders) {
         $Destination = Join-Path $TargetDir $Folder
