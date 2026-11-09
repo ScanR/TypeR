@@ -67,6 +67,7 @@ const checkUpdate = async (currentVersion) => {
         version: newerReleases[0].tag_name,
         downloadUrl: pickUpdateDownloadUrl(newerReleases[0], UPDATE_PACKAGE_EXTENSION, uxpHost && uxpHost.platform),
         testMode: !!testConfig,
+        currentVersion: comparisonVersion,
         releases: newerReleases.map(release => ({
           version: release.tag_name,
           body: release.body_html || release.body,

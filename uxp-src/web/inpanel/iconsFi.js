@@ -9,6 +9,7 @@ export {
   RiArchiveLine as FiArchive,
   RiArrowDownLine as FiArrowDown,
   RiArrowRightCircleLine as FiArrowRightCircle,
+  RiArrowUpCircleLine as FiArrowUpCircle,
   RiArrowUpLine as FiArrowUp,
   RiBold as FiBold,
   RiBookOpenLine as FiBookOpen,
