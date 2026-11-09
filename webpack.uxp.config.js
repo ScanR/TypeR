@@ -12,6 +12,7 @@ const outputPath = (env) => env.mac ? path.join(__dirname, "uxp-mac") : env.addo
 const UXP_MODULES = ["photoshop", "uxp", "fs", "os", "path", "typer-keys.uxpaddon"];
 const webViewRepairSource = require('fs').readFileSync(path.join(__dirname, 'installer/repair_uxp_webview_win.ps1'), 'utf8');
 const webViewRepairId = require('crypto').createHash('sha256').update(webViewRepairSource).digest('hex');
+const windowsLauncher = require('./scripts/buildWindowsLauncher').verifiedLauncher();
 
 const hostConfig = (env, argv, entry, filename, library) => ({
   name: library ? "uxp-host-test" : "uxp-host",
@@ -38,6 +39,7 @@ const hostConfig = (env, argv, entry, filename, library) => ({
   // UXP-Windows.ccx only. The native addon (keysAddon.js) is kept for its preview package.
   plugins: [new webpack.DefinePlugin({ TYPER_DEV: JSON.stringify(!!env.dev), TYPER_TRACE: JSON.stringify(!!env.trace), TYPER_DIAGNOSTIC: JSON.stringify(!!env.diagnostic),
     TYPER_WEBVIEW_REPAIR_SCRIPT: JSON.stringify(webViewRepairSource), TYPER_WEBVIEW_REPAIR_ID: JSON.stringify(webViewRepairId),
+    TYPER_WINDOWS_LAUNCHER: JSON.stringify(windowsLauncher),
     TYPER_WINDOWS_READER: JSON.stringify(!env.mac && !env.addon) }),
     ...(env.addon ? [new webpack.NormalModuleReplacementPlugin(/^\.\/keysHelper$/, path.join(__dirname, "uxp-src/host/keysAddon.js"))] : [])],
   optimization: { minimize: false },

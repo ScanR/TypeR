@@ -5,6 +5,9 @@
 // script costs a few hundred milliseconds of Photoshop's main thread.
 const ps = require("photoshop");
 const uxp = require("uxp");
+const os = require('os');
+const { createWindowsLauncher } = require('./windowsLauncher');
+const { encodeCommand } = require('./webViewRepair');
 
 const lfs = uxp.storage.localFileSystem;
 let counter = 0;
@@ -34,10 +37,23 @@ async function runJsx(code, commandName = "TypeR") {
   }
 }
 
-// app.system(command): the command runs through /bin/sh (cmd.exe on
-// Windows), whose parent process is Photoshop
-function systemCall(command) {
+// Windows commands go through a GUI launcher with CreateNoWindow. Only macOS
+// keeps app.system; File.execute opens the Windows launcher without a shell.
+let windowsLauncher = null;
+function launchWindows(command, options) {
+  if (!windowsLauncher) windowsLauncher = createWindowsLauncher({
+    files: require('./files'), runJsx,
+    packed: typeof TYPER_WINDOWS_LAUNCHER !== 'undefined' ? TYPER_WINDOWS_LAUNCHER : null,
+    decodeBase64: value => atob(value), wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
+  });
+  return windowsLauncher(command, options);
+}
+function systemCall(command, options) {
+  if (os.platform() === 'win32') return launchWindows(command, options);
   return runJsx("app.system(" + JSON.stringify(String(command)) + ");");
 }
+function runPowerShell(command, options) {
+  return launchWindows(encodeCommand(command, value => btoa(value)), Object.assign({}, options, { mode: 'powershell' }));
+}
 
-module.exports = { runJsx, systemCall };
+module.exports = { runJsx, systemCall, runPowerShell };

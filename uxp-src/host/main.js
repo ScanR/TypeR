@@ -15,18 +15,20 @@ const files = require("./files");
 const keyboard = require("./keyboard");
 const keysHelper = require("./keysHelper");
 const services = require("./services");
-const { runJsx, systemCall } = require("./jsx");
+const { runJsx, systemCall, runPowerShell } = require("./jsx");
 const { parseCall, callTimeout, createCallQueue } = require("./evalScript");
 const { createPanelStartup } = require("./panelStartup");
 const { createStartupLoader } = require("./startupFiles");
 const panelStart = require("./panelStart");
 const { startInPanel } = require("./inPanel");
 const { createWebViewRepair } = require('./webViewRepair');
+const { saveRepairDocuments } = require('./saveRepairDocuments');
 const webViewRepair = createWebViewRepair({
-  platform: os.platform(), files, runJsx,
+  platform: os.platform(), files, runJsx, runPowerShell,
+  saveDocuments: () => saveRepairDocuments(ps, () => mirror.flush()),
   source: typeof TYPER_WEBVIEW_REPAIR_SCRIPT === 'string' ? TYPER_WEBVIEW_REPAIR_SCRIPT : '',
   sourceId: typeof TYPER_WEBVIEW_REPAIR_ID === 'string' ? TYPER_WEBVIEW_REPAIR_ID : '',
-  encodeBase64: value => btoa(value), wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
+  wait: ms => new Promise(resolve => setTimeout(resolve, ms)),
 });
 const panelProbe = crashTrace ? require("./panelProbe") : null;
 const diagnostic = typeof TYPER_DIAGNOSTIC !== 'undefined' && TYPER_DIAGNOSTIC ? require('./diagnostics') : null;

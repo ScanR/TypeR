@@ -8,7 +8,8 @@ $testSource = [IO.File]::ReadAllText($testScript)
 $testCatalogPattern = '(?s)\$RepairProfiles = @\x27\r?\n(.*?)\r?\n\x27@ \| ConvertFrom-Json'
 $testMatch = [regex]::Match($testSource, $testCatalogPattern)
 if (-not $testMatch.Success) { throw 'Repair profile catalog missing' }
-$testProfiles = @($testMatch.Groups[1].Value | ConvertFrom-Json)
+# Windows PowerShell 5.1 emits a JSON array as one pipeline object.
+$testProfiles = @($testMatch.Groups[1].Value | ConvertFrom-Json | ForEach-Object { $_ })
 $testProfile = $testProfiles | Where-Object { $_.id -eq $ProfileId } | Select-Object -First 1
 if (-not $testProfile) { throw 'Unknown test profile' }
 $testOriginalHash = $testProfile.originalHash
@@ -45,7 +46,7 @@ if (-not $OriginalDll) {
     $testProfile.size = 4096
     $testSource = $testSource.Replace($testMatch.Groups[1].Value, (ConvertTo-Json -InputObject $testProfiles -Depth 5))
     $testScript = Join-Path $testRoot 'repair.ps1'
-    [IO.File]::WriteAllText($testScript, $testSource)
+    [IO.File]::WriteAllText($testScript, $testSource, [Text.UTF8Encoding]::new($true))
     $testOriginalHash = $testProfile.originalHash
     $testPatchedHash = $testProfile.patchedHash
 }

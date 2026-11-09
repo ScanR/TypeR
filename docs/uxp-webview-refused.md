@@ -313,10 +313,38 @@ timeout or macOS does not. The fallback starts after the confirmed refusal grace
 
 1. Identifies the Photoshop executable that actually hosts TypeR and checks the entire DLL hash.
 2. For unknown hashes, requires the complete compatible storage layout above; otherwise leaves the binary unchanged without requesting elevation.
-3. Explains that it changes a Photoshop file, offers Cancel, requests Windows UAC only after OK, and waits for Photoshop to close normally (up to 24 hours).
+3. Explains that it saves documents, closes Photoshop and changes a Photoshop file, offers Cancel,
+   then requests Windows UAC only after OK. A separate progress window stays open through the repair.
+   The worker requests a save from the current plugin session. The host saves every dirty document
+   in an interactive modal scope (new documents show Save As), verifies they are saved and flushes
+   TypeR's pending storage writes. A cancelled or failed save stops before closing anything.
+   Only a matching successful acknowledgement allows a normal window-close request to the target
+   Photoshop process. Other Photoshop installations are never closed automatically.
 4. Verifies and preserves an exact original backup, stages and verifies the repaired file, checks
    Photoshop is still closed and the original unchanged, then replaces the DLL and verifies it again.
-5. Reports completion before the user restarts Photoshop. It never closes or kills Photoshop or documents.
+5. Shows saving, closing, backup, repair, verification and restart in a dark external window, which
+   survives Photoshop's exit. A slim animated highlight signals work without inventing a percentage;
+   four milestones show Save, Close, Repair and Restart. After the worker exits and the DLL hash is
+   verified, the unelevated coordinator relaunches the same Photoshop executable. A launch failure
+   is reported separately from a successful repair; Photoshop can then be opened manually.
+   The consent window explains the save/repair/restart sequence and mentions modified or cracked
+   Photoshop as a possible cause, without treating the storage refusal as proof of either.
+   No process is killed. Save acknowledgement times out after ten minutes; a blocked
+   or cancelled normal close stops after two minutes. Support commands without a plugin session keep
+   the manual-close flow (up to 24 hours), with the same visible progress window in Auto mode.
+   French messages include accents; the helper has a UTF-8 BOM for Windows PowerShell 5.1.
+   Both windows embed the TypeR icon and use a dedicated Windows taskbar identity.
+
+Windows automatic commands (repair, font registration and UXP updates) are started by
+`scripts/native/typer-launcher.cs`, a GUI executable opened directly with `File.execute()`.
+It creates child processes with `UseShellExecute=false` and `CreateNoWindow=true`; hiding a
+console after it appears is not used. The keyboard reader already uses the GUI subsystem and
+the same direct opening method. The launcher ships base64-encoded inside the host bundle for
+every package variant, with its source and binary hashes verified at build time. Rebuild it
+after source/icon changes with `node scripts/buildWindowsLauncher.js` on Windows. Native tests
+verify that direct PowerShell and cmd descendants have no console window, including with
+Unicode and shell metacharacters in the profile path. Explicit standalone command-line
+installers keep their own interface.
 
 A per-user/per-installation mutex prevents overlapping helpers. A separate mutation mutex serializes
 Apply and Restore, including explicit support commands. Worker failure/timeout receipts are preserved. Receipts under
@@ -324,7 +352,9 @@ Apply and Restore, including explicit support commands. Worker failure/timeout r
 Declined UAC, failures and timeouts are not retried automatically by the same helper revision.
 An already repaired DLL needs no UAC or restart. Tests cover original/repaired/unknown binaries,
 exact restoration, missing/corrupt backups, wait timeout, quoted paths, concurrency in the host,
-bounded launch retries and all package build variants. The automatic path was also tested on the VM:
+bounded launch retries and all package build variants. Save cancellation, failed writes, stale session
+acknowledgements, normal-close failures and progress controls have regression tests. The earlier
+manual-close automatic path was also tested on the VM:
 restore original -> launch new host -> refusal/fallback -> UAC -> wait for normal exit -> repaired hash.
 
 ### Restore / support

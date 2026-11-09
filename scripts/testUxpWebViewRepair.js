@@ -19,6 +19,7 @@ function fixture(platform = 'win32', failPath = 0) {
       if (code === 'app.path.fsName;') { if (++paths <= failPath) throw new Error('modal busy'); return "E:\\Adobe & O'Brien\\Photoshop"; }
       return 'OK';
     },
+    runPowerShell: async (command, options) => { calls.push({ command, options }); return 0; },
     encodeBase64: value => Buffer.from(value, 'binary').toString('base64'), wait: async ms => waits.push(ms),
   });
   return { repair, calls, writes, waits };
@@ -34,15 +35,12 @@ function fixture(platform = 'win32', failPath = 0) {
   assert.deepStrictEqual(await Promise.all([test.repair.start('storage'), test.repair.start('storage')]), [true, true]);
   assert.strictEqual(test.calls.length, 2, 'one path lookup and one launch, even with simultaneous requests');
   assert.strictEqual(test.writes.size, 1);
-  const launchJs = test.calls[1];
-  const literal = launchJs.slice('app.system('.length, launchJs.lastIndexOf(');'));
-  const launch = JSON.parse(literal);
-  assert.match(launch, /^start "" \/B powershell\.exe .* -WindowStyle Hidden -EncodedCommand [A-Za-z0-9+/=]+$/);
-  const command = Buffer.from(launch.split(' ').pop(), 'base64').toString('utf16le');
+  const { command, options } = test.calls[1];
+  assert.strictEqual(options.waitForExit, false, 'repair continues outside Photoshop without holding its main thread');
   assert(command.includes("L''ete & $(no) %name%"), 'PowerShell path quoting preserves metacharacters as literal data');
   assert(command.includes("O''Brien\\Photoshop\\Photoshop.exe'"));
   assert(command.includes('-Action Auto') && command.includes('-ReportPath'));
-  assert(!launch.includes('O\'Brien') && !launch.includes('$(no)'), 'cmd sees no user paths');
+  assert(!test.calls.some(call => typeof call === 'string' && call.includes('app.system')), 'repair must never open a cmd bootstrap');
   const retry = fixture('win32', 2);
   assert.strictEqual(await retry.repair.start('storage'), true);
   assert.deepStrictEqual(retry.waits, [2000, 5000]);

@@ -139,7 +139,8 @@ export const buildWindowsUpdateScript = ({ upia, pluginName, pluginFolder }) => 
   "",
 ].join("\r\n");
 
-// The command that starts the script in the background. Photoshop would wait
-// for it otherwise, with its main thread held.
+// macOS backgrounds its shell command. Windows is detached by the native GUI
+// launcher, which also prevents console windows for the script and its children.
 export const macUpdateCommand = (scriptPath) => "( sh " + shellQuote(scriptPath) + " ) >/dev/null 2>&1 &";
-export const windowsUpdateCommand = () => 'start "" /B cmd /c "%APPDATA%\\TypeR\\UXP\\' + UPDATE_FOLDER + "\\" + UPDATE_SCRIPT_WINDOWS + '"';
+// The native GUI launcher detaches and hides the console before cmd starts.
+export const windowsUpdateCommand = () => '"%APPDATA%\\TypeR\\UXP\\' + UPDATE_FOLDER + "\\" + UPDATE_SCRIPT_WINDOWS + '"';

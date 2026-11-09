@@ -6,7 +6,7 @@ const os = require("os");
 const fs = require("fs");
 const { zipSync, unzipSync, strToU8, strFromU8 } = require("fflate");
 const files = require("./files");
-const { systemCall } = require("./jsx");
+const { systemCall, runPowerShell } = require("./jsx");
 const { matchFontRef, normalize } = require("../../app_src/fontFileExport");
 const { buildWindowsRegistrationScript } = require("../../app_src/fontInstaller");
 const { SAME_VERSION_SUFFIX, installPluginFiles, pluginFolderName, stalePluginFolders } = require("../../app_src/uxpManualInstall");
@@ -324,7 +324,8 @@ async function installFonts(fontFiles, registrationScript) {
     await files.resolveFolders();
     const scriptPath = files.joinPath(files.getStorageRoot(), "font-registration.ps1");
     await files.writeText(scriptPath, "\ufeff" + registrationScript(installed));
-    await systemCall("powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"" + scriptPath + "\"");
+    const result = await runPowerShell('& ' + psSingleQuote(scriptPath));
+    if (result !== 0) throw new Error('Font registration failed: ' + result);
   }
   return installed.length;
 }
@@ -441,7 +442,7 @@ async function runUpdateScript(installer, manifest) {
   const options = { upia: installer, pluginName: manifest.name, pluginFolder: pluginFolderName(manifest), pluginsFolder, registry };
   if (isWindows()) {
     await files.writeText(files.joinPath(folder, updateScript.UPDATE_SCRIPT_WINDOWS), updateScript.buildWindowsUpdateScript(options));
-    await systemCall(updateScript.windowsUpdateCommand());
+    await systemCall(updateScript.windowsUpdateCommand(), { waitForExit: false });
   } else {
     const script = files.joinPath(folder, updateScript.UPDATE_SCRIPT_MAC);
     await files.writeText(script, updateScript.buildMacUpdateScript(options));

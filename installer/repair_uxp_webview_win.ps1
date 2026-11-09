@@ -1,11 +1,12 @@
-# TypeR's WebView storage repair: exact hashes or a fully recognized x64 layout.
+﻿# TypeR's WebView storage repair: exact hashes or a fully recognized x64 layout.
 # Inspect is read-only. Auto is called ONLY after the plugin observes UXP's
-# missing-storage refusal; it requests UAC and waits for a normal Photoshop exit.
+# missing-storage refusal; it requests UAC, saves through the host and requests a normal exit.
 [CmdletBinding()]
 param(
     [ValidateSet('Inspect', 'Apply', 'Restore', 'Auto')][string]$Action = 'Inspect',
     [string]$PhotoshopPath = 'C:\Program Files\Adobe\Adobe Photoshop 2026\Photoshop.exe',
     [string]$ReportPath,
+    [ValidatePattern('^[a-z0-9-]{1,80}$')][string]$SessionId,
     [switch]$WaitForExit,
     [ValidateRange(1, 86400)][int]$WaitSeconds = 86400,
     [switch]$Retry
@@ -331,7 +332,7 @@ function Write-RepairStatus([string]$Status, [string]$Detail = '') {
     if (-not $ReportPath) { return }
     $ReportDirectory = Split-Path -Parent ([IO.Path]::GetFullPath($ReportPath))
     [IO.Directory]::CreateDirectory($ReportDirectory) | Out-Null
-    $Receipt = @{ status = $Status; detail = $Detail; photoshop = $PhotoshopPath; repair = $PatchedHash; original = $OriginalHash; observed = $CurrentHash; profile = $(if ($Profile) { $Profile.id } else { $null }); time = [DateTime]::UtcNow.ToString('o') }
+    $Receipt = @{ status = $Status; detail = $Detail; session = $SessionId; photoshop = $PhotoshopPath; repair = $PatchedHash; original = $OriginalHash; observed = $CurrentHash; profile = $(if ($Profile) { $Profile.id } else { $null }); time = [DateTime]::UtcNow.ToString('o') }
     $ReceiptStage = $ReportPath + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
     try {
         [IO.File]::WriteAllText($ReceiptStage, ($Receipt | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
@@ -340,9 +341,309 @@ function Write-RepairStatus([string]$Status, [string]$Detail = '') {
     } finally { if (Test-Path -LiteralPath $ReceiptStage) { Remove-Item -LiteralPath $ReceiptStage -Force } }
 }
 function Quote-RepairArgument([string]$Value) { "'" + $Value.Replace("'", "''") + "'" }
+function Get-RepairProgress([string]$Status, [bool]$French) {
+    $Messages = @{
+        preparing = @('Autorisez la réparation dans la demande Windows.', 'Allow the repair in the Windows permission prompt.')
+        'saving-documents' = @('Enregistrement des documents. Complétez les fenêtres Enregistrer sous dans Photoshop.', 'Saving documents. Complete any Save As dialogs in Photoshop.')
+        'closing-photoshop' = @('Fermeture de Photoshop. Si une boîte de dialogue est ouverte, terminez-la dans Photoshop.', 'Closing Photoshop. Complete any open dialog in Photoshop.')
+        'waiting-for-photoshop' = @('Fermez les autres fenêtres Photoshop pour continuer.', 'Close the remaining Photoshop windows to continue.')
+        'backing-up' = @('Sauvegarde du fichier Photoshop original...', 'Backing up the original Photoshop file...')
+        repairing = @('Réparation de Photoshop...', 'Repairing Photoshop...')
+        verifying = @('Vérification de la réparation...', 'Verifying the repair...')
+        applied = @('Réparation vérifiée. Photoshop va redémarrer.', 'Repair verified. Photoshop will restart.')
+        restarting = @('Redémarrage de Photoshop. Encore un instant...', 'Restarting Photoshop. Just a moment...')
+        completed = @('Photoshop a été relancé. Vous pouvez retrouver TypeR dans le menu Plug-ins.', 'Photoshop has been launched. Open TypeR from the Plugins menu.')
+        'restart-failed' = @('La réparation est terminée, mais Photoshop n''a pas pu redémarrer. Ouvrez-le manuellement.', 'Repair completed, but Photoshop could not restart. Open it manually.')
+        failed = @('Réparation arrêtée. Consultez le détail ci-dessous.', 'Repair stopped. See the details below.')
+        declined = @('Réparation annulée. Photoshop reste disponible.', 'Repair cancelled. Photoshop remains available.')
+        'timed-out' = @('Photoshop est resté ouvert. La réparation est arrêtée.', 'Photoshop remained open. The repair has stopped.')
+    }
+    $Index = if ($French) { 0 } else { 1 }
+    $Text = if ($Messages.ContainsKey($Status)) { $Messages[$Status][$Index] } else { $Status }
+    $Stages = @{ preparing = 0; 'saving-documents' = 1; 'closing-photoshop' = 2; 'waiting-for-photoshop' = 2; 'backing-up' = 3; repairing = 3; verifying = 3; applied = 4; restarting = 4; completed = 5; 'restart-failed' = 4 }
+    $Stage = if ($Stages.ContainsKey($Status)) { $Stages[$Status] } else { 0 }
+    $Titles = if ($French) { @('Préparation', 'Enregistrement', 'Fermeture de Photoshop', 'Réparation', 'Redémarrage', 'Tout est prêt') }
+        else { @('Getting ready', 'Saving your work', 'Closing Photoshop', 'Repairing', 'Restarting', 'All set') }
+    $Title = $Titles[$Stage]
+    if ($Status -eq 'restart-failed') { $Title = if ($French) { 'Réparation terminée' } else { 'Repair complete' } }
+    elseif ($Status -in @('failed', 'timed-out')) { $Title = if ($French) { 'La réparation s''est arrêtée' } else { 'Repair stopped' } }
+    elseif ($Status -eq 'declined') { $Title = if ($French) { 'Réparation annulée' } else { 'Repair cancelled' } }
+    return [pscustomobject]@{ Text = $Text; Title = $Title; Stage = $Stage; Complete = ($Status -eq 'completed') }
+}
+function Initialize-RepairWindowTypes {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+    if ('TypeRRepairTrack' -as [type]) { return }
+    Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
+using System.Windows.Forms;
+public sealed class TypeRRepairWindow : Form {
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
+    public static void Drag(Form window) { ReleaseCapture(); SendMessage(window.Handle, 0xA1, new IntPtr(2), IntPtr.Zero); }
+    public TypeRRepairWindow() { SetCurrentProcessExplicitAppUserModelID("ScanR.TypeR.Repair"); DoubleBuffered = true; }
+    protected override void Dispose(bool disposing) {
+        var ownedIcon = disposing ? Icon : null;
+        base.Dispose(disposing);
+        if (ownedIcon != null) ownedIcon.Dispose();
+    }
+    protected override CreateParams CreateParams {
+        get { var cp = base.CreateParams; cp.ClassStyle |= 0x20000; return cp; }
+    }
+    protected override void OnResize(EventArgs e) {
+        base.OnResize(e);
+        if (Width < 32 || Height < 32) return;
+        using (var shape = new GraphicsPath()) {
+            shape.AddArc(0, 0, 24, 24, 180, 90);
+            shape.AddArc(Width - 24, 0, 24, 24, 270, 90);
+            shape.AddArc(Width - 24, Height - 24, 24, 24, 0, 90);
+            shape.AddArc(0, Height - 24, 24, 24, 90, 90);
+            shape.CloseFigure();
+            var old = Region;
+            Region = new Region(shape);
+            if (old != null) old.Dispose();
+        }
+    }
+}
+public sealed class TypeRRepairTrack : Control {
+    private readonly Timer timer = new Timer();
+    private float phase;
+    public int Stage { get; set; }
+    public bool Finished { get; set; }
+    public bool Successful { get; set; }
+    public bool French { get; set; }
+    public TypeRRepairTrack() {
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        timer.Interval = 30;
+        timer.Tick += delegate { phase = (phase + 0.015f) % 1f; if (!Finished && Visible) Invalidate(); };
+        timer.Start();
+    }
+    protected override void Dispose(bool disposing) { if (disposing) timer.Dispose(); base.Dispose(disposing); }
+    protected override void OnPaint(PaintEventArgs e) {
+        base.OnPaint(e);
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        float scale = Width / 540f;
+        g.ScaleTransform(scale, scale);
+        var accent = Color.FromArgb(165, 147, 255);
+        var muted = Color.FromArgb(108, 111, 128);
+        var green = Color.FromArgb(102, 216, 177);
+        using (var track = new Pen(Color.FromArgb(49, 51, 67), 5)) {
+            track.StartCap = track.EndCap = LineCap.Round;
+            g.DrawLine(track, 4, 8, 536, 8);
+        }
+        if (Finished && Successful) {
+            using (var fill = new Pen(green, 5)) { fill.StartCap = fill.EndCap = LineCap.Round; g.DrawLine(fill, 4, 8, 536, 8); }
+        } else if (!Finished) {
+            // A moving highlight signals activity; this never invents a percentage.
+            float left = 4 + phase * 432;
+            using (var fill = new Pen(accent, 5)) { fill.StartCap = fill.EndCap = LineCap.Round; g.DrawLine(fill, left, 8, left + 100, 8); }
+        }
+        string[] labels = French ? new[] { "Enregistrer", "Fermer", "Réparer", "Relancer" } : new[] { "Save", "Close", "Repair", "Restart" };
+        using (var font = new Font("Segoe UI", 9f))
+        using (var format = new StringFormat { Alignment = StringAlignment.Center }) {
+            for (int i = 0; i < 4; i++) {
+                float x = 67 + i * 135;
+                bool done = Successful || Stage > i + 1;
+                var color = done ? green : (!Finished && Stage == i + 1 ? accent : muted);
+                using (var brush = new SolidBrush(color)) {
+                    g.FillEllipse(brush, x - 3, 33, 6, 6);
+                    g.DrawString(labels[i], font, brush, new RectangleF(x - 66, 48, 132, 24), format);
+                }
+            }
+        }
+    }
+}
+'@
+}
+function Get-RepairWindowIcon {
+    # Embedded so standalone repair and every CCX route use the same TypeR icon.
+    $Encoded = 'AAABAAEAQEAQAAAAAABoCgAAFgAAACgAAABAAAAAgAAAAAEABAAAAAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAACAAAAAgIAAgAAAAIAAgACAgAAAgICAAMDAwAAAAP8AAP8AAAD//wD/AAAA/wD/AP//AAD///8AAAAAAAAAAAAAB4iIcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHiIiHcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIiIiHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeIiIiHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHiIiIhwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeIiIiIcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHiIiIiHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeIiIiIhwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHiIiIiIcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeIiIiIiAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIiIiIiIcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAeIiIiIiId3cAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB3eIiIiIiIiIiHd3cAAAAAAAAAAAAAAAAAAAAAAAAAd4iIiIiIiIiIiIiIiHcAAAAAAAAAAAAAAAAAAAAAB3iIiIiIiIiIiIiIiIiIiIcAAAAAAAAAAAAAAAAAAAd4iIiIiIiIiIiIiIiIiIiIiHcAAAAAAAAAAAAAAAAHeIiIiIiIiIiIiIiIiIiIiIiIiHcAAAAAAAAAAAAAAHiIiIiIiIiIiIiIiIiIiIiIiIiIiHAAAAAAAAAAAAAHiIiIiIiIiIiIiIiIiIiIiIiIiIiIhwAAAAAAAAAAB3iIiIiIiIiIiIiIiIiIiIiIiIiIiIiIcAAAAAAAAAB3iIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiHAAAAAAAAB4iIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIhwAAAAAAB3iIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIcAAAAAAHiIiIiI/////////4iIiP/////4iI////iIiAAAAAAHiIiIiI+HeIiIiId4+IiId4iIh4+IiIiHj4iIcAAAAHiIiIiIj3dwAAAAB3j4iIiHAAAHj49wAAePiIiHAAAAeIiIiIiI//cAAACP/4iIiP8AAH/4+AAAf/iIiIcAAAeIiIiIiIiI+AAAAIiIiIiIj3AAf4iAAAD4iIiIiHAACIiIiIiIiIj4AAAAiIiIiIiPcAB/j3AACPiIiIiIcAB4iIiIiIiIiPgAAACIiIiIiI9wAH/3AAB/iIiIiIh3AHiIiIiIiIiI+AAAAIiIiIiIj3AAf4AAB/iIiIiIiIcAiIiIiIiIiIj4AAAAiIiIiIiPcAB/AAAI+IiIiIiIiAf4iIiIiIiIiPgAAACIiIiIiI9wAHcAAH+IiIiIiIiIB/iIiIiIiIiI+AAAAIiIiIiIj3AAB3AAB4+IiIiIiIgH+IiIiIiIiIj4AAAAiIiIiIiPcAB//3AACIiIiIiIiAf4iIiIiIiIiPgAAACIiIiIiI9wAH+I9wAH+IiIiIiIB/iIiIiIiIiI+AAAAIiIiIiIj3AAf4j3AAD4iIiIiIgH+IiIiIiIiIj4AAAAiIiIiIiPcAB/iPcAAPiIiIiIiAf4iIiIiIiIiPgAAACIiIiIiI9wAH+I9wAH+IiIiIiIB/iIiIiIiIiI+AAAAPiIiIiIj3AAf4/wAAj4iIiIiIgH+IiIiIiIiIj4AAAA///4iIj/AAB4iAAAf4iIiIiIiAf4iIiIiPiIiPgAAAD///iP+HcAAAAAAHj4iIiIiIiIAIiIiIiIiIiI+AAAAIiI+IiIiIiIiIiP/4iIiIiIiIcAeIiIiPd/iIj4AAAAiIiI94///////4iIiIiIiIiIhwB4iIiI9w+IiPgAAACIiI+Aj4iIiIiIiIiIiIiIiIhwAAiIiIj3CPiI+AAAAIiIj3CPiIiIiIiIiIiIiIiIiHAAB4iI+PcAj4j4AAAAiIj4AI+IiIiIiIiIiIiIiIiIAAAAiIj49wAIj/gAAAD/+HAAj4iIiIiIiIiIiIiIiIcAAAB4iI/3AAAAAAAAAAAAAACPiIiIiIiIiIiIiIiIcAAAAAeIj/h3d3d3d3d3d3d3d4+IiIiIiIiIiIiIiIhwAAAAB4iP////////////////iIiIiIiIiIiIiIiIhwAAAAAAeIj/+IiIiIiIiIiIiIiIiIiIiIiIiIiIiIhwAAAAAAAHiI//+IiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAAAAAB4iIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAAAAAAAeIiIiIiIiIiIiIiIiIiIiIiIiIiIiIhwAAAAAAAAAAAHiIiIiIiIiIiIiIiIiIiIiIiIiIiIhwAAAAAAAAAAAAB3iIiIiIiIiIiIiIiIiIiIiIiIiIhwAAAAAAAAAAAAAAB4iIiIiIiIiIiIiIiIiIiIiIiIcAAAAAAAAAAAAAAAAAd4iIiIiIiIiIiIiIiIiIiIiHcAAAAAAAAAAAAAAAAAAAd4iIiIiIiIiIiIiIiIiIh3AAAAAAAAAAAAAAAAAAAAAAB4iIiIiIiIiIiIiIiIdwAAAAAAAAAAAAAAAAAAAAAAAAAHeI////////+Id3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAd3d3d3d3d3AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////////////+f/////////+P/////////4f/////////wf/////////g/////////+B/////////4D/////////wH/////////AP////////8A/////////wB/////////AB////////8AAf//////8AAAD/////+AAAAB/////AAAAAB////4AAAAAD///+AAAAAAD///wAAAAAAH//+AAAAAAAP//wAAAAAAAf/+AAAAAAAA//wAAAAAAAF/+AAAAAAAAH/wAAAAAAAAP+AAAAAAAAA/4AAAAAAAAB/AAAAAAAAAD8AAAAAAAAAPwAAAAAAAAA/AAAAAAAAAD4AAAAAAAAAPQAAAAAAAAAdAAAAAAAAAB0AAAAAAAAAHQAAAAAAAAAdAAAAAAAAAB0AAAAAAAAAHQAAAAAAAAAdAAAAAAAAAD4AAAAAAAAAPwAAAAAAAAA/AAAAAAAAAD8AAAAAAAAAPwAAAAAAAAB/gAAAAAAAAP+AAAAAAAAA/8AAAAAAAAH/4AAAAAAAAf/gAAAAAAAD//QAAAAAAAf/+AAAAAAAD//8AAAAAAAf//4AAAAAAD///4AAAAAAf///wAAAAAH////wAAAAB/////gAAAAP/////wAAAH//////+P/P///////+AB/////////////////////////w=='
+    $Stream = [IO.MemoryStream]::new([Convert]::FromBase64String($Encoded))
+    try {
+        $SourceIcon = [Drawing.Icon]::new($Stream)
+        try { return $SourceIcon.Clone() } finally { $SourceIcon.Dispose() }
+    } finally { $Stream.Dispose() }
+}
+function New-RepairProgressWindow {
+    Initialize-RepairWindowTypes
+    $French = [Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'fr'
+    $Form = New-Object TypeRRepairWindow
+    $Form.Icon = Get-RepairWindowIcon
+    $Form.ShowIcon = $true
+    $Form.ShowInTaskbar = $true
+    $Form.Text = 'TypeR'
+    $Form.ClientSize = New-Object Drawing.Size(620, 440)
+    $Form.BackColor = [Drawing.Color]::FromArgb(22, 23, 32)
+    $Form.ForeColor = [Drawing.Color]::FromArgb(239, 240, 248)
+    $Form.Font = New-Object Drawing.Font('Segoe UI', 10)
+    $Form.AutoScaleMode = 'Dpi'
+    $Form.StartPosition = 'CenterScreen'
+    $Form.FormBorderStyle = 'None'
+    $Form.ControlBox = $false
+    $Form.Tag = [pscustomobject]@{ AllowClose = $false }
+    $Form.Add_FormClosing({ param($Sender, $EventArgs) if (-not $Sender.Tag.AllowClose) { $EventArgs.Cancel = $true } })
+    $Form.Add_MouseDown({ param($Sender, $EventArgs) if ($EventArgs.Button -eq 'Left' -and $EventArgs.Y -lt 64) { [TypeRRepairWindow]::Drag($Sender) } })
+    $Brand = New-Object Windows.Forms.Label
+    $Brand.SetBounds(80, 30, 500, 24)
+    $Brand.Text = 'TypeR  /  PHOTOSHOP'
+    $Brand.Font = New-Object Drawing.Font('Segoe UI Semibold', 10)
+    $Brand.ForeColor = [Drawing.Color]::FromArgb(165, 147, 255)
+    $Brand.Add_MouseDown({ param($Sender, $EventArgs) if ($EventArgs.Button -eq 'Left') { [TypeRRepairWindow]::Drag($Sender.FindForm()) } })
+    $Logo = New-Object Windows.Forms.PictureBox
+    $Logo.SetBounds(40, 26, 30, 30)
+    $Logo.SizeMode = 'Zoom'
+    $Logo.Image = $Form.Icon.ToBitmap()
+    $Logo.Add_Disposed({ param($Sender, $EventArgs) if ($Sender.Image) { $Sender.Image.Dispose() } })
+    $Title = New-Object Windows.Forms.Label
+    $Title.SetBounds(36, 76, 548, 48)
+    $Title.Font = New-Object Drawing.Font('Segoe UI Semibold', 22)
+    $Title.Text = if ($French) { 'On s''occupe de tout.' } else { 'We''ll take it from here.' }
+    $Label = New-Object Windows.Forms.Label
+    $Label.SetBounds(40, 138, 540, 92)
+    $Label.ForeColor = [Drawing.Color]::FromArgb(184, 187, 205)
+    $Label.Font = New-Object Drawing.Font('Segoe UI', 11)
+    $Progress = New-Object TypeRRepairTrack
+    $Progress.SetBounds(40, 255, 540, 84)
+    $Progress.French = $French
+    $Hint = New-Object Windows.Forms.Label
+    $Hint.SetBounds(40, 366, 320, 44)
+    $Hint.ForeColor = [Drawing.Color]::FromArgb(120, 125, 148)
+    $Hint.Font = New-Object Drawing.Font('Segoe UI', 9)
+    $Hint.Text = if ($French) { 'Vos documents sont enregistrés avant toute fermeture.' } else { 'Your documents are saved before Photoshop closes.' }
+    $Button = New-Object Windows.Forms.Button
+    $Button.SetBounds(418, 364, 162, 42)
+    $Button.FlatStyle = 'Flat'
+    $Button.FlatAppearance.BorderSize = 0
+    $Button.BackColor = [Drawing.Color]::FromArgb(165, 147, 255)
+    $Button.ForeColor = [Drawing.Color]::FromArgb(22, 23, 32)
+    $Button.Font = New-Object Drawing.Font('Segoe UI Semibold', 10)
+    $Button.Cursor = [Windows.Forms.Cursors]::Hand
+    $Button.Text = if ($French) { 'Terminer' } else { 'Done' }
+    $Button.Visible = $false
+    $Button.Add_Click({ param($Sender, $EventArgs) $Sender.FindForm().Close() })
+    $Form.Controls.AddRange(@($Logo, $Brand, $Title, $Label, $Progress, $Hint, $Button))
+    return [pscustomobject]@{ Form = $Form; Title = $Title; Label = $Label; Progress = $Progress; Hint = $Hint; Button = $Button }
+}
+function Update-RepairProgressWindow($Window, [string]$Status, [string]$Detail = '', [switch]$Finished) {
+    $View = Get-RepairProgress $Status ([Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'fr')
+    $Window.Title.Text = $View.Title
+    $Window.Label.Text = $View.Text + $(if ($Detail) { "`r`n`r`n" + $Detail } else { '' })
+    $Window.Progress.Stage = $View.Stage
+    $Window.Progress.Finished = [bool]$Finished
+    $Window.Progress.Successful = $View.Complete
+    if ($Finished) {
+        $Window.Hint.Text = ''
+        $Window.Button.Visible = $true
+        $Window.Form.ControlBox = $true
+        $Window.Form.Tag.AllowClose = $true
+        $Window.Form.CancelButton = $Window.Button
+    }
+    $Window.Progress.Invalidate()
+    [Windows.Forms.Application]::DoEvents()
+}
+function Get-RepairNotice([bool]$French, [bool]$AutomaticSave) {
+    if ($French) {
+        $Intro = 'TypeR a rencontré un problème d''affichage au démarrage. Cela peut être lié à une version modifiée ou crackée de Photoshop.'
+        $Steps = if ($AutomaticSave) {
+            'TypeR va enregistrer vos documents, fermer Photoshop, réparer le problème, puis redémarrer Photoshop automatiquement.'
+        } else { 'Enregistrez vos documents et fermez Photoshop. TypeR réparera ensuite le problème et redémarrera Photoshop automatiquement.' }
+        $Save = if ($AutomaticSave) { 'Pour un nouveau document, choisissez où l''enregistrer. Annuler l''enregistrement arrête la réparation.' } else { 'La progression restera visible pendant la réparation.' }
+    } else {
+        $Intro = 'TypeR encountered a display problem at startup. This can be related to a modified or cracked version of Photoshop.'
+        $Steps = if ($AutomaticSave) { 'TypeR will save your documents, close Photoshop, repair the problem, then restart Photoshop automatically.' }
+            else { 'Save your documents and close Photoshop. TypeR will then repair the problem and restart Photoshop automatically.' }
+        $Save = if ($AutomaticSave) { 'For a new document, choose where to save it. Cancelling a save stops the repair.' } else { 'Progress will stay visible during the repair.' }
+    }
+    return $Intro + "`r`n`r`n" + $Steps + "`r`n`r`n" + $Save
+}
+function New-RepairConsentWindow([bool]$AutomaticSave) {
+    $French = [Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'fr'
+    $Window = New-RepairProgressWindow
+    $Window.Form.ClientSize = New-Object Drawing.Size(620, 530)
+    $Window.Form.ControlBox = $true
+    $Window.Form.Tag.AllowClose = $true
+    $Window.Title.Text = if ($French) { 'Un souci au démarrage.' } else { 'A startup hiccup.' }
+    $Window.Label.SetBounds(40, 138, 540, 202)
+    $Window.Label.Text = Get-RepairNotice $French $AutomaticSave
+    $Window.Progress.Visible = $false
+    $Window.Hint.SetBounds(40, 360, 540, 62)
+    $Window.Hint.Text = if ($French) { 'Une autorisation Windows sera demandée. La réparation modifiera un fichier Photoshop ; une copie de l''original sera conservée.' }
+        else { 'Windows will ask for permission. The Photoshop file being changed will be backed up so it can be restored.' }
+    $Window.Button.SetBounds(312, 448, 268, 44)
+    $Window.Button.Text = if ($French) { 'Réparer et redémarrer' } else { 'Repair and restart' }
+    $Window.Button.Visible = $true
+    $Window.Button.DialogResult = 'OK'
+    $Cancel = New-Object Windows.Forms.Button
+    $Cancel.SetBounds(40, 448, 146, 44)
+    $Cancel.FlatStyle = 'Flat'
+    $Cancel.FlatAppearance.BorderColor = [Drawing.Color]::FromArgb(66, 69, 88)
+    $Cancel.ForeColor = [Drawing.Color]::FromArgb(200, 202, 217)
+    $Cancel.Text = if ($French) { 'Plus tard' } else { 'Not now' }
+    $Cancel.Cursor = [Windows.Forms.Cursors]::Hand
+    $Cancel.DialogResult = 'Cancel'
+    $Window.Form.Controls.Add($Cancel)
+    $Window.Form.CancelButton = $Cancel
+    $Window.Form.ActiveControl = $Cancel
+    return $Window
+}
+function Restart-RepairPhotoshop {
+    # Auto runs as Photoshop's user. Never launch Photoshop from the elevated worker.
+    Write-RepairStatus 'restarting'
+    try {
+        if (-not @(Get-RepairPhotoshopProcesses).Count) {
+            $Restarted = Start-Process -FilePath $PhotoshopPath -WorkingDirectory (Split-Path -Parent $PhotoshopPath) -WindowStyle Normal -PassThru
+            if (-not $Restarted) { throw 'Photoshop did not start.' }
+        }
+        Write-RepairStatus 'completed'
+        return [pscustomobject]@{ status = 'completed'; detail = '' }
+    } catch {
+        Write-RepairStatus 'restart-failed' $_.Exception.Message
+        return [pscustomobject]@{ status = 'restart-failed'; detail = $_.Exception.Message }
+    }
+}
+function Get-RepairPhotoshopProcesses {
+    @(Get-Process -Name Photoshop -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $PhotoshopPath })
+}
+function Save-AndCloseRepairPhotoshop {
+    if (-not $ReportPath) { throw 'Automatic save requires a status path.' }
+    $Targets = @(Get-RepairPhotoshopProcesses)
+    if (-not $Targets.Count) { return }
+    if ($Targets.Count -ne 1) { throw 'Multiple instances of this Photoshop are open. Close the other instance and retry.' }
+    $Target = $Targets[0]
+    $ResponsePath = $ReportPath + '.' + $SessionId + '.response.json'
+    Write-RepairStatus 'saving-documents'
+    $Deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($WaitSeconds, 600))
+    while ($true) {
+        $Response = $null
+        if (Test-Path -LiteralPath $ResponsePath) {
+            try { $Response = [IO.File]::ReadAllText($ResponsePath) | ConvertFrom-Json } catch {}
+        }
+        if ($Response -and $Response.session -eq $SessionId) {
+            if ($Response.status -ne 'saved') { throw ('Enregistrement interrompu / Save stopped: ' + $Response.detail) }
+            break
+        }
+        if ([DateTime]::UtcNow -ge $Deadline) { throw 'Enregistrement non confirmé / Save not confirmed. Photoshop reste ouvert / Photoshop stays open.' }
+        Start-Sleep -Milliseconds 250
+    }
+    Write-RepairStatus 'closing-photoshop'
+    $Target.Refresh()
+    if (-not $Target.HasExited -and -not $Target.CloseMainWindow()) { throw 'Photoshop could not close normally. Close it manually and retry.' }
+    # A normal close preserves Photoshop's own last-chance save dialogs. Never kill it.
+    $Deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min($WaitSeconds, 120))
+    while (-not $Target.HasExited) {
+        if ([DateTime]::UtcNow -ge $Deadline) { throw 'Fermeture annulée ou bloquée / Photoshop close cancelled or blocked. DLL unchanged.' }
+        Start-Sleep -Milliseconds 250
+        $Target.Refresh()
+    }
+}
 function Show-AutomaticRepairFailure {
     $Message = if ([Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'fr') {
-        "La reparation de Photoshop n'a pas pu se terminer. Vous pouvez relancer Photoshop : TypeR utilisera son interface de secours. Contactez le support TypeR avec le fichier status.json de la reparation."
+        "La réparation de Photoshop n'a pas pu se terminer. Vous pouvez relancer Photoshop : TypeR utilisera son interface de secours. Contactez le support TypeR avec le fichier status.json de la réparation."
     } else {
         'The Photoshop repair could not finish. You can open Photoshop again: TypeR will use its fallback interface. Contact TypeR support with the repair status.json file.'
     }
@@ -357,6 +658,8 @@ function Start-AutomaticRepair {
     finally { $Hasher.Dispose() }
     $Mutex = [Threading.Mutex]::new($false, ('Local\TypeR-WebView-Repair-' + $PathHash))
     $Acquired = $false
+    $ProgressWindow = $null
+    $Completion = $null
     try {
         try { $Acquired = $Mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $Acquired = $true }
         if (-not $Acquired) { return }
@@ -369,34 +672,42 @@ function Start-AutomaticRepair {
                 $Previous.status -in @('declined', 'failed', 'timed-out')) { return }
         }
         Write-RepairStatus 'preparing'
-        $French = [Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'fr'
-        $Notice = if ($French) {
-            "TypeR a detecte un probleme de Photoshop qui empeche son interface de s'afficher normalement.`n`nCette reparation modifie un fichier de Photoshop, avec une sauvegarde restaurable. Annuler conserve l'interface native de TypeR.`n`nLa reparation va demander l'autorisation administrateur de Windows. Ensuite, enregistrez votre travail, fermez toutes les fenetres Photoshop et attendez la confirmation avant de le relancer.`n`nTypeR reste utilisable en attendant. Aucun document ne sera ferme automatiquement."
-        } else {
-            "TypeR detected a Photoshop issue that prevents its interface from displaying normally.`n`nThis repair modifies a Photoshop file and preserves a restorable backup. Cancel keeps TypeR using its native interface.`n`nThe repair will request Windows administrator permission. Then save your work, close all Photoshop windows and wait for confirmation before opening it again.`n`nTypeR remains usable meanwhile. No documents will be closed automatically."
-        }
-        Add-Type -AssemblyName System.Windows.Forms
-        $Consent = [Windows.Forms.MessageBox]::Show($Notice, 'TypeR - Photoshop WebView', 'OKCancel', 'Information', 'Button2', 'DefaultDesktopOnly')
+        $ConsentWindow = New-RepairConsentWindow ([bool]$SessionId)
+        try { $Consent = $ConsentWindow.Form.ShowDialog() } finally { $ConsentWindow.Form.Dispose() }
         if ($Consent -ne [Windows.Forms.DialogResult]::OK) { Write-RepairStatus 'declined'; return }
+        $ProgressWindow = New-RepairProgressWindow
+        Update-RepairProgressWindow $ProgressWindow 'preparing'
+        $ProgressWindow.Form.Show()
         $ThisScript = $PSCommandPath
         $ScriptHash = Get-Hash $ThisScript
         $Command = '$ErrorActionPreference = ''Stop''; if ((Get-FileHash -LiteralPath ' + (Quote-RepairArgument $ThisScript) + ').Hash -ne ' + (Quote-RepairArgument $ScriptHash) + ') { throw ''Repair script changed'' }; & ' +
             (Quote-RepairArgument $ThisScript) + ' -Action Apply -WaitForExit -WaitSeconds ' + $WaitSeconds +
             ' -PhotoshopPath ' + (Quote-RepairArgument $PhotoshopPath)
         if ($ReportPath) { $Command += ' -ReportPath ' + (Quote-RepairArgument $ReportPath) }
-        $Command += '; if ($?) { Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.MessageBox]::Show(' +
-            (Quote-RepairArgument $(if ($French) { 'La reparation est terminee. Vous pouvez relancer Photoshop.' } else { 'Repair completed. You can open Photoshop again.' })) +
-            ', ''TypeR'', ''OK'', ''Information'', ''Button1'', ''DefaultDesktopOnly'') | Out-Null }'
+        if ($SessionId) { $Command += ' -SessionId ' + (Quote-RepairArgument $SessionId) }
         $Encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Command))
         try {
             $Worker = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $Encoded) -Verb RunAs -WindowStyle Hidden -PassThru
         } catch {
             if ($_.Exception.NativeErrorCode -eq 1223 -or $_.Exception.InnerException.NativeErrorCode -eq 1223) { Write-RepairStatus 'declined' }
-            else { Write-RepairStatus 'failed' $_.Exception.Message; Show-AutomaticRepairFailure }
+            else { Write-RepairStatus 'failed' $_.Exception.Message }
             return
         }
-        $Worker.WaitForExit()
-        if ((Get-Hash $DllPath) -eq $PatchedHash) { Write-RepairStatus 'applied' }
+        while (-not $Worker.HasExited) {
+            if ($ReportPath -and (Test-Path -LiteralPath $ReportPath)) {
+                try {
+                    $ProgressReceipt = [IO.File]::ReadAllText($ReportPath) | ConvertFrom-Json
+                    Update-RepairProgressWindow $ProgressWindow $ProgressReceipt.status $ProgressReceipt.detail
+                } catch {}
+            }
+            [Windows.Forms.Application]::DoEvents()
+            Start-Sleep -Milliseconds 100
+            $Worker.Refresh()
+        }
+        if ((Get-Hash $DllPath) -eq $PatchedHash) {
+            Update-RepairProgressWindow $ProgressWindow 'restarting'
+            $Completion = Restart-RepairPhotoshop
+        }
         else {
             # Preserve a worker's precise reason (especially a wait timeout).
             $WorkerStatus = $null
@@ -406,10 +717,21 @@ function Start-AutomaticRepair {
             if (-not $WorkerStatus -or $WorkerStatus.status -notin @('failed', 'timed-out')) {
                 Write-RepairStatus 'failed' ('Repair worker exited without the expected DLL: ' + $Worker.ExitCode)
             }
-            Show-AutomaticRepairFailure
         }
-    } catch { Write-RepairStatus 'failed' $_.Exception.Message; Show-AutomaticRepairFailure }
-    finally { if ($Acquired) { $Mutex.ReleaseMutex() }; $Mutex.Dispose() }
+    } catch { Write-RepairStatus 'failed' $_.Exception.Message; if (-not $ProgressWindow) { Show-AutomaticRepairFailure } }
+    finally {
+        if ($ProgressWindow) {
+            try {
+                $FinalReceipt = $Completion
+                if (-not $FinalReceipt -and $ReportPath -and (Test-Path -LiteralPath $ReportPath)) { $FinalReceipt = [IO.File]::ReadAllText($ReportPath) | ConvertFrom-Json }
+                $FinalStatus = if ($FinalReceipt) { $FinalReceipt.status } elseif ((Get-Hash $DllPath) -eq $PatchedHash) { 'applied' } else { 'failed' }
+                Update-RepairProgressWindow $ProgressWindow $FinalStatus $FinalReceipt.detail -Finished
+                $ProgressWindow.Form.Activate()
+                while ($ProgressWindow.Form.Visible) { [Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 100 }
+            } finally { $ProgressWindow.Form.Dispose() }
+        }
+        if ($Acquired) { $Mutex.ReleaseMutex() }; $Mutex.Dispose()
+    }
 }
 
 $PhotoshopPath = [IO.Path]::GetFullPath($PhotoshopPath)
@@ -443,6 +765,7 @@ $MutationAcquired = $false
 try {
 try { $MutationAcquired = $MutationMutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $MutationAcquired = $true }
 if (-not $MutationAcquired) { throw 'Another repair is applying or restoring this Photoshop installation.' }
+if ($Action -eq 'Apply' -and $WaitForExit -and $SessionId) { Save-AndCloseRepairPhotoshop }
 if ($WaitForExit) {
     Write-RepairStatus 'waiting-for-photoshop'
     $Deadline = [DateTime]::UtcNow.AddSeconds($WaitSeconds)
@@ -476,6 +799,7 @@ if ($Action -eq 'Restore' -and $State -eq 'original-supported') {
 $StagePath = $DllPath + '.typer-stage-' + [Guid]::NewGuid().ToString('N')
 try {
     if ($Action -eq 'Apply') {
+        Write-RepairStatus 'backing-up'
         if (Test-Path -LiteralPath $BackupPath) {
             if ((Get-Hash $BackupPath) -ne $OriginalHash) { throw 'Existing backup has the wrong hash; refusing to overwrite it.' }
         } else {
@@ -483,6 +807,7 @@ try {
             if ((Get-Hash $BackupPath) -ne $OriginalHash) { throw 'Backup verification failed; DLL unchanged.' }
         }
         $Bytes = [IO.File]::ReadAllBytes($DllPath)
+        Write-RepairStatus 'repairing'
         if ($Bytes.Length -ne $Profile.size) { throw 'Unexpected DLL size; DLL unchanged.' }
         $Before = Convert-Hex $BeforeHex
         $After = Convert-Hex $AfterHex
@@ -502,6 +827,7 @@ try {
     Assert-PhotoshopClosed
     if ((Get-Hash $DllPath) -ne $CurrentHash) { throw 'Installed DLL changed during preparation; refusing replacement.' }
     [IO.File]::Replace($StagePath, $DllPath, [NullString]::Value)
+    Write-RepairStatus 'verifying'
     if ((Get-Hash $DllPath) -ne $ExpectedHash) { throw 'Installed DLL verification failed. Preserve the backup for recovery.' }
     if ($Action -eq 'Restore') {
         [IO.File]::WriteAllText($DisabledPath, 'Automatic TypeR WebView repair disabled by Restore. Explicit Apply re-enables it.')

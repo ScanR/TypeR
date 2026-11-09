@@ -18,7 +18,29 @@ function encodeCommand(text, encodeBase64) {
   return encodeBase64(bytes);
 }
 
-function createWebViewRepair({ platform, source, sourceId, files, runJsx, encodeBase64, wait }) {
+async function monitorRepair({ files, report, session, saveDocuments, wait, now = Date.now }) {
+  const deadline = now() + 86400000;
+  let answered = false;
+  while (now() < deadline) {
+    let receipt;
+    try { receipt = JSON.parse(await files.readText(report)); } catch (error) {}
+    // Old receipts and other Photoshop sessions cannot request a save or exit.
+    if (receipt && receipt.session === session) {
+      if (['applied', 'completed', 'restart-failed', 'failed', 'declined', 'timed-out', 'unsupported', 'disabled'].includes(receipt.status)) return;
+      if (receipt.status === 'saving-documents' && !answered) {
+        answered = true;
+        let response = { session, status: 'saved' };
+        try { await saveDocuments(); }
+        catch (error) { response = { session, status: 'failed', detail: String(error && error.message || error) }; }
+        await files.writeTextAtomic(report + '.' + session + '.response.json', JSON.stringify(response));
+        if (response.status === 'failed') return;
+      }
+    }
+    await wait(1000);
+  }
+}
+
+function createWebViewRepair({ platform, source, sourceId, files, runJsx, runPowerShell, wait, saveDocuments }) {
   let pending = null;
   function start(kind) {
     if (platform !== 'win32' || kind !== 'storage' || !source || !sourceId) return Promise.resolve(false);
@@ -38,12 +60,12 @@ function createWebViewRepair({ platform, source, sourceId, files, runJsx, encode
           try { existing = await files.readText(script); } catch (error) {}
           if (existing !== source) await files.writeText(script, source);
           const report = files.joinPath(folder, 'status.json');
-          const command = '& ' + quotePowerShell(script) + ' -Action Auto -PhotoshopPath ' + quotePowerShell(photoshop) + ' -ReportPath ' + quotePowerShell(report);
-          const encoded = encodeCommand(command, encodeBase64);
-          // All variable paths are inside EncodedCommand; cmd never parses them.
-          const launch = 'start "" /B powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand ' + encoded;
-          const result = await runJsx('app.system(' + JSON.stringify(launch) + '); "OK";');
-          if (String(result) !== 'OK') throw new Error('Could not start Photoshop WebView repair: ' + result);
+          const session = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+          const command = '& ' + quotePowerShell(script) + ' -Action Auto -PhotoshopPath ' + quotePowerShell(photoshop) + ' -ReportPath ' + quotePowerShell(report) +
+            (saveDocuments ? ' -SessionId ' + quotePowerShell(session) : '');
+          await runPowerShell(command, { waitForExit: false });
+          if (saveDocuments) monitorRepair({ files, report, session, saveDocuments, wait })
+            .catch(error => console.error('TypeR: repair save handshake', String(error && error.message || error)));
           return true;
         } catch (error) {
           if (attempt === 2) throw error;
@@ -57,4 +79,4 @@ function createWebViewRepair({ platform, source, sourceId, files, runJsx, encode
   return { start };
 }
 
-module.exports = { createWebViewRepair, quotePowerShell, encodeCommand, pathKey };
+module.exports = { createWebViewRepair, monitorRepair, quotePowerShell, encodeCommand, pathKey };
