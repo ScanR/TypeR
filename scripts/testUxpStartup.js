@@ -167,6 +167,7 @@ function hostHarness({ readWebViewFolders, uxpLog = '', readLog, platform = 'win
     os: { platform: () => platform, release: () => '10.0', homedir: () => 'C:\\Users\\ana' },
     './panelStart': Object.assign({}, require('../uxp-src/host/panelStart'), readWebViewFolders ? { readWebViewFolders } : {}),
     './webViewRepair': { createWebViewRepair: () => ({ start: async kind => { repairKinds.push(kind); return true; } }) },
+    './saveRepairDocuments': { saveRepairDocuments: async () => true },
     fs: { readdir: async () => [] },
     './photoshop': { methods: {} }, './smartPaste': { methods: {} },
     './files': {
