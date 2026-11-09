@@ -549,6 +549,8 @@ const baseReducer = (state, action) => {
           };
         }
       }
+      // A paste at a linked page boundary keeps the line but still reveals it.
+      thenScroll = true;
       if (action.add && newState.currentLine.last) break;
       let newIndex = state.currentLineIndex;
       for (let i = newIndex + 1; i < state.lines.length; i++) {
@@ -557,7 +559,6 @@ const baseReducer = (state, action) => {
           break;
         }
       }
-      thenScroll = true;
       thenSelectStyle = true;
       break;
     }

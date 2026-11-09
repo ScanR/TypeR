@@ -1271,14 +1271,20 @@ const scriptRowTop = (textLines, index) => {
 };
 const scrollToLine = (lineIndex, delay = 100) => {
   let cancelled = false;
-  const target = Math.max(0, (Number(lineIndex) || 0) - SCROLL_CONTEXT_LINES);
+  const current = Math.max(0, Number(lineIndex) || 0);
+  const target = Math.max(0, current - SCROLL_CONTEXT_LINES);
   const scroll = () => {
     if (cancelled) return false;
     const textLines = document.querySelector(".text-lines");
     const sheet = textLines && textLines.parentElement;
     if (!sheet) return false;
-    const top = scriptRowTop(textLines, target);
+    let top = scriptRowTop(textLines, target);
     if (top == null) return false;
+    // Wrapped context rows must not push the current line below the sheet.
+    const currentTop = scriptRowTop(textLines, current);
+    if (currentTop != null && sheet.clientHeight > 0) {
+      top = Math.max(top, currentTop - Math.floor(sheet.clientHeight / 2));
+    }
     sheet.scrollTop = Math.max(0, Math.round(top));
     return true;
   };

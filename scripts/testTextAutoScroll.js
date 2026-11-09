@@ -55,3 +55,48 @@ for (const fn of timers.values()) fn(); timers.clear();
 assert.equal(top, 120); assert.equal(writes, 1);
 stopFrame(); frames.forEach(fn => fn()); assert.equal(writes, 1);
 console.log('TextBlock auto-scroll: disabled/enabled effect and pending work cleanup passed');
+
+// Five raw lines can exceed the viewport when dialogue wraps. Exercise both
+// mounted rows and the layout fallback used for a distant virtualized row.
+const flush = () => {
+  for (const fn of timers.values()) fn();
+  timers.clear();
+  frames.splice(0).forEach(fn => fn());
+};
+sheet.clientHeight = 140;
+rows.querySelector = selector => ({ offsetTop: 4 + Number(selector.match(/"(\d+)"/)[1]) * 153 });
+context.scrollToLine(81); flush();
+assert.equal(top, 4 + 81 * 153 - 70, 'wrapped context must leave the current line visible');
+rows.querySelector = () => null;
+rows.__typerRowLayout = { offsets: Array.from({ length: 500 }, (_, i) => i * 153) };
+context.getComputedStyle = () => ({ paddingTop: '4px' });
+context.scrollToLine(400); flush();
+assert.equal(top, 4 + 400 * 153 - 70, 'unmounted current row uses the same viewport limit');
+sheet.clientHeight = 460;
+rows.__typerRowLayout = { offsets: Array.from({ length: 500 }, (_, i) => i * 17) };
+context.scrollToLine(81); flush();
+assert.equal(top, 4 + 76 * 17, 'retain five context rows when they fit');
+
+const scrolls = [];
+const loadContext = require('./helpers/loadAppModule')({
+  './utils': { locale: {}, readStorage: () => ({ data: {
+    text: 'First\nLast on page\nPage 2\nNext page', images: [{ path: '1.psd' }],
+  } }), writeToStorage() {}, scrollToLine: index => scrolls.push(index), scrollToStyle() {}, nativeAlert() {} },
+  './lib/themeManager': { applyThemeState() {} },
+  './perfDebug': { perfMeasure: (a, b, fn) => fn() },
+  './themePresets': { normalizeCustomThemes: x => x || [], normalizeEditorTheme: x => x || 'system', setCustomEditorThemes: x => x },
+  './backgroundImage': { normalizeBackgroundImage: x => x || null },
+});
+const { baseReducer, initialState } = loadContext('app_src/context.jsx', 'export { baseReducer, initialState };');
+let page = baseReducer(initialState, { type: 'init' });
+page = baseReducer(page, { type: 'setCurrentLineIndex', index: 1 });
+assert.equal(page.currentLine.last, true);
+scrolls.length = 0;
+page = baseReducer(page, { type: 'nextLine', add: true });
+assert.equal(page.currentLineIndex, 1, 'a paste must not cross a linked page boundary');
+assert.deepStrictEqual(scrolls, [1], 'a successful page-ending paste must still reveal the line');
+page = baseReducer(page, { type: 'setAutoScrollText', value: false });
+scrolls.length = 0;
+baseReducer(page, { type: 'nextLine', add: true });
+assert.deepStrictEqual(scrolls, [], 'page-ending pastes respect the preference');
+console.log('Script auto-scroll: wrapped context, virtualized rows and linked page boundaries passed');
