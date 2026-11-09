@@ -47,4 +47,31 @@ assert.equal(restores, 3, "Photoshop already owns focus: no modal restore");
 focused = true; handlers.psEvent(canvas); assert.equal(restores, 3, "native focus departure disarms the release");
 focused = false; events.mouseenter(); events.mousedown(); leave(); flush();
 assert.equal(restores, 3, "hovering an inactive Photoshop window must not activate it");
-console.log("UXP focus: armed release, no repeated modals, native focus, typing, IME, drag and Cmd-Tab passed");
+
+// The host hears whether an editor has the focus: it leaves the caret alone
+// after a change made by a shortcut while typing (main.js restoreFocus)
+{
+  const ev = {}, reports = [], pending = new Map();
+  let id = 0, owns = true;
+  const doc = { activeElement: element("BODY"), hidden: false, hasFocus: () => owns,
+    documentElement: { addEventListener: (name, fn) => { ev["root:" + name] = fn; } },
+    addEventListener: (name, fn) => { ev[name] = fn; },
+  };
+  const win = { addEventListener: (name, fn) => { ev["win:" + name] = fn; },
+    setTimeout: (fn) => { pending.set(++id, fn); return id; }, clearTimeout: (timer) => pending.delete(timer),
+  };
+  const run = () => { const callbacks = [...pending.values()]; pending.clear(); callbacks.forEach(fn => fn()); };
+  installFocusRelease({ document: doc, window: win, on: () => {}, request: async () => {}, notify: (type, payload) => reports.push(type + ":" + payload.editing) });
+  doc.activeElement = element("BUTTON"); ev.focusin();
+  assert.deepStrictEqual(reports, ["focusState:false"]);
+  doc.activeElement = element("TEXTAREA"); ev.focusin();
+  assert.deepStrictEqual(reports, ["focusState:false", "focusState:true"]);
+  ev.focusin(); assert.equal(reports.length, 2, "reported on change only");
+  doc.activeElement = element("BODY"); ev.focusout();
+  assert.equal(reports.length, 2, "focusout waits for the new active element");
+  run(); assert.deepStrictEqual(reports.slice(2), ["focusState:false"]);
+  doc.activeElement = element("INPUT"); ev.focusin(); owns = false; ev["win:blur"]();
+  assert.deepStrictEqual(reports.slice(3), ["focusState:true", "focusState:false"], "an editor left behind by Cmd-Tab is not being typed in");
+  owns = true; ev["win:focus"](); assert.deepStrictEqual(reports.slice(5), ["focusState:true"]);
+}
+console.log("UXP focus: armed release, no repeated modals, native focus, typing, IME, drag, Cmd-Tab and editing reports passed");

@@ -43,6 +43,12 @@ let focusListener = null;
 const FOCUS_RETRY_MS = 1000;
 let lastFocusReport = 0;
 let focusReports = 0;
+// Requests to the Windows reader to take the focus out of the panel's WebView
+// ("<state file>.focus", answered in ".focus.ack": see typer-keys.cs)
+let focusPath = null;
+let focusRequests = 0;
+let lastFocusAck = "";
+let focusAckListener = null;
 let lastReport = null;
 let readerSamples = 0;
 let readerError = "";
@@ -213,10 +219,11 @@ function needsPlatformPackage() {
 // Set at build time: only UXP-Windows.ccx carries the Windows reader
 const WINDOWS_PACKAGE = typeof TYPER_WINDOWS_READER !== "undefined" && TYPER_WINDOWS_READER;
 
-async function start(onMouseLine, onFocusStolen) {
+async function start(onMouseLine, onFocusStolen, onFocusReleased) {
   if (os.platform() === "win32" && !WINDOWS_PACKAGE) return false;
   mouseListener = onMouseLine || null;
   focusListener = onFocusStolen || null;
+  focusAckListener = onFocusReleased || null;
   if (started) return true;
   started = true;
   let statePath;
@@ -228,6 +235,8 @@ async function start(onMouseLine, onFocusStolen) {
     statePath = files.joinPath(folder, "state");
     await files.writeText(statePath, "a");
     accessPath = statePath + ".access";
+    if (os.platform() === "win32") focusPath = statePath + ".focus";
+    lastFocusAck = readState(statePath + ".focus.ack") || "";
   } catch (error) {
     started = false;
     console.error("TypeR keyboard helper:", (error && error.message) || error);
@@ -271,6 +280,14 @@ async function start(onMouseLine, onFocusStolen) {
       focusListener();
     }
     if (watchdog.shouldStart(now)) launch();
+    // The reader's answer to the last focus release request (Windows)
+    if (focusPath) {
+      const ack = readState(focusPath + ".ack");
+      if (ack && ack !== lastFocusAck) {
+        lastFocusAck = ack;
+        if (focusAckListener) focusAckListener(ack);
+      }
+    }
     if (mouseListener) {
       const line = readState(statePath + ".mouse");
       // Each line is unique (helper pid and press number): a line that was
@@ -299,13 +316,25 @@ function access() {
   return value === "0" ? "missing" : "unknown";
 }
 
+// Windows: asks the reader to take the keyboard focus out of the panel's
+// WebView, where Photoshop receives no key (typer-keys.cs, ReleaseWebViewFocus).
+// The request carries its time: the reader ignores one it finds late, after a
+// restart. Nothing to ask without the Windows reader (macOS, in-panel builds).
+async function requestFocusRelease() {
+  if (!focusPath || !lastReport) return false;
+  focusRequests++;
+  await files.writeText(focusPath, String(Date.now()));
+  return true;
+}
+
 // What Settings > Debug shows (app_src/components/modal/keyboardDebug.jsx)
 function diagnostics() {
   return {
     source: "helper", running: !!lastReport, loading: false, error: readerError, samples: readerSamples,
     foreground: null, state: lastReport ? lastReport.state : "a", lastKeys: "",
     focusStolen: !!(lastReport && lastReport.focusStolen), focusReports,
+    focusRequests, focusRelease: lastFocusAck,
   };
 }
 
-module.exports = { start, stop, access, needsPlatformPackage, diagnostics, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };
+module.exports = { start, stop, access, needsPlatformPackage, diagnostics, requestFocusRelease, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };

@@ -16,6 +16,10 @@
 // (uxp-src/host/keysHelper.js restarts it). A restarted reader writes its
 // process id to "<state file>.owner"; an older one still running sees it and
 // exits, so two readers never write the same file.
+// The plugin writes the time (ms since the epoch) to "<state file>.focus" when
+// the keyboard focus must leave the panel's WebView (see ReleaseWebViewFocus):
+// the reader gives it to Photoshop's own windows and answers in
+// "<state file>.focus.ack".
 //
 // Built as a .NET Framework 4.8 Windows application (part of Windows 10 and
 // 11): no console window ever opens. The plugin starts it with ExtendScript's
@@ -39,6 +43,9 @@ static class TypeRKeys {
   [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr hWnd);
   [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hWnd, int index);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr hWnd, StringBuilder name, int size);
+  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint from, uint to, bool attach);
+  [DllImport("user32.dll")] static extern IntPtr SetFocus(IntPtr hWnd);
+  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
 
   [StructLayout(LayoutKind.Sequential)]
   struct Rect { public int Left, Top, Right, Bottom; }
@@ -109,6 +116,65 @@ static class TypeRKeys {
     return owner != IntPtr.Zero && ClassName(owner) == "Photoshop" && IsWindowEnabled(owner);
   }
 
+  // The focus window of Photoshop's UI thread, and its class
+  static IntPtr FocusWindow(uint thread) {
+    GuiThreadInfo info = new GuiThreadInfo();
+    info.Size = Marshal.SizeOf(typeof(GuiThreadInfo));
+    return thread != 0 && GetGUIThreadInfo(thread, ref info) ? info.Focus : IntPtr.Zero;
+  }
+
+  static bool IsWebView(IntPtr handle) {
+    return handle != IntPtr.Zero && ClassName(handle).StartsWith("Chrome_", StringComparison.Ordinal);
+  }
+
+  // The panel's WebView (WebView2: "Chrome_WidgetWin_1" and its render window,
+  // created by msedgewebview2.exe and parented into the panel) keeps the
+  // keyboard focus after a click on a TextShapeR shape, Insert or a style, and
+  // forwards no key to Photoshop: the tool keys die until the Windows key or a
+  // document switch. Nothing in the plugin's process reaches that focus (UXP's
+  // blur and app.bringToFront leave it), so the plugin asks this reader, which
+  // attaches to Photoshop's UI thread and sets the focus the way a window
+  // activation does: on the main window first (what the Windows key ends with),
+  // then on the panel's own view (where a click on the document leaves it) if
+  // the main window handed it back to the WebView. Only on request, only while
+  // the request is fresh and Photoshop is in front, and only while a WebView
+  // holds the focus: the plugin decides when the user is not typing in it.
+  // The answer ("<time> <class before> > <class after>", or the reason it was
+  // skipped) goes to the plugin's debug view.
+  static string ReleaseWebViewFocus(string request, IntPtr foreground, bool front) {
+    long requested;
+    if (!long.TryParse(request, out requested)) return null;
+    long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+    if (Math.Abs(now - requested) > 2000) return request + " stale";
+    if (!front) return request + " background";
+    uint thread = GetWindowThreadProcessId(foreground, IntPtr.Zero);
+    IntPtr focus = FocusWindow(thread);
+    if (focus == IntPtr.Zero) return request + " no focus";
+    string before = ClassName(focus);
+    if (!IsWebView(focus)) return request + " kept " + before;
+    IntPtr root = GetAncestor(focus, 2); // GA_ROOT
+    uint rootPid, foregroundPid;
+    GetWindowThreadProcessId(root, out rootPid);
+    GetWindowThreadProcessId(foreground, out foregroundPid);
+    if (root == IntPtr.Zero || rootPid != foregroundPid) return request + " kept " + before + " (not Photoshop's)";
+    IntPtr panel = focus;
+    while (panel != IntPtr.Zero && IsWebView(panel)) panel = GetAncestor(panel, 1); // GA_PARENT
+    uint self = GetCurrentThreadId();
+    bool attached = self != thread && AttachThreadInput(self, thread, true);
+    string after;
+    try {
+      SetFocus(root);
+      after = ClassName(FocusWindow(thread));
+      if (IsWebView(FocusWindow(thread)) && panel != IntPtr.Zero && panel != root) {
+        SetFocus(panel);
+        after = ClassName(FocusWindow(thread));
+      }
+    } finally {
+      if (attached) AttachThreadInput(self, thread, false);
+    }
+    return request + " " + before + " > " + (after == "" ? "none" : after);
+  }
+
   static string ProcessName(IntPtr handle) {
     uint pid;
     GetWindowThreadProcessId(handle, out pid);
@@ -159,10 +225,14 @@ static class TypeRKeys {
       : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "state");
     string mousePath = statePath + ".mouse";
     string ownerPath = statePath + ".owner";
+    string focusPath = statePath + ".focus";
+    string focusAckPath = statePath + ".focus.ack";
     string self = Process.GetCurrentProcess().Id.ToString();
     File.WriteAllText(ownerPath, self);
 
     string previous = "";
+    string lastFocusRequest = "";
+    int focusReads = 0;
     int beat = 0;
     int sinceWrite = 1000;
     IntPtr lastHandle = IntPtr.Zero;
@@ -210,6 +280,24 @@ static class TypeRKeys {
         if (WriteAtomic(statePath, state + "|" + beat + (stolen ? "|F" : ""))) {
           previous = report;
           sinceWrite = 0;
+        }
+      }
+      // The plugin asks for the focus to leave its WebView (ReleaseWebViewFocus).
+      // A request half written reads as nothing: tried again on the next pass,
+      // a few times
+      if (File.Exists(focusPath)) {
+        string request = ReadTrimmed(focusPath);
+        string answer = null;
+        bool done = request != null && request != "" && request == lastFocusRequest;
+        if (!done && request != null && request != "") {
+          answer = ReleaseWebViewFocus(request, handle, front);
+          done = answer != null;
+        }
+        if (done || ++focusReads > 5) {
+          focusReads = 0;
+          if (request != null && request != "") lastFocusRequest = request;
+          try { File.Delete(focusPath); } catch {}
+          if (answer != null) WriteAtomic(focusAckPath, answer);
         }
       }
       for (int button = 5; button <= 6; button++) {

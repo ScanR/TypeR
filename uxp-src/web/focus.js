@@ -18,7 +18,7 @@ export const isHostSelection = (message) => {
   );
 };
 
-export function installFocusRelease({ document, window, request, on, delay = 120 }) {
+export function installFocusRelease({ document, window, request, on, notify, delay = 120 }) {
   let outside = false;
   let timer = null;
   let composing = false;
@@ -27,6 +27,16 @@ export function installFocusRelease({ document, window, request, on, delay = 120
   const ownsFocus = () => typeof document.hasFocus !== "function" || document.hasFocus();
   const cancel = () => { if (timer !== null) window.clearTimeout(timer); timer = null; };
   const arm = () => { if (ownsFocus()) armed = true; };
+  // The host hears whether an editor has the focus here: after a change made
+  // by a shortcut while typing, it leaves the caret alone (main.js restoreFocus)
+  let editing = null;
+  const reportEditing = () => {
+    if (typeof notify !== "function") return;
+    const now = ownsFocus() && isEditing(document.activeElement);
+    if (now === editing) return;
+    editing = now;
+    notify("focusState", { editing: now });
+  };
   const release = () => {
     if (!armed || composing || draggingOutside || document.hidden) return;
     // A selection already focused Photoshop: no modal call is needed.
@@ -36,9 +46,11 @@ export function installFocusRelease({ document, window, request, on, delay = 120
     if (active && typeof active.blur === "function") active.blur();
     request("restoreFocus").catch(() => {});
   };
-  document.addEventListener("focusin", arm, true);
+  document.addEventListener("focusin", () => { arm(); reportEditing(); }, true);
+  // The element losing the focus is still the active one during focusout
+  document.addEventListener("focusout", () => { window.setTimeout(reportEditing, 0); }, true);
   document.addEventListener("mousedown", arm, true);
-  window.addEventListener("focus", arm);
+  window.addEventListener("focus", () => { arm(); reportEditing(); });
   document.documentElement.addEventListener("mouseleave", (event) => {
     outside = true;
     draggingOutside = !!event.buttons;
@@ -58,6 +70,7 @@ export function installFocusRelease({ document, window, request, on, delay = 120
     armed = false;
     // Preserve the editor/caret across Cmd-Tab. Native focus has already left
     // the WebView; neither a DOM blur nor bringing Photoshop forward helps.
+    reportEditing();
   });
   on("psEvent", (message) => {
     if (!armed || !outside || !isHostSelection(message)) return;

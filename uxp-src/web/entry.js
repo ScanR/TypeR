@@ -54,7 +54,7 @@ async function start() {
     (name, text) => window.cep.fs.writeFile(root + "/" + name, text)
   );
   installFileInputs();
-  if (!runsInPanel) installFocusRelease({ document, window, request, on });
+  if (!runsInPanel) installFocusRelease({ document, window, request, on, notify });
   // In the panel, fetch is UXP's own, without CORS, and the host's fetchUrl
   // uses it: the fallback would call itself
   if (!runsInPanel) installFetchFallback();

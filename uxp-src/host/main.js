@@ -438,6 +438,14 @@ async function evalScript(script) {
   const traceTag = crashTrace && !UNTRACED_CALLS[call.name] ? "call#" + ++traceCallCount : null;
   const traceStarted = Date.now();
   if (traceTag) crashTrace.note(traceTag, call.name + "(" + crashTrace.json(call.args, 500).slice(1, -1) + ")");
+  // A click on a panel button (TextShapeR, Insert, a style) leaves the
+  // keyboard focus in the WebView, where Photoshop's shortcuts die, and the
+  // user works in the document right after such a change: the focus leaves
+  // as the call starts (a style applied to a TextShapeR layer lasts long
+  // enough for the next tool key to arrive before its end), and once more
+  // after it, in case Photoshop was busy (see restoreFocus)
+  const changesDocument = DOCUMENT_CHANGING_CALLS[call.name] === "set";
+  if (changesDocument) restoreFocus("call");
   try {
     const result = await method(...call.args);
     const text = result === undefined || result === null ? "" : String(result);
@@ -450,10 +458,7 @@ async function evalScript(script) {
   } finally {
     if (Object.prototype.hasOwnProperty.call(DOCUMENT_CHANGING_CALLS, call.name)) {
       onPhotoshopEvent(DOCUMENT_CHANGING_CALLS[call.name], { _isCommand: true });
-      // A click on a panel button (TextShapeR, Insert, a style) leaves the
-      // keyboard focus in the WebView, where Photoshop's shortcuts die; the
-      // user works in the document after such a change (see restoreFocus)
-      if (DOCUMENT_CHANGING_CALLS[call.name] === "set") restoreFocus();
+      if (changesDocument) restoreFocus("call");
     }
   }
 }
@@ -516,7 +521,8 @@ async function init() {
 
 const requests = {
   init,
-  restoreFocus,
+  // The page's pointer left it with nothing being edited (web/focus.js)
+  restoreFocus: () => restoreFocus("panel"),
   // A call past its time limit answers like a call that threw, as CEP did.
   // The smart paste answers "timeout" instead: the panel must not paste the
   // classic way while Photoshop may still finish the smart paste.
@@ -545,7 +551,7 @@ const requests = {
   keyboardDebug: () => Object.assign(typeof keysHelper.diagnostics === "function" ? keysHelper.diagnostics() : {
     source: "helper", running: null, foreground: null, error: "",
     state: keyboard.getState(), sampledAt: keyboard.lastUpdate(),
-  }, { focusRestores }),
+  }, { focusRestores, focusSkips }),
   openKeyboardAccess: () => systemCall('open "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"'),
   log: (...args) => log("panel:", ...args),
 };
@@ -623,7 +629,7 @@ function handlePanelMessage(message, generation, channel) {
     diagnostic.note('web.' + String(message.stage).slice(0, 60), message.detail);
     return;
   }
-  if (!['ready', 'appReady', 'request', 'devResult', 'panelError'].includes(message.type)) return;
+  if (!['ready', 'appReady', 'request', 'devResult', 'panelError', 'focusState'].includes(message.type)) return;
   if (crashTrace && !webviewReady) crashTrace.note('webview', 'panel answered, view ' + (inPanel ? 'in panel' : viewSize()));
   webviewReady = true;
   pendingRendererFailure = null;
@@ -632,9 +638,16 @@ function handlePanelMessage(message, generation, channel) {
     debugNote('bridge.ready', channel);
     return;
   }
+  // Whether the user is typing in the page (an input, a text area or an
+  // editable element has its focus): see restoreFocus
+  if (message.type === "focusState") {
+    panelEditing = !!message.editing;
+    return;
+  }
   if (message.type === "appReady") {
     debugNote('app.ready', channel);
     autoReloaded = false;
+    panelEditing = false;
     panelStartup.appReady();
     // The fallback must be usable before starting any optional native repair.
     if (inPanel && storageRefusal) {
@@ -896,22 +909,62 @@ keyboard.onChange((state) => post({ type: "keys", state }));
 // cursor and its tooltip opens; the addon reports the theft. And the panel's
 // own WebView: a click on a TextShapeR shape or a button keeps the focus
 // there, and unlike a CEP panel a WebView forwards no key to Photoshop; the
-// calls that change the document (evalScript) end with a restore. Release
-// the native WebView before bringing Photoshop forward from a modal scope;
-// bringing the application forward alone does not release its WebView.
-// Photoshop busy (a text being edited, a dialog): the user's next click
-// restores it, as before.
+// calls that change the document (evalScript) end with a restore, and the
+// page asks for one when the pointer leaves it (web/focus.js). Release the
+// native WebView before bringing Photoshop forward from a modal scope;
+// bringing the application forward alone does not release its WebView (macOS).
+// On Windows the WebView2 windows belong to msedgewebview2.exe and neither
+// UXP's blur nor bringToFront takes the focus out of them (the canvas click
+// does not always either, and the user switches documents to get the keys
+// back): the panel's own DOM takes the focus first, which moves it to the
+// panel's view where Photoshop reads its keys, and the keyboard reader, asked
+// through its state folder, sets it on Photoshop's windows from outside if a
+// WebView still holds it (typer-keys.cs, ReleaseWebViewFocus). The page
+// reports whether the user is typing in it (focusState): a change made by a
+// shortcut while typing keeps the caret. Photoshop busy (a text being edited,
+// a dialog): the user's next click restores it, as before.
 let restoringFocus = false;
 let focusRestores = 0;
+let focusSkips = 0;
+let panelEditing = false;
 
-async function restoreFocus() {
+// A focusable element of the panel's own DOM: giving it the focus takes it
+// from the WebView (UXP moves the native focus to the panel's view)
+function focusSink() {
+  let sink = document.getElementById("typer-focus-sink");
+  if (!sink) {
+    sink = document.createElement("div");
+    sink.id = "typer-focus-sink";
+    sink.setAttribute("tabindex", "-1");
+    sink.style.cssText = "position:absolute;width:0;height:0;overflow:hidden";
+    document.body.appendChild(sink);
+  }
+  if (typeof sink.focus === "function") sink.focus();
+}
+
+// reason: "call" after a document change made from the panel, "panel" asked
+// by the page (its pointer left and nothing is being edited), "reader" for a
+// tooltip theft
+async function restoreFocus(reason) {
   if (restoringFocus) return;
+  if (reason === "call" && panelEditing) {
+    focusSkips++;
+    return;
+  }
   restoringFocus = true;
   try {
     // Blurring an HTML button only moves focus to the WebView's body.
     // Release the native WebView too: bringToFront alone leaves it as the
     // keyboard responder on macOS, swallowing Photoshop's tool shortcuts.
     if (view && typeof view.blur === "function") view.blur();
+    if (view && viewOnPanel && os.platform() === "win32") {
+      try {
+        focusSink();
+      } catch (error) {
+        debugNote("focus.sink", String((error && error.message) || error));
+      }
+      keysHelper.requestFocusRelease().catch((error) => debugNote("focus.request", String((error && error.message) || error)));
+    }
     await photoshop._internals.modal("TypeR", () => ps.app.bringToFront());
     focusRestores++;
   } catch (error) {
@@ -951,7 +1004,11 @@ async function startOnce() {
   try {
     document.theme.onUpdated.addListener(onThemeChanged);
   } catch (error) {}
-  keysHelper.start((line) => post({ type: "watcherLine", line }), restoreFocus).catch((error) => console.error("TypeR keys", error));
+  keysHelper.start(
+    (line) => post({ type: "watcherLine", line }),
+    () => restoreFocus("reader"),
+    (answer) => debugNote("focus.release", answer)
+  ).catch((error) => console.error("TypeR keys", error));
   services.removeStalePluginFolders().catch((error) => console.error("TypeR: plugin cleanup", error));
   services.removeUpdateFolder().catch((error) => console.error("TypeR: update cleanup", error));
   services.renameLegacyPanel().catch((error) => console.error("TypeR: Legacy panel name", error));

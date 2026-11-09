@@ -203,10 +203,33 @@ or on a style leaves the keyboard focus in the WebView (`Chrome_WidgetWin_1`), a
 unlike a CEP panel a WebView forwards no key to Photoshop, so the tool keys die
 until the Windows key or, usually, a click on the document (not always: once the
 clicks did not move it either). No reader rule can tell that focus from the user
-typing in the panel, so `main.js` restores the focus after every `evalScript`
-call that changes the document (the `set` entries of `DOCUMENT_CHANGING_CALLS`):
-those are the panel actions after which the user works in the document, and a
-restore while the document already holds the focus changes nothing.
+typing in the panel, so `main.js` restores the focus as every `evalScript`
+call that changes the document starts, and once more after it (the `set` entries
+of `DOCUMENT_CHANGING_CALLS`): those are the panel actions after which the user
+works in the document, a style applied to a TextShapeR layer lasts long enough for
+the next tool key to arrive before its end, and a restore while the document
+already holds the focus changes nothing. The page asks
+for the same restore when the pointer leaves it with nothing being edited
+(`web/focus.js`, below), and tells the host whether an editor has the focus
+(`focusState`): a change made by a shortcut while typing keeps the caret.
+
+On Windows, `view.blur()` and `app.bringToFront()` do not take the focus out of
+the WebView: the WebView2 windows (`Chrome_WidgetWin_1` and its render window) are
+created by msedgewebview2.exe and parented into the panel, and Photoshop, already
+the active window, moves nothing (seen on 27.x: the tool keys stayed dead until the
+user switched documents). `restoreFocus` does two more things there. The panel's
+own DOM takes the focus (`focusSink`, a `tabindex` element: UXP moves the native
+focus to the panel's view, where Photoshop reads its keys; in the live tests of
+#214, focusing the panel's DOM restored the shortcuts). And the keyboard reader is
+asked through its state folder (`keysHelper.requestFocusRelease` writes the time to
+`state.focus`): if a WebView still holds the focus of Photoshop's UI thread, the
+reader attaches to that thread (`AttachThreadInput`) and sets the focus the way a
+window activation does, on the main window (what the Windows key ends with), then
+on the panel's own view if the main window handed it back to the WebView
+(`ReleaseWebViewFocus` in `typer-keys.cs`). The reader ignores a request older than
+2 s (one it finds after a restart), acts only while Photoshop is in front, and
+answers in `state.focus.ack` (`<time> <class before> > <class after>`, or why it
+was skipped), which Settings > Debug shows as `focusRelease`.
 
 Settings > Debug displays the reader in use (TypeR Helper for TypeR Shortcuts.exe, UXP Addon
 in the addon preview package), live held keys, the last combination, sample count,
@@ -442,7 +465,10 @@ release or native focus loss, so ordinary Photoshop selections do not open modal
 scopes. Plugin-generated events, IME composition, drags and switching applications
 do not request this restore. Switching applications preserves the editor caret.
 This lives in `web/focus.js`; the in-panel renderer keeps its native focus path.
-The click-only Windows symptom still needs validation on an affected Windows host.
+The page also reports whether an editor has its focus (`focusState`), which the
+host's `restoreFocus` reads. On Windows the host's restore goes through the panel's
+DOM and the keyboard reader (see Keyboard reader above): still to be confirmed live
+on a Windows host where the tool keys stayed dead until a document switch.
 
 ## Testing in Photoshop
 
