@@ -4955,6 +4955,71 @@ function deleteFolder(folderPath) {
   }
 }
 
+/* ================== Open in TypeR Studio ================== */
+
+// The open documents: [{ id, name, path, saved, active }]. An unsaved
+// document has no path.
+function getStudioDocuments() {
+  var list = [];
+  var active = null;
+  try { active = app.activeDocument; } catch (noDocument) {}
+  for (var i = 0; i < app.documents.length; i++) {
+    var doc = app.documents[i];
+    var path = "";
+    // Unsaved documents throw on fullName access
+    try { path = doc.fullName.fsName; } catch (unsavedDocument) {}
+    var saved = false;
+    try { saved = doc.saved; } catch (savedError) {}
+    list.push({ id: doc.id, name: doc.name, path: path, saved: saved, active: active !== null && doc.id === active.id });
+  }
+  return jamJSON.stringify(list);
+}
+
+// Saves documents before TypeR Studio opens them: { id } in place, { id,
+// folder, name } as a new PSD in that folder (a free name: "name (2).psd" if
+// taken), which the document is from then on. [{ id, path } or { id, error }]
+function saveStudioDocuments(items) {
+  var results = [];
+  var previous = null;
+  try { previous = app.activeDocument; } catch (noDocument) {}
+  var dialogs = app.displayDialogs;
+  app.displayDialogs = DialogModes.NO;
+  try {
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var doc = null;
+      for (var d = 0; d < app.documents.length; d++) {
+        if (app.documents[d].id === item.id) { doc = app.documents[d]; break; }
+      }
+      if (!doc) { results.push({ id: item.id, error: "closed" }); continue; }
+      try {
+        app.activeDocument = doc;
+        if (item.folder) {
+          var base = String(item.name || "Untitled").replace(/[\\\/:*?"<>|]/g, "_");
+          var file = new File(item.folder + "/" + base + ".psd");
+          for (var copy = 2; file.exists; copy++) file = new File(item.folder + "/" + base + " (" + copy + ").psd");
+          var options = new PhotoshopSaveOptions();
+          options.layers = true;
+          options.embedColorProfile = true;
+          options.alphaChannels = true;
+          doc.saveAs(file, options, false, Extension.LOWERCASE);
+        } else {
+          doc.save();
+        }
+        results.push({ id: item.id, path: doc.fullName.fsName });
+      } catch (saveError) {
+        results.push({ id: item.id, error: String(saveError.message || saveError) });
+      }
+    }
+  } finally {
+    app.displayDialogs = dialogs;
+    if (previous) {
+      try { app.activeDocument = previous; } catch (previousError) {}
+    }
+  }
+  return jamJSON.stringify(results);
+}
+
 function openFolder(folderPath) {
   try {
     var os = $.os.toLowerCase();

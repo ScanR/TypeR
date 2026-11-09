@@ -1,7 +1,7 @@
 import { useModalClose } from "../../modalClose";
 import { serializeStyle, validateImportData, hasStyleImportConflicts } from "../../librarySerialization";
 import React from "react";
-import { FiX, FiSearch, FiSettings, FiEye, FiEyeOff, FiEdit3, FiFileText, FiLayers, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiEdit2, FiGrid, FiPlus, FiImage, FiTrash2, FiDatabase, FiHelpCircle, FiFolderPlus, FiLock, FiMonitor, FiType, FiZoomIn } from "react-icons/fi";
+import { FiX, FiSearch, FiSettings, FiEye, FiEyeOff, FiEdit3, FiFileText, FiLayers, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiEdit2, FiGrid, FiPlus, FiImage, FiTrash2, FiDatabase, FiHelpCircle, FiFolderPlus, FiLock, FiMonitor, FiType, FiZoomIn, FiExternalLink } from "react-icons/fi";
 import { MdSave, MdTab, MdCenterFocusWeak, MdFormatSize, MdSwapVert, MdOutlineSubject, MdOutlineCallToAction } from "react-icons/md";
 import { AiOutlineBorderInner } from "react-icons/ai";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
@@ -49,6 +49,7 @@ import SettingsSearchResults from "./settingsSearchResults";
 import KeyboardDebug from "./keyboardDebug";
 import { FOOTER_MODE_KEYS } from "../../uiLayout";
 import { FOOTER_MODE_ICONS, footerModeLabel } from "../footer/footer";
+import { otherAppAvailable } from "../../openInStudio";
 
 // Interactive layout mockup: canvas px per real panel px
 const LAYOUT_CANVAS_SCALE = 0.3;
@@ -58,7 +59,7 @@ const LAYOUT_BLOCK_ELEMENTS = {
   preview: ["previewCreateButton", "previewAlignButton", "previewSizeControls", "previewNav", "previewWidget"],
   text: ["tabBar"],
   styles: [],
-  footer: ["footerHelp", "footerRepo"].concat(FOOTER_MODE_IDS.map((id) => FOOTER_MODE_KEYS[id])),
+  footer: ["footerHelp", "footerRepo", "footerStudio"].concat(FOOTER_MODE_IDS.map((id) => FOOTER_MODE_KEYS[id])),
 };
 const LAYOUT_ELEMENT_BLOCK = Object.keys(LAYOUT_BLOCK_ELEMENTS).reduce((map, block) => {
   LAYOUT_BLOCK_ELEMENTS[block].forEach((key) => {
@@ -79,6 +80,7 @@ const LAYOUT_ELEMENT_ICONS = FOOTER_MODE_IDS.reduce((icons, id) => {
   previewWidget: FiType,
   footerHelp: FiHelpCircle,
   footerRepo: FiFolderPlus,
+  footerStudio: FiExternalLink,
 });
 
 // On/off switch of the layout inspector (also clickable through its row label)
@@ -1941,6 +1943,7 @@ const SettingsModal = React.memo(function SettingsModal() {
           previewWidget: locale.settingsLayoutElWidget || "Line preview / TextShapeR",
           footerHelp: locale.settingsLayoutElHelp || "Help button",
           footerRepo: locale.settingsLayoutElRepo || "Import pages button",
+          footerStudio: locale.settingsLayoutElStudio || "Open in TypeR Studio button",
         });
         // Mode states after "Save", like the toggles in the other tabs
         const modeStates = {
@@ -2317,6 +2320,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                         <FiSettings size={7} />
                       </span>
                       {mockEl("footerRepo", "mk-f", mockIcon("footerRepo"))}
+                      {otherAppAvailable() && mockEl("footerStudio", "mk-f", mockIcon("footerStudio"))}
                       <span className="mk-fspacer" />
                       {FOOTER_MODE_IDS.map((id) => mockEl(
                         FOOTER_MODE_KEYS[id],
@@ -2401,6 +2405,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                           </span>
                         </div>
                         {renderElementRow("footerRepo")}
+                        {otherAppAvailable() && renderElementRow("footerStudio")}
                       </div>
                       <div className="settings-layout-subtitle">
                         <span>{locale.settingsLayoutGroupModes || "Mode toggles"}</span>

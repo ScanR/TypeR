@@ -308,6 +308,7 @@ export function installCepEnvironment(init) {
   window.typerUXP = {
     request,
     platform: init.platform,
+    arch: init.arch,
     storageRoot: init.storageRoot,
     version: init.version,
     flushStorage: () => request("flushMirror"),

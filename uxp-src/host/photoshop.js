@@ -3962,6 +3962,70 @@ async function scanPsdFonts(path) {
   }
 }
 
+/* ================== Open in TypeR Studio ================== */
+
+// The open documents: [{ id, name, path, saved, active }]. An unsaved
+// document has no path.
+async function getStudioDocuments() {
+  const list = [];
+  let active = null;
+  try { active = ps.app.activeDocument; } catch (noDocument) {}
+  const documents = ps.app.documents;
+  for (let index = 0; index < documents.length; index++) {
+    const doc = documents[index];
+    let path = "";
+    try { path = doc.path || ""; } catch (unsavedDocument) {}
+    let saved = false;
+    try { saved = !!doc.saved; } catch (savedError) {}
+    list.push({ id: doc.id, name: doc.name, path, saved, active: !!active && doc.id === active.id });
+  }
+  return JSON.stringify(list);
+}
+
+// A free name for the new PSD in that folder: "name (2).psd" if taken
+async function _studioFile(folderPath, name) {
+  const folder = await _fileEntry(folderPath);
+  const base = String(name || "Untitled").replace(/[\\/:*?"<>|]/g, "_");
+  for (let copy = 1; ; copy++) {
+    const fileName = copy === 1 ? base + ".psd" : base + " (" + copy + ").psd";
+    let taken = true;
+    try { await folder.getEntry(fileName); } catch (missing) { taken = false; }
+    if (!taken) return folder.createFile(fileName, { overwrite: false });
+  }
+}
+
+// Saves documents before TypeR Studio opens them: { id } in place, { id,
+// folder, name } as a new PSD in that folder, which the document is from then
+// on. [{ id, path } or { id, error }]
+async function saveStudioDocuments(items) {
+  return modal("TypeR", async () => {
+    const results = [];
+    for (const item of Array.isArray(items) ? items : []) {
+      let doc = null;
+      const documents = ps.app.documents;
+      for (let index = 0; index < documents.length; index++) {
+        if (documents[index].id === item.id) { doc = documents[index]; break; }
+      }
+      if (!doc) {
+        results.push({ id: item.id, error: "closed" });
+        continue;
+      }
+      try {
+        if (item.folder) {
+          const file = await _studioFile(item.folder, item.name);
+          await doc.saveAs.psd(file, { embedColorProfile: true, alphaChannels: true, layers: true }, false);
+        } else {
+          await doc.save();
+        }
+        results.push({ id: item.id, path: doc.path });
+      } catch (error) {
+        results.push({ id: item.id, error: String((error && error.message) || error) });
+      }
+    }
+    return JSON.stringify(results);
+  });
+}
+
 module.exports = {
   // evalScript surface, same names as host.js
   methods: {
@@ -3998,6 +4062,8 @@ module.exports = {
     createTextLayersInStoredSelections,
     openFile,
     scanPsdFonts,
+    getStudioDocuments,
+    saveStudioDocuments,
   },
   invalidateFontList,
   // internals, for tests

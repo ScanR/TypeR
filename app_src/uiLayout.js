@@ -23,6 +23,7 @@ export const defaultUiLayout = {
     previewWidget: true,
     footerHelp: true,
     footerRepo: true,
+    footerStudio: true,
     footerModeTextShapeR: true,
     footerModeMultiBubble: true,
     footerModePasteOnClick: true,

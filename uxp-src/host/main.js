@@ -507,6 +507,7 @@ async function init() {
     locales: mirrorFiles.locales,
     hostEnvironment: getHostEnvironment(),
     platform: os.platform(),
+    arch: processorArch(),
     keys: keyboard.getState(),
     hidden: !panelVisible,
     version: services.pluginVersion(),
@@ -837,6 +838,17 @@ function attachView() {
   if (help) help.onclick = () => uxp.shell.openExternal(webViewHelpUrl).catch((error) => showStatus(String(error.message || error)));
   showPanelPage();
   return view;
+}
+
+// os.arch() says x64 on Apple chips too: the processor's name tells them apart
+// (Open in TypeR Studio's download)
+function processorArch() {
+  try {
+    const model = String((os.cpus()[0] || {}).model || "");
+    if (/apple/i.test(model)) return "arm64";
+    if (/intel/i.test(model)) return "x64";
+  } catch (error) {}
+  return os.arch();
 }
 
 /* ====================== Photoshop events ====================== */

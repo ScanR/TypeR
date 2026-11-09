@@ -1,7 +1,7 @@
 import "./footer.scss";
 
 import React from "react";
-import { FiFolderMinus, FiFolderPlus, FiHelpCircle, FiSettings } from "react-icons/fi";
+import { FiExternalLink, FiFolderMinus, FiFolderPlus, FiHelpCircle, FiSettings } from "react-icons/fi";
 import { MdAdsClick, MdCleaningServices, MdFilterNone, MdOutlineAutoAwesome } from "react-icons/md";
 import { locale } from "../../utils";
 import { useContext } from "../../context";
@@ -10,6 +10,8 @@ import Notice from "../notice/notice";
 import FeatureTip from "../featureTip";
 import { isFooterModeVisible, isWindowTooShortForTextShapeR } from "../../uiLayout";
 import { toggleTextShapeR } from "../../shortcutCommands";
+import { photoshopFromStudio, studioAvailable } from "../../openInStudio";
+import OpenInStudioButton from "./openInStudio";
 
 // Shared with Settings > Appearance, which lists the toggles one by one
 export const FOOTER_MODE_ICONS = {
@@ -226,6 +228,13 @@ const AppFooter = React.memo(function AppFooter() {
           onClick={openRepository}
         >
           {synced ? <FiFolderMinus size={14} /> : <FiFolderPlus size={14} />}
+        </button>
+        )}
+        {uiVisible.footerStudio !== false && studioAvailable() && <OpenInStudioButton />}
+        {uiVisible.footerStudio !== false && !studioAvailable() && photoshopFromStudio() && (
+        // TypeR Studio's own wording: "Open in Photoshop" (its panel-locale/web-text.json)
+        <button type="button" className="footer-icon-button" title={locale.footerStudio} aria-label={locale.footerStudio} onClick={() => photoshopFromStudio()()}>
+          <FiExternalLink size={14} />
         </button>
         )}
       </div>

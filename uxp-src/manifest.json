@@ -31,7 +31,7 @@
   "requiredPermissions": {
     "localFileSystem": "fullAccess",
     "network": { "domains": "all" },
-    "launchProcess": { "schemes": ["http", "https", "mailto"], "extensions": [".ccx", ".zip", ".psd", ".json", ""] },
+    "launchProcess": { "schemes": ["http", "https", "mailto", "typer-studio"], "extensions": [".ccx", ".zip", ".psd", ".json", ""] },
     "clipboard": "readAndWrite",
     "webview": {
       "allow": "yes",

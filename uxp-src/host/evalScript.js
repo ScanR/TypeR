@@ -71,6 +71,7 @@ const CALL_TIMEOUTS = {
   alignTextLayersToDoubleBubble: LONG_CALL_TIMEOUT_MS,
   openFile: LONG_CALL_TIMEOUT_MS,
   scanPsdFonts: LONG_CALL_TIMEOUT_MS,
+  saveStudioDocuments: LONG_CALL_TIMEOUT_MS,
   smartPaste: SMART_PASTE_TIMEOUT_MS,
 };
 

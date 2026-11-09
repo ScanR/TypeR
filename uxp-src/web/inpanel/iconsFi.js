@@ -32,6 +32,7 @@ export {
   RiDownloadCloud2Line as FiDownloadCloud,
   RiPencilLine as FiEdit2,
   RiEditLine as FiEdit3,
+  RiExternalLinkLine as FiExternalLink,
   RiEyeLine as FiEye,
   RiEyeOffLine as FiEyeOff,
   RiFileTextLine as FiFileText,

@@ -191,6 +191,7 @@ const SECTIONS = [
       { title: "settingsLayoutElHelp", layoutBlock: "footer", parent: "settingsLayoutBlockFooter" },
       { title: "settingsLayoutElSettings", layoutBlock: "footer", parent: "settingsLayoutBlockFooter" },
       { title: "settingsLayoutElRepo", layoutBlock: "footer", parent: "settingsLayoutBlockFooter" },
+      { title: "settingsLayoutElStudio", layoutBlock: "footer", parent: "settingsLayoutBlockFooter" },
       { title: "settingsLayoutModeIcons", hint: "settingsLayoutModeIconsNote", layoutBlock: "footer", parent: "settingsLayoutBlockFooter", keywords: "icone icon" },
       { title: "settingsLayoutScaleLabel", keywords: "zoom taille size agrandir echelle ui" },
       { title: "settingsLayoutReset", hint: "settingsLayoutCanvasHint", keywords: "reinitialiser" },
