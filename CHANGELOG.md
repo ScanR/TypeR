@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.0.4
+
+- The panel reports its own version correctly again. The 3.0.3 packages still carried 3.0.2 in the panel: Help showed the old version and the update check kept offering 3.0.3 to a panel that already had it, and on Windows the automatic install could fetch the 3.0.2 package back. The release checks now fail when the panel version differs from the package version.
+
 ## 3.0.3
 
 - The new TypeR applies styles to a selected text layer again. In 3.0.2 it answered "No text layer specified" even with a text layer selected: the focus release, started as the style was applied, brought Photoshop forward while the style was being written and made Photoshop refuse the change. The focus release now waits for each change to finish, and never runs during one.
