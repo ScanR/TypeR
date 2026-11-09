@@ -29,7 +29,12 @@ const getPlatform = () => {
 
 const getUxpHost = () => (typeof window !== "undefined" && window.typerUXP) || null;
 
+// A host that installs the fonts itself, like TypeR Studio:
+// window.typerFontHost.installFonts([{ saveName, displayName, bytes }]) resolves to the count
+const getFontHost = () => (typeof window !== "undefined" && window.typerFontHost) || null;
+
 const isFontInstallSupported = () => {
+  if (getFontHost()) return true;
   if (!getPlatform()) return false;
   if (getUxpHost()) return true;
   const nodeRequire = getNodeRequire();
@@ -109,6 +114,12 @@ const getInstallDir = (nodeRequire, platform) => {
 // files: [{ saveName, displayName, bytes }] — saveName must already be a safe,
 // unique file name (the viewer builds it with makeUniqueFileNames).
 const installFontFiles = async (files, onProgress) => {
+  const fontHost = getFontHost();
+  if (fontHost) {
+    const count = await fontHost.installFonts((files || []).map((file) => ({ saveName: file.saveName, displayName: file.displayName, bytes: file.bytes })));
+    if (onProgress) onProgress(files.length, files.length);
+    return count;
+  }
   const platform = getPlatform();
   const uxpHost = getUxpHost();
   if (uxpHost) {
