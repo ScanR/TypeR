@@ -8,7 +8,9 @@ const MODIFIERS = ["WIN", "CTRL", "ALT", "SHIFT"];
 // Mice whose side buttons send the browser's Back and Forward keys record them
 // as mouse buttons 4 and 5, which the keyboard readers report the same way
 const SPECIAL_KEYS = { "+": "PLUS", "-": "MINUS", "=": "EQUAL", "/": "DIVIDE", "*": "MULTIPLY", BrowserBack: "MOUSE4", BrowserForward: "MOUSE5" };
-const IGNORED_KEYS = ["Meta", "Control", "Alt", "Shift", "AltGraph", "CapsLock", "Dead", "Process", "Unidentified"];
+// Caps Lock is a key of its own (Ctrl+Caps Lock was a shortcut of 2.x), which
+// the keyboard readers report as CAPSLOCK
+const IGNORED_KEYS = ["Meta", "Control", "Alt", "Shift", "AltGraph", "Dead", "Process", "Unidentified"];
 const hasMainKey = (keys) => (keys || []).some((key) => !MODIFIERS.includes(String(key).toUpperCase()));
 
 const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform || "");

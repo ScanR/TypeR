@@ -54,12 +54,13 @@ static class TypeRKeys {
 
   const uint MOVEFILE_REPLACE_EXISTING = 1;
 
+  // Caps Lock (0x14) is a key of its own, Ctrl+Caps Lock being a shortcut of 2.x
   static readonly int[] namedKeys = {
-    0x08, 0x09, 0x0D, 0x1B, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E,
+    0x08, 0x09, 0x0D, 0x14, 0x1B, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E,
     0x6A, 0x6B, 0x6D, 0x6E, 0x6F, 0xBB, 0xBD, 0xBC, 0xBE, 0xBF, 0xBA, 0xDE,
   };
   static readonly string[] keyNames = {
-    "BACKSPACE", "TAB", "ENTER", "ESCAPE", "SPACE", "PAGEUP", "PAGEDOWN", "END", "HOME",
+    "BACKSPACE", "TAB", "ENTER", "CAPSLOCK", "ESCAPE", "SPACE", "PAGEUP", "PAGEDOWN", "END", "HOME",
     "LEFTaARROWLEFT", "UPaARROWUP", "RIGHTaARROWRIGHT", "DOWNaARROWDOWN", "INSERT", "DELETE",
     "MULTIPLY", "PLUS", "MINUS", "DECIMAL", "DIVIDE", "EQUALaPLUS", "MINUS", "COMMA", "PERIOD",
     "SLASHaDIVIDE", "SEMICOLON", "QUOTEaAPOSTROPHE",

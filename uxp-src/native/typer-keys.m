@@ -40,7 +40,7 @@ typedef struct {
 // recorder produces from DOM events, so bindings recorded with either match
 static const NamedKey kNamedKeys[] = {
   {kVK_Return, "ENTER"}, {kVK_ANSI_KeypadEnter, "ENTER"},
-  {kVK_Tab, "TAB"}, {kVK_Space, "SPACE"}, {kVK_Escape, "ESCAPE"},
+  {kVK_Tab, "TAB"}, {kVK_Space, "SPACE"}, {kVK_Escape, "ESCAPE"}, {kVK_CapsLock, "CAPSLOCK"},
   {kVK_Delete, "BACKSPACE"}, {kVK_ForwardDelete, "DELETE"},
   {kVK_Home, "HOME"}, {kVK_End, "END"}, {kVK_PageUp, "PAGEUP"}, {kVK_PageDown, "PAGEDOWN"},
   {kVK_LeftArrow, "LEFT|ARROWLEFT"}, {kVK_RightArrow, "RIGHT|ARROWRIGHT"},
@@ -64,7 +64,7 @@ static int isKeyDown(CGKeyCode key) {
 static int isModifier(CGKeyCode key) {
   return key == kVK_Command || key == kVK_RightCommand || key == kVK_Control || key == kVK_RightControl ||
          key == kVK_Option || key == kVK_RightOption || key == kVK_Shift || key == kVK_RightShift ||
-         key == kVK_CapsLock || key == kVK_Function;
+         key == kVK_Function;
 }
 
 static const NamedKey *namedKey(CGKeyCode key) {

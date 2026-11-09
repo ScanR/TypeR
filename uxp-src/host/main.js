@@ -516,6 +516,7 @@ async function init() {
 
 const requests = {
   init,
+  restoreFocus,
   // A call past its time limit answers like a call that threw, as CEP did.
   // The smart paste answers "timeout" instead: the panel must not paste the
   // classic way while Photoshop may still finish the smart paste.

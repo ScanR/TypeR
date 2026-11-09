@@ -435,6 +435,15 @@ npm run test:uxp        # the UXP suites (also run by npm test)
 Changing `uxp-src/native/typer-keys.m` on macOS rebuilds `typer-keys.json`; commit it.
 For the Windows addon rebuild instructions, see Keyboard reader above.
 
+The WebView also releases passive focus after the pointer leaves its document.
+A focused input is retained while typing; a real Photoshop layer/document or
+canvas selection made outside the WebView releases it. The release is armed by focus or a click in the WebView and disarmed after one
+release or native focus loss, so ordinary Photoshop selections do not open modal
+scopes. Plugin-generated events, IME composition, drags and switching applications
+do not request this restore. Switching applications preserves the editor caret.
+This lives in `web/focus.js`; the in-panel renderer keeps its native focus path.
+The click-only Windows symptom still needs validation on an affected Windows host.
+
 ## Testing in Photoshop
 
 `npm run build:uxp:mac:dev` builds `Releases/TypeR-UXP-mac-dev.ccx` on macOS (`build:uxp:dev` targets Windows), which can run test code through

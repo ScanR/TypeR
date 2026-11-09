@@ -5,6 +5,7 @@ import { request, notify, on, runsInPanel } from "./bridge";
 import { installCepEnvironment } from "./cepShim";
 import { installErrorReporting, installFetchFallback, installFileInputs, installInputCentering, installLocalStorage } from "./domShims";
 import "./webkit.scss";
+import { installFocusRelease } from "./focus";
 
 // The WebView is WebKit on macOS and Chromium (WebView2) on Windows: the
 // layout fixes of webkit.scss only apply to the first
@@ -66,6 +67,7 @@ async function start() {
     (name, text) => window.cep.fs.writeFile(root + "/" + name, text)
   );
   installFileInputs();
+  if (!runsInPanel) installFocusRelease({ document, window, request, on });
   // In the panel, fetch is UXP's own, without CORS, and the host's fetchUrl
   // uses it: the fallback would call itself
   if (!runsInPanel) installFetchFallback();
