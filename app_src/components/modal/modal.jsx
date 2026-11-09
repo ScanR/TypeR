@@ -5,6 +5,19 @@ import {readUxpMigrationState, startupUxpGuide} from '../../uxpMigration';
 import config from '../../config';
 import {getWhatsNewDock, isTourModal, restoreTourTuning, whatsNewSession} from '../../whatsNewSession';
 import {getGuideStyle} from '../../whatsNewGuide';
+import {fetchBody} from '../../network';
+import {
+    STUDIO_PROMO_OFF_KEY,
+    STUDIO_PROMO_RECORD_KEY,
+    STUDIO_PROMO_URL,
+    isInsideStudio,
+    parseStudioPromo,
+    shouldShowStudioPromo,
+} from '../../studioPromo';
+
+// The TypeR Studio window waits this long once no other window is open, so it
+// never takes the place of one opening at the same moment
+const STUDIO_PROMO_DELAY = 1500;
 
 const modalLoaders = {
     help: () => import(/* webpackChunkName: "modal-help" */ './help'),
@@ -17,6 +30,7 @@ const modalLoaders = {
     fontScanR: () => import(/* webpackChunkName: "modal-font-scan" */ './fontScanR'),
     update: () => import(/* webpackChunkName: "modal-update" */ './update'),
     uxpMigration: () => import(/* webpackChunkName: "modal-uxp-migration" */ './uxpMigration'),
+    studioPromo: () => import(/* webpackChunkName: "modal-studio-promo" */ './studioPromo'),
 };
 const HelpModal = React.lazy(modalLoaders.help);
 const WalkthroughModal = React.lazy(modalLoaders.walkthrough);
@@ -28,6 +42,7 @@ const ExportModal = React.lazy(modalLoaders.export);
 const FontScanRModal = React.lazy(modalLoaders.fontScanR);
 const UpdateModal = React.lazy(modalLoaders.update);
 const UxpMigrationModal = React.lazy(modalLoaders.uxpMigration);
+const StudioPromoModal = React.lazy(modalLoaders.studioPromo);
 let modalStylesPromise = null;
 const loadModalStyles = () => {
     if (!modalStylesPromise) {
@@ -123,6 +138,7 @@ const Modal = React.memo(function Modal() {
     else if (modalType === 'fontScanR') modalContent = <FontScanRModal />;
     else if (modalType === 'update') modalContent = <UpdateModal />;
     else if (modalType === 'uxpMigration') modalContent = <UxpMigrationModal />;
+    else if (modalType === 'studioPromo') modalContent = <StudioPromoModal />;
 
     const openStartWindow = () => {
         if (!context.state.notFirstTime) {
@@ -165,6 +181,50 @@ const Modal = React.memo(function Modal() {
             openStartWindow();
         }
     }, []);
+
+    // TypeR Studio window: the TypeR site says once per startup whether it is
+    // on. Not for someone opening TypeR for the first time, who has the
+    // walkthrough to go through, nor inside TypeR Studio itself.
+    const [studioPromo, setStudioPromo] = React.useState(null);
+    const knownUser = React.useRef(context.state.notFirstTime);
+    React.useEffect(() => {
+        if (isInsideStudio()) return undefined;
+        let testConfig = null;
+        try {
+            testConfig = getUpdateTestConfig();
+        } catch (error) {}
+        // Test mode shows it whatever the site and what was answered before
+        if (testConfig && testConfig.forceStudioPromo) {
+            setStudioPromo({promo: {id: 1}, test: true});
+            return undefined;
+        }
+        if (!knownUser.current || readStorage(STUDIO_PROMO_OFF_KEY) === true) return undefined;
+        let active = true;
+        fetchBody(STUDIO_PROMO_URL, {}, 'json', 10000).then((data) => {
+            const promo = parseStudioPromo(data);
+            if (!active || !shouldShowStudioPromo({
+                promo,
+                record: readStorage(STUDIO_PROMO_RECORD_KEY),
+                off: readStorage(STUDIO_PROMO_OFF_KEY),
+                now: Date.now(),
+            })) return;
+            setStudioPromo({promo});
+        }).catch(() => {
+            // Offline or no switch on the site: nothing to show
+        });
+        return () => {
+            active = false;
+        };
+    }, []);
+    React.useEffect(() => {
+        if (!studioPromo || modalType || whatsNewSession.active) return undefined;
+        const timer = setTimeout(() => {
+            if (whatsNewSession.active) return;
+            context.dispatch({type: 'setModal', modal: 'studioPromo', data: studioPromo});
+            setStudioPromo(null);
+        }, STUDIO_PROMO_DELAY);
+        return () => clearTimeout(timer);
+    }, [studioPromo, modalType]);
 
     // A window opened from a tour hands back to it on close
     React.useEffect(() => {

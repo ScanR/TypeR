@@ -33,8 +33,15 @@ assert.deepStrictEqual(
     forceUxpMigration: false,
     forceManualPluginInstall: false,
     platformPackageUrl: null,
+    forceStudioPromo: false,
   }
 );
+assert.strictEqual(parseUpdateTestConfig({
+  enabled: true,
+  releasesUrl: "http://127.0.0.1:17831/releases",
+  currentVersion: "2.9.9",
+  forceStudioPromo: true,
+}).forceStudioPromo, true, "the test mode can show the TypeR Studio window");
 assert.strictEqual(parseUpdateTestConfig("not json"), null);
 assert.strictEqual(parseUpdateTestConfig({ enabled: false }), null);
 assert.strictEqual(parseUpdateTestConfig({

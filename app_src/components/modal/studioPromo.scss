@@ -1,0 +1,184 @@
+// TypeR Studio window (studioPromo.jsx): a picture of Studio, the pitch, two
+// actions. Colours come from the panel theme, except the accent.
+$studio-accent: #288edf;
+
+.studio-promo {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.studio-promo-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+}
+
+.studio-promo-hero {
+    position: relative;
+    height: 170px;
+    max-height: 30vh;
+    overflow: hidden;
+    IMG {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: left top;
+        -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
+        mask-image: linear-gradient(to bottom, #000 45%, transparent 100%);
+    }
+}
+
+.studio-promo-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    background: $studio-accent;
+    color: #fff;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: .6px;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.studio-promo-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, .55);
+    color: #eee;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    &:hover {
+        background: rgba(0, 0, 0, .75);
+    }
+}
+
+.studio-promo-content {
+    position: relative;
+    margin-top: -30px;
+    padding: 0 14px 8px;
+}
+
+.studio-promo-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.studio-promo-logo {
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    border-radius: 7px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+}
+.studio-promo-name {
+    font-size: 17px;
+    font-weight: bold;
+}
+
+.studio-promo-pitch {
+    margin: 8px 0 10px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.studio-promo-features {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+    LI {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        & + LI {
+            margin-top: 7px;
+        }
+    }
+    B {
+        display: block;
+        font-size: 12px;
+    }
+    SPAN {
+        display: block;
+        font-size: 11px;
+        line-height: 1.4;
+        opacity: .7;
+    }
+}
+.studio-promo-icon {
+    flex: 0 0 auto;
+    margin-top: 1px;
+    color: $studio-accent;
+}
+
+.studio-promo-platforms {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    SPAN {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 1px 8px;
+        border: 1px solid rgba(128, 128, 128, .4);
+        border-radius: 10px;
+        font-size: 10.5px;
+        opacity: .85;
+    }
+}
+
+// Under the text in a tall panel, held at the bottom of a short one
+.studio-promo-actions {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    gap: 6px;
+    padding: 6px 14px 12px;
+    BUTTON {
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.studio-promo-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.studio-promo-hide {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    opacity: .8;
+    cursor: pointer;
+    INPUT {
+        margin: 0;
+    }
+    .settings-checkbox-custom {
+        margin-top: 0;
+    }
+}

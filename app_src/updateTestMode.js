@@ -37,6 +37,8 @@ const parseUpdateTestConfig = (raw) => {
     forceManualPluginInstall: data.forceManualPluginInstall === true,
     // Runs the swap to the Windows package on any system, from this address
     platformPackageUrl: isLoopbackHttpUrl(data.platformPackageUrl) ? data.platformPackageUrl : null,
+    // Shows the TypeR Studio window at startup, whatever the site says
+    forceStudioPromo: data.forceStudioPromo === true,
   };
 };
 
