@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.0.3
+
+- The new TypeR applies styles to a selected text layer again. In 3.0.2 it answered "No text layer specified" even with a text layer selected: the focus release, started as the style was applied, brought Photoshop forward while the style was being written and made Photoshop refuse the change. The focus release now waits for each change to finish, and never runs during one.
+- The new TypeR no longer closes by itself when it is expanded from a collapsed icon dock. The focus release of 3.0.2 gave the focus back to Photoshop as soon as the pointer left the panel, and Photoshop collapsed that panel as after a click elsewhere, about a second after opening it. The release now waits for a click in the panel or an editor being typed in; a panel Photoshop only showed is left alone. Applying a style from such a panel still collapses it, as Photoshop does on the next click outside.
+- The script keeps the line just pasted in view. When long lines wrapped over several rows, the five lines kept above it could fill the whole sheet and leave it hidden below; they now take at most half the sheet. A paste on the last line of a page linked to the next one also scrolls the script now.
+
 ## 3.0.2
 
 - TypeR Studio: the new **Open in TypeR Studio** footer button sends the open Photoshop documents to TypeR Studio, with the script if wanted. Pending changes are saved first, documents without a file yet are saved as PSD in a folder you choose, and the panel offers the installer for this computer when Studio is missing. The button can be hidden in Settings > Appearance, like the other footer buttons.
