@@ -46,11 +46,17 @@ export function installFocusRelease({ document, window, request, on, notify, del
     if (active && typeof active.blur === "function") active.blur();
     request("restoreFocus").catch(() => {});
   };
-  document.addEventListener("focusin", () => { arm(); reportEditing(); }, true);
+  // A click in the panel, or an editor taking the focus, leaves the keyboard
+  // focus in the WebView. A bare window focus does not count: Photoshop
+  // focuses a panel it has just shown, and a panel expanded from a collapsed
+  // icon dock collapses when the restore activates the main window (seen in
+  // 3.0.2: the panel "closed by itself" as the pointer left it).
+  const armEditing = () => { if (isEditing(document.activeElement)) arm(); };
+  document.addEventListener("focusin", () => { armEditing(); reportEditing(); }, true);
   // The element losing the focus is still the active one during focusout
   document.addEventListener("focusout", () => { window.setTimeout(reportEditing, 0); }, true);
   document.addEventListener("mousedown", arm, true);
-  window.addEventListener("focus", () => { arm(); reportEditing(); });
+  window.addEventListener("focus", () => { armEditing(); reportEditing(); });
   document.documentElement.addEventListener("mouseleave", (event) => {
     outside = true;
     draggingOutside = !!event.buttons;

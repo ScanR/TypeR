@@ -460,9 +460,13 @@ For the Windows addon rebuild instructions, see Keyboard reader above.
 
 The WebView also releases passive focus after the pointer leaves its document.
 A focused input is retained while typing; a real Photoshop layer/document or
-canvas selection made outside the WebView releases it. The release is armed by focus or a click in the WebView and disarmed after one
+canvas selection made outside the WebView releases it. The release is armed by a
+click in the WebView, or by an editor taking the focus, and disarmed after one
 release or native focus loss, so ordinary Photoshop selections do not open modal
-scopes. Plugin-generated events, IME composition, drags and switching applications
+scopes. A bare window focus does not arm it: Photoshop focuses a panel it has just
+shown, and a panel expanded from a collapsed icon dock collapses when the restore
+activates the main window (3.0.2 report on Windows: the panel "closed by itself"
+about a second after opening, as the pointer left it). Plugin-generated events, IME composition, drags and switching applications
 do not request this restore. Switching applications preserves the editor caret.
 This lives in `web/focus.js`; the in-panel renderer keeps its native focus path.
 The page also reports whether an editor has its focus (`focusState`), which the

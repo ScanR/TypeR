@@ -10,10 +10,16 @@ const source = main.slice(main.indexOf("let restoringFocus = false;"), main.inde
 assert(source.includes("async function restoreFocus(reason)"));
 // The page's request and the reader's report never carry the "call" reason,
 // the only one skipped while the user types in the page
-assert(main.includes('restoreFocus: () => restoreFocus("panel")'));
-assert(main.includes('() => restoreFocus("reader")'));
-// Released as the document-changing call starts and once more after it
-assert.strictEqual(main.split('if (changesDocument) restoreFocus("call")').length, 3);
+// Those restores wait in the host call queue: run beside a call, the
+// restore's bringToFront made the call's commands fail (3.0.2: every style
+// applied to a text layer answered "no text layer selected")
+assert(main.includes('restoreFocus: () => queueFocusRestore("panel")'));
+assert(main.includes('() => queueFocusRestore("reader")'));
+assert(/function queueFocusRestore\(reason\) \{\s*return enqueue\(\(\) => restoreFocus\(reason\)/.test(main));
+// Released as the document-changing call starts and once more after it, each
+// awaited inside the call so it never overlaps the call's commands
+assert.strictEqual(main.split('if (changesDocument) await restoreFocus("call")').length, 3);
+assert(!main.includes('if (changesDocument) restoreFocus("call")'), "a call never starts a restore without awaiting it");
 assert(main.includes("'focusState'"), "the host accepts the page's focusState message");
 
 async function test() {

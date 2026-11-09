@@ -20,10 +20,20 @@ const window = { addEventListener: (name, fn) => { events[name] = fn; },
 };
 const flush = () => { const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(fn => fn()); };
 installFocusRelease({ document, window, on: (name, fn) => { handlers[name] = fn; }, request: async (method) => { assert.equal(method, "restoreFocus"); restores++; } });
-const enter = tag => { focused = true; document.activeElement = element(tag); events.mouseenter(); events.focusin(); };
+// A click in the panel: Photoshop shows it, the WebView takes the focus, the user clicks an element
+const enter = tag => { focused = true; document.activeElement = element(tag); events.mouseenter(); events.focus(); events.focusin(); events.mousedown(); };
+// Photoshop shows the panel and focuses it, the pointer only passes over it
+const shown = tag => { focused = true; document.activeElement = element(tag); events.focus(); events.focusin(); events.mouseenter(); };
 const leave = () => events.mouseleave({ buttons: 0 });
 leave(); handlers.psEvent(canvas); flush();
 assert.equal(restores, 0, "unfocused panel must not request modals during ordinary Photoshop work");
+shown("BODY"); leave(); flush();
+assert.equal(restores, 0, "a panel Photoshop has just shown and focused is not released as the pointer leaves: a panel expanded from an icon dock would collapse");
+shown("BUTTON"); leave(); flush(); handlers.psEvent(canvas);
+assert.equal(restores, 0, "a focused button without a click does not arm the release either");
+shown("TEXTAREA"); leave(); flush(); assert.equal(restores, 0, "an editor given the focus is kept while the pointer leaves");
+handlers.psEvent(canvas); assert.equal(restores, 1, "an editor given the focus is released by a selection in Photoshop");
+restores = 0;
 enter("BUTTON"); leave(); flush(); assert.equal(restores, 1);
 for (let i = 0; i < 20; i++) handlers.psEvent(canvas);
 assert.equal(restores, 1, "released focus stays disarmed across repeated native events");

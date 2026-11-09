@@ -445,9 +445,12 @@ async function evalScript(script) {
   // user works in the document right after such a change: the focus leaves
   // as the call starts (a style applied to a TextShapeR layer lasts long
   // enough for the next tool key to arrive before its end), and once more
-  // after it, in case Photoshop was busy (see restoreFocus)
+  // after it, in case Photoshop was busy (see restoreFocus). Both are awaited:
+  // a restore's bringToFront played while the call's commands run makes them
+  // fail ("the command Set is not available"), which turned every style
+  // applied to a text layer into "no text layer selected" in 3.0.2
   const changesDocument = DOCUMENT_CHANGING_CALLS[call.name] === "set";
-  if (changesDocument) restoreFocus("call");
+  if (changesDocument) await restoreFocus("call");
   try {
     const result = await method(...call.args);
     const text = result === undefined || result === null ? "" : String(result);
@@ -460,7 +463,7 @@ async function evalScript(script) {
   } finally {
     if (Object.prototype.hasOwnProperty.call(DOCUMENT_CHANGING_CALLS, call.name)) {
       onPhotoshopEvent(DOCUMENT_CHANGING_CALLS[call.name], { _isCommand: true });
-      if (changesDocument) restoreFocus("call");
+      if (changesDocument) await restoreFocus("call");
     }
   }
 }
@@ -524,7 +527,7 @@ async function init() {
 const requests = {
   init,
   // The page's pointer left it with nothing being edited (web/focus.js)
-  restoreFocus: () => restoreFocus("panel"),
+  restoreFocus: () => queueFocusRestore("panel"),
   // A call past its time limit answers like a call that threw, as CEP did.
   // The smart paste answers "timeout" instead: the panel must not paste the
   // classic way while Photoshop may still finish the smart paste.
@@ -976,6 +979,14 @@ async function restoreFocus(reason) {
   }
 }
 
+// A restore asked outside a host call (the page, the keyboard reader) waits
+// in the call queue: run beside a call, its bringToFront makes the call's
+// commands fail. The calls restore the focus themselves (evalScript).
+const FOCUS_RESTORE_TIMEOUT_MS = 10 * 1000;
+function queueFocusRestore(reason) {
+  return enqueue(() => restoreFocus(reason), FOCUS_RESTORE_TIMEOUT_MS);
+}
+
 /* ========================= setup ========================= */
 
 function onThemeChanged() {
@@ -1008,7 +1019,7 @@ async function startOnce() {
   } catch (error) {}
   keysHelper.start(
     (line) => post({ type: "watcherLine", line }),
-    () => restoreFocus("reader"),
+    () => queueFocusRestore("reader"),
     (answer) => debugNote("focus.release", answer)
   ).catch((error) => console.error("TypeR keys", error));
   services.removeStalePluginFolders().catch((error) => console.error("TypeR: plugin cleanup", error));
