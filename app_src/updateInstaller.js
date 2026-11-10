@@ -84,6 +84,42 @@ export const installPackageFiles = (files, target, node) => {
   return Object.keys(files).length;
 };
 
+// The build's hashed files in app/: lazy chunks, their stylesheets and assets
+const HASHED_BUILD_FILE = /^(?:(?:legacy|modern)\.[A-Za-z0-9_-]+\.[a-f0-9]{8,}\.(?:index\.js|css)(?:\.map|\.LICENSE\.txt)?|[a-f0-9]{32}\.[a-z0-9]+)$/;
+
+// The file names of an inventory (app/package.sha256)
+export const inventoryNames = (text) => {
+  const names = {};
+  String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).forEach(line => {
+    const match = /^[a-f0-9]{64}  (.+)$/.exec(line);
+    if (match) names[match[1]] = true;
+  });
+  return names;
+};
+
+// An update leaves the previous version's hashed files in place, because the
+// running panel can still ask for them. The ones of the versions before that
+// (in no inventory given here) are of no use to anyone: without this they pile
+// up, a few megabytes per update. Returns the number of files removed.
+export const removeStaleBuildFiles = (target, inventories, node) => {
+  const { fs, path } = node;
+  const directory = path.join(target, 'app');
+  let removed = 0;
+  fs.readdirSync(directory).forEach(name => {
+    if (!HASHED_BUILD_FILE.test(name) || inventories.some(names => names['app/' + name])) return;
+    const file = path.join(directory, name);
+    if (!fs.lstatSync(file).isFile()) return;
+    fs.unlinkSync(file);
+    removed++;
+  });
+  return removed;
+};
+
+// What this panel may still load: the inventory of the version it started
+// with and of every update installed since. null: that version had none, so
+// nothing can be told apart and nothing is removed.
+let sessionInventories;
+
 export const installUpdateInPlace = async (zipBytes, targetRoot, onProgress, expectedVersion) => {
   if (!zipBytes || zipBytes.length > 60 * 1024 * 1024) throw new Error('Invalid update size');
   const requireNode = window.cep_node && window.cep_node.require || window.require;
@@ -93,7 +129,18 @@ export const installUpdateInPlace = async (zipBytes, targetRoot, onProgress, exp
   const root = path.resolve(targetRoot);
   const manifestPath = path.join(root, 'CSXS', 'manifest.xml');
   const installedManifest = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath, 'utf8') : null;
+  if (sessionInventories === undefined) {
+    const inventoryPath = path.join(root, 'app', 'package.sha256');
+    sessionInventories = fs.existsSync(inventoryPath) ? [inventoryNames(fs.readFileSync(inventoryPath, 'utf8'))] : null;
+  }
   const count = installPackageFiles(files, root, { fs, path, Buffer: BufferClass });
+  if (sessionInventories) {
+    const installed = {};
+    Object.keys(files).forEach(name => { installed[name] = true; });
+    sessionInventories.push(installed);
+    // A leftover file does not invalidate a successfully installed package
+    try { removeStaleBuildFiles(root, sessionInventories, { fs, path }); } catch (error) { console.warn('Update cleanup:', error); }
+  }
   return { count, manifestChanged: manifestNeedsRestart(installedManifest, makeBuffer(BufferClass, files['CSXS/manifest.xml']).toString('utf8')) };
 };
 

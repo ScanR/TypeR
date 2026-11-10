@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const load = require('./helpers/loadAppModule')();
 const { validateReleasePackage, REQUIRED_PACKAGE_FILES } = load('app_src/releasePackage.js');
-const { installPackageFiles } = load('app_src/updateInstaller.js');
+const { installPackageFiles, inventoryNames, removeStaleBuildFiles } = load('app_src/updateInstaller.js');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const decode = bytes => Buffer.from(bytes).toString('utf8');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'typer-release-safety-'));
@@ -42,6 +42,35 @@ try {
   installPackageFiles(files, target, { fs, path, Buffer });
   assert.strictEqual(fs.readFileSync(path.join(target, 'app/old-hashed-chunk.js'), 'utf8'), 'old lazy chunk');
   assert(!fs.existsSync(path.join(target, '.typer-update-journal.json')));
+  // The hashed files of the version before the running one are removed; the
+  // running version's, the new one's and anything that is not a build file stay
+  const hashed = {
+    'legacy.modal-help.aaaaaaaaaaaa.index.js': 'two versions ago', 'modern.457.bbbbbbbbbbbb.index.js.LICENSE.txt': 'two versions ago',
+    'modern.modal-help.cccccccccccc.css': 'two versions ago', '0123456789abcdef0123456789abcdef.png': 'two versions ago',
+    'legacy.modal-help.dddddddddddd.index.js': 'running version', 'modern.887.eeeeeeeeeeee.index.js': 'new version',
+    'notes.txt': 'not a build file', 'legacy.index.js.LICENSE.txt': 'not hashed',
+  };
+  Object.keys(hashed).forEach(name => fs.writeFileSync(path.join(target, 'app', name), hashed[name]));
+  fs.mkdirSync(path.join(target, 'app', 'fedcba9876543210fedcba9876543210.d'));
+  const running = inventoryNames('\uFEFF' + 'a'.repeat(64) + '  app/legacy.modal-help.dddddddddddd.index.js\r\n' + 'b'.repeat(64) + '  app/index.js\r\n\r\n');
+  assert.deepStrictEqual(Object.keys(running), ['app/legacy.modal-help.dddddddddddd.index.js', 'app/index.js']);
+  assert.strictEqual(removeStaleBuildFiles(target, [running, { 'app/modern.887.eeeeeeeeeeee.index.js': true }], { fs, path }), 4);
+  assert.deepStrictEqual(fs.readdirSync(path.join(target, 'app')).filter(name => name in hashed).sort(),
+    ['legacy.index.js.LICENSE.txt', 'legacy.modal-help.dddddddddddd.index.js', 'modern.887.eeeeeeeeeeee.index.js', 'notes.txt']);
+  assert(fs.existsSync(path.join(target, 'app', 'fedcba9876543210fedcba9876543210.d')), 'never a folder');
+  assert.strictEqual(fs.readFileSync(path.join(target, 'app/old-hashed-chunk.js'), 'utf8'), 'old lazy chunk');
+  assert.strictEqual(fs.readFileSync(path.join(target, 'storage'), 'utf8'), 'user settings');
+  // Every hashed file of this build is recognized as one
+  const built = path.resolve(__dirname, '..', 'app');
+  if (fs.existsSync(built)) {
+    const probe = path.join(root, 'probe');
+    fs.mkdirSync(path.join(probe, 'app'), { recursive: true });
+    const names = fs.readdirSync(built).filter(name => fs.statSync(path.join(built, name)).isFile());
+    names.forEach(name => fs.writeFileSync(path.join(probe, 'app', name), ''));
+    removeStaleBuildFiles(probe, [], { fs, path });
+    const stable = ['host.jsx', 'index.html', 'index.js', 'package.sha256', 'legacy.css', 'legacy.html', 'legacy.index.js', 'legacy.index.js.LICENSE.txt', 'modern.css', 'modern.html', 'modern.index.js', 'modern.index.js.LICENSE.txt'];
+    assert.deepStrictEqual(fs.readdirSync(path.join(probe, 'app')).sort(), names.filter(name => stable.includes(name)).sort(), 'only the files replaced in place have a stable name');
+  }
   Object.keys(files).forEach(name => {
     fs.mkdirSync(path.dirname(path.join(source, name)), { recursive: true });
     fs.writeFileSync(path.join(source, name), files[name]);
