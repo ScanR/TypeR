@@ -321,7 +321,11 @@ const getStyleDropLocation = (event) => {
     return { position, edge: position === "before" ? "top" : "bottom" };
   }
 
-  const position = event.clientX < rect.left + rect.width / 2 ? "before" : "after";
+  // In a right-to-left interface the row runs from the right: the left half
+  // of a style is the side of the styles that come after it
+  const rtl = window.getComputedStyle(list).direction === "rtl";
+  const onLeft = event.clientX < rect.left + rect.width / 2;
+  const position = onLeft !== rtl ? "before" : "after";
   const sibling = position === "before"
     ? event.currentTarget.previousElementSibling
     : event.currentTarget.nextElementSibling;
@@ -333,7 +337,7 @@ const getStyleDropLocation = (event) => {
   return {
     position,
     edge: isSameRow
-      ? (position === "before" ? "left" : "right")
+      ? (onLeft ? "left" : "right")
       : (position === "before" ? "top" : "bottom"),
   };
 };

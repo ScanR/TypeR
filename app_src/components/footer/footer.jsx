@@ -83,7 +83,11 @@ const useCompactModes = (actionsRef, modesRef, measureRef) => {
       actions.offsetWidth - px(blockStyle.columnGap) - px(modesStyle.paddingLeft) - px(modesStyle.borderLeftWidth);
     const first = measure.firstElementChild;
     const last = measure.lastElementChild;
-    const needed = first && last ? last.offsetLeft + last.offsetWidth - first.offsetLeft : 0;
+    // From the leftmost edge to the rightmost one: in a right-to-left
+    // interface the first label is the one on the right
+    const needed = first && last
+      ? Math.max(first.offsetLeft + first.offsetWidth, last.offsetLeft + last.offsetWidth) - Math.min(first.offsetLeft, last.offsetLeft)
+      : 0;
     setCompact(needed > available);
   }, [actionsRef, modesRef, measureRef]);
   // Toggles, labels or the language changed
