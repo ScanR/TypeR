@@ -25,18 +25,65 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
   - optionally paint the bubble under the text (Auto clean): one `TypeR Clean` layer per document, under the
     texts, only on solid white or black;
   - apply conditional refont rules: text between two markers takes another style's font.
-  - When the text does not fit at the minimum size, the user's padding gives way, then the margin. When it still
-    cannot be placed, the classic paste runs and a short notice says why.
+  - When the text does not fit at the minimum size, the user's padding gives way, then the margin, then the text
+    overflows the bubble as little as possible: a text is always placed. The classic paste only takes over, without
+    a notice, when no bubble can be read at all (see *When the classic paste still runs*).
 - **Paste on click** (off by default; footer toggle, shortcut without a default key). A Magic Wand click, a
   rectangle or a lasso pastes the current line at once. Restored or loaded selections, and the selections
   TypeR makes itself, never paste. The Magic Wand must read the page and not the active layer, so TypeR turns its
   "Sample All Layers" option on and selects a click made without it again (`ensureWandSampleAll`).
   A second Magic Wand click in a bubble that just got one line (the next line waiting) splits it: the paste is
   undone (`restoreHistoryState`) and both lines are pasted with `forceSplit`, which cuts the bubble at the chord
-  that removes the most of its outline's dents (`forcedCut`), even when the neck finder saw a single bubble.
-  For the double bubbles an outline alone cannot tell from a single one: clipped by the panel frame, offset boxes.
+  that removes the most of its outline's dents (`forcedCut`), even when the neck finder saw a single bubble. When a
+  seam from a concave corner straight to a straight side explains about as many dents, that seam is used instead:
+  under a panel frame the dent chord may run to a corner of the frame, across a lobe.
+  For the double bubbles an outline alone cannot tell from a single one: offset boxes, a bubble under a frame with a
+  tail by its seam or a tilted frame.
   Detection favours single bubbles: a wrong split costs more than a miss, which this gesture fixes. To change a threshold in `findCut`, rerun the outline benches and have a typesetter label every cut it adds or removes.
   The first line stays in the chamber clicked first.
+  Undoing a one-line paste on click while the next line waits shows the tip about that second click, once
+  (`singlePasteUndone`, tip `splitDoubleBubble`): it is what a user does when a double bubble got one line.
+- **Double bubbles under a panel frame**. A frame that clips a double bubble leaves one notch only, where the two
+  lobes meet; the other end of their seam is on the frame. It is the commonest double bubble of a manga page (two
+  bubbles side by side or stacked against the border of the panel), and the routes that need two notches miss it.
+  The last route of the neck finder (`frameNeck`) cuts from that corner to the nearest point of the straight side
+  it faces, when the corner is as sharp as two arcs meeting (not a blade or a strand of hair over the bubble, not
+  the base of a tail) and deep enough in the bubble's hull (a hand or a head over a single bubble dents it less),
+  the side is a real frame (straight, close to an axis, ending on a corner) and both chambers are convex and no
+  boxes. A notch shallower than 7% of the bubble's size, a tail right at the seam or a tilted frame take the
+  second click. Measured against the rule before it, with no cut lost or moved anywhere:
+  - 696 lettered pages of 35 series, real Magic Wand outlines read in Photoshop (1,362 bubbles): 23 bubbles more
+    are split, all double, the seam between their two texts; of the 347 bubbles whose lettering makes two blocks,
+    297 are split at the first click instead of 276; no single bubble gets a new cut;
+  - the same pages with TypeR Studio's own outlines: the same 23 doubles and one more, and 21 regions of the
+    drawing, which are no bubbles;
+  - the neck bench (60 lettered pages, real outlines): 4 of its 5 doubles under a frame, no single bubble split;
+  - 1,000 scanned pages of 48 other chapters (emulated outlines, softer than Photoshop's): 7 bubbles split.
+- **A small bubble on a large one**. A small bubble stuck on the side of a large one is cut off it at the first
+  click when no other route found a neck: the outline is a bubble's (no hair or hand in it), the neck is pinched
+  on both sides and short for the lobe it closes, and the lobe is round. It is the last resort of the neck finder
+  and moves no cut the other routes make. With it, 299 of the 347 two-text bubbles of the lettered pages are split
+  at the first click (276 before the frame route).
+- **Open bubbles and text outside a bubble**. A Magic Wand click whose selection leaks into the page (a bubble
+  open on its panel, a bubble drawn with strokes that do not meet, text set on the bare page) is pasted around
+  the click:
+  - the new TypeR first tries to isolate the chamber with the page's pixels (`recoverOpenBubble`, MD TYPER's
+    recovery: gaps up to twice the contraction radius, a compact chamber);
+  - otherwise, and always in the Legacy panel, the host reads the outline of the selection inside a disc around
+    the click (18% of the page's width; one work path, rolled back) and `localRegion` finds the region of the
+    click on a grid: the selection is opened (eroded, then grown back from the part around the click) at growing
+    radii, and the first radius that closes the region inside the disc wins, a bubble; when none does, the widest
+    opening is kept, the free area around the click. Letters and specks the region encloses are covered, as in a
+    closed bubble; a longer piece of ink (a drawing, another bubble) and what lies behind it are left out. The
+    region is laid out like a regular bubble, never cleaned;
+  - a click nothing can be read around gets the disc itself.
+  A manual Paste uses the Magic Wand click that made the selection (`lastClick`, forgotten when the selection
+  changes without a click), provided it still lies in the selection. The classic paste set such a line in the
+  middle of the page-wide selection, on one line, often far from the click.
+- **When the classic paste still runs**. A selection that leaks into the page with no click known (a manual
+  Paste whose click TypeR did not see: the Legacy panel on hosts that send no event data), a lasso that covers
+  the page, a style without text settings, and Photoshop errors. A document or a selection that is missing, and
+  a timeout, stop the paste instead.
 - **Undo sync**. Undoing a TypeR paste in Photoshop puts the script line back; a redo moves it forward again.
 
 ## Architecture
@@ -45,6 +92,7 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
 app_src/oneClick/            shared engine (pure, ES5 after babel)
   geometry.js                outlines, containment, bubble body, neck finder, shape classifier, cleanup validator
   bubblePlan.js              plan of a wand / rectangle / lasso selection (from the work path and the fill)
+  openBubble.js              leaking clicks: open chamber from the pixels (UXP), region around the click (both hosts)
   connected.js               double and triple chambers
   alignPlan.js               Align: each selected text to its chamber (outlines read by alignCapture)
   textGraph.js               candidate lines of a translation, composition of the chosen lines
@@ -77,7 +125,9 @@ app_src/host.js              CEP host, "smart paste" section (ES3): capture, mea
 These follow from what ExtendScript can do; the behaviour stays the same otherwise.
 
 - CEP reads no pixels: the fill comes from the channel histograms of the selection. The cleanup checks that need
-  pixels (fading edges) and open bubbles run in UXP only; in CEP an open bubble falls back to the classic paste.
+  pixels (fading edges) and the pixel recovery of an open chamber run in UXP only; in CEP a leaking click always
+  takes the region around the click. `smartPasteCapture` answers `leak` at once for such a click, without reading
+  the page-wide outline, and the panel calls it again with the disc (`local`): one more round trip.
 - Both hosts can read up to 24 compatible lines at once from a vector atlas, with individual measurements as
   fallback. CEP reduces the outlines to metrics before returning them across its bridge. In CEP the atlas outline
   is read point by point through the Action Manager, so an atlas is not always cheaper than single lines
@@ -105,8 +155,19 @@ These follow from what ExtendScript can do; the behaviour stays the same otherwi
   double, triple, RTL, black) with a simulated measurement.
 - `scripts/testSmartPasteClient.js` covers the panel client, multi-bubble replay and the paste-on-click gate.
 - `scripts/testSmartPasteSettings.js` covers the settings state.
+- `scripts/testHostPrecedence.js` refuses an `a || (b && c)` in the ExtendScript host. ExtendScript reads `&&` and
+  `||` left to right with the same precedence, and the build prints the host without the parentheses the standard
+  does not need: such a test must be written as separate statements. The Legacy capture of a leaking click failed
+  that way (`clicked` was false for every Magic Wand trigger) until it was. The expressions that were already
+  there are listed in the test and left as they are.
 - `scripts/benchSmartPasteCep.js` counts, on synthetic bubbles, what a paste costs the Legacy panel: measurement
   round trips, atlas and single-line requests, solver searches and engine time (`--uxp` for the UXP host's
   exhaustive measurement, `--json` to keep the numbers).
 - Checked in Photoshop 2026 on the test pages: oval, cloud, shout and double bubbles, a black bubble, Auto clean,
   through the UXP host and through the CEP host.
+- Censuses in Photoshop 2026 on the lettered bench (696 pages of 35 series, real Magic Wand clicks, the real
+  fonts, text committed): the 1,373 bubbles through the UXP host, all pasted by the smart paste (1,039 single,
+  320 double, 14 triple; 236 ms a paste at the median), 357 of them through the CEP host; 126 leaking clicks
+  (open bubbles and texts outside a bubble, cleaned of their lettering) through the UXP host, all pasted, and a
+  third of them through the CEP host, the text in the same place for 40 of 43 (the three others are chambers the
+  UXP host isolates with the pixels).

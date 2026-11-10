@@ -37,34 +37,46 @@ const coordinate = (value, resolution) => {
 };
 
 // Work path actionJSON -> [{ closed, contour: [[anchor, forward, backward]] }]
+// A selection heavier than the budget (a bubble full of lettering or of
+// screentone specks) keeps its longest subpaths: the bubble's outline is one of
+// them, and the small ones are only the holes the cleanup looks at.
 export const subpathsFromDescriptor = (raw, resolution) => {
   const components = raw && raw.pathContents && raw.pathContents.pathComponents;
-  if (!Array.isArray(components) || components.length > PATH_COMPONENT_LIMIT) {
-    throw new Error("Unsupported path components");
-  }
-  const out = [];
-  let pointTotal = 0;
+  if (!Array.isArray(components)) throw new Error("Unsupported path components");
+  const all = [];
   for (let c = 0; c < components.length; c++) {
     const subpaths = components[c].subpathListKey || [];
-    for (let s = 0; s < subpaths.length; s++) {
-      const sub = subpaths[s];
-      const points = sub.points || [];
-      pointTotal += points.length;
-      if (out.length >= PATH_COMPONENT_LIMIT || pointTotal > PATH_POINT_LIMIT) throw new Error("Path safety budget exceeded");
-      out.push({
-        closed: !!sub.closedSubpath,
-        contour: points.map((point) => {
-          const anchor = coordinate(point.anchor, resolution);
-          return [
-            anchor,
-            point.forward ? coordinate(point.forward, resolution) : anchor.slice(),
-            point.backward ? coordinate(point.backward, resolution) : anchor.slice(),
-          ];
-        }),
-      });
-    }
+    for (let s = 0; s < subpaths.length; s++) all.push(subpaths[s]);
   }
-  return out;
+  let kept = all;
+  let pointTotal = 0;
+  for (let i = 0; i < all.length; i++) pointTotal += (all[i].points || []).length;
+  if (all.length > PATH_COMPONENT_LIMIT || pointTotal > PATH_POINT_LIMIT) {
+    const order = all.map((sub, index) => index).sort((p, q) => (all[q].points || []).length - (all[p].points || []).length);
+    const keep = {};
+    let count = 0;
+    let points = 0;
+    for (let i = 0; i < order.length && count < PATH_COMPONENT_LIMIT; i++) {
+      const size = (all[order[i]].points || []).length;
+      if (points + size > PATH_POINT_LIMIT) continue;
+      keep[order[i]] = true;
+      count++;
+      points += size;
+    }
+    kept = all.filter((sub, index) => keep[index]);
+    if (!kept.length) throw new Error("Path safety budget exceeded");
+  }
+  return kept.map((sub) => ({
+    closed: !!sub.closedSubpath,
+    contour: (sub.points || []).map((point) => {
+      const anchor = coordinate(point.anchor, resolution);
+      return [
+        anchor,
+        point.forward ? coordinate(point.forward, resolution) : anchor.slice(),
+        point.backward ? coordinate(point.backward, resolution) : anchor.slice(),
+      ];
+    }),
+  }));
 };
 
 // Closed subpaths whose outline contains the point (the bubble, not the holes)
@@ -133,6 +145,16 @@ const readsBefore = (a, b, readingOrder, tolerance) => {
   return readingOrder === "ltr" ? a.x < b.x : a.x > b.x;
 };
 
+// A point inside the chamber that comes first in reading order, on either
+// side of a neck
+const firstChamberPoint = (input, polygon, neck) => {
+  const sides = [1, -1].map((side) => interiorPoint(clipToSide(polygon, neck[0], neck[1], side))).filter(Boolean);
+  if (!sides.length) return null;
+  const tolerance = Math.min(input.selectionBounds.bottom - input.selectionBounds.top, input.selectionBounds.right - input.selectionBounds.left) * 0.15;
+  sides.sort((p, q) => (readsBefore(p, q, input.readingOrder, tolerance) ? -1 : 1));
+  return sides[0];
+};
+
 // Without a click (a lasso, or a CEP event without coordinates) the bubble is
 // the largest closed outline of the selection, and a connected bubble starts
 // with its first chamber in reading order
@@ -146,13 +168,7 @@ export const resolveClick = (input, subpaths) => {
   const cut = findCut([outline], seed, input.selectionBounds, false);
   const neck = cut && (cut.neck || cut.ambiguousNeck);
   if (!neck) return seed;
-  const a = neck[0];
-  const b = neck[1];
-  const sides = [1, -1].map((side) => interiorPoint(clipToSide(polygon, a, b, side))).filter(Boolean);
-  if (!sides.length) return seed;
-  const tolerance = Math.min(input.selectionBounds.bottom - input.selectionBounds.top, input.selectionBounds.right - input.selectionBounds.left) * 0.15;
-  sides.sort((p, q) => (readsBefore(p, q, input.readingOrder, tolerance) ? -1 : 1));
-  return sides[0];
+  return firstChamberPoint(input, polygon, neck) || seed;
 };
 
 // Histogram of the selected pixels (mask >= 128): solid white or black when
@@ -272,9 +288,17 @@ export const buildBubblePlan = (input, options = {}) => {
   const autoClean = options.autoClean === true;
   const page = { width: input.width, height: input.height };
   const subpaths = options.subpaths || subpathsFromDescriptor(input.rawPath, input.resolution);
-  const click = options.click || resolveClick(input, subpaths);
+  let click = options.click || resolveClick(input, subpaths);
   if (!click) throw new Error("No closed bubble outline in the selection");
-  const contours = contoursAt(subpaths, click);
+  let contours = contoursAt(subpaths, click);
+  // The user's click sits on the edge of the selection, outside its outline
+  // (the work path follows it within 2 px): the selection still says which
+  // bubble is meant
+  if (!contours.length && !options.click && input.click) {
+    click = resolveClick({ ...input, click: null }, subpaths);
+    if (!click) throw new Error("No closed bubble outline in the selection");
+    contours = contoursAt(subpaths, click);
+  }
   if (!contours.length) throw new Error("No closed bubble contour encloses the click");
   let contour = null;
   let polygon = null;
@@ -295,6 +319,22 @@ export const buildBubblePlan = (input, options = {}) => {
   let cut = findCut(contours, click, input.selectionBounds, false);
   // The user says the bubble is double: split it at its likeliest neck
   if (options.forceSplit && !(cut && cut.neck)) cut = forcedCut(contours, click, input.selectionBounds) || cut;
+  // A click on the seam of a double bubble does not say which chamber is
+  // meant: the one that reads first takes the line, as without a click. Only a
+  // chamber's own seed (connected.js) is refused there.
+  if (cut && cut.ambiguous && !options.click) {
+    const first = firstChamberPoint(input, polygon, cut.ambiguousNeck);
+    const again = first ? findCut(contours, first, input.selectionBounds, false) : null;
+    const forced = first && options.forceSplit && !(again && again.neck) ? forcedCut(contours, first, input.selectionBounds) : null;
+    const settled = again && again.neck ? again : forced;
+    if (settled && settled.neck && contains(polygon, first)) {
+      click = first;
+      cut = settled;
+    } else {
+      // No chamber to name: the whole bubble takes the line
+      cut = null;
+    }
+  }
   if (cut && cut.ambiguous) throw new Error("Click farther inside one chamber");
   let chamber = polygon;
   if (cut && cut.neck) {
@@ -428,6 +468,16 @@ export const triggerClick = (trigger, resolution) => {
   if (!trigger || trigger.source !== "wand" || !isFinite(trigger.x) || !isFinite(trigger.y)) return null;
   const scale = trigger.unit === "distanceUnit" ? (resolution || 72) / 72 : 1;
   return { x: trigger.x * scale, y: trigger.y * scale };
+};
+
+// The click that names the region of a leaking selection: the trigger's own,
+// or the Magic Wand click that made the selection a manual Paste works on
+// (trigger.lastClick). A closed bubble does not use the latter: without a
+// click its first chamber in reading order takes the line.
+export const leakClick = (trigger, resolution) => {
+  const own = triggerClick(trigger, resolution);
+  if (own || !trigger || trigger.source !== "manual" || trigger.lastSource !== "wand" || !trigger.lastClick) return own;
+  return triggerClick({ source: "wand", x: trigger.lastClick.x, y: trigger.lastClick.y, unit: trigger.lastClick.unit }, resolution);
 };
 
 const unitNumber = (value) => (value !== null && typeof value === "object" && "_value" in value ? value._value : value);

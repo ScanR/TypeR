@@ -127,9 +127,36 @@ const sessionPlan = (plan) => ({
   selection: plan.selection,
 });
 
+// A line without the spaces around it (what a formatting marker or a refont
+// marker leaves behind): no candidate line starts or ends on a space, so the
+// layout would find no placement at all
+const trimmedLine = (line) => {
+  const text = line.text;
+  const lead = text.length - text.replace(/^\s+/, "").length;
+  const tail = text.length - text.replace(/\s+$/, "").length;
+  if (!lead && !tail) return line;
+  const out = { ...line, text: text.slice(lead, text.length - tail) };
+  if (Array.isArray(line.richTextRuns)) {
+    let at = 0;
+    const end = text.length - tail;
+    const runs = [];
+    for (let i = 0; i < line.richTextRuns.length; i++) {
+      const run = line.richTextRuns[i];
+      const runText = String((run && run.text) || "");
+      const from = Math.max(lead, at);
+      const to = Math.min(end, at + runText.length);
+      if (to > from) runs.push({ ...run, text: runText.slice(from - at, to - at) });
+      at += runText.length;
+    }
+    // Runs that do not spell the text cannot be trimmed: plain text then
+    out.richTextRuns = at === text.length && runs.length ? runs : null;
+  }
+  return out;
+};
+
 export const prepareSmartPaste = async (request, adapter) => {
   const settings = request.settings || {};
-  const lines = (request.lines || []).filter((line) => line && typeof line.text === "string" && line.text.trim());
+  const lines = (request.lines || []).filter((line) => line && typeof line.text === "string" && line.text.trim()).map(trimmedLine);
   if (!lines.length) throw new SmartPasteError("noText");
   clearGeometryCaches();
   const input = await adapter.capture(request.trigger || { source: "manual" });
@@ -146,8 +173,8 @@ export const prepareSmartPaste = async (request, adapter) => {
     if (input.source !== "rectangle" && isPageLeak(input.selectionBounds, input.width, input.height)) {
       throw new SmartPasteError("openBubble", "The selection leaks into the page");
     }
-    subpaths = input.source === "rectangle" ? null : subpathsFromDescriptor(input.rawPath, input.resolution);
     try {
+      subpaths = input.source === "rectangle" ? null : subpathsFromDescriptor(input.rawPath, input.resolution);
       plan = buildPlan(input, { autoClean: !!settings.autoClean, forceSplit: !!settings.forceSplit, subpaths });
     } catch (error) {
       throw new SmartPasteError("shape", error && error.message);

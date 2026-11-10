@@ -165,5 +165,21 @@ const measure = async requests => {
   const result = await measureEdges(edges, { textProps: style, baseSize: 20, dpi: 72, page: doc, useAtlas: true }, measure);
   assert.strictEqual(result.cache.size, 3, 'The real engine retries failed atlases individually');
   assert.strictEqual(sim.rollbacks, 2, 'Both the failed atlas and its fallback are rolled back');
+  // A failed smart paste answers with a reason, whatever was thrown: the
+  // panel reads it, and a host call that throws instead is an "EvalScript
+  // error." the panel cannot tell from anything else
+  const { failureCode } = smart._internals;
+  assert.strictEqual(failureCode(Object.assign(new Error('Document changed'), { code: 'doc' })), 'doc');
+  assert.strictEqual(failureCode(new Error('anything')), 'error');
+  assert.strictEqual(failureCode(new TypeError('x is undefined')), 'error');
+  assert.strictEqual(failureCode(null), 'error');
+  assert.strictEqual(failureCode(new port.exports._internals.PhotoshopError({ _obj: 'make' }, { result: -25010, message: 'refused' })), 'photoshop');
+  assert.strictEqual(failureCode(Object.assign(new Error('numeric'), { code: -128 })), 'photoshop');
+  const savedDocuments = ps.app.documents;
+  ps.app.documents = { get length() { throw new Error('Photoshop is busy'); } };
+  const refused = JSON.parse(await smart.methods.smartPaste({ lines: [{ text: 'Bonjour.', style: { textProps: style } }], settings: {} }));
+  ps.app.documents = savedDocuments;
+  assert.strictEqual(refused.ok, false);
+  assert.strictEqual(typeof refused.code, 'string', 'smartPaste answers a code instead of throwing');
   console.log('UXP measurements passed: batched calls, mixed requests, DPI, fallback and history restoration');
 })().catch(error => { console.error(error); process.exitCode = 1; });

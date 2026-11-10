@@ -103,7 +103,7 @@ const makeHost = ({ deferredHistory = false, publishOnSelect = true } = {}) => {
       return { bounds: { width: 100, height: 120 }, rows: [{ width: 1 }], scan: "path" };
     },
   });
-  ["_sameIds", "_suspendedHistoryIndex", "_withTemporaryHistory", "getCurrentSelectionShape", "getActiveLayerBubbleShape", "smartPasteCapture", "smartPasteMeasure"].forEach((name) => {
+  ["_sameIds", "_suspendedHistoryIndex", "_withTemporaryHistory", "getCurrentSelectionShape", "getActiveLayerBubbleShape", "_smartPageLeak", "smartPasteCapture", "smartPasteMeasure"].forEach((name) => {
     vm.runInContext(extract(name), context);
   });
   return {
@@ -183,6 +183,32 @@ deferred.context.executeAction = (action, data) => {
 const capture = JSON.parse(deferred.context.smartPasteCapture({ trigger: { source: "wand" } }));
 assert.ok(capture.rawPath);
 assert.strictEqual(deferred.getPixels(), "original selection", "Capture must remove the work path and merged layer");
+// A selection that leaks into the page: its page-wide outline is never read.
+// The host says so at once; asked again with the polygon of a disc around the
+// click, it reads the outline inside it (rolled back like any capture).
+const { isPageLeak } = require("./helpers/loadAppModule")()("app_src/oneClick/openBubble.js");
+[[0, 0, 1000, 1500], [0, 0, 950, 1000], [0, 0, 930, 1500], [0, 20, 610, 1470], [0, 0, 590, 1500], [100, 100, 500, 400], [0, 0, 1000, 590]].forEach(([left, top, right, bottom]) => {
+  const bounds = { left, top, right, bottom };
+  assert.strictEqual(deferred.context._smartPageLeak(bounds, 1000, 1500), isPageLeak(bounds, 1000, 1500), "the host and the engine share the leak rule: " + JSON.stringify(bounds));
+});
+const closedBounds = deferred.context._getCurrentSelectionBounds;
+deferred.context._getCurrentSelectionBounds = () => ({ left: 0, top: 0, right: 1000, bottom: 1500, width: 1000, height: 1500 });
+const restoresBefore = deferred.getRestoreCalls();
+const leak = JSON.parse(deferred.context.smartPasteCapture({ trigger: { source: "wand", x: 400, y: 500 } }));
+assert.strictEqual(leak.leak, true);
+assert.strictEqual(leak.rawPath, null);
+assert.strictEqual(deferred.getRestoreCalls(), restoresBefore, "nothing is read, nothing to roll back");
+const intersected = [];
+deferred.context._smartIntersectPolygon = (polygon) => intersected.push(polygon);
+const local = JSON.parse(deferred.context.smartPasteCapture({ trigger: { source: "wand", x: 400, y: 500 }, local: [[300, 400], [500, 400], [400, 600]] }));
+assert.deepStrictEqual(intersected, [[[300, 400], [500, 400], [400, 600]]], "the selection is cut to the disc before it is read");
+assert.ok(local.rawPath && !local.leak);
+assert.strictEqual(deferred.getPixels(), "original selection", "The local capture leaves the selection as it was");
+assert.deepStrictEqual(deferred.states.map((state) => state.name), deferredNames);
+assert.strictEqual(JSON.parse(deferred.context.smartPasteCapture({ trigger: { source: "rectangle" } })).leak, undefined, "a rectangle is pasted in as it is");
+assert.ok(JSON.parse(deferred.context.smartPasteCapture({ trigger: { source: "manual", lastSource: "wand" } })).rawPath, "without a click the outline is read as before (Select All is a rectangle)");
+assert.strictEqual(JSON.parse(deferred.context.smartPasteCapture({ trigger: { source: "manual", lastSource: "wand", lastClick: { x: 4, y: 5 } } })).leak, true);
+deferred.context._getCurrentSelectionBounds = closedBounds;
 for (const text of ["a little to fit.", "fit.", "next bubble"]) {
   const measured = JSON.parse(deferred.context.smartPasteMeasure({ requests: [{ params: { text: "first candidate" } }, { params: { text } }] }));
   assert.strictEqual(measured.length, 2);
@@ -190,7 +216,7 @@ for (const text of ["a little to fit.", "fit.", "next bubble"]) {
   assert.deepStrictEqual(deferred.states.map((state) => state.name), deferredNames);
 }
 assert.strictEqual(deferred.getRefreshCalls(), 0, "PS 2019 history selection should avoid repainting after every batch");
-assert.strictEqual(deferred.getRestoreCalls(), 4, "Each capture/measurement restores history exactly once, without a redundant setter");
+assert.strictEqual(deferred.getRestoreCalls(), 7, "Each capture/measurement restores history exactly once, without a redundant setter");
 deferred.context._currentLayerBox = () => { throw new Error("measurement failed"); };
 assert.strictEqual(JSON.parse(deferred.context.smartPasteMeasure({ requests: [{ params: { text: "failed candidate" } }] })).error, "measure");
 assert.strictEqual(deferred.getPixels(), "original selection", "Failed measurements must also clean up deferred history");

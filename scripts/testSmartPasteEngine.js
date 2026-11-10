@@ -358,6 +358,65 @@ const linesInside = (session) => {
     trigger: { source: "wand" }, lines: [line("Toi, à gauche."), line("Et moi, à droite !")], roleStyles: {}, settings: { distribute: false },
   }, adapterFor(doubleInput));
   assert.strictEqual(notDistributed.consumed, 1);
+  // A click on the seam does not name a chamber: the one that reads first
+  // takes the first line (right first in a manga, left first with "ltr"), and
+  // both lines are pasted. It used to be refused, so the classic paste put one
+  // line across the whole bubble.
+  const seam = { x: 520, y: 500 };
+  const seamInput = { ...doubleInput, click: seam };
+  const seamPlan = bubblePlan.buildPlan({ ...page, documentId: 7, ...seamInput }, {});
+  assert.ok(seamPlan.connected, "a click on the seam still finds the neck");
+  assert.ok(seamPlan.click.x > 520, "the chamber that reads first in a manga");
+  assert.ok(bubblePlan.buildPlan({ ...page, documentId: 7, ...seamInput, readingOrder: "ltr" }, {}).click.x < 520, "the left chamber first in a comic");
+  for (const readingOrder of ["rtl", "ltr"]) {
+    const onSeam = await prepareSmartPaste({
+      trigger: { source: "wand" }, lines: [line("La première."), line("Et la deuxième !")], roleStyles: {}, settings: { distribute: true, readingOrder },
+    }, adapterFor(seamInput));
+    assert.strictEqual(onSeam.consumed, 2, "a click on the seam fills both chambers");
+    assert.strictEqual(onSeam.sessions[0].text.axis > onSeam.sessions[1].text.axis, readingOrder === "rtl");
+    onSeam.sessions.forEach(linesInside);
+  }
+  assert.throws(() => bubblePlan.buildBubblePlan({ ...page, documentId: 7, ...seamInput }, { subpaths, click: seam }), /Click farther inside one chamber/, "a chamber's own seed on the seam stays refused");
+  // A click on the very edge of the selection, just outside its outline (the
+  // work path follows the selection within 2 px), still pastes in the bubble
+  const edgeClick = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Sur le bord.")], roleStyles: {}, settings: { distribute: true },
+  }, adapterFor({ ...ovalInput, click: { x: 600 + 261.5, y: 500 } }));
+  assert.strictEqual(edgeClick.consumed, 1);
+  linesInside(edgeClick.sessions[0]);
+  // A selection heavier than the path budget (a bubble full of lettering or
+  // screentone specks) keeps its longest outlines instead of being refused
+  const specks = [];
+  for (let i = 0; i < 700; i++) {
+    const x = 420 + (i % 35) * 10;
+    const y = 400 + Math.floor(i / 35) * 10;
+    specks.push(polygonNodes([[x, y], [x + 4, y], [x + 4, y + 4], [x, y + 4]]));
+  }
+  const heavyPath = pathOf([oval, ...specks]);
+  const heavy = bubblePlan.subpathsFromDescriptor(heavyPath, 72);
+  assert.ok(heavy.length <= 512 && heavy.some((sub) => sub.contour.length === oval.length), "the bubble's outline is kept");
+  const heavyPaste = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Malgré la trame.")], roleStyles: {}, settings: { distribute: true },
+  }, adapterFor({ ...ovalInput, rawPath: heavyPath }));
+  assert.strictEqual(heavyPaste.consumed, 1);
+  // A text set far too large for the bubble (a title style, a style in points
+  // on a 600 dpi page) is placed on the bubble's centre at the smallest size
+  const oversized = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Beaucoup trop grand pour cette bulle.", style("regular", 300))], roleStyles: {}, settings: { distribute: true },
+  }, adapterFor({ ...ovalInput, selectionBounds: boundsOf(geometry.flatten(small)), rawPath: pathOf([small]), click: { x: 300, y: 300 } }));
+  assert.strictEqual(oversized.consumed, 1, "never left to the classic paste");
+  assert.ok(Math.abs(oversized.sessions[0].text.size - 225) < 1e-6, "at the smallest size");
+  assert.ok(Math.abs(oversized.sessions[0].text.axis - 300) < 3 && Math.abs((oversized.sessions[0].text.top + oversized.sessions[0].text.bottom) / 2 - 300) < 3, "on the bubble's centre");
+
+  // Spaces left around a line (by a formatting or refont marker) are no
+  // reason to refuse it; its bold and italic runs follow
+  const spaced = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [{ ...line("  Un mot en gras ici. \t"), richTextRuns: [{ text: "  Un mot en ", bold: false, italic: false }, { text: "gras", bold: true, italic: false }, { text: " ici. \t", bold: false, italic: true }] }], roleStyles: {}, settings: { distribute: true },
+  }, adapterFor(ovalInput));
+  assert.strictEqual(spaced.consumed, 1);
+  assert.strictEqual(spaced.sessions[0].text.renderedText.replace(/\r/g, " "), "Un mot en gras ici.");
+  assert.strictEqual(spaced.sessions[0].layerName, "Un mot en gras ici.");
+
   // The neck is no bubble line: a large padding does not push the text off the
   // chamber's centre, and the style size comes before the padding
   const keptCentre = await prepareSmartPaste({
@@ -464,28 +523,94 @@ const linesInside = (session) => {
     assert.strictEqual(bubblePlan.buildPlan(realInput(poly, click), {}).connected, false, `${label} is no double bubble`);
   }
 
-  // A forced split (a second click in a bubble that got one line) cuts the
-  // double bubbles every gate misses: clipped by the panel frame with an
-  // almost flat notch; a plain oval stays whole
+  // Frame: a double bubble clipped by the panel frame has one corner only,
+  // where its lobes meet, and its seam ends on the frame. Two real wand
+  // outlines (the second with an almost flat notch) and two circles under a
+  // frame; the first line stays in the clicked chamber
   const clipped = [[1029,1057], [1030,1228], [1027,1247], [972,1277], [957,1282], [941,1285], [924,1284], [905,1278], [894,1271], [873,1252], [864,1246], [852,1254], [826,1260], [825,1262], [827,1282], [824,1280], [815,1262], [798,1262], [782,1259], [768,1254], [755,1248], [744,1239], [735,1228], [728,1215], [723,1201], [722,1193], [723,1186], [732,1158], [733,1150], [730,1134], [716,1101], [714,1084], [717,1076], [736,1057]];
   const flatNotch = [[1001,1033], [1003,1174], [1001,1202], [998,1225], [993,1241], [966,1251], [951,1259], [920,1245], [908,1254], [888,1275], [879,1283], [840,1291], [846,1315], [844,1313], [835,1302], [829,1289], [785,1288], [777,1283], [738,1242], [719,1216], [719,1180], [714,1101], [711,1079], [712,1069], [714,1061], [751,1033]];
-  for (const [poly, clicks, neckX] of [[clipped, [{ x: 780, y: 1150 }, { x: 950, y: 1150 }], [864, 864]], [flatNotch, [{ x: 800, y: 1150 }, { x: 960, y: 1150 }], [920, 920]]]) {
+  const underFrame = [[668,427],[663,447],[655,466],[645,483],[633,499],[618,513],[603,525],[586,535],[568,542],[550,547],[525,550],[507,549],[484,546],[463,539],[445,530],[425,516],[410,502],[398,513],[384,525],[366,535],[352,541],[330,547],[307,550],[283,549],[264,546],[240,538],[223,529],[202,513],[187,499],[179,489],[172,477],[162,459],[156,440],[151,420],[150,400],[151,386],[152,373],[157,353],[167,330],[653,330],[663,353],[666,366],[669,380],[670,400],[669,414]];
+  for (const [poly, clicks, neckX] of [[clipped, [{ x: 780, y: 1150 }, { x: 950, y: 1150 }], [864, 864]], [flatNotch, [{ x: 800, y: 1150 }, { x: 960, y: 1150 }], [920, 920]], [underFrame, [{ x: 300, y: 430 }, { x: 520, y: 430 }], [410, 410]]]) {
     for (const click of clicks) {
       const input = realInput(poly, click);
-      assert.strictEqual(bubblePlan.buildPlan(input, {}).connected, false, "not double without the second click");
-      const plan = bubblePlan.buildPlan(input, { forceSplit: true });
-      assert.ok(plan.connected, "forced neck");
-      assert.deepStrictEqual(plan.neck.map((p) => Math.round(p[0])).sort((a, b) => a - b), neckX);
-      const chambers = connected.chambersFor(input, plan, bubblePlan.subpathsFromDescriptor(input.rawPath, 72), 3, { forceSplit: true });
+      const plan = bubblePlan.buildPlan(input, {});
+      assert.ok(plan.connected, "a seam from the corner to the frame");
+      plan.neck.map((p) => Math.round(p[0])).sort((a, b) => a - b).forEach((x, i) => assert.ok(Math.abs(x - neckX[i]) <= 1, "the seam runs straight to the frame"));
+      const chambers = connected.chambersFor(input, plan, bubblePlan.subpathsFromDescriptor(input.rawPath, 72), 3, {});
       assert.strictEqual(chambers.length, 2);
       assert.ok(geometry.contains(chambers[0].cleanPolygon, click), "the clicked chamber first");
     }
+  }
+  const framePair = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Toi, à gauche."), line("Et moi, à droite !"), line("La suivante attend.")], roleStyles: {}, settings: { distribute: true },
+  }, adapterFor(realInput(clipped, { x: 780, y: 1150 })));
+  assert.strictEqual(framePair.consumed, 2, "one click fills both lobes of a double bubble under a frame");
+  // A real one with a tail (stacked lobes against the right frame): the base
+  // of the tail is no second corner
+  const tailedUnderFrameDouble = [[290,1006],[290,1572],[271,1584],[263,1588],[252,1590],[238,1590],[210,1584],[193,1576],[180,1566],[171,1554],[165,1541],[161,1526],[153,1467],[153,1399],[141,1378],[142,1377],[154,1384],[156,1359],[160,1337],[167,1318],[177,1301],[176,1298],[155,1282],[137,1253],[124,1216],[115,1172],[112,1127],[114,1084],[122,1046],[137,1017],[146,1011],[162,1007],[205,1004]];
+  for (const click of [{ x: 201, y: 1151 }, { x: 201, y: 1444 }]) {
+    const input = realInput(tailedUnderFrameDouble, click);
+    const plan = bubblePlan.buildPlan(input, {});
+    assert.ok(plan.connected, "a tail does not hide the seam");
+    plan.neck.forEach((point) => assert.ok(Math.abs(point[1] - 1300) <= 2, "the seam runs straight to the frame"));
+    assert.strictEqual(connected.chambersFor(input, plan, bubblePlan.subpathsFromDescriptor(input.rawPath, 72), 2, {}).length, 2);
+  }
+  // Single bubbles under a frame stay whole: a tail, a blade over the bubble
+  // (a corner far sharper than two lobes meeting), a caption with a step, and
+  // two real ones a hand or a head dents too little for a seam
+  const tailedUnderFrame = [[679,551],[672,563],[665,575],[656,586],[646,596],[634,606],[622,615],[609,623],[580,636],[549,645],[517,649],[483,649],[488,648],[430,725],[452,646],[451,645],[420,636],[391,623],[378,615],[366,606],[354,596],[344,586],[335,575],[328,563],[321,551],[316,539],[313,526],[311,513],[310,500],[311,487],[313,474],[316,461],[321,449],[328,437],[339,420],[661,420],[672,437],[679,449],[684,461],[687,474],[689,487],[690,500],[689,513],[687,526],[684,539]];
+  const bladeUnderFrame = [[679,551],[672,563],[665,575],[656,586],[646,596],[634,606],[622,615],[609,623],[580,636],[549,645],[533,648],[528,648],[520,540],[512,649],[500,650],[467,648],[451,645],[420,636],[391,623],[378,615],[366,606],[354,596],[344,586],[335,575],[328,563],[321,551],[316,539],[313,526],[311,513],[310,500],[311,487],[313,474],[316,461],[321,449],[328,437],[339,420],[661,420],[672,437],[679,449],[684,461],[687,474],[689,487],[690,500],[689,513],[687,526],[684,539]];
+  const stepCaption = [[100, 100], [400, 100], [400, 220], [280, 220], [280, 360], [100, 360]];
+  const dentedUnderFrame = [[765,407],[614,408],[600,405],[592,393],[586,378],[583,364],[582,342],[568,331],[577,330],[581,328],[572,277],[574,260],[584,259],[582,192],[585,150],[588,130],[594,113],[603,99],[607,95],[615,91],[642,84],[648,73],[661,62],[678,52],[692,47],[705,46],[718,48],[730,53],[741,60],[750,71],[758,83],[762,92],[765,116]];
+  const dentedCaption = [[133,1228],[297,1227],[316,1230],[334,1266],[339,1280],[342,1295],[344,1326],[343,1386],[348,1426],[349,1451],[347,1476],[344,1501],[353,1503],[358,1512],[358,1522],[355,1527],[345,1532],[344,1556],[338,1590],[133,1590]];
+  for (const [poly, click, label] of [[tailedUnderFrame, { x: 500, y: 520 }, "an oval with a tail under a frame"], [bladeUnderFrame, { x: 420, y: 520 }, "an oval under a frame with a blade over it"], [stepCaption, { x: 180, y: 300 }, "a caption with a step"], [dentedUnderFrame, { x: 667, y: 137 }, "a bubble under a frame with a shallow dent"], [dentedCaption, { x: 246, y: 1318 }, "a caption with a shallow dent"]]) {
+    assert.strictEqual(bubblePlan.buildPlan(realInput(poly, click), {}).connected, false, `${label} is no double bubble`);
+  }
+
+  // A small bubble on the side of a large one (an aside): its part is under
+  // 15% of the outline, but its neck is deep and short and it is a round lobe.
+  // A real wand outline, then a small circle barely touching a large one. A
+  // bump with a wide base (the same circle pushed in) is no chamber.
+  const asideBubble = [[868,1094],[906,1098],[913,1100],[920,1104],[927,1110],[934,1120],[941,1138],[942,1155],[937,1170],[928,1183],[915,1193],[900,1200],[883,1202],[865,1200],[876,1239],[875,1278],[865,1316],[847,1351],[821,1381],[790,1402],[753,1414],[714,1414],[677,1403],[646,1385],[620,1360],[600,1329],[588,1295],[584,1257],[589,1217],[604,1175],[592,1175],[583,1172],[580,1160],[582,1153],[585,1147],[597,1138],[611,1135],[619,1137],[623,1150],[654,1127],[671,1117],[689,1108],[709,1102],[731,1100],[754,1102],[779,1110],[799,1121],[828,1142],[833,1124],[841,1112],[853,1102]];
+  const smallOnLarge = [[660,400],[658,417],[652,430],[644,441],[632,451],[621,456],[611,459],[600,460],[591,459],[575,455],[555,441],[546,466],[534,488],[517,509],[498,527],[475,541],[451,552],[426,558],[400,560],[384,559],[368,557],[352,553],[341,549],[325,541],[311,533],[297,522],[287,513],[275,500],[267,489],[258,474],[252,462],[246,445],[243,432],[241,414],[240,400],[241,386],[243,368],[246,355],[252,338],[258,326],[267,311],[275,300],[287,287],[297,278],[311,267],[325,259],[341,251],[352,247],[368,243],[384,241],[400,240],[426,242],[451,248],[475,259],[498,273],[517,291],[534,312],[546,334],[555,359],[575,345],[591,341],[600,340],[611,341],[621,344],[632,349],[644,359],[652,370],[658,383]];
+  for (const [poly, clicks] of [[asideBubble, [{ x: 725, y: 1270 }, { x: 891, y: 1139 }]], [smallOnLarge, [{ x: 380, y: 400 }, { x: 610, y: 400 }]]]) {
+    for (const click of clicks) {
+      const input = realInput(poly, click);
+      const plan = bubblePlan.buildPlan(input, {});
+      assert.ok(plan.connected, "a small round lobe on a deep neck is a chamber");
+      const chambers = connected.chambersFor(input, plan, bubblePlan.subpathsFromDescriptor(input.rawPath, 72), 2, {});
+      assert.strictEqual(chambers.length, 2);
+      assert.ok(geometry.contains(chambers[0].cleanPolygon, click), "the clicked chamber first");
+    }
+  }
+  const asidePair = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Ça lui fait un effet, même à elle."), line("Eh bien,")], roleStyles: {}, settings: { distribute: true },
+  }, adapterFor(realInput(asideBubble, { x: 725, y: 1270 })));
+  assert.strictEqual(asidePair.consumed, 2, "the aside takes the next line");
+  const wideBump = [[630,400],[629,413],[625,425],[618,436],[611,443],[598,453],[583,459],[568,460],[557,459],[550,457],[539,480],[527,498],[510,516],[492,531],[470,544],[447,553],[424,558],[400,560],[382,559],[367,557],[352,553],[338,547],[323,540],[310,532],[297,522],[288,514],[276,502],[267,488],[258,474],[253,462],[247,446],[243,430],[241,413],[240,400],[241,387],[243,370],[247,354],[253,338],[258,326],[267,312],[276,298],[288,286],[297,278],[310,268],[323,260],[338,253],[352,247],[367,243],[382,241],[400,240],[424,242],[447,247],[470,256],[492,269],[510,284],[527,302],[539,320],[550,343],[557,341],[568,340],[583,341],[598,347],[611,357],[618,364],[625,375],[629,387]];
+  assert.strictEqual(bubblePlan.buildPlan(realInput(wideBump, { x: 380, y: 400 }), {}).connected, false, "a bump with a wide base is no chamber");
+
+  // A forced split (a second click in a bubble that got one line) cuts the
+  // double bubbles every gate misses: here one under a frame whose tail keeps
+  // the frame route away. The seam still runs straight from the corner to
+  // the frame, not to a corner of the frame across a lobe. A plain oval
+  // stays whole.
+  const tailedDouble = [[843,762],[1026,762],[1035,761],[1039,758],[1040,754],[1038,750],[1035,748],[1032,749],[1029,754],[1028,764],[1029,926],[1027,969],[1021,988],[1013,993],[1002,992],[990,996],[967,1002],[928,1003],[905,997],[889,981],[884,981],[880,985],[867,1011],[853,1027],[832,1043],[811,1051],[788,1050],[757,1039],[745,1030],[739,1014],[735,1011],[728,1013],[706,1026],[731,1008],[717,995],[708,981],[701,965],[697,949],[700,910],[713,875],[711,861],[712,836],[721,813],[735,791],[750,779],[797,772],[819,772],[829,775],[831,774],[826,767],[834,763]];
+  for (const click of [{ x: 800, y: 900 }, { x: 950, y: 880 }]) {
+    const input = realInput(tailedDouble, click);
+    assert.strictEqual(bubblePlan.buildPlan(input, {}).connected, false, "not double without the second click");
+    const plan = bubblePlan.buildPlan(input, { forceSplit: true });
+    assert.ok(plan.connected, "forced neck");
+    plan.neck.map((p) => Math.round(p[0])).forEach((x) => assert.ok(Math.abs(x - 884) <= 2, "the forced seam runs straight to the frame"));
+    const chambers = connected.chambersFor(input, plan, bubblePlan.subpathsFromDescriptor(input.rawPath, 72), 3, { forceSplit: true });
+    assert.strictEqual(chambers.length, 2);
+    assert.ok(geometry.contains(chambers[0].cleanPolygon, click), "the clicked chamber first");
   }
   const plainOval = geometry.flatten(ellipseNodes(500, 500, 160, 120));
   assert.strictEqual(bubblePlan.buildPlan(realInput(plainOval, { x: 500, y: 500 }), { forceSplit: true }).connected, false, "an oval has no neck to force");
   const forcedPair = await prepareSmartPaste({
     trigger: { source: "wand" }, lines: [line("Toi, à gauche."), line("Et moi, à droite !")], roleStyles: {}, settings: { distribute: true, forceSplit: true },
-  }, adapterFor(realInput(clipped, { x: 780, y: 1150 })));
+  }, adapterFor(realInput(tailedDouble, { x: 800, y: 900 })));
   assert.strictEqual(forcedPair.consumed, 2);
 
   // Triple bubble
@@ -612,6 +737,80 @@ const linesInside = (session) => {
   assert.strictEqual(plan.open, true);
   assert.strictEqual(plan.autoClean, true);
   assert.strictEqual(plan.textColor, null);
+
+  // Local region: a leaking click no chamber is isolated around. The hosts
+  // read the outline of the selection inside a disc around the click.
+  const spot = { x: 600, y: 800 };
+  const disc = open.localWindow(page, spot);
+  assert.strictEqual(disc.radius, 216, "18% of the page's width");
+  assert.strictEqual(open.localWindow({ width: 4096, height: 2896, resolution: 72 }, spot).radius, 375, "a spread counts as one page");
+  assert.ok(open.localWindow(page, { x: 20, y: 30 }).polygon.every((p) => p[0] >= 0 && p[1] >= 0), "the disc stays in the page");
+  // The bare page: the whole disc, around the click
+  const bare = open.localRegion(pathOf([polygonNodes(disc.polygon)]), page, spot);
+  assert.ok(bare && bare.open, "nothing closes the region: it is open");
+  const bareBox = geometry.box(bare.polygon);
+  assert.ok(bareBox.width > disc.radius * 1.7 && bareBox.height > disc.radius * 1.7 && bareBox.width <= disc.radius * 2 + 8, "the disc: " + JSON.stringify(bareBox));
+  assert.ok(Math.abs((bareBox.left + bareBox.right) / 2 - spot.x) < 8 && Math.abs((bareBox.top + bareBox.bottom) / 2 - spot.y) < 8, "centred on the click");
+  // A bubble open on a 40 px gap (wider than the recovery closes with its
+  // pixels): the opening closes it, the region is the bubble
+  const arc = (rx, ry, from, to, steps) => {
+    const out = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = from + ((to - from) * i) / steps;
+      out.push([spot.x + rx * Math.cos(t), spot.y + ry * Math.sin(t)]);
+    }
+    return out;
+  };
+  const gapOf = (half) => Math.asin(half / 100);
+  const ringOf = (half) => arc(150, 106, gapOf(half), 2 * Math.PI - gapOf(half), 90).concat(arc(144, 100, 2 * Math.PI - gapOf(half), gapOf(half), 90));
+  const gapped = open.localRegion(pathOf([polygonNodes(disc.polygon), polygonNodes(ringOf(20))]), page, spot);
+  assert.ok(gapped && !gapped.open, "the gap is closed");
+  const gappedBox = geometry.box(gapped.polygon);
+  // (it bulges into the gap by less than the opening's radius)
+  assert.ok(gappedBox.left >= spot.x - 150 && gappedBox.right <= spot.x + 150 + 16 && gappedBox.top >= spot.y - 106 && gappedBox.bottom <= spot.y + 106, "inside the bubble: " + JSON.stringify(gappedBox));
+  assert.ok(gappedBox.width > 250 && gappedBox.height > 170, "the whole bubble: " + JSON.stringify(gappedBox));
+  assert.ok(geometry.contains(gapped.polygon, spot));
+  // A gap no opening closes (half the bubble is missing): the region around
+  // the click all the same, never across the outline
+  const halfRing = arc(150, 106, Math.PI / 2, (3 * Math.PI) / 2, 60).concat(arc(144, 100, (3 * Math.PI) / 2, Math.PI / 2, 60));
+  const wide = open.localRegion(pathOf([polygonNodes(disc.polygon), polygonNodes(halfRing)]), page, spot);
+  assert.ok(wide && wide.open && geometry.contains(wide.polygon, spot));
+  assert.ok(geometry.box(wide.polygon).left >= spot.x - 146, "the outline bounds the region: " + JSON.stringify(geometry.box(wide.polygon)));
+  // A click that is not in the selection (a stale one): no region
+  assert.strictEqual(open.localRegion(pathOf([polygonNodes(star(900, 300, 60, 60, 12))]), page, spot), null);
+  assert.strictEqual(open.localRegion({ pathContents: { pathComponents: [] } }, page, spot), null);
+  // Its plan: a regular bubble, never cleaned, white text on black
+  const leakInput = { documentId: 7, click: spot, selectionBounds: { left: 0, top: 0, right: 1200, bottom: 1700 } };
+  const localPlan = open.localPlan(leakInput, gapped, white, { autoClean: true });
+  assert.strictEqual(localPlan.open, true);
+  assert.strictEqual(localPlan.source, "wand");
+  assert.strictEqual(localPlan.connected, false);
+  assert.strictEqual(localPlan.autoClean, false);
+  assert.strictEqual(localPlan.cleanupPolygon, null);
+  assert.ok(/^Auto Clean /.test(localPlan.cleanupSkipped));
+  assert.strictEqual(localPlan.textColor, null);
+  assert.strictEqual(open.localPlan(leakInput, bare, null).kind, "regular", "an open region is no shape of the drawing");
+  assert.deepStrictEqual(open.localPlan(leakInput, bare, black).textColor, { red: 255, green: 255, blue: 255 });
+  assert.throws(() => open.localPlan(leakInput, null, white));
+  assert.ok(open.discRegion(page, spot).open);
+  // The paste: the text is laid out in the region instead of falling back
+  const leaking = { source: "wand", click: spot, selectionBounds: leakInput.selectionBounds, rawPath: null, fill: null };
+  const local = await prepareSmartPaste({
+    trigger: { source: "wand", x: spot.x, y: spot.y },
+    lines: [line("Je ne pensais pas te revoir ici."), line("Une autre ligne.")],
+    roleStyles: {},
+    settings: { distribute: true, hyphenation: "fr", minScale: 0.7 },
+  }, adapterFor({ ...leaking, openPlan: localPlan }));
+  assert.strictEqual(local.consumed, 1, "a local region takes one line");
+  linesInside(local.sessions[0]);
+  await assert.rejects(prepareSmartPaste({ trigger: { source: "manual" }, lines: [line("Texte.")], roleStyles: {}, settings: {} }, adapterFor(leaking)), (error) => error.code === "openBubble",
+    "a leak without a click still falls back");
+  // The click of a leak: the trigger's own, or the last wand click of a manual Paste
+  assert.deepStrictEqual(bubblePlan.leakClick({ source: "wand", x: 5, y: 6 }, 72), { x: 5, y: 6 });
+  assert.deepStrictEqual(bubblePlan.leakClick({ source: "manual", lastSource: "wand", lastClick: { x: 36, y: 72, unit: "distanceUnit" } }, 144), { x: 72, y: 144 });
+  assert.strictEqual(bubblePlan.leakClick({ source: "manual", lastSource: "wand" }, 72), null);
+  assert.strictEqual(bubblePlan.leakClick({ source: "manual", lastSource: "rectangle", lastClick: { x: 1, y: 1 } }, 72), null);
+  assert.strictEqual(bubblePlan.triggerClick({ source: "manual", lastSource: "wand", lastClick: { x: 1, y: 1 } }, 72), null, "a closed bubble ignores it");
 
   console.log("smart paste engine tests passed");
 })().catch((error) => {

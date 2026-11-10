@@ -258,6 +258,32 @@ const baseState = () => ({
   assert.ok(dispatched.some((action) => action.type === "showNotice" && action.text === "No neck found"));
   assert.deepStrictEqual(dispatched.filter((action) => action.type === "commitLineBatch").map((action) => action.entries.map((entry) => entry.lineIndex)), [[1]]);
 
+  // Undoing a one-line paste that a second click could have split is what a
+  // user does when a double bubble got one line: the tip about the second
+  // click shows then, and the undone paste is no split candidate any more
+  assert.strictEqual(client.singlePasteUndone(record, { documentId: 3, current: 30, states: [30, 31] }), true, "undone, still in the redo states");
+  assert.strictEqual(client.singlePasteUndone(record, { documentId: 3, current: 40, states: [30, 40] }), true, "undone, then other work");
+  assert.strictEqual(client.singlePasteUndone(record, { documentId: 3, current: 31, states: [30, 31] }), false, "still the current state");
+  assert.strictEqual(client.singlePasteUndone(record, { documentId: 3, current: 32, states: [30, 31, 32] }), false, "a click after it");
+  assert.strictEqual(client.singlePasteUndone(record, { documentId: 4, current: 30, states: [30, 31] }), false, "another document");
+  assert.strictEqual(client.singlePasteUndone(record, { documentId: 3, current: 90, states: [80, 90] }), false, "out of the history");
+  assert.strictEqual(client.singlePasteUndone(null, { documentId: 3, current: 30, states: [30, 31] }), false);
+  dispatched.length = 0;
+  current = baseState();
+  hostReplies = {
+    smartPaste: JSON.stringify({ ok: true, consumed: 1, history: { documentId: 3, before: 30, after: 31 }, selectionBounds: bubble, sessions: [{ styleId: "r" }] }),
+    getHistorySnapshot: JSON.stringify({ documentId: 3, current: 31, states: [30, 31] }),
+    smartPasteSelectionProbe: JSON.stringify({ documentId: 3, tool: "magicWandTool", bounds: bubble }),
+  };
+  assert.strictEqual(await client.smartPasteInSelection(getState, dispatch, { trigger: { source: "wand", x: 50, y: 60 } }), true);
+  client.applyHistorySnapshot({ documentId: 3, current: 31, states: [30, 31] }, getState, dispatch);
+  assert.ok(!dispatched.some((action) => action.type === "showFeatureTip"), "no tip while the paste stands");
+  client.applyHistorySnapshot({ documentId: 3, current: 30, states: [30, 31] }, getState, dispatch);
+  assert.deepStrictEqual(dispatched.filter((action) => action.type === "showFeatureTip"), [{ type: "showFeatureTip", id: "splitDoubleBubble" }]);
+  assert.ok(!client.hasSplitCandidate(), "an undone paste is not split by the next click");
+  client.applyHistorySnapshot({ documentId: 3, current: 30, states: [30, 31] }, getState, dispatch);
+  assert.strictEqual(dispatched.filter((action) => action.type === "showFeatureTip").length, 1, "once per paste");
+
   // Multi-bubble: every remembered selection is replayed then pasted
   assert.strictEqual(client.canSmartPasteStoredSelections([{ trigger: { source: "wand" } }, { trigger: { source: "rectangle" } }]), true);
   assert.strictEqual(client.canSmartPasteStoredSelections([{ trigger: { source: "wand" } }, {}]), false);
@@ -357,8 +383,16 @@ const baseState = () => ({
   assert.strictEqual(client.recentSelectionTrigger(), null, "a lasso cannot be replayed");
   // A manual Paste carries the tool of the last selection
   const manualState = { ...state, currentLineIndex: 1 };
+  // and, for the Magic Wand, its click: a selection that leaks into the page is pasted around it
   client.rememberSelectionTrigger({ source: "wand", x: 1, y: 1 });
-  assert.deepStrictEqual(client.buildSmartPasteRequest(manualState, { source: "manual" }).request.trigger, { source: "manual", lastSource: "wand" });
+  assert.deepStrictEqual(client.buildSmartPasteRequest(manualState, { source: "manual" }).request.trigger, { source: "manual", lastSource: "wand", lastClick: { x: 1, y: 1 } });
+  client.rememberSelectionTrigger({ source: "wand", x: 36, y: 72, unit: "distanceUnit", options: { tolerance: 32 } });
+  assert.deepStrictEqual(client.buildSmartPasteRequest(manualState, null).request.trigger, { source: "manual", lastSource: "wand", lastClick: { x: 36, y: 72, unit: "distanceUnit" } });
+  // The selection changed without a click since: the click is not its own
+  client.forgetSelectionClick();
+  assert.deepStrictEqual(client.buildSmartPasteRequest(manualState, null).request.trigger, { source: "manual", lastSource: "wand" });
+  client.rememberSelectionTrigger(null);
+  client.forgetSelectionClick();
   client.rememberSelectionTrigger({ source: "rectangle", left: 0, top: 0, right: 9, bottom: 9 });
   assert.deepStrictEqual(client.buildSmartPasteRequest(manualState, null).request.trigger, { source: "manual", lastSource: "rectangle" });
   client.rememberSelectionTrigger(null);
@@ -588,6 +622,63 @@ const baseState = () => ({
       },
     })("app_src/smartPasteClient.js");
     assert.strictEqual((await cep.runSmartPaste({ settings: {} })).ok, true);
+
+    // A selection that leaks into the page (CEP): the host answers without
+    // its outline, the panel asks for the outline inside a disc around the
+    // click and hands the engine the plan of the region found there
+    const leakReply = { documentId: 3, width: 1200, height: 1700, resolution: 72, selectionBounds: { left: 0, top: 0, right: 1200, bottom: 1700 }, histograms: [], rawPath: null, leak: true };
+    const pathPoint = (x, y) => ({ horizontal: { _unit: "pixelsUnit", _value: x }, vertical: { _unit: "pixelsUnit", _value: y } });
+    const histogram = new Array(256).fill(0);
+    histogram[0] = 5000;
+    let localCalls = [];
+    let localAnswer = null;
+    const leaking = (plans) => require("./helpers/loadAppModule")({
+      "./utils": utilsStub,
+      "./oneClick/smartPaste": {
+        prepareSmartPaste: async (request, adapter) => {
+          plans.push(await adapter.capture(request.trigger));
+          return { consumed: 1, sessions: [] };
+        },
+      },
+    })("app_src/smartPasteClient.js");
+    hostReplies = {
+      smartPasteCommit: JSON.stringify({ layerIds: [42] }),
+      smartPasteCapture: (script) => {
+        const data = JSON.parse(script.slice("smartPasteCapture(".length, -1));
+        if (!data.local) return JSON.stringify(leakReply);
+        localCalls.push(data);
+        return JSON.stringify(localAnswer(data.local));
+      },
+    };
+    const outlineOf = (polygon) => ({ ...leakReply, leak: undefined, histograms: [histogram, histogram, histogram], rawPath: { pathContents: { pathComponents: [{ subpathListKey: [{ closedSubpath: true, points: polygon.map((p) => ({ anchor: pathPoint(p[0], p[1]), forward: pathPoint(p[0], p[1]), backward: pathPoint(p[0], p[1]) })) }] }] } } });
+    const plans = [];
+    const leakClient = leaking(plans);
+    localAnswer = outlineOf;
+    assert.strictEqual((await leakClient.runSmartPaste({ trigger: { source: "wand", x: 600, y: 800 }, settings: { autoClean: true } })).ok, true);
+    assert.strictEqual(localCalls.length, 1, "one more capture, inside the disc");
+    assert.strictEqual(localCalls[0].local.length, 48);
+    assert.ok(localCalls[0].local.every((p) => Math.abs(Math.hypot(p[0] - 600, p[1] - 800) - 216) < 2), "a disc around the click");
+    assert.strictEqual(plans[0].openPlan.open, true);
+    assert.deepStrictEqual(plans[0].openPlan.click, { x: 600, y: 800 });
+    assert.deepStrictEqual(plans[0].openPlan.textColor, { red: 255, green: 255, blue: 255 }, "the fill inside the disc: black here");
+    assert.ok(/^Auto Clean /.test(plans[0].openPlan.cleanupSkipped));
+    // The host could not read it: the disc itself
+    localAnswer = () => ({ error: "shape" });
+    assert.strictEqual((await leakClient.runSmartPaste({ trigger: { source: "wand", x: 600, y: 800 }, settings: {} })).ok, true);
+    assert.strictEqual(plans[1].openPlan.cleanPolygon.length, 48);
+    assert.strictEqual(plans[1].openPlan.textColor, null);
+    // A manual Paste uses the last wand click, when it still lies in the selection
+    localAnswer = outlineOf;
+    await leakClient.runSmartPaste({ trigger: { source: "manual", lastSource: "wand", lastClick: { x: 600, y: 800 } }, settings: {} });
+    assert.strictEqual(plans[2].openPlan.open, true);
+    localAnswer = () => ({ error: "shape" });
+    await leakClient.runSmartPaste({ trigger: { source: "manual", lastSource: "wand", lastClick: { x: 600, y: 800 } }, settings: {} });
+    assert.strictEqual(plans[3].openPlan, undefined, "no plan: the engine falls back as before");
+    // No click at all: no second capture
+    localCalls = [];
+    await leakClient.runSmartPaste({ trigger: { source: "manual", lastSource: "wand" }, settings: {} });
+    assert.strictEqual(localCalls.length, 0);
+    assert.strictEqual(plans[4].openPlan, undefined);
   } finally {
     window.typerUXP = uxp;
   }

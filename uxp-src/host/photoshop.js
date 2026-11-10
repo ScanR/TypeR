@@ -1996,6 +1996,7 @@ function _smartConvertToParagraph() {
   if (!(size > 0)) size = 24;
   _changeToBoxText();
   var after = _currentLayerBox();
+  var enlarged = false;
   if (before && after) {
     var width = before.width + size * 2;
     for (var attempt = 0; attempt < 3 &&
@@ -2003,13 +2004,22 @@ function _smartConvertToParagraph() {
       _setTextBoxSize(width, before.height + size * 2);
       after = _currentLayerBox();
       if (!after) break;
+      enlarged = true;
       width *= 1.5;
     }
 
   }
-  // A failed fit must roll the smart commit back and use its visible classic
+  // In a frame large enough for every line, a paragraph text may still be a
+  // little wider than the point text with the same lines: "Roman Hanging
+  // Punctuation", on in many styles, lets a hyphen, a comma or a period at
+  // the end of a line hang out of the frame, which moves that line by part of
+  // the mark. That is no re-wrap: a line that wraps adds a line, and the
+  // height changes.
+  var hanging = !!(enlarged && before && after && Math.abs(before.height - after.height) <= 1.5 &&
+    Math.abs(before.width - after.width) <= Math.max(1.5, size * 0.5));
+  // A failed fit must roll the smart commit back and use its classic
   // fallback, never leave clipped text or silently switch to point text.
-  if (before && (!after || Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5)) {
+  if (before && !hanging && (!after || Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5)) {
     throw new Error("Paragraph text could not preserve the composed lines");
   }
   if (before && after && (Math.abs(before.left - after.left) > 0.01 || Math.abs(before.top - after.top) > 0.01)) {
@@ -4126,7 +4136,7 @@ module.exports = {
   // internals, for tests
   setTrace: (fn) => { trace = fn || null; },
   _internals: {
-    play, get, modal, suspendHistory, jamText, _hostState, _getLayerStroke, _getLayerText, _setTextContentsOnly,
+    play, get, modal, suspendHistory, jamText, PhotoshopError, _hostState, _getLayerStroke, _getLayerText, _setTextContentsOnly,
     // smart paste (uxp-src/host/smartPaste.js)
     _smartConvertToParagraph, _makeTextLayer, _applyMiddleEast, _changeToBoxText, _changeToPointText, _setLayerStroke, _getActiveLayerId,
     _layerIsTextLayer, _getTextLayerSize, _getFontList,

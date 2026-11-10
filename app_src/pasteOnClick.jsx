@@ -14,9 +14,9 @@ import React from "react";
 import { useContext } from "./context";
 import { addPhotoshopEventListener, csInterface, msSinceHostAction, safeJsonParse } from "./utils";
 import { PS_EVENT_SET } from "./photoshopEvents";
-import { classifySelectionEvent, parseCepEventData, triggerSourceForTool } from "./oneClick/selectionEvent";
+import { classifySelectionEvent, parseCepEventData, targetsSelection, triggerSourceForTool } from "./oneClick/selectionEvent";
 import {
-  applyHistorySnapshot, hasPasteHistory, imposeSampleAll, isClassicFallbackSettling, isSmartPasteBusy, isSmartPasteSettling, rememberSelectionTrigger,
+  applyHistorySnapshot, forgetSelectionClick, hasPasteHistory, imposeSampleAll, isClassicFallbackSettling, isSmartPasteBusy, isSmartPasteSettling, rememberSelectionTrigger,
   hasSplitCandidate, replaySelection, smartPasteFinishedAt, smartPasteInSelection, syncPasteHistory, withSampleAll,
 } from "./smartPasteClient";
 import { pasteInSelection } from "./shortcutCommands";
@@ -207,7 +207,7 @@ const PasteOnClick = () => {
         scheduleHistoryCheck();
         return;
       }
-      const paste = (trigger) => {
+      const paste = (trigger, selectionChanged) => {
         const state = getState();
         if (isReplayable(trigger) && clicks.isOwnReplay(trigger)) return;
         if (canQueueClick(state, trigger, msSinceHostAction(), isPanelHidden())) {
@@ -217,6 +217,8 @@ const PasteOnClick = () => {
         }
         // A lasso cannot be selected again: it pastes only when TypeR is idle
         if (trigger && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling() && !clicks.isDraining()) rememberSelectionTrigger(trigger);
+        // The user changed the selection some other way: the last click is not its own any more
+        if (!trigger && selectionChanged && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling() && !clicks.isDraining()) forgetSelectionClick();
         if (clicks.isDraining() || !shouldPasteOnClick(state, trigger, msSinceHostAction(), isPanelHidden())) {
           if (!trigger) scheduleHistoryCheck();
           return;
@@ -233,7 +235,7 @@ const PasteOnClick = () => {
         if (state.pasteOnClick && !state.multiBubbleMode && !isPanelHidden() && msSinceHostAction() >= OWN_SELECTION_GRACE && !isSmartPasteSettling()) probeTrigger().then(paste);
         return;
       }
-      paste(classifySelectionEvent(data.eventData));
+      paste(classifySelectionEvent(data.eventData), targetsSelection(data.eventData));
     });
     const onFocus = () => scheduleHistoryCheck();
     window.addEventListener("focus", onFocus);

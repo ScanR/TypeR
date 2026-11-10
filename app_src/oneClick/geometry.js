@@ -426,6 +426,37 @@ const roundLobe = (chamber, a, dx, dy, length, solidity) => {
   return partArea / ((high - low) * far) <= 0.9;
 };
 
+// A small bubble on the side of a large one (an aside, a "Hein ?"): a chamber
+// under 15% of the outline counts, when no other neck is found, if its neck is
+// short and very deep (both ends half its width inside the hull: the base of a
+// rounded tail pinches less) and the part is a round lobe on its chord. A tail
+// is a triangle, which fills half of the box on its base; a lobe fills more,
+// without filling it like a rectangle, is convex and stands SMALL_LOBE_HEIGHT
+// of the neck's width high. The whole outline is a bubble too, SMALL_LOBE_OUTLINE
+// of its hull: on the drawing, an ear on a face is such a lobe. On the Magic
+// Wand's real outlines of 1,362 lettered bubbles: 2 doubles more and no single
+// bubble, nearly all of which have a tail.
+const SMALL_LOBE_PART = 0.06;
+const SMALL_LOBE_PINCH = 0.5;
+const SMALL_LOBE_OUTLINE = 0.85;
+const SMALL_LOBE_NECK = 0.45;
+const SMALL_LOBE_FILL = 0.62;
+const SMALL_LOBE_SOLIDITY = 0.9;
+const SMALL_LOBE_HEIGHT = 0.6;
+const smallLobe = (part, partArea, a, dx, dy, length) => {
+  let low = Infinity;
+  let high = -Infinity;
+  let far = 0;
+  for (let k = 0; k < part.length; k++) {
+    const t = ((part[k][0] - a[0]) * dx + (part[k][1] - a[1]) * dy) / length;
+    if (t < low) low = t;
+    if (t > high) high = t;
+    far = Math.max(far, Math.abs(dx * (part[k][1] - a[1]) - dy * (part[k][0] - a[0])) / length);
+  }
+  const fill = partArea / ((high - low) * far);
+  return fill >= SMALL_LOBE_FILL && fill <= 0.9 && far >= length * SMALL_LOBE_HEIGHT && partArea / area(convexHull(part)) >= SMALL_LOBE_SOLIDITY;
+};
+
 export const findCut = (contours, click, bounds, openRecovery) => {
   let polygon = null;
   let polygonArea = 0;
@@ -448,7 +479,7 @@ export const findCut = (contours, click, bounds, openRecovery) => {
   if (!polygon || polygonArea < 400) return null;
   // Too rough an outline for the pair search below: the routes that smooth it
   if (polygon.length > 256) {
-    const rough = openRecovery ? null : dentNeck(contours, click) || cornerNeck(contours, click);
+    const rough = openRecovery ? null : dentNeck(contours, click) || cornerNeck(contours, click) || frameNeck(contours, click);
     return rough ? cutAt(rough, click, bounds, minDim) : null;
   }
   const sign = signedArea(polygon) > 0 ? 1 : -1;
@@ -459,6 +490,8 @@ export const findCut = (contours, click, bounds, openRecovery) => {
   const hull = convexHull(polygon);
   let best = null;
   let lobes = null;
+  let aside = null;
+  const bubbleLike = polygonArea >= area(hull) * SMALL_LOBE_OUTLINE;
   for (let i = 0; i < polygon.length; i++) {
     const prev = polygon[(i + polygon.length - 1) % polygon.length];
     const v = polygon[i];
@@ -537,7 +570,15 @@ export const findCut = (contours, click, bounds, openRecovery) => {
         const areaOne = area(halves[0]);
         const areaTwo = area(halves[1]);
         const small = Math.min(areaOne, areaTwo);
-        if (small < polygonArea * 0.15 || Math.abs(areaOne + areaTwo - polygonArea) > polygonArea * 0.01) continue;
+        if (small < polygonArea * SMALL_LOBE_PART || Math.abs(areaOne + areaTwo - polygonArea) > polygonArea * 0.01) continue;
+        if (small < polygonArea * 0.15) {
+          // A small lobe never outranks a neck between two real chambers
+          if (bubbleLike && pinch >= SMALL_LOBE_PINCH && length <= rootArea * SMALL_LOBE_NECK && (!aside || length / Math.sqrt(small) < aside.score) &&
+              smallLobe(areaOne < areaTwo ? halves[0] : halves[1], small, a, dx, dy, length)) {
+            aside = { a, b, score: length / Math.sqrt(small) };
+          }
+          continue;
+        }
         // A real neck is much narrower than both chambers measured along
         // it; a cloud's scalloped outline pinches only slightly (TypeR)
         const along = (half) => {
@@ -565,9 +606,11 @@ export const findCut = (contours, click, bounds, openRecovery) => {
       }
     }
   }
-  // Round lobes only when no neck passes the stricter gates, then dents
+  // Round lobes only when no neck passes the stricter gates, then dents,
+  // corners and a seam ending on the panel frame
   if (!best) best = lobes;
-  if (!best && !openRecovery) best = dentNeck(contours, click) || cornerNeck(contours, click);
+  if (!best && !openRecovery) best = dentNeck(contours, click) || cornerNeck(contours, click) || frameNeck(contours, click);
+  if (!best) best = aside;
   return best ? cutAt(best, click, bounds, minDim) : null;
 };
 
@@ -843,12 +886,187 @@ const cornerNeck = (contours, click) => {
   return best;
 };
 
+// The fifth route: a double bubble clipped by the panel frame. The seam of its
+// two lobes starts at a sharp concave corner, as in the fourth route, but ends
+// on the frame: the outline has one corner only, facing a long straight side.
+// The chord from that corner to the nearest point of the side counts when (set
+// on the neck bench, then on the Magic Wand's real outlines of 1,362 lettered
+// bubbles from 35 other series: 23 more are split, all double, the seam
+// between their two texts, and no single bubble):
+// - the corner turns by FRAME_CORNER_MIN to FRAME_CORNER_MAX degrees (two arcs
+//   meeting: a strand of hair or a blade over a bubble turns much more), sits
+//   FRAME_DEPTH of the bubble's size inside its convex hull (a hand or a head
+//   over a single bubble dents it less) and not by a tail's tip;
+// - the side is straight over FRAME_SIDE of the bubble's size (a scanned frame
+//   may bow by FRAME_BOW of its length), close to an axis, and one of its ends
+//   at least is a real corner: a frame cuts the outline, where the flat side of
+//   a tall oval turns smoothly;
+// - the chord lands inside the side, is no longer than the bubble's size and
+//   removes FRAME_REMOVED of the bubble in dents, FRAME_EXPLAINED of them;
+// - each chamber is convex, holds FRAME_MIN_PART of the bubble and is no box
+//   (an L-shaped caption or panel background);
+// - no more than CORNER_OTHERS other corners are nearly as sharp, the base of
+//   a tail aside (a tail the frame cuts keeps its base).
+const FRAME_CORNER_MIN = 45;
+const FRAME_CORNER_MAX = 125;
+const FRAME_DEPTH = 0.07;
+const FRAME_SIDE = 0.3;
+const FRAME_SIDE_TOLERANCE = 0.006;
+const FRAME_BOW = 0.015;
+const FRAME_AXIS = 0.12;
+const FRAME_SIDE_END = 60;
+const FRAME_END_WINDOW = 0.06;
+const FRAME_REMOVED = 0.005;
+const FRAME_EXPLAINED = 0.5;
+const FRAME_SOLIDITY = 0.96;
+const FRAME_MIN_PART = 0.2;
+// A forced split keeps the corner, the straight side and the size of the
+// chambers only: a tail may sit close to the seam, and the frame may be tilted
+const FRAME_FORCED_CORNER = 30;
+const FRAME_FORCED_TAIL_SPAN = 0.12;
+const FRAME_FORCED_SHARE = 0.6;
+// Straight sides of a sampled outline: [from, to] indexes of its points
+const straightSides = (points, root) => {
+  const count = points.length;
+  const tolerance = Math.max(1.2, root * FRAME_SIDE_TOLERANCE);
+  const kept = simplify(points, tolerance);
+  // simplify() keeps the points themselves, in order
+  const vertices = [];
+  for (let i = 0, k = 0; i < count && k < kept.length; i++) {
+    if (points[i] === kept[k]) {
+      vertices.push(i);
+      k++;
+    }
+  }
+  const total = vertices.length;
+  if (total < 3) return [];
+  const span = (from, to) => Math.hypot(points[to][0] - points[from][0], points[to][1] - points[from][1]);
+  const straight = (from, to) => {
+    const a = points[from];
+    const b = points[to];
+    const ex = b[0] - a[0];
+    const ey = b[1] - a[1];
+    const length = Math.hypot(ex, ey);
+    if (!(length > 0)) return false;
+    const limit = Math.max(tolerance, FRAME_BOW * length) * length;
+    for (let k = (from + 1) % count; k !== to; k = (k + 1) % count) {
+      if (Math.abs(ex * (points[k][1] - a[1]) - ey * (points[k][0] - a[0])) > limit) return false;
+    }
+    return true;
+  };
+  const sides = [];
+  const seen = {};
+  for (let i = 0; i < total; i++) {
+    // The longest straight run through this edge, grown at both ends
+    let first = i;
+    let last = i + 1;
+    while (last - first < total - 1 && straight(vertices[(first + total) % total], vertices[(last + 1) % total])) last++;
+    while (last - first < total - 1 && straight(vertices[(first - 1 + total) % total], vertices[last % total])) first--;
+    const from = vertices[(first + total) % total];
+    const to = vertices[last % total];
+    const key = from + ":" + to;
+    if (seen[key] || span(from, to) < root * FRAME_SIDE) continue;
+    seen[key] = true;
+    sides.push([from, to]);
+  }
+  return sides;
+};
+const frameNeck = (contours, click, forced) => {
+  const source = outlineAt(contours, click);
+  if (!source || area(source) < 400) return null;
+  const outline = withoutTails(outlineCorners(source));
+  if (outline.length < 8) return null;
+  const outlineArea = area(outline);
+  const dents = hullDeficit(outline);
+  if (!(dents > 0)) return null;
+  const { root, step, count, points, reflex, tips } = outlineCorners(outline);
+  const byTip = (c, span) => {
+    for (let t = 0; t < tips.length; t++) {
+      const d = Math.abs(tips[t].index - c.index);
+      if (Math.min(d, count - d) * step <= span * root) return true;
+    }
+    return false;
+  };
+  const hull = convexHull(outline);
+  const corners = [];
+  for (let k = 0; k < reflex.length; k++) {
+    const c = reflex[k];
+    if (c.angle < (forced ? FRAME_FORCED_CORNER : FRAME_CORNER_MIN) || (!forced && c.angle > FRAME_CORNER_MAX)) continue;
+    if (byTip(c, forced ? FRAME_FORCED_TAIL_SPAN : CORNER_TAIL_SPAN)) continue;
+    if (!forced && hullDistance(hull, c.point) < FRAME_DEPTH * root) continue;
+    corners.push(c);
+  }
+  if (!corners.length) return null;
+  const sides = straightSides(points, root);
+  if (!sides.length) return null;
+  const reach = Math.max(3, Math.round((FRAME_END_WINDOW * root) / step));
+  // Turn of the outline past one end of a side, in degrees
+  const turnPast = (at, direction, ux, uy) => {
+    const q = points[at];
+    const far = points[(at + direction * reach + count * 4) % count];
+    const vx = far[0] - q[0];
+    const vy = far[1] - q[1];
+    const cos = (ux * vx + uy * vy) / (Math.hypot(ux, uy) * Math.hypot(vx, vy) || 1);
+    return (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+  };
+  let best = null;
+  for (let s = 0; s < sides.length; s++) {
+    const u = points[sides[s][0]];
+    const v = points[sides[s][1]];
+    const ex = v[0] - u[0];
+    const ey = v[1] - u[1];
+    const sideLength = Math.hypot(ex, ey);
+    if (!forced && Math.min(Math.abs(ex), Math.abs(ey)) > FRAME_AXIS * sideLength) continue;
+    if (!forced && Math.max(turnPast(sides[s][0], -1, -ex, -ey), turnPast(sides[s][1], 1, ex, ey)) < FRAME_SIDE_END) continue;
+    for (let k = 0; k < corners.length; k++) {
+      const a = corners[k].point;
+      const t = ((a[0] - u[0]) * ex + (a[1] - u[1]) * ey) / (sideLength * sideLength);
+      if (t < 0.1 || t > 0.9) continue;
+      const b = [u[0] + ex * t, u[1] + ey * t];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const length = Math.hypot(dx, dy);
+      if (length < root * 0.12 || length > root) continue;
+      if (!contains(outline, { x: (a[0] + b[0]) / 2, y: (a[1] + b[1]) / 2 })) continue;
+      const halves = clipBothSides(outline, a, b);
+      const areaOne = area(halves[0]);
+      const areaTwo = area(halves[1]);
+      if (Math.abs(areaOne + areaTwo - outlineArea) > outlineArea * 0.02 || Math.min(areaOne, areaTwo) < outlineArea * FRAME_MIN_PART) continue;
+      const leftOne = hullDeficit(halves[0]);
+      const leftTwo = hullDeficit(halves[1]);
+      const gone = dents - leftOne - leftTwo;
+      const found = { a, b, sharpest: corners[k].angle, length, explained: gone / dents, score: length / Math.sqrt(Math.min(areaOne, areaTwo)) };
+      if (forced) {
+        // The user says the bubble is double: the chord that explains the most dents
+        if (gone > 0 && (!best || found.explained > best.explained)) best = found;
+        continue;
+      }
+      if (areaOne / (areaOne + leftOne) < FRAME_SOLIDITY || areaTwo / (areaTwo + leftTwo) < FRAME_SOLIDITY) continue;
+      if (gone / outlineArea < FRAME_REMOVED || found.explained < FRAME_EXPLAINED) continue;
+      let others = 0;
+      for (let o = 0; o < reflex.length; o++) {
+        if (reflex[o] !== corners[k] && reflex[o].angle >= corners[k].angle * 0.7 && !byTip(reflex[o], CORNER_TAIL_SPAN)) others++;
+      }
+      if (others > CORNER_OTHERS) continue;
+      if (best && (found.sharpest < best.sharpest || (found.sharpest === best.sharpest && length >= best.length))) continue;
+      if (shapeKind(halves[0]) === "narration" || shapeKind(halves[1]) === "narration") continue;
+      best = found;
+    }
+  }
+  return best;
+};
+
 // The neck of a bubble the user says is double (a second click in a bubble
 // that got one line), whatever the gates above think: the dent cut, chords
 // to the frame allowed, each chamber a fifth of the bubble at least. Null
 // when no chord removes any dent.
 export const forcedCut = (contours, click, bounds) => {
-  const best = dentCut(contours, click, { smooth: 0.02, frame: true, minPart: 0.2 });
+  const dent = dentCut(contours, click, { smooth: 0.02, frame: true, minPart: 0.2 });
+  // A seam from a corner straight to a straight side is preferred when it
+  // explains FRAME_FORCED_SHARE of the dents the dent cut explains: under a
+  // frame the dent cut may run to a corner of the frame, across a lobe
+  const frame = frameNeck(contours, click, true);
+  const best = frame && (!dent || frame.explained >= dent.explained * FRAME_FORCED_SHARE) ? frame : dent;
   return best ? cutAt(best, click, bounds, Math.min(bounds.right - bounds.left, bounds.bottom - bounds.top)) : null;
 };
 

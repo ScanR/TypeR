@@ -59,6 +59,26 @@ for (const file of ["app_src/host.js", "uxp-src/host/photoshop.js"]) {
   vm.createContext(failure); vm.runInContext(fn, failure);
   assert.throws(() => failure._smartConvertToParagraph(), /could not preserve/);
   assert.equal(attempts, 3);
+  // Hanging punctuation: the paragraph is 3 px wider than the point text in
+  // any frame, with the same height. The lines are kept: no failure, and the
+  // ink goes back where the smart paste composed it. (It used to fail the
+  // whole paste, which then fell back to the classic one.)
+  let boxed = false, grown = 0;
+  const hangingMoves = [];
+  const hanging = { _currentDisplayedTextPixels: () => 24,
+    _currentLayerBox: () => ({ left: boxed ? 14 : 10, top: 20, width: boxed ? 103 : 100, height: 40 }),
+    _changeToBoxText: () => { boxed = true; },
+    _setTextBoxSize: () => { grown++; }, _moveLayer: (x, y) => hangingMoves.push([x, y]) };
+  vm.createContext(hanging); vm.runInContext(fn, hanging); hanging._smartConvertToParagraph();
+  assert(grown >= 1, "the frame is enlarged before the difference is taken for hanging punctuation");
+  assert.deepStrictEqual(hangingMoves, [[-4, 0]]);
+  // A taller paragraph is a wrapped line, however small the change in width
+  let wrapped = false;
+  const taller = { _currentDisplayedTextPixels: () => 24,
+    _currentLayerBox: () => ({ left: 10, top: 20, width: wrapped ? 98 : 100, height: wrapped ? 70 : 40 }),
+    _changeToBoxText: () => { wrapped = true; }, _setTextBoxSize: () => {}, _moveLayer: () => assert.fail("wrapped lines must not be committed") };
+  vm.createContext(taller); vm.runInContext(fn, taller);
+  assert.throws(() => taller._smartConvertToParagraph(), /could not preserve/);
   const unchanged = { _currentDisplayedTextPixels: () => 24,
     _currentLayerBox: () => ({ left: 10, top: 20, width: 100, height: 40 }),
     _changeToBoxText() {}, _setTextBoxSize() { assert.fail("unchanged ink needs no resize"); },

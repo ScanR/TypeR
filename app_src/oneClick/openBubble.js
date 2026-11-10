@@ -9,7 +9,7 @@
 // chamber in a local crop. The CEP host reads no pixels: an open bubble
 // falls back to the classic paste there.
 
-import { area, box, contains, convexHull, flatten, shapeKind, simplify } from "./geometry";
+import { area, bodyBounds, box, contains, convexHull, fillTone, flatten, polygonContour, shapeKind, simplify } from "./geometry";
 import { subpathsFromDescriptor } from "./bubblePlan";
 
 // The selection spans the page: the wand leaked out of the bubble
@@ -392,3 +392,425 @@ export const openPlan = (input, mask, prior, options = {}) => {
     selection,
   };
 };
+
+/* ---------- Local region: a leaking click that isolates no chamber ---------- */
+
+// The click still says where the text goes: a bubble open on a gap wider than
+// the recovery closes, a bubble drawn with strokes that do not meet, or text
+// set on the bare page. Both hosts read the outline of the selection inside a
+// disc around the click (one work path), and the region is found here, on a
+// grid: no pixels are needed, so the Legacy host takes this route too.
+
+// Radius of that disc: a share of the page's width (of a single page when
+// the document is a spread)
+const LOCAL_REACH = 0.18;
+const LOCAL_SIDES = 48;
+// Opening radii tried, as shares of the recovery's contraction radius
+const LOCAL_RADII = [0, 0.2, 0.4, 0.7, 1];
+// An enclosed piece of ink this long (share of the disc's radius) is no speck
+const LOCAL_HOLE = 0.25;
+
+export const localWindow = (page, click) => {
+  const radius = Math.round(Math.max(80, Math.min(page.width, page.height * 0.72) * LOCAL_REACH));
+  const polygon = [];
+  for (let i = 0; i < LOCAL_SIDES; i++) {
+    const angle = (i / LOCAL_SIDES) * 2 * Math.PI;
+    polygon.push([
+      Math.max(0, Math.min(page.width, Math.round(click.x + radius * Math.cos(angle)))),
+      Math.max(0, Math.min(page.height, Math.round(click.y + radius * Math.sin(angle)))),
+    ]);
+  }
+  return { radius, polygon };
+};
+
+// 3-4 chamfer distance to the zero cells, in place. The grid's border counts
+// as zero unless it is free (the distance to a set inside the grid).
+const chamfer = (dist, gw, gh, freeBorder) => {
+  for (let y = 0; y < gh; y++) {
+    for (let x = 0; x < gw; x++) {
+      const i = y * gw + x;
+      if (!dist[i]) continue;
+      const edge = !x || !y || x === gw - 1 || y === gh - 1;
+      if (edge && !freeBorder) {
+        dist[i] = 3;
+        continue;
+      }
+      let d = dist[i];
+      if (x && dist[i - 1] + 3 < d) d = dist[i - 1] + 3;
+      if (y) {
+        if (dist[i - gw] + 3 < d) d = dist[i - gw] + 3;
+        if (x && dist[i - gw - 1] + 4 < d) d = dist[i - gw - 1] + 4;
+        if (x + 1 < gw && dist[i - gw + 1] + 4 < d) d = dist[i - gw + 1] + 4;
+      }
+      dist[i] = d;
+    }
+  }
+  for (let y = gh - 1; y >= 0; y--) {
+    for (let x = gw - 1; x >= 0; x--) {
+      const i = y * gw + x;
+      if (!dist[i]) continue;
+      let d = dist[i];
+      if (x + 1 < gw && dist[i + 1] + 3 < d) d = dist[i + 1] + 3;
+      if (y + 1 < gh) {
+        if (dist[i + gw] + 3 < d) d = dist[i + gw] + 3;
+        if (x && dist[i + gw - 1] + 4 < d) d = dist[i + gw - 1] + 4;
+        if (x + 1 < gw && dist[i + gw + 1] + 4 < d) d = dist[i + gw + 1] + 4;
+      }
+      dist[i] = d;
+    }
+  }
+};
+
+// Holes of the marked cells (unmarked cells the grid's border cannot reach
+// through unmarked ones): visit(queue, from, to) gets the cells of each
+const eachHole = (cells, mark, queue, gw, gh, visit) => {
+  const count = gw * gh;
+  mark.fill(0);
+  let head = 0;
+  let tail = 0;
+  const push = (i) => {
+    if (cells[i] || mark[i]) return;
+    mark[i] = 1;
+    queue[tail++] = i;
+  };
+  const spread = () => {
+    while (head < tail) {
+      const i = queue[head++];
+      const x = i % gw;
+      if (x > 0) push(i - 1);
+      if (x < gw - 1) push(i + 1);
+      if (i >= gw) push(i - gw);
+      if (i + gw < count) push(i + gw);
+    }
+  };
+  for (let x = 0; x < gw; x++) {
+    push(x);
+    push((gh - 1) * gw + x);
+  }
+  for (let y = 0; y < gh; y++) {
+    push(y * gw);
+    push(y * gw + gw - 1);
+  }
+  spread();
+  for (let start = 0; start < count; start++) {
+    if (cells[start] || mark[start]) continue;
+    const from = tail;
+    push(start);
+    spread();
+    visit(queue, from, tail);
+  }
+};
+
+// Keeps the marked cells the source sees: rays stopped by the first unmarked
+// cell
+const shade = (cells, mark, gw, gh, source) => {
+  const count = gw * gh;
+  mark.fill(0);
+  const sx = (source % gw) + 0.5;
+  const sy = Math.floor(source / gw) + 0.5;
+  const rays = Math.ceil(2 * Math.PI * Math.hypot(gw, gh));
+  for (let r = 0; r < rays; r++) {
+    const dx = Math.cos((r / rays) * 2 * Math.PI) * 0.5;
+    const dy = Math.sin((r / rays) * 2 * Math.PI) * 0.5;
+    let x = sx;
+    let y = sy;
+    for (;;) {
+      const cx = Math.floor(x);
+      const cy = Math.floor(y);
+      if (cx < 0 || cy < 0 || cx >= gw || cy >= gh || !cells[cy * gw + cx]) break;
+      mark[cy * gw + cx] = 1;
+      x += dx;
+      y += dy;
+    }
+  }
+  for (let i = 0; i < count; i++) cells[i] = cells[i] && mark[i] ? 1 : 0;
+};
+
+// Outer border of the marked cells (4-connected walk along the cell edges)
+const traceCells = (cells, gw, gh, startX, startY) => {
+  const on = (x, y) => x >= 0 && y >= 0 && x < gw && y < gh && cells[y * gw + x] === 1;
+  const points = [];
+  let x = startX;
+  let y = startY;
+  let dx = 1;
+  let dy = 0;
+  let guard = 0;
+  do {
+    points.push([x, y]);
+    x += dx;
+    y += dy;
+    const right = dx === 1 ? on(x, y) : dx === -1 ? on(x - 1, y - 1) : dy === 1 ? on(x - 1, y) : on(x, y - 1);
+    const left = dx === 1 ? on(x, y - 1) : dx === -1 ? on(x - 1, y) : dy === 1 ? on(x, y) : on(x - 1, y - 1);
+    if (left) {
+      const k = dx;
+      dx = dy;
+      dy = -k;
+    } else if (!right) {
+      const k = dx;
+      dx = -dy;
+      dy = k;
+    }
+  } while ((x !== startX || y !== startY || dx !== 1 || dy !== 0) && ++guard < 400000);
+  return points;
+};
+
+// The region of the click in the selection's outline inside the disc (raw:
+// the work path of the selection intersected with localWindow's polygon).
+// The selection is opened (eroded, then grown back from the part around the
+// click) at growing radii: the first radius that closes the region inside
+// the disc is a bubble and wins; when none does (bare page, wide gap), the
+// widest opening is kept, the cleanest body around the click.
+export const localRegion = (raw, page, click) => {
+  let subpaths;
+  try {
+    subpaths = subpathsFromDescriptor(raw, page.resolution);
+  } catch (error) {
+    return null;
+  }
+  const polygons = [];
+  for (let i = 0; i < subpaths.length; i++) {
+    if (subpaths[i].closed && subpaths[i].contour.length >= 3) polygons.push(flatten(subpaths[i].contour));
+  }
+  if (!polygons.length) return null;
+  const reach = localWindow(page, click).radius;
+  const stride = Math.max(2, Math.ceil((2 * reach) / 280));
+  const left = Math.floor(click.x - reach) - 2 * stride;
+  const top = Math.floor(click.y - reach) - 2 * stride;
+  const gw = Math.ceil((2 * reach) / stride) + 5;
+  const gh = gw;
+  const count = gw * gh;
+  // Even-odd fill of the outline (holes are subpaths too)
+  const inside = new Uint8Array(count);
+  const rows = [];
+  for (let y = 0; y < gh; y++) rows.push([]);
+  for (let p = 0; p < polygons.length; p++) {
+    const poly = polygons[p];
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      if (a[1] === b[1]) continue;
+      const from = Math.max(0, Math.ceil((Math.min(a[1], b[1]) - top) / stride - 0.5));
+      const to = Math.min(gh - 1, Math.floor((Math.max(a[1], b[1]) - top) / stride - 0.5));
+      for (let y = from; y <= to; y++) {
+        const scan = top + (y + 0.5) * stride;
+        if ((a[1] <= scan && b[1] > scan) || (b[1] <= scan && a[1] > scan)) rows[y].push(a[0] + ((scan - a[1]) * (b[0] - a[0])) / (b[1] - a[1]));
+      }
+    }
+  }
+  for (let y = 0; y < gh; y++) {
+    const xs = rows[y].sort((m, n) => m - n);
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      const from = Math.max(0, Math.ceil((xs[k] - left) / stride - 0.5));
+      const to = Math.min(gw - 1, Math.floor((xs[k + 1] - left) / stride - 0.5));
+      for (let x = from; x <= to; x++) inside[y * gw + x] = 1;
+    }
+  }
+  // Ink the selection encloses: the long pieces (a drawing, another bubble)
+  // are told from letters and specks here, before the opening merges the
+  // letters of a line into one piece
+  const queue = new Int32Array(count);
+  const seen = new Uint8Array(count);
+  const longInk = new Uint8Array(count);
+  const long = (reach * LOCAL_HOLE) / stride;
+  eachHole(inside, seen, queue, gw, gh, (cells, from, to) => {
+    let minX = gw;
+    let maxX = -1;
+    let minY = gh;
+    let maxY = -1;
+    for (let q = from; q < to; q++) {
+      const x = cells[q] % gw;
+      const y = (cells[q] - x) / gw;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    if (Math.max(maxX - minX, maxY - minY) + 1 < long) return;
+    for (let q = from; q < to; q++) longInk[cells[q]] = 1;
+  });
+  // Distance to the outside, in thirds of a cell (3-4 chamfer, close to a
+  // disc: an opening by a square would square the region's corners)
+  const dist = new Uint16Array(count);
+  for (let i = 0; i < count; i++) dist[i] = inside[i] ? 30000 : 0;
+  chamfer(dist, gw, gh);
+  const cx = Math.max(1, Math.min(gw - 2, Math.round((click.x - left) / stride - 0.5)));
+  const cy = Math.max(1, Math.min(gh - 2, Math.round((click.y - top) / stride - 0.5)));
+  // The click's cell, or the closest selected one when it sits on a line
+  let origin = -1;
+  let originScore = Infinity;
+  for (let dy = -3; dy <= 3; dy++) {
+    for (let dx = -3; dx <= 3; dx++) {
+      const i = (cy + dy) * gw + cx + dx;
+      if (cx + dx < 0 || cy + dy < 0 || cx + dx >= gw || cy + dy >= gh || !inside[i] || dx * dx + dy * dy >= originScore) continue;
+      originScore = dx * dx + dy * dy;
+      origin = i;
+    }
+  }
+  if (origin < 0) return null;
+  const contraction = openRecoveryFrame(page, click).radius;
+  const grown = new Uint8Array(count);
+  const back = new Uint16Array(count);
+  const tried = {};
+  let fallback = null;
+  for (let r = 0; r < LOCAL_RADII.length; r++) {
+    const radius = Math.round((contraction * LOCAL_RADII[r]) / stride);
+    if (tried[radius]) continue;
+    tried[radius] = true;
+    // The nearest cell around the click that survives the erosion, reached
+    // through the selection (never across a line)
+    let seed = -1;
+    let head = 0;
+    let tail = 1;
+    seen.fill(0);
+    queue[0] = origin;
+    seen[origin] = 1;
+    const limit = radius + 2;
+    while (head < tail && seed < 0) {
+      const i = queue[head++];
+      if (dist[i] > radius * 3) {
+        seed = i;
+        break;
+      }
+      const x = i % gw;
+      const y = (i - x) / gw;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
+          const n = ny * gw + nx;
+          if (seen[n] || !inside[n] || Math.max(Math.abs(nx - (origin % gw)), Math.abs(ny - Math.floor(origin / gw))) > limit) continue;
+          seen[n] = 1;
+          queue[tail++] = n;
+        }
+      }
+    }
+    if (seed < 0) continue;
+    // The eroded part around the seed, then grown back inside the selection
+    grown.fill(0);
+    head = 0;
+    tail = 1;
+    queue[0] = seed;
+    grown[seed] = 1;
+    while (head < tail) {
+      const i = queue[head++];
+      const next = [i - 1, i + 1, i - gw, i + gw];
+      for (let k = 0; k < 4; k++) {
+        const n = next[k];
+        if (n >= 0 && n < count && !grown[n] && dist[n] > radius * 3) {
+          grown[n] = 1;
+          queue[tail++] = n;
+        }
+      }
+    }
+    // Grown back by the same radius: the opening never leaves the selection
+    if (radius) {
+      for (let i = 0; i < count; i++) back[i] = grown[i] ? 0 : 30000;
+      chamfer(back, gw, gh, true);
+      for (let i = 0; i < count; i++) {
+        if (!grown[i] && inside[i] && back[i] <= radius * 3) {
+          grown[i] = 1;
+          queue[tail++] = i;
+        }
+      }
+    }
+    // Ink the region encloses: letters and specks are covered, as in a closed
+    // bubble (its outline alone is read); a long piece and what lies behind
+    // it, seen from the click, are left out
+    const source = grown[origin] ? origin : seed;
+    let blocked = false;
+    eachHole(grown, seen, queue, gw, gh, (cells, from, to) => {
+      for (let q = from; q < to; q++) {
+        if (longInk[cells[q]]) {
+          blocked = true;
+          return;
+        }
+      }
+      for (let q = from; q < to; q++) grown[cells[q]] = 1;
+    });
+    if (blocked) {
+      shade(grown, seen, gw, gh, source);
+      // Only the part still joined to the click
+      seen.fill(0);
+      head = 0;
+      tail = 1;
+      queue[0] = source;
+      seen[source] = 1;
+      while (head < tail) {
+        const i = queue[head++];
+        const x = i % gw;
+        if (x > 0 && grown[i - 1] && !seen[i - 1]) { seen[i - 1] = 1; queue[tail++] = i - 1; }
+        if (x < gw - 1 && grown[i + 1] && !seen[i + 1]) { seen[i + 1] = 1; queue[tail++] = i + 1; }
+        if (i >= gw && grown[i - gw] && !seen[i - gw]) { seen[i - gw] = 1; queue[tail++] = i - gw; }
+        if (i + gw < count && grown[i + gw] && !seen[i + gw]) { seen[i + gw] = 1; queue[tail++] = i + gw; }
+      }
+      for (let i = 0; i < count; i++) grown[i] = seen[i];
+    }
+    let minX = gw;
+    let maxX = -1;
+    let minY = gh;
+    let maxY = -1;
+    let open = false;
+    let first = -1;
+    let size = 0;
+    for (let i = 0; i < count; i++) {
+      if (!grown[i]) continue;
+      size++;
+      const x = i % gw;
+      const y = (i - x) / gw;
+      if (first < 0) first = i;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      // On the disc's arc (the page's edge is no leak)
+      if (Math.hypot(left + (x + 0.5) * stride - click.x, top + (y + 0.5) * stride - click.y) >= reach - 2.5 * stride) open = true;
+    }
+    if ((maxX - minX + 1) * stride < 24 || (maxY - minY + 1) * stride < 24 || size * stride * stride < 500) continue;
+    const border = traceCells(grown, gw, gh, first % gw, Math.floor(first / gw));
+    const polygon = simplify(border.map((point) => [left + point[0] * stride, top + point[1] * stride]), stride * 0.75);
+    if (polygon.length < 4) continue;
+    const region = { polygon, open, radius: radius * stride };
+    if (!open) return region;
+    fallback = region;
+  }
+  return fallback;
+};
+
+// The plan of a local region (same shape as bubblePlan's). tone: the fill
+// around the click ({ fill, rgb }), white when unknown. A region closed
+// inside the disc is a bubble and keeps its shape's kind; an open one is
+// no outline of the drawing, so it is laid out as a regular bubble.
+export const localPlan = (input, region, tone, options = {}) => {
+  const polygon = region && region.polygon;
+  if (!Array.isArray(polygon) || polygon.length < 4) throw new Error("Invalid local region");
+  const rgb = (tone && tone.rgb) || { red: 255, green: 255, blue: 255 };
+  const black = fillTone.isBlack(rgb);
+  let kind = region.open ? "regular" : shapeKind(polygon);
+  if (kind === "unknown") kind = "regular";
+  return {
+    documentId: input.documentId,
+    source: "wand",
+    open: true,
+    local: true,
+    click: { x: input.click.x, y: input.click.y },
+    selectionBounds: { ...input.selectionBounds },
+    kind,
+    connected: false,
+    neck: null,
+    contour: polygonContour(polygon),
+    cleanPolygon: polygon,
+    cleanupPolygon: null,
+    cleanupInset: black ? 5 : 3,
+    centerOnly: false,
+    autoClean: false,
+    cleanupSkipped: options.autoClean ? "Auto Clean skipped an open, page-spanning, or oversized selection." : null,
+    fill: tone && isFinite(tone.fill) ? tone.fill : Math.round((rgb.red + rgb.green + rgb.blue) / 3),
+    fillRGB: rgb,
+    textColor: black ? { red: 255, green: 255, blue: 255 } : null,
+    selection: { ...bodyBounds(polygon, box(polygon)), bubbleKind: kind },
+  };
+};
+
+// The disc itself: the region of a click nothing else could read
+export const discRegion = (page, click) => ({ polygon: localWindow(page, click).polygon, open: true, radius: 0 });

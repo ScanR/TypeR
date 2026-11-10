@@ -5378,8 +5378,9 @@ function _smartAtlasMetrics(path, count) {
         for (k = 0; k < keys.length; k++) {
           var point = points[p][keys[k]];
           if (!point || !point.horizontal || !point.vertical) continue;
-          if ((point.horizontal._unit !== "pixelsUnit" && point.horizontal._unit !== "distanceUnit") ||
-              (point.vertical._unit !== "pixelsUnit" && point.vertical._unit !== "distanceUnit")) return null;
+          // (one test a statement: see smartPasteCapture)
+          if (point.horizontal._unit !== "pixelsUnit" && point.horizontal._unit !== "distanceUnit") return null;
+          if (point.vertical._unit !== "pixelsUnit" && point.vertical._unit !== "distanceUnit") return null;
           var x = point.horizontal._unit === "distanceUnit" ? (point.horizontal._value * resolution) / 72 : point.horizontal._value;
           var y = point.vertical._unit === "distanceUnit" ? (point.vertical._value * resolution) / 72 : point.vertical._value;
           if (!isFinite(x) || !isFinite(y)) return null;
@@ -5453,7 +5454,24 @@ function smartPasteCapture(data) {
     } catch (sizeError) {}
   }
   var needsPath = !data || !data.trigger || data.trigger.source !== "rectangle";
+  // A click whose selection leaks into the page: its page-wide outline is not
+  // read. The panel asks again with the polygon of a disc around the click
+  // (data.local), and gets the outline of the selection inside it.
+  var local = data && data.local && data.local.length >= 3 ? data.local : null;
+  var trigger = data && data.trigger;
+  // One test a statement. ExtendScript gives && and || the same precedence
+  // and reads them left to right, and the build prints "a || (b && c)"
+  // without its parentheses: "true || false && false" is false there
+  // (scripts/testHostPrecedence.js).
+  var clicked = false;
+  if (trigger && trigger.source === "wand") clicked = typeof trigger.x === "number";
+  if (trigger && trigger.source === "manual" && trigger.lastSource === "wand") clicked = !!trigger.lastClick;
+  if (!local && needsPath && clicked && _smartPageLeak(selection, size.width, size.height)) {
+    result.leak = true;
+    return jamJSON.stringify(result);
+  }
   var read = _withTemporaryHistory("TypeR Read Bubble", function () {
+    if (local) _smartIntersectPolygon(local);
     // Histograms first: making the work path consumes the selection
     var histograms = _smartSelectionHistograms();
     var path = null;
@@ -5463,7 +5481,8 @@ function smartPasteCapture(data) {
     }
     return { path: path, histograms: histograms };
   }, { discardRedo: true });
-  if (!read || read.error || (needsPath && !read.path)) return jamJSON.stringify({ error: "shape" });
+  if (!read || read.error) return jamJSON.stringify({ error: "shape" });
+  if (needsPath && !read.path) return jamJSON.stringify({ error: "shape" });
   result.rawPath = read.path;
   result.histograms = read.histograms || [];
   return jamJSON.stringify(result);
@@ -5565,11 +5584,17 @@ function smartPasteMeasure(data) {
   return jamJSON.stringify(measured.replies);
 }
 
-function _smartSelectPolygon(polygon) {
-  var desc = new ActionDescriptor();
-  var reference = new ActionReference();
-  reference.putProperty(charID.Channel, charID.FrameSelect);
-  desc.putReference(charID.Null, reference);
+// The selection spans the page: the wand leaked out of the bubble (the rule
+// of isPageLeak, app_src/oneClick/openBubble.js)
+function _smartPageLeak(bounds, width, height) {
+  if (!bounds || !(width > 0) || !(height > 0)) return false;
+  var sw = bounds.right - bounds.left;
+  var sh = bounds.bottom - bounds.top;
+  if (sw >= width * 0.94 && sh >= Math.min(width * 0.7, height * 0.6)) return true;
+  return sh >= height * 0.96 && sw >= width * 0.6;
+}
+
+function _smartPolygonShape(polygon) {
   var shape = new ActionDescriptor();
   var points = new ActionList();
   for (var i = 0; i < polygon.length; i++) {
@@ -5579,7 +5604,24 @@ function _smartSelectPolygon(polygon) {
     points.putObject(charIDToTypeID("Pnt "), point);
   }
   shape.putList(charIDToTypeID("Pts "), points);
-  desc.putObject(charID.To, charIDToTypeID("Plgn"), shape);
+  return shape;
+}
+
+function _smartIntersectPolygon(polygon) {
+  var desc = new ActionDescriptor();
+  var reference = new ActionReference();
+  reference.putProperty(charID.Channel, charID.FrameSelect);
+  desc.putReference(charID.Null, reference);
+  desc.putObject(charID.To, charIDToTypeID("Plgn"), _smartPolygonShape(polygon));
+  executeAction(stringIDToTypeID("intersectWith"), desc, DialogModes.NO);
+}
+
+function _smartSelectPolygon(polygon) {
+  var desc = new ActionDescriptor();
+  var reference = new ActionReference();
+  reference.putProperty(charID.Channel, charID.FrameSelect);
+  desc.putReference(charID.Null, reference);
+  desc.putObject(charID.To, charIDToTypeID("Plgn"), _smartPolygonShape(polygon));
   executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
 }
 
@@ -5651,6 +5693,7 @@ function _smartConvertToParagraph() {
   if (!(size > 0)) size = 24;
   _changeToBoxText();
   var after = _currentLayerBox();
+  var enlarged = false;
   if (before && after) {
     var width = before.width + size * 2;
     for (var attempt = 0; attempt < 3 &&
@@ -5658,13 +5701,22 @@ function _smartConvertToParagraph() {
       _setTextBoxSize(width, before.height + size * 2);
       after = _currentLayerBox();
       if (!after) break;
+      enlarged = true;
       width *= 1.5;
     }
 
   }
-  // A failed fit must roll the smart commit back and use its visible classic
+  // In a frame large enough for every line, a paragraph text may still be a
+  // little wider than the point text with the same lines: "Roman Hanging
+  // Punctuation", on in many styles, lets a hyphen, a comma or a period at
+  // the end of a line hang out of the frame, which moves that line by part of
+  // the mark. That is no re-wrap: a line that wraps adds a line, and the
+  // height changes.
+  var hanging = !!(enlarged && before && after && Math.abs(before.height - after.height) <= 1.5 &&
+    Math.abs(before.width - after.width) <= Math.max(1.5, size * 0.5));
+  // A failed fit must roll the smart commit back and use its classic
   // fallback, never leave clipped text or silently switch to point text.
-  if (before && (!after || Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5)) {
+  if (before && !hanging && (!after || Math.abs(before.width - after.width) > 1.5 || Math.abs(before.height - after.height) > 1.5)) {
     throw new Error("Paragraph text could not preserve the composed lines");
   }
   if (before && after && (Math.abs(before.left - after.left) > 0.01 || Math.abs(before.top - after.top) > 0.01)) {

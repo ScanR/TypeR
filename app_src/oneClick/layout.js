@@ -438,8 +438,11 @@ export const planText = async (plan, payload, context) => {
   };
 };
 
-// How far the text may leave a chamber, as a share of its largest side
-const OVERFLOW_STEPS = [0.1, 0.25, 0.5, 1, 2];
+// How far the text may leave a chamber, as a share of its largest side. The
+// last steps are far beyond any bubble: a text set much too large for it (a
+// title style, a style in points on a 600 dpi page) is still placed on its
+// centre instead of going to the classic paste.
+const OVERFLOW_STEPS = [0.1, 0.25, 0.5, 1, 2, 4, 8, 16, 32, 64];
 
 const overflowPlan = (plan, ratio) => {
   const b = plan.selection;

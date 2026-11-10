@@ -10,13 +10,20 @@ const number = (value) => {
 
 const WAND_OPTIONS = ["tolerance", "contiguous", "antiAlias", "merged"];
 
+// A "set" event that changes the selection (a click, Select All, a loaded
+// selection), whatever made it
+export const targetsSelection = (descriptor) => {
+  if (!descriptor || typeof descriptor !== "object") return false;
+  const target = descriptor._target || descriptor.null || descriptor.target;
+  return /selection|fsel/i.test(JSON.stringify(target || ""));
+};
+
 // descriptor: the actionJSON of a "set" event. Returns null or
 // { source: "wand", x, y } | { source: "rectangle", left, top, right, bottom }
 // | { source: "lasso" }
 export const classifySelectionEvent = (descriptor, toolId) => {
   if (!descriptor || typeof descriptor !== "object") return null;
-  const target = descriptor._target || descriptor.null || descriptor.target;
-  if (!/selection|fsel/i.test(JSON.stringify(target || ""))) return null;
+  if (!targetsSelection(descriptor)) return null;
   const to = descriptor.to || descriptor.T || descriptor["T   "];
   if (!to || typeof to !== "object") return null;
   const kind = to._obj || to._class || "";

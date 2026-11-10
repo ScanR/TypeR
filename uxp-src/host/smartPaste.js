@@ -11,14 +11,14 @@
 const ps = require("photoshop");
 const photoshop = require("./photoshop");
 const { prepareSmartPaste } = require("../../app_src/oneClick/smartPaste");
-const { fillFromMask, triggerClick, captureSource } = require("../../app_src/oneClick/bubblePlan");
+const { fillFromMask, triggerClick, leakClick, captureSource } = require("../../app_src/oneClick/bubblePlan");
 const { solverInternals } = require("../../app_src/oneClick/solver");
 const openBubble = require("../../app_src/oneClick/openBubble");
 const { box: boxOfPolygon } = require("../../app_src/oneClick/geometry");
 const { resolveTypeRFontVariant } = require("../../app_src/fontVariantResolver.jsxinc");
 
 const host = photoshop._internals;
-const { play, get, modal, suspendHistory, jamText } = host;
+const { play, get, modal, suspendHistory, jamText, PhotoshopError } = host;
 
 const TARGET_LAYER = { _ref: "layer", _enum: "ordinal", _value: "targetEnum" };
 const TARGET_DOCUMENT = { _ref: "document", _enum: "ordinal", _value: "targetEnum" };
@@ -80,8 +80,10 @@ async function captureSelection(trigger, wants) {
     bottom: Math.min(page.height, selectionBounds.bottom + margin),
   };
   // A leaking wand click takes the open-bubble route below: no full-page read
-  const leakingClick = trigger.source !== "rectangle" && trigger.source !== "lasso" && !!triggerClick(trigger, page.resolution) &&
-    openBubble.isPageLeak(selectionBounds, page.width, page.height);
+  const leakPoint = trigger.source !== "rectangle" && trigger.source !== "lasso" && openBubble.isPageLeak(selectionBounds, page.width, page.height)
+    ? leakClick(trigger, page.resolution)
+    : null;
+  const leakingClick = !!leakPoint;
   let pixels = null;
   let components = 0;
   let pixelBounds = null;
@@ -151,8 +153,14 @@ async function captureSelection(trigger, wants) {
   const click = source === "wand" ? triggerClick(trigger, page.resolution) : null;
   // An open bubble (the wand leaked into the page): isolate the chamber
   let openPlan = null;
-  if (leakingClick && click) {
-    openPlan = await recoverOpenBubble(doc, page, click, selectionBounds, wants);
+  if (leakPoint) {
+    try {
+      openPlan = await recoverOpenBubble(doc, page, leakPoint, selectionBounds, wants);
+    } catch (error) {
+      // No chamber could be isolated: the region around the click takes the
+      // text, where the classic paste would centre it in the page
+      openPlan = await recoverLocalRegion(doc, page, leakPoint, selectionBounds, wants, trigger.source === "wand");
+    }
   }
   return {
     openPlan,
@@ -219,6 +227,63 @@ async function recoverOpenBubble(doc, page, click, selectionBounds, wants) {
   } catch (error) {
     throw Object.assign(error, { code: "openBubble" });
   }
+}
+
+// The fill around a point: the median of a few pixels
+async function toneAt(doc, page, point) {
+  const x = Math.max(0, Math.min(page.width - 1, Math.floor(point.x)));
+  const y = Math.max(0, Math.min(page.height - 1, Math.floor(point.y)));
+  const bounds = { left: Math.max(0, x - 3), top: Math.max(0, y - 3), right: Math.min(page.width, x + 4), bottom: Math.min(page.height, y + 4) };
+  let tone = null;
+  await modal("TypeR Read Open Bubble", async () => {
+    const result = await ps.imaging.getPixels({ documentID: doc.id, sourceBounds: bounds, componentSize: 8, colorSpace: "RGB" });
+    try {
+      const components = result.imageData.components;
+      const bytes = new Uint8Array(await result.imageData.getData({ chunky: true }));
+      const channels = [[], [], []];
+      for (let at = 0; at + components <= bytes.length; at += components) {
+        channels[0].push(bytes[at]);
+        channels[1].push(components === 1 ? bytes[at] : bytes[at + 1]);
+        channels[2].push(components === 1 ? bytes[at] : bytes[at + 2]);
+      }
+      if (!channels[0].length) return;
+      const mid = (list) => list.sort((a, b) => a - b)[Math.floor(list.length / 2)];
+      const rgb = { red: mid(channels[0]), green: mid(channels[1]), blue: mid(channels[2]) };
+      tone = { fill: Math.round((rgb.red + rgb.green + rgb.blue) / 3), rgb };
+    } finally {
+      result.imageData.dispose();
+    }
+  });
+  return tone;
+}
+
+// A leaking click with no chamber to isolate: the outline of the selection
+// inside a disc around the click (rolled back) gives the region the text is
+// laid out in (openBubble.localRegion); a click nothing can be read around
+// gets the disc itself
+async function recoverLocalRegion(doc, page, click, selectionBounds, wants, ownClick) {
+  const frame = openBubble.localWindow(page, click);
+  let raw = null;
+  try {
+    await modal("TypeR Read Open Bubble", (context) => suspendHistory(context, "TypeR Read Open Bubble", () => {
+      play({ _obj: "intersectWith", _target: [SELECTION], to: { _obj: "polygon", points: polygonPoints(frame.polygon) } });
+      raw = readWorkPath();
+    }, { rollback: true }));
+  } catch (error) {
+    raw = null;
+  }
+  let region = raw ? openBubble.localRegion(raw, page, click) : null;
+  // The click of a manual Paste is the last one seen: it must still lie in
+  // the selection
+  if (!region && !ownClick) throw Object.assign(new Error("The last click is outside the selection"), { code: "openBubble" });
+  if (!region) region = openBubble.discRegion(page, click);
+  let tone = null;
+  try {
+    if (ps.imaging && ps.imaging.getPixels) tone = await toneAt(doc, page, click);
+  } catch (error) {
+    tone = null;
+  }
+  return openBubble.localPlan({ documentId: doc.id, click, selectionBounds }, region, tone, { autoClean: !!wants.autoClean });
 }
 
 /* ======================== measure ======================== */
@@ -609,5 +674,5 @@ function smartPasteSelectionProbe() {
 
 module.exports = {
   methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot, restoreHistoryState, replaySelectionTrigger, ensureWandSampleAll, smartPasteSelectionProbe },
-  _internals: { captureSelection, measureRequests, commitSessions, inkFits },
+  _internals: { captureSelection, measureRequests, commitSessions, inkFits, failureCode },
 };
