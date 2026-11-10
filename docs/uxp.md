@@ -317,6 +317,15 @@ ExtendScript app.system, receives Photoshop's PID and exits with Photoshop.
 The host follows its state file and heartbeat, drops stale keys and retries a
 stopped reader. Input Monitoring permission for Photoshop is still required.
 
+Each Photoshop version has its own state file (`keys/state-<version>`), and a
+start stops the reader of its own Photoshop only (by the PID the reader got):
+two Photoshops open at once share TypeR's storage folder, and a reader reports
+the keys of the Photoshop that started it. The program itself stays at
+`keys/typer-keys`, the path macOS gave the permission to. The Windows reader
+still names one file for all (`state` in its own folder) and watches every
+Photoshop process: separating two Photoshops there needs a change in
+`typer-keys.cs`.
+
 Adobe reference: https://developer.adobe.com/uxp/guides/how-to/hybrid-plugins/build.
 
 ## Moving Legacy users to UXP

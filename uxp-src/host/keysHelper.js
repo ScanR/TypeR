@@ -57,6 +57,28 @@ let started = false;
 let accessPath = null;
 
 const shellQuote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
+const regexQuote = (value) => String(value).replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+
+// macOS: one report per Photoshop version. Two Photoshops open at once (2025
+// and 2026, a beta) share TypeR's storage folder, and a reader only reports
+// the keys of the Photoshop that started it: with one file for both, the
+// second start silenced the first Photoshop's shortcuts.
+// Windows: the reader names the file itself ("state" in its own folder) and
+// watches every Photoshop process (typer-keys.cs).
+const stateFileName = (platform, version) =>
+  platform === "win32" ? "state" : "state-" + (String(version || "").replace(/[^0-9A-Za-z.]+/g, "_") || "0");
+
+// The macOS reader's shell commands. $PPID is Photoshop: app.system runs the
+// command through /bin/sh, and the reader's last argument is that process id.
+const macCommands = (binaryPath, statePath) => ({
+  // Every reader, before its program is replaced: a running one keeps its
+  // file busy. Another Photoshop starts its own again by itself.
+  stopAll: "pkill -f " + shellQuote(regexQuote(binaryPath)) + " >/dev/null 2>&1",
+  // This Photoshop's reader only, whatever its state file (TypeR up to 3.0.4
+  // used one file for all): another Photoshop keeps its reader
+  stopOwn: "pkill -f " + shellQuote(regexQuote(binaryPath)) + '" .* $PPID\\$" >/dev/null 2>&1',
+  launch: "nohup " + shellQuote(binaryPath) + " " + shellQuote(statePath) + " $PPID >/dev/null 2>&1 &",
+});
 
 // "<state>|<beat>", with "|F" while a Photoshop tooltip holds the keyboard
 // focus (Windows reader); anything else (the "a" TypeR writes before the first
@@ -132,19 +154,17 @@ async function startMac(folder, statePath) {
     current = await files.readBinary(binaryPath);
   } catch (error) {}
   const same = current && current.length === bytes.length && current.every((value, index) => value === bytes[index]);
-  // Only TypeR's own reader, by its path: a running one keeps its file busy
-  // and must not write the state file next to its replacement
-  const stopOld = "pkill -f " + shellQuote(binaryPath) + " >/dev/null 2>&1";
+  // Only TypeR's own reader, by its path
+  const commands = macCommands(binaryPath, statePath);
   if (!same) {
-    await runSystem(stopOld);
+    await runSystem(commands.stopAll);
     await files.writeBinary(binaryPath, bytes);
   }
   const command = [
-    stopOld,
+    commands.stopOwn,
     "chmod 755 " + shellQuote(binaryPath),
     "xattr -d com.apple.quarantine " + shellQuote(binaryPath) + " >/dev/null 2>&1",
-    // $PPID is Photoshop: app.system runs the command through /bin/sh
-    "nohup " + shellQuote(binaryPath) + " " + shellQuote(statePath) + " $PPID >/dev/null 2>&1 &",
+    commands.launch,
   ].join("; ");
   await runSystem(command);
 }
@@ -232,7 +252,7 @@ async function start(onMouseLine, onFocusStolen, onFocusReleased) {
     await files.resolveFolders();
     folder = files.joinPath(files.getStorageRoot(), "keys");
     await files.ensureFolder(folder);
-    statePath = files.joinPath(folder, "state");
+    statePath = files.joinPath(folder, stateFileName(os.platform(), uxp.host && uxp.host.version));
     await files.writeText(statePath, "a");
     accessPath = statePath + ".access";
     if (os.platform() === "win32") focusPath = statePath + ".focus";
@@ -337,4 +357,4 @@ function diagnostics() {
   };
 }
 
-module.exports = { start, stop, access, needsPlatformPackage, diagnostics, requestFocusRelease, _internals: { parseState, createWatchdog, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };
+module.exports = { start, stop, access, needsPlatformPackage, diagnostics, requestFocusRelease, _internals: { parseState, createWatchdog, stateFileName, macCommands, STALE_MS, STALL_MS, RETRY_MS, MAX_ATTEMPTS, HEALTHY_MS } };

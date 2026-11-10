@@ -35,6 +35,43 @@ async function main() {
   assert.strictEqual(onWindows.needsPlatformPackage(), false, "A panel reload must not install it again");
   assert.strictEqual(loadKeysHelper("darwin").needsPlatformPackage(), false, "macOS keeps this package");
 
+  // macOS: each Photoshop version has its own report, and a start stops the
+  // reader of its own Photoshop only (the Windows reader names its file itself)
+  const mac = loadKeysHelper("darwin")._internals;
+  assert.strictEqual(mac.stateFileName("darwin", "27.7.0"), "state-27.7.0");
+  assert.notStrictEqual(mac.stateFileName("darwin", "26.11.0"), mac.stateFileName("darwin", "27.7.0"));
+  assert.strictEqual(mac.stateFileName("darwin", "27.7 (beta) x/y"), "state-27.7_beta_x_y");
+  assert.strictEqual(mac.stateFileName("darwin", undefined), "state-0");
+  assert.strictEqual(mac.stateFileName("win32", "27.7.0"), "state");
+  if (process.platform === "darwin") {
+    const { spawn, spawnSync } = require("child_process");
+    const work = fs.mkdtempSync(path.join(require("os").tmpdir(), "typer keys (test)+"));
+    const reader = path.join(work, "typer-keys");
+    fs.writeFileSync(reader, "#!/bin/sh\nsleep 30\n", { mode: 0o755 });
+    const commands = mac.macCommands(reader, path.join(work, "state-27.7.0"));
+    // The shell below is this test's child, as app.system's is Photoshop's
+    const start = (...args) => spawn(reader, args, { stdio: "ignore" });
+    const own = start(path.join(work, "state-27.7.0"), String(process.pid));
+    const ownLegacy = start(path.join(work, "state"), String(process.pid));
+    const other = start(path.join(work, "state-26.11.0"), "999999");
+    const alive = (child) => { try { process.kill(child.pid, 0); return child.exitCode === null && child.signalCode === null; } catch (error) { return false; } };
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 300));
+    try {
+      await settle();
+      spawnSync("/bin/sh", ["-c", commands.stopOwn]);
+      await settle();
+      assert.strictEqual(alive(own), false, "this Photoshop's reader stops");
+      assert.strictEqual(alive(ownLegacy), false, "and the one an earlier TypeR started for it");
+      assert.strictEqual(alive(other), true, "another Photoshop keeps its reader");
+      spawnSync("/bin/sh", ["-c", commands.stopAll]);
+      await settle();
+      assert.strictEqual(alive(other), false, "replacing the program stops every reader");
+    } finally {
+      [own, ownLegacy, other].forEach((child) => { try { child.kill("SIGKILL"); } catch (error) {} });
+      fs.rmSync(work, { recursive: true, force: true });
+    }
+  }
+
   const { needsPlatformPackage, _internals } = require("../uxp-src/host/keysAddon");
   assert.strictEqual(needsPlatformPackage(), false, "The Windows package must not replace itself");
 
