@@ -3436,22 +3436,6 @@
     opacity: 0.8;
 }
 
-.whats-new-link {
-    align-self: flex-start;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font-size: 11px;
-    text-decoration: underline;
-    opacity: 0.6;
-    cursor: pointer;
-
-    &:hover {
-        opacity: 0.9;
-    }
-}
-
 .whats-new-complete {
     display: flex;
     align-items: center;

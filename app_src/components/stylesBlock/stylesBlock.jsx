@@ -339,6 +339,8 @@ const getStyleDropLocation = (event) => {
 };
 
 const FolderTree = React.memo(function FolderTree(props) {
+  // One array for every sibling: a new one per item would re-render them all
+  const siblingFolderIds = React.useMemo(() => (props.folders || []).map((item) => item.id), [props.folders]);
   if (!props.folders || !props.folders.length) return null;
   return (
     <div
@@ -359,7 +361,7 @@ const FolderTree = React.memo(function FolderTree(props) {
           direction={props.direction}
           showQuickStyleSize={props.showQuickStyleSize}
           styleSizeStep={props.styleSizeStep}
-          siblingFolderIds={props.folders.map((item) => item.id)}
+          siblingFolderIds={siblingFolderIds}
           parentId={props.parentId}
           onOpenStyleContextMenu={props.onOpenStyleContextMenu}
           onOpenFolderContextMenu={props.onOpenFolderContextMenu}
@@ -437,6 +439,8 @@ const FolderItem = React.memo(function FolderItem(props) {
     setDropActive(false);
     setStyleDropTarget(null);
     const styleId = getDraggedStyleId(e);
+    // The dragged item may be unmounted by this move, before its dragend
+    currentDraggingStyleId = null;
     if (!styleId) return;
     props.dispatch({ type: "moveStyleToFolder", id: styleId, folderId: props.data.id || null });
   }, [props.dispatch, props.data.id, props.parentId, props.siblingFolderIds, folderDropEdge]);
@@ -488,6 +492,8 @@ const FolderItem = React.memo(function FolderItem(props) {
     (e, targetStyleId) => {
       if (!hasStyleDragData(e)) return;
       const draggedStyleId = getDraggedStyleId(e);
+      // The dragged item may be unmounted by this move, before its dragend
+      currentDraggingStyleId = null;
       if (!draggedStyleId) return;
       e.preventDefault();
       e.stopPropagation();
@@ -769,7 +775,11 @@ const StyleItem = React.memo(function StyleItem(props) {
   };
   const scheduleCloseQuickSize = () => {
     if (quickCloseTimeout.current) clearTimeout(quickCloseTimeout.current);
-    quickCloseTimeout.current = setTimeout(() => setQuickOpen(false), 150);
+    quickCloseTimeout.current = setTimeout(() => {
+      setQuickOpen(false);
+      // The field only blurs when it had the focus: +/- alone never clear it
+      setQuickSizeOverride(null);
+    }, 150);
     if (quickWrapRef.current && quickWrapRef.current.contains(document.activeElement)) {
       document.activeElement.blur();
     }

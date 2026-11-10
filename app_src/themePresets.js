@@ -268,7 +268,6 @@ const EDITOR_THEME_PRESETS = [
   },
 ];
 
-const DEFAULT_EDITOR_THEME_ID = "system";
 const CUSTOM_IMAGE_THEME_ID = "custom-image";
 const CUSTOM_THEME_PREFIX = "custom-";
 
@@ -398,7 +397,6 @@ const createCustomThemeFrom = (sourceId, label) => {
 
 export {
   EDITOR_THEME_PRESETS,
-  DEFAULT_EDITOR_THEME_ID,
   CUSTOM_IMAGE_THEME_ID,
   CUSTOM_THEME_PREFIX,
   getEditorThemePreset,

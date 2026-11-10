@@ -284,6 +284,13 @@ const baseState = () => ({
   client.applyHistorySnapshot({ documentId: 3, current: 30, states: [30, 31] }, getState, dispatch);
   assert.strictEqual(dispatched.filter((action) => action.type === "showFeatureTip").length, 1, "once per paste");
 
+  // A paste around the click of a leaking selection: every click on the page
+  // has that selection, so the next one is another text, not a second click
+  hostReplies.smartPaste = JSON.stringify({ ok: true, consumed: 1, open: true, history: { documentId: 3, before: 30, after: 31 }, selectionBounds: bubble, sessions: [{ styleId: "r" }] });
+  current = baseState();
+  assert.strictEqual(await client.smartPasteInSelection(getState, dispatch, { trigger: { source: "wand", x: 50, y: 60 } }), true);
+  assert.ok(!client.hasSplitCandidate(), "a leaking selection is not split by its next click");
+
   // Multi-bubble: every remembered selection is replayed then pasted
   assert.strictEqual(client.canSmartPasteStoredSelections([{ trigger: { source: "wand" } }, { trigger: { source: "rectangle" } }]), true);
   assert.strictEqual(client.canSmartPasteStoredSelections([{ trigger: { source: "wand" } }, {}]), false);

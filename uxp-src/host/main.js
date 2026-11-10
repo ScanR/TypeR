@@ -283,7 +283,14 @@ function readLocaleStrings() {
   const locales = mirrorFiles ? mirrorFiles.locales : {};
   let language = "auto";
   try {
-    language = JSON.parse(mirrorFiles.files.storage || "{}").language || "auto";
+    // The language is a setting of the active profile (app_src/profileStorage.js)
+    const stored = mirrorFiles.files;
+    let storage = "storage";
+    try {
+      const profile = "storage_profile_" + String(JSON.parse(stored.storage_profiles || "{}").activeProfileId || "");
+      if (profile !== "storage_profile_default" && typeof stored[profile] === "string") storage = profile;
+    } catch (registryError) {}
+    language = JSON.parse(stored[storage] || "{}").language || "auto";
   } catch (error) {}
   if (language === "auto") language = uxp.host.uiLocale || "en_US";
   const strings = parse(locales["locale/messages.properties"]);
@@ -395,10 +402,6 @@ const methods = Object.assign({}, photoshop.methods, {
   reloadUserFonts,
   getHotkeyPressed: () => keyboard.getState(),
   isHostAppFrontmost: () => true,
-  deleteFolder: (path) => files.removeTree(path).then(() => "OK", (error) => "ERROR: " + error.message),
-  openFolder: (path) => uxp.shell.openPath(path).then(() => "OK", (error) => "ERROR: " + error.message),
-  makeExecutable: () => "OK",
-  launchInstaller: (path) => uxp.shell.openPath(path).then(() => "OK", (error) => "ERROR: " + error.message),
 });
 
 // One host call at a time, each with a time limit (see evalScript.js)

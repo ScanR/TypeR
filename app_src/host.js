@@ -2173,7 +2173,9 @@ function _getLayerStroke(layerIndex) {
  *                          position is forced to "outer".
  */
 function _setLayerStroke(stroke) {
-  if (!stroke || stroke.enabled === false || (stroke.size <= 0 && stroke.enabled !== true)) return;
+  // One test a statement: ExtendScript gives && and || the same precedence
+  if (!stroke || stroke.enabled === false) return;
+  if (stroke.size <= 0 && stroke.enabled !== true) return;
 
   var d = new ActionDescriptor();
   var r = new ActionReference();
@@ -2589,8 +2591,10 @@ function _setActiveLayerText() {
     var targetPoint = _resolveStylePointText(dataStyle, isPoint);
     if (isPoint) _changeToBoxText();
     var oldTextParams = jamText.getLayerText();
-    // A style-only apply has no text of its own: each layer keeps its text
-    dataStyle = _scaleStyleForPunctuationOnlyText(baseStyle, dataText || oldTextParams.layerText.textKey);
+    // A style-only apply has no text of its own: each layer keeps its text.
+    // Each layer works on its own copy: the text ranges, the size and the
+    // anti-aliasing written below must not reach the next selected layer
+    dataStyle = _scaleStyleForPunctuationOnlyText(baseStyle ? _clone(baseStyle) : baseStyle, dataText || oldTextParams.layerText.textKey);
     if (payload.preserveActiveTextSize && dataStyle && oldTextParams.layerText.textStyleRange &&
         oldTextParams.layerText.textStyleRange[0] && oldTextParams.layerText.textStyleRange[0].textStyle) {
       _overrideStyleTextSize(dataStyle, oldTextParams.layerText.textStyleRange[0].textStyle.size);
@@ -4996,27 +5000,6 @@ function openFile(path, autoClose) {
   }
 }
 
-function deleteFolder(folderPath) {
-  try {
-    var folder = new Folder(folderPath);
-    if (folder.exists) {
-      // Recursively delete contents
-      var files = folder.getFiles();
-      for (var i = 0; i < files.length; i++) {
-        if (files[i] instanceof Folder) {
-          deleteFolder(files[i].fsName);
-        } else {
-          files[i].remove();
-        }
-      }
-      folder.remove();
-    }
-    return 'OK';
-  } catch (e) {
-    return 'ERROR: ' + e.message;
-  }
-}
-
 /* ================== Open in TypeR Studio ================== */
 
 // The open documents: [{ id, name, path, saved, active }]. An unsaved
@@ -5082,24 +5065,8 @@ function saveStudioDocuments(items) {
   return jamJSON.stringify(results);
 }
 
-function openFolder(folderPath) {
-  try {
-    var os = $.os.toLowerCase();
-    if (os.indexOf('win') !== -1) {
-      // Windows: open Explorer
-      app.system('explorer "' + folderPath.replace(/\//g, '\\') + '"');
-    } else {
-      // macOS: open Finder
-      app.system('open "' + folderPath + '"');
-    }
-    return 'OK';
-  } catch (e) {
-    return 'ERROR: ' + e.message;
-  }
-}
-
 /**
- * Collect font data from every text layer of a document (recursively).
+ * Collect font data from every text layer of the active document.
  * Returns an array of {layerName, antiAlias, typeUnit, paragraphStyle, stroke, runs}.
  */
 function _collectDocumentFontData(doc) {
@@ -5141,9 +5108,10 @@ function _collectDocumentFontData(doc) {
   try {
     hasBackground = getDocProperty(hasBackgroundId).getBoolean(hasBackgroundId);
   } catch (backgroundError) {}
-  // Layer indexes are 0-based when a background layer exists, 1-based otherwise
+  // numberOfLayers leaves the background out: index 0 is the background when
+  // there is one, the other layers are 1..numberOfLayers either way
   var firstIndex = hasBackground ? 0 : 1;
-  var lastIndex = hasBackground ? layerCount - 1 : layerCount;
+  var lastIndex = layerCount;
 
   var saveMeaningfulIds = jamEngine.meaningfulIds;
   var saveParseFriendly = jamEngine.parseFriendly;
@@ -5234,11 +5202,11 @@ function scanPsdFonts(path) {
     var layers = _collectDocumentFontData(doc);
     if (!wasOpen) {
       doc.close(SaveOptions.DONOTSAVECHANGES);
-      if (previousDoc) {
-        try {
-          app.activeDocument = previousDoc;
-        } catch (restoreError) {}
-      }
+    }
+    if (previousDoc && (!wasOpen || previousDoc !== doc)) {
+      try {
+        app.activeDocument = previousDoc;
+      } catch (restoreError) {}
     }
     return jamJSON.stringify({ file: file.fsName, layers: layers });
   } catch (scanError) {
@@ -5250,39 +5218,6 @@ function scanPsdFonts(path) {
     return jamJSON.stringify({ error: "scanFailed", file: path, message: scanError && scanError.message ? scanError.message : String(scanError) });
   } finally {
     app.displayDialogs = saveDialogs;
-  }
-}
-
-function makeExecutable(filePath) {
-  try {
-    var os = $.os.toLowerCase();
-    if (os.indexOf('mac') !== -1) {
-      app.system('chmod +x "' + filePath + '"');
-    }
-    return 'OK';
-  } catch (e) {
-    return 'ERROR: ' + e.message;
-  }
-}
-
-function launchInstaller(filePath) {
-  try {
-    var file = new File(filePath);
-    if (!file.exists) {
-      return 'ERROR: file not found';
-    }
-    // execute() opens the file with its default handler: a console window for
-    // .cmd on Windows, Terminal for an executable .command on macOS
-    var launched = file.execute();
-    if (launched) return 'OK';
-    var os = $.os.toLowerCase();
-    if (os.indexOf('mac') !== -1) {
-      app.system('open "' + file.fsName + '"');
-      return 'OK';
-    }
-    return 'ERROR: execute failed';
-  } catch (e) {
-    return 'ERROR: ' + e.message;
   }
 }
 

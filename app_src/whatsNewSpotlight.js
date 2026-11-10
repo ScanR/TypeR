@@ -181,13 +181,16 @@ const start = () => {
 
 // next: { key, candidates, marks, visit, stepId, reveal } or null
 export const setTourSpot = (next) => {
-  const key = next ? next.key : null;
+  // A step with nothing to point at is no spot: compared as such, or every
+  // call would look like a new target and notify the listener again
+  const usable = next && (next.candidates.length || next.visit) ? next : null;
+  const key = usable ? usable.key : null;
   if ((spot ? spot.key : null) === key) {
     // Same target: keep the state, take the fresh closures
-    if (next) spot = { ...next };
+    if (usable) spot = { ...usable };
     return;
   }
-  spot = next && (next.candidates.length || next.visit) ? { ...next } : null;
+  spot = usable ? { ...usable } : null;
   missing = false;
   missingSince = 0;
   scrolledTo = null;

@@ -15,8 +15,6 @@ const assetPath = getActiveProfileAssetPath("background");
 const MAX_STORED_SIZE = 2000;
 const STORED_QUALITY = 0.86;
 
-const DEFAULT_CROP = { zoom: 1, x: 0.5, y: 0.5 };
-
 let dataCache;
 
 const normalizeCrop = (raw) => {
@@ -136,7 +134,6 @@ const computeBackgroundLayout = (boxWidth, boxHeight, imageWidth, imageHeight, r
 };
 
 export {
-  DEFAULT_CROP,
   normalizeCrop,
   normalizeBackgroundImage,
   readBackgroundImageData,

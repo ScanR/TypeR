@@ -97,7 +97,16 @@ const typerPackage = ccx({ id: "com.scanr.typer", version: "3.0.0" });
   assert.strictEqual(migration.syncLegacyPanelName(nameNode, nameRoot), true);
   assert.strictEqual(fs.readFileSync(installedManifest, "utf8"), packagedManifest);
   assert.deepStrictEqual(fs.readdirSync(path.dirname(installedManifest)), ["manifest.xml"], "no temporary file left");
-  assert.strictEqual(migration.syncLegacyPanelName(nameNode, path.join(nameSandbox, "missing")), false, "a failure is not an error");
+  // The failure is logged on purpose: keep the expected one out of the output
+  const realWarn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args);
+  try {
+    assert.strictEqual(migration.syncLegacyPanelName(nameNode, path.join(nameSandbox, "missing")), false, "a failure is not an error");
+  } finally {
+    console.warn = realWarn;
+  }
+  assert.strictEqual(warnings.length, 1, "the failure is reported once");
   assert.strictEqual(migration.syncLegacyPanelName(null, nameRoot), false);
   fs.rmSync(nameSandbox, { recursive: true, force: true });
 

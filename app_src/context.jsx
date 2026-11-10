@@ -451,6 +451,10 @@ const baseReducer = (state, action) => {
         if (!storeFields.includes(field)) continue;
         if (field === "styles" && state.styles) {
           newState[field] = mergeImportedStyles(state.styles, action.data.styles, action.keepExistingStyles === true);
+        } else if (field === "folders" && action.keepExistingStyles === true && Array.isArray(state.folders) && Array.isArray(action.data.folders)) {
+          // The styles kept from the current library keep their folders
+          const importedIds = action.data.folders.map((folder) => folder.id);
+          newState.folders = action.data.folders.concat(state.folders.filter((folder) => !importedIds.includes(folder.id)));
         } else {
           newState[field] = action.data[field];
         }
@@ -1478,11 +1482,6 @@ const baseReducer = (state, action) => {
       break;
     }
 
-    case "resetUiLayout": {
-      newState.uiLayout = normalizeUiLayout(null);
-      break;
-    }
-
     case "deleteTab": {
       if (state.tabs.length <= 1) break;
       const index = state.tabs.findIndex((tab) => tab.id === action.id);
@@ -1710,13 +1709,18 @@ const baseReducer = (state, action) => {
   if (needsLineProcessing || lineIndexChanged) {
     newState.currentLine = newState.lines[newState.currentLineIndex] || null;
     if (!newState.currentLine || newState.currentLine.ignore) {
-      let newIndex = 0;
-      for (let line of newState.lines) {
-        if (!line.ignore) {
-          newIndex = line.rawIndex;
-          break;
-        }
+      // The nearest usable line, the following ones first: editing the current
+      // line must not send the user back to the top of the script
+      const lines = newState.lines;
+      const from = Math.max(0, Math.min(newState.currentLineIndex || 0, lines.length - 1));
+      let newIndex = -1;
+      for (let i = from; i < lines.length && newIndex < 0; i++) {
+        if (!lines[i].ignore) newIndex = lines[i].rawIndex;
       }
+      for (let i = from - 1; i >= 0 && newIndex < 0; i--) {
+        if (!lines[i].ignore) newIndex = lines[i].rawIndex;
+      }
+      if (newIndex < 0) newIndex = 0;
       newState.currentLine = newState.lines[newIndex] || null;
       newState.currentLineIndex = newIndex;
     }
@@ -1765,7 +1769,7 @@ const baseReducer = (state, action) => {
   }
   if (newState.currentStyle && newState.currentStyleId !== state.currentStyleId) {
     const folder = newState.currentStyle.folder || "unsorted";
-    if (!newState.openFolders.includes(folder)) newState.openFolders.push(folder);
+    if (!newState.openFolders.includes(folder)) newState.openFolders = newState.openFolders.concat(folder);
     if (action.type !== "setCurrentStyleId") {
       scrollToStyle(newState.currentStyleId);
     }
@@ -2041,5 +2045,4 @@ export {
   defaultUiLayout,
   normalizeUiLayout,
   normalizeSmartPasteMinScale,
-  normalizeSmartPasteHyphenation,
 };

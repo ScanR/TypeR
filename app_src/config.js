@@ -7,8 +7,6 @@ const config = {
   typerToolsUrl: "https://swirt.github.io/typertools/",
   authorName: "Sakushi & SeanR",
   authorUrl: "https://discord.gg/dsHn3xQQTC",
-  authorName2: "",
-  authorUrl2: "",
   exportFileName: "TypeR_Export",
   defaultPrefixColor: "#FFF3B0",
   checkUpdates: true,

@@ -22,8 +22,6 @@ const rectScale = (element) => {
 
 const clamp = (value, room) => Math.max(MARGIN, Math.min(value, room - MARGIN));
 
-export const isGuideDragging = () => dragging;
-
 // Inline position for modal.jsx, none while the guide keeps its default side
 export const getGuideStyle = () => {
   const position = session.guidePos;

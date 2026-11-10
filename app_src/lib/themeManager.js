@@ -162,6 +162,8 @@ function applyBackgroundLayer(preset) {
     window.addEventListener("resize", onBackgroundResize);
 }
 
+// The --editor-* variables set inline by the last preset
+var appliedEditorColors = [];
 
 function applyEditorTheme(id) {
     currentEditorTheme = normalizeEditorTheme(id);
@@ -169,6 +171,10 @@ function applyEditorTheme(id) {
     applyBackgroundLayer(preset);
     var mode = preset.mode;
     if (mode === "system") {
+        appliedEditorColors.forEach(function (key) {
+            setThemeProperty("--editor-" + key, null);
+        });
+        appliedEditorColors = [];
         if (currentAppSkinInfo) updateThemeWithAppSkinInfo(currentAppSkinInfo);
         return;
     }
@@ -180,7 +186,11 @@ function applyEditorTheme(id) {
     document.documentElement.setAttribute("data-editor-theme", preset.id);
 
     var colors = preset.colors || {};
-    Object.keys(colors).forEach(function (key) {
+    appliedEditorColors.forEach(function (key) {
+        if (!Object.prototype.hasOwnProperty.call(colors, key)) setThemeProperty("--editor-" + key, null);
+    });
+    appliedEditorColors = Object.keys(colors);
+    appliedEditorColors.forEach(function (key) {
         setThemeProperty("--editor-" + key, colors[key]);
     });
 }

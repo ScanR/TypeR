@@ -6,7 +6,7 @@ The customer's exact diagnostic build starts successfully on the local Photoshop
 27.7.0 / UXP `uxp-9.3.0-uxp` / Windows installation. The first baseline reached
 `app.ready` 899 ms after `host.bootstrap`.
 
-The test uses the JavaScript from `Releases/TypeR-DEBUG-Windows.zip`. Its hashes
+The test uses the JavaScript from `Releases/TypeR-DEBUG-Windows-EN.zip`. Its hashes
 match the customer's diagnostic:
 
 - `host.js`: `87d59edad3b67285ef42a9c3ac3d817aaaa8d7458d18dc9d1bfb6c78f5b32c8a`
@@ -65,13 +65,13 @@ Leave the service running. In another terminal at the repository root:
 node scripts/reproUxpStartup.js
 
 # Silent WebView, followed by restoring visibility and checking app.ready
-node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows.zip hidden hidden
+node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows-EN.zip hidden hidden
 
 # Other controls, run sequentially
-node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows.zip zero-height zero-height
-node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows.zip missing-page missing-page
-node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows.zip missing-bundle missing-bundle
-node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows.zip deny-local deny-local
+node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows-EN.zip zero-height zero-height
+node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows-EN.zip missing-page missing-page
+node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows-EN.zip missing-bundle missing-bundle
+node scripts/reproUxpStartup.js Releases/TypeR-DEBUG-Windows-EN.zip deny-local deny-local
 ```
 
 Each run takes about 25 seconds to cover the customer's 23-second capture window,

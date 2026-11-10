@@ -165,6 +165,7 @@ const TourModal = React.memo(function TourModal({ course }) {
     lines: state.lines,
     currentLineIndex: state.currentLineIndex,
     usedLineStyles: state.usedLineStyles,
+    images: state.images,
     styles: state.styles,
     currentStyleId: state.currentStyleId,
     currentStyle: state.currentStyle,

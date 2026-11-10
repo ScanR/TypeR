@@ -805,7 +805,7 @@ const StyleDetails = React.memo(function StyleDetails(props) {
           <div className="style-edit-props-label">
             <span>{locale.editStyleAutoleading}:</span>
           </div>
-          <input type="number" min={0} placeholder="120" value={paragStyle.autoLeadingPercentage ? parseInt(paragStyle.autoLeadingPercentage * 100) : 120} onChange={(e) => changeAutoleading(Number(e.target.value))} className="topcoat-text-input--large" />
+          <input type="number" min={0} placeholder="120" value={paragStyle.autoLeadingPercentage ? Math.round(paragStyle.autoLeadingPercentage * 100) : 120} onChange={(e) => changeAutoleading(Number(e.target.value))} className="topcoat-text-input--large" />
           <span className="style-edit-props-unit">%</span>
         </div>
       )}
@@ -884,7 +884,7 @@ const StyleDetails = React.memo(function StyleDetails(props) {
               <TbAlphabetArabic size={12} />
               <GiVerticalFlip size={12} />
             </div>
-            <input type="number" value={textStyle.markYDistFromBaseline || 100} onChange={(e) => changeProp("markYDistFromBaseline", Number(e.target.value) || 0)} className="topcoat-text-input--large" />
+            <input type="number" value={textStyle.markYDistFromBaseline ?? 100} onChange={(e) => changeProp("markYDistFromBaseline", Number(e.target.value) || 0)} className="topcoat-text-input--large" />
             <span className="style-edit-props-unit">{unit}</span>
           </div>
         </div>

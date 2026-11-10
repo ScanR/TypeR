@@ -2,6 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const babel = require('@babel/core');
 const root = path.resolve(__dirname, '../..');
+// Compiled sources, shared by every loader of the process: a suite that builds
+// many loaders (one context per case) would otherwise run Babel again each time
+const compiled = {};
 
 module.exports = function createLoader(stubs = {}) {
   const cache = {};
@@ -16,10 +19,11 @@ module.exports = function createLoader(stubs = {}) {
       new Function('module', 'exports', fs.readFileSync(filename, 'utf8')).call(script.exports, script, script.exports);
       return script.exports;
     }
-    const { code } = babel.transformSync(fs.readFileSync(filename, 'utf8') + '\n' + append, {
+    const key = filename + '\n' + append;
+    const { code } = compiled[key] || (compiled[key] = babel.transformSync(fs.readFileSync(filename, 'utf8') + '\n' + append, {
       filename, babelrc: false, configFile: false,
       presets: ['@babel/preset-react'], plugins: ['@babel/plugin-transform-modules-commonjs'],
-    });
+    }));
     const mod = { exports: {} };
     cache[filename] = mod;
     const localRequire = (name) => {

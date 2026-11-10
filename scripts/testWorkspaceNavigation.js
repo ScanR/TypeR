@@ -33,4 +33,18 @@ const cleaned = migrated.writes.map(([data]) => data).find((data) => 'multiTabEn
 assert.strictEqual(cleaned.uiLayout.visible.tabBar, false);
 ['multiTabEnabled', 'middleEast', 'pageLineColor', 'autoScrollStyle'].forEach((field) => assert.strictEqual(cleaned[field], undefined));
 assert.strictEqual(require('./helpers/loadContext')({}).writes.some(([data]) => 'multiTabEnabled' in data), false);
+// Editing the current line never sends the user back to the top of the script.
+{
+  const fresh = require('./helpers/loadContext')();
+  const script = ['One', 'Two', 'Three', 'Four', 'Five'];
+  let editing = fresh.reducer(fresh.initial, { type: 'setText', text: script.join('\n') });
+  editing = fresh.reducer(editing, { type: 'setCurrentLineIndex', index: 3 });
+  assert.strictEqual(editing.currentLine.rawText, 'Four');
+  const emptied = fresh.reducer(editing, { type: 'setText', text: ['One', 'Two', 'Three', '', 'Five'].join('\n') });
+  assert.strictEqual(emptied.currentLineIndex, 4, 'an emptied current line gives its place to the next usable line');
+  const shortened = fresh.reducer(editing, { type: 'setText', text: ['One', 'Two', ''].join('\n') });
+  assert.strictEqual(shortened.currentLineIndex, 1, 'past the end, the last usable line');
+  const blank = fresh.reducer(editing, { type: 'setText', text: '' });
+  assert.strictEqual(blank.currentLineIndex, 0);
+}
 console.log('Workspace navigation regression tests passed');

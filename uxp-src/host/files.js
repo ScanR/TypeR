@@ -261,6 +261,9 @@ async function listFolder(path) {
 // The panel's own files: everything the CEP panel wrote next to the extension
 const MIRRORED_FILE = /^(storage[A-Za-z0-9._-]*|\.typer-update-test\.json)$/;
 const isMirroredName = (name) => MIRRORED_FILE.test(name) && !/\.(tmp|old)-/.test(name);
+// Copies the panel sets aside and never reads back: storage.corrupt-<time>,
+// storage.before-import. They stay on disk, out of the panel's memory
+const isSetAsideName = (name) => /\.corrupt-|\.before-import$/.test(name);
 
 async function loadMirror(root) {
   const files = {};
@@ -270,7 +273,7 @@ async function loadMirror(root) {
   } catch (error) {
     return files;
   }
-  await Promise.all(names.filter(isMirroredName).map(async (name) => {
+  await Promise.all(names.filter((name) => isMirroredName(name) && !isSetAsideName(name)).map(async (name) => {
     try {
       files[name] = await readText(joinPath(root, name));
     } catch (error) {}
@@ -318,7 +321,8 @@ async function importCepStorage(root) {
     const files = await loadMirror(cepRoot);
     if (!files.storage && !files.storage_profiles) continue;
     await removeTree(staging);
-    const names = Object.keys(files).filter((name) => !/\.corrupt-|\.before-import$|^update-test/.test(name));
+    // Neither the set-aside copies (loadMirror) nor a Legacy update test
+    const names = Object.keys(files).filter((name) => name !== ".typer-update-test.json");
     for (const name of names) await writeText(joinPath(staging, name), files[name]);
     await writeTextAtomic(joinPath(staging, IMPORT_COMPLETE), JSON.stringify({ from: cepRoot, files: names }));
     return moveStagedImport(root);

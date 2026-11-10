@@ -8,7 +8,7 @@ const { unzipSync } = require('fflate');
 const root = path.resolve(__dirname, '..');
 const work = path.join(root, '.update-test', 'uxp-repro');
 const tools = path.join(root, '.update-test', 'uxp-tools', 'node_modules');
-const input = path.resolve(process.argv[2] || path.join(root, 'Releases/TypeR-DEBUG-Windows.zip'));
+const input = path.resolve(process.argv[2] || path.join(root, 'Releases/TypeR-DEBUG-Windows-EN.zip'));
 const tag = process.argv[3] || 'original';
 const scenario = process.argv[4] || 'baseline';
 if (!['baseline', 'zero-height', 'hidden', 'missing-page', 'missing-bundle', 'deny-local'].includes(scenario)) throw new Error('Unknown scenario');

@@ -41,4 +41,26 @@ const italicBase = resolveTypeRFontVariant(makeStyle("Example", "Example-Italic"
 assert.strictEqual(italicBase.fontPostScriptName, "Example-Bold");
 assert.strictEqual(italicBase.syntheticItalic, true);
 
+// A family with several heavy faces, listed as Photoshop does (by name)
+const face = (family, style) => ({ name: family + " " + style, postScriptName: family + "-" + style.replace(/\s/g, ""), family, style });
+const wide = ["Black", "Black Italic", "Bold", "Bold Italic", "Italic", "Regular", "SemiBold", "Semilight", "SemiCondensed", "DemiLight"].map((style) => face("Wide", style));
+const pick = (style, run) => resolveTypeRFontVariant(makeStyle("Wide", "Wide-" + style.replace(/\s/g, ""), style), run, wide);
+
+assert.strictEqual(pick("Regular", { bold: true }).fontStyleName, "Bold", "a bold run takes Bold, not the first heavy face listed");
+assert.strictEqual(pick("Regular", { bold: true, italic: true }).fontStyleName, "Bold Italic");
+assert.strictEqual(pick("Black", { italic: true }).fontStyleName, "Black Italic", "an italic run keeps the weight of its font");
+assert.strictEqual(pick("Regular", { italic: true }).fontStyleName, "Italic");
+
+// Light and condensed faces whose name holds "semi" or "demi" are not bold
+const light = ["Regular", "Semilight", "SemiCondensed", "DemiLight"].map((style) => face("Thin", style));
+const thin = resolveTypeRFontVariant(makeStyle("Thin", "Thin-Regular"), { bold: true }, light);
+assert.strictEqual(thin.fontStyleName, "Regular");
+assert.strictEqual(thin.syntheticBold, true, "no bold face: faux bold on the regular one");
+const demi = resolveTypeRFontVariant(makeStyle("Old", "Old-Book", "Book"), { bold: true }, [face("Old", "Book"), face("Old", "Demi")]);
+assert.strictEqual(demi.fontStyleName, "Demi", "a lone Demi is the bold face of its family");
+
+assert.strictEqual(resolveTypeRFontVariant(null, { bold: true }, fonts), null);
+const untouched = makeStyle();
+assert.strictEqual(resolveTypeRFontVariant(untouched, null, fonts), untouched);
+
 console.log("font variant resolver tests passed");

@@ -71,7 +71,6 @@ Each one fixes something the CEP host gets wrong in Photoshop 2026:
   failed or empty operation leaves no empty history state.
 - Text colors Photoshop reports as unit floats (`redFloat`…) are read and written as 0–255 RGB. The CEP
   host wrote them back empty, which made the size buttons fail on such layers ("program error").
-- FontScanR reads every layer of a document with a background layer; the CEP host missed the topmost.
 - Redundant commands are skipped: a temporary channel is only deleted when it exists, and the Middle
   East overrides are only set when the layer does not already have the values (each costs a relayout).
 
@@ -316,7 +315,6 @@ macOS keeps typer-keys.m, packed in native/typer-keys.json. It starts through
 ExtendScript app.system, receives Photoshop's PID and exits with Photoshop.
 The host follows its state file and heartbeat, drops stale keys and retries a
 stopped reader. Input Monitoring permission for Photoshop is still required.
-The old Windows C# reader and its base64 payload have been removed.
 
 Adobe reference: https://developer.adobe.com/uxp/guides/how-to/hybrid-plugins/build.
 

@@ -1071,5 +1071,4 @@ const FontViewer = () => {
   );
 };
 
-export { safeFileName, sortFamilies };
 export default FontViewer;

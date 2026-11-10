@@ -535,6 +535,7 @@ async function smartPaste(request) {
       history: done.history,
       cleanupSkipped: prepared.cleanupSkipped,
       selectionBounds: prepared.selectionBounds,
+      open: !!prepared.open,
       sessions: prepared.sessions.map((session) => ({ kind: session.plan.kind, role: session.role, styleId: session.styleId, size: session.text.size, tier: session.text.tier, hyphenated: session.text.hyphenated })),
     });
   } catch (error) {

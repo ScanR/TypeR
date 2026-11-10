@@ -2121,8 +2121,10 @@ function _setActiveLayerText(payload) {
     const targetPoint = _resolveStylePointText(dataStyle, isPoint);
     if (isPoint) _changeToBoxText();
     const oldTextParams = _getLayerText();
-    // A style-only apply has no text of its own: each layer keeps its text
-    dataStyle = _scaleStyleForPunctuationOnlyText(baseStyle, dataText || oldTextParams.layerText.textKey);
+    // A style-only apply has no text of its own: each layer keeps its text.
+    // Each layer works on its own copy: the text ranges, the size and the
+    // anti-aliasing written below must not reach the next selected layer
+    dataStyle = _scaleStyleForPunctuationOnlyText(baseStyle ? _clone(baseStyle) : baseStyle, dataText || oldTextParams.layerText.textKey);
     if (payload.preserveActiveTextSize && dataStyle && oldTextParams.layerText.textStyleRange &&
         oldTextParams.layerText.textStyleRange[0] && oldTextParams.layerText.textStyleRange[0].textStyle) {
       _overrideStyleTextSize(dataStyle, oldTextParams.layerText.textStyleRange[0].textStyle.size);
@@ -3973,8 +3975,7 @@ function _collectDocumentFontData() {
   }
   const hasBackground = _documentHasBackgroundLayer();
   // numberOfLayers leaves the background out: index 0 is the background when
-  // there is one, the other layers are 1..numberOfLayers either way (the CEP
-  // host stopped one short and missed the topmost layer of such documents)
+  // there is one, the other layers are 1..numberOfLayers either way
   const firstIndex = hasBackground ? 0 : 1;
   const lastIndex = layerCount;
 

@@ -275,14 +275,16 @@ const HotkeysListner = React.memo(function HotkeysListner() {
     }, intervalTime);
 
     const handleKeyDown = (e) => {
-      if (e.key === "Escape" && context.getState().modalType) {
+      if ((e.key === "Escape" || e.keyCode === 27) && context.getState().modalType) {
         e.preventDefault();
         requestModalClose(() => context.dispatch({ type: "setModal" }));
       }
       syncKeepSizeHeld(context, getDomModifierKeys(e));
       if (!e.repeat && !isBlockingModal(context.getState().modalType) && !isFormFieldActive() && getDomModifierKeys(e).length === 0 && (e.location === 3 || /^Numpad[1-9]$/.test(e.code || ''))) {
         const state = context.getState();
-        const styleId = getNumpadStyleId(state.styles, state.currentStyleId, [e.code || ('NUMPAD' + e.key)]);
+        // Chromium 41 (CC 2015-2017) has neither event.code nor event.key
+        const numpadKey = e.code || (e.key ? 'NUMPAD' + e.key : (e.keyCode >= 97 && e.keyCode <= 105 ? 'NUMPAD' + (e.keyCode - 96) : ''));
+        const styleId = getNumpadStyleId(state.styles, state.currentStyleId, [numpadKey]);
         if (styleId !== null) {
           e.preventDefault();
           context.dispatch({ type: 'setCurrentStyleId', id: styleId });

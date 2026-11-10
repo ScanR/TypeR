@@ -51,4 +51,14 @@ const chain = Array.from({ length: 20000 }, (_, i) => ({ id: 'n' + i, parentId: 
 const started = Date.now();
 assert.strictEqual(collectDescendantIds(chain, 'n0').length, 19999);
 assert(Date.now() - started < 1000, 'descendant collection must stay linear');
+// A settings import that keeps the current styles keeps their folders too
+{
+  const library = reducer(initial, { type: 'importStyleLibrary', folders: [{ id: 'mine', name: 'Mine' }, { id: 'sub', name: 'Sub', parentId: 'mine' }], styles: [{ ...style, id: 'kept', folder: 'sub' }] });
+  const incoming = { folders: [{ id: 'theirs', name: 'Theirs' }], styles: [{ ...style, id: 'new', folder: 'theirs' }] };
+  const merged = reducer(library, { type: 'import', data: incoming, keepExistingStyles: true });
+  assert.deepStrictEqual(merged.folders.map((folder) => folder.id).sort(), ['mine', 'sub', 'theirs']);
+  assert.strictEqual(merged.styles.find((item) => item.id === 'kept').folder, 'sub');
+  const replaced = reducer(library, { type: 'import', data: incoming, keepExistingStyles: false });
+  assert.deepStrictEqual(replaced.folders.map((folder) => folder.id), ['theirs'], 'a plain import still replaces the folders');
+}
 console.log('Library validation and round-trip tests passed');

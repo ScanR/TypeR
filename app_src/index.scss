@@ -81,7 +81,8 @@
   top: 0;
   transform: translateY(2px);
   transition: opacity 0.08s linear, transform 0.08s linear;
-  white-space: normal;
+  // Titles that hold two hints put each on its own line
+  white-space: pre-line;
   z-index: 100000;
 
   &.is-visible {
@@ -112,10 +113,6 @@
 .field-label {
   margin-bottom: 5px;
   font-size: 14px;
-}
-.field-mini-label {
-  margin-bottom: 5px;
-  font-size: 10px;
 }
 .field-input {
   INPUT {
@@ -166,15 +163,6 @@
   }
   LI + LI {
     margin-top: 0.3em;
-  }
-}
-
-.shortcut-field {
-  display: flex;
-  align-items: center;
-  BUTTON {
-    margin-left: 4px;
-    flex-shrink: 0;
   }
 }
 

@@ -20,9 +20,7 @@ assert.ok(files.includes("app_src/host.js"), "the host files are read from webpa
 
 const KNOWN = [
   "app_src/host.js _polygonScanlineSpan",
-  "app_src/host.js _setLayerStroke",
   "app_src/host.js _withTemporaryHistory",
-  "app_src/fontVariantResolver.jsxinc resolveTypeRFontVariant",
   "app_src/lib/jam/jamHelpers.jsxinc restoreDesc",
   "app_src/lib/jam/jamStyles.jsxinc restoreDesc",
   "app_src/lib/jam/jamText.jsxinc restoreDesc",

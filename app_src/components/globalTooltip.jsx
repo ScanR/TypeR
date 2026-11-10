@@ -6,7 +6,7 @@ const SHOW_DELAY = 300;
 const getTooltipTarget = (node) => {
   if (!node || node === document || node === window) return null;
   if (typeof node.closest !== "function") return null;
-  const target = node.closest("[title], [data-tooltip]");
+  const target = node.closest("[title], [data-tooltip], [data-typer-title]");
   if (!target || !document.body.contains(target)) return null;
   const text = target.getAttribute("data-tooltip") || target.getAttribute("title") || target.getAttribute("data-typer-title") || "";
   return text.trim() ? target : null;

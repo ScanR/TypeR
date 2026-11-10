@@ -41,6 +41,8 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
   tail by its seam or a tilted frame.
   Detection favours single bubbles: a wrong split costs more than a miss, which this gesture fixes. To change a threshold in `findCut`, rerun the outline benches and have a typesetter label every cut it adds or removes.
   The first line stays in the chamber clicked first.
+  A paste around the click of a leaking selection is never such a candidate (`open` in the paste's result): every
+  click on the page has that same selection, so the next one is another text.
   Undoing a one-line paste on click while the next line waits shows the tip about that second click, once
   (`singlePasteUndone`, tip `splitDoubleBubble`): it is what a user does when a double bubble got one line.
 - **Double bubbles under a panel frame**. A frame that clips a double bubble leaves one notch only, where the two

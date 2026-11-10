@@ -12,6 +12,9 @@ const installedDir = path.join(
   "typertools"
 );
 const port = Number(process.argv[2] || 17831);
+// The release offered is the version being built: the panel refuses a package
+// whose manifest is not the version of its release
+const version = require("../package.json").version;
 const folders = ["app", "CSXS", "icons", "locale"];
 
 if (!process.env.APPDATA || !fs.existsSync(installedDir)) {
@@ -41,7 +44,7 @@ for (const folder of folders) {
 }
 
 const marker = {
-  version: "3.0.0",
+  version,
   testId: `local-${Date.now()}`,
   builtAt: new Date().toISOString(),
 };
@@ -49,19 +52,19 @@ entries["app/update-test-marker.json"] = strToU8(JSON.stringify(marker, null, 2)
 
 entries["app/package.sha256"] = strToU8(Object.keys(entries).filter(name => name !== "app/package.sha256").sort().map(name => require('crypto').createHash('sha256').update(entries[name]).digest('hex') + '  ' + name).join('\n') + '\n');
 fs.mkdirSync(testDir, { recursive: true });
-const zipPath = path.join(testDir, "TypeR-3.0.0.zip");
+const zipPath = path.join(testDir, "TypeR.zip");
 fs.writeFileSync(zipPath, Buffer.from(zipSync(entries, { level: 6 })));
 
 const testConfigPath = path.join(installedDir, ".typer-update-test.json");
 fs.writeFileSync(testConfigPath, JSON.stringify({
   enabled: true,
   releasesUrl: `http://127.0.0.1:${port}/releases`,
-  currentVersion: "2.9.9",
+  currentVersion: "0.0.1",
   autoInstall: true,
 }, null, 2));
 
 const state = {
-  version: "3.0.0",
+  version,
   port,
   zipPath,
   installedDir,

@@ -174,5 +174,8 @@ module.exports = {
   stop: reader.stop,
   access: reader.access,
   diagnostics: reader.diagnostics,
+  // The reader asks the WebView for the focus itself (keysHelper.js): the
+  // addon has no such request, and main.js calls it for either module
+  requestFocusRelease: async () => false,
   _internals: { createReader, parseSnapshot, removeOldReader, POLL_MS, FOCUS_RETRY_MS },
 };

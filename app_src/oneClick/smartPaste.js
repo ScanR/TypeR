@@ -248,5 +248,7 @@ export const prepareSmartPaste = async (request, adapter) => {
     sessions,
     consumed: sessions.length,
     cleanupSkipped: plan.cleanupSkipped || null,
+    // The text sits around the click, in a selection that leaks into the page
+    open: !!plan.open,
   };
 };

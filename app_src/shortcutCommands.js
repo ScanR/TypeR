@@ -83,17 +83,20 @@ const nextAutoCenterMode = (mode) => {
   return AUTO_CENTER_CYCLE[(index + 1) % AUTO_CENTER_CYCLE.length];
 };
 
-// The paste options a new text layer is created with: the auto-centre mode
-// and, when it is on, the same frame fitting as Center
-const withAutoCenter = (ctx, options = {}) => ({
-  ...options,
-  autoCenter: ctx.state.autoCenterMode || "off",
-  resizeTextBox: !!ctx.state.resizeTextBoxOnCenter,
-});
-
 // Components pass a slice of the state: settings come from the store
 const fullState = (ctx) => (typeof ctx.getState === "function" ? ctx.getState : () => ctx.state);
 const smartPasteOn = (ctx) => fullState(ctx)().smartPaste === true;
+
+// The paste options a new text layer is created with: the auto-centre mode
+// and, when it is on, the same frame fitting as Center
+const withAutoCenter = (ctx, options = {}) => {
+  const state = fullState(ctx)();
+  return {
+    ...options,
+    autoCenter: state.autoCenterMode || "off",
+    resizeTextBox: !!state.resizeTextBoxOnCenter,
+  };
+};
 
 const pasteInSelection = (ctx, preferredOrder = [], options = {}) => {
   const storedSelections = ctx.state.storedSelections || [];

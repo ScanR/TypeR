@@ -250,6 +250,7 @@ export const runSmartPaste = async (request) => {
       history: done.history,
       cleanupSkipped: prepared.cleanupSkipped,
       selectionBounds: prepared.selectionBounds,
+      open: !!prepared.open,
       sessions: prepared.sessions.map((session) => ({ kind: session.plan.kind, role: session.role, styleId: session.styleId, size: session.text.size, tier: session.text.tier })),
     };
   } catch (error) {
@@ -495,6 +496,9 @@ const sameBounds = (a, b) => !!(a && b && ["left", "top", "right", "bottom"].eve
 export const rememberSinglePaste = (built, result, trigger) => {
   lastSingle = null;
   if (!trigger || trigger.source !== "wand" || !result || !result.ok || result.consumed !== 1 || built.lineIndexes.length < 2) return;
+  // A selection that leaks into the page is the same at every click: the next
+  // one, elsewhere on the page, is another text, not a second click
+  if (result.open) return;
   if (!result.history || result.history.before == null || result.history.after == null || !result.selectionBounds) return;
   lastSingle = { ...result.history, selectionBounds: result.selectionBounds, trigger, lineIndex: built.lineIndexes[0] };
 };

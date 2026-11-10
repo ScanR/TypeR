@@ -224,7 +224,9 @@ const downloadAndInstallUpdate = async (downloadUrl, onProgress, onComplete, onE
     onComplete && onComplete({ reloading: false });
   } catch (error) {
     console.error('Update failed:', error);
-    onError && onError(error.message || locale.updateFailed);
+    // A package that failed its checks must not be served again by "Retry"
+    if (cachedUpdateZip.url === downloadUrl) cachedUpdateZip = { url: null, promise: null };
+    onError && onError((error && error.message) || String(error || ""));
   }
 };
 
@@ -749,17 +751,6 @@ const setLayerTextFast = (text, layerSnapshotStyle, direction, callback = () => 
     if (error) nativeAlert(locale.errorNoTextLayer, locale.errorTitle, true);
     callback(!error);
   }));
-};
-
-const getCurrentSelection = (callback = () => {}) => {
-  csInterface.evalScript("getCurrentSelection()", (result) => {
-    const data = safeJsonParse(result);
-    if (data.error) {
-      callback(null);
-    } else {
-      callback(data);
-    }
-  });
 };
 
 const photoshopEventCallbacks = new Set();
@@ -1426,4 +1417,4 @@ const scanPsdFonts = (path, callback) => {
   );
 };
 
-export { flushStorageForReload, reloadApp, trackHostAction, msSinceHostAction, safeJsonParse, buildRichTextPayload, alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, baseLocale, openUrl, readStorage, writeToStorage, flushStorageWrite, retryStorageSave, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };
+export { flushStorageForReload, reloadApp, trackHostAction, msSinceHostAction, safeJsonParse, buildRichTextPayload, alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, baseLocale, openUrl, readStorage, writeToStorage, flushStorageWrite, retryStorageSave, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };

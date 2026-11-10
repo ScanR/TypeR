@@ -802,6 +802,7 @@ const linesInside = (session) => {
     settings: { distribute: true, hyphenation: "fr", minScale: 0.7 },
   }, adapterFor({ ...leaking, openPlan: localPlan }));
   assert.strictEqual(local.consumed, 1, "a local region takes one line");
+  assert.strictEqual(local.open, true, "the result says the selection leaks: its next click is another text");
   linesInside(local.sessions[0]);
   await assert.rejects(prepareSmartPaste({ trigger: { source: "manual" }, lines: [line("Texte.")], roleStyles: {}, settings: {} }, adapterFor(leaking)), (error) => error.code === "openBubble",
     "a leak without a click still falls back");

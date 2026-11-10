@@ -4,7 +4,8 @@ const path = require("path");
 
 const rootDir = path.resolve(__dirname, "..");
 const testDir = path.join(rootDir, ".update-test");
-const zipPath = path.resolve(process.argv[2] || path.join(testDir, "TypeR-3.0.0.zip"));
+const version = require("../package.json").version;
+const zipPath = path.resolve(process.argv[2] || path.join(testDir, "TypeR.zip"));
 const port = Number(process.argv[3] || 17831);
 const host = "127.0.0.1";
 const baseUrl = `http://${host}:${port}`;
@@ -37,26 +38,26 @@ const server = http.createServer((request, response) => {
   record("request", { method: request.method, url: request.url });
   if (request.url === "/health") {
     response.writeHead(200, { "Content-Type": "application/json" });
-    response.end(JSON.stringify({ ok: true, version: "3.0.0" }));
+    response.end(JSON.stringify({ ok: true, version }));
     return;
   }
   if (request.url === "/releases") {
     response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     response.end(JSON.stringify([{
-      tag_name: "3.0.0",
-      name: "TypeR 3.0.0 local update test",
+      tag_name: version,
+      name: `TypeR ${version} local update test`,
       draft: false,
       prerelease: false,
       published_at: new Date().toISOString(),
-      body_html: "<p>Test local de la mise à jour TypeR 3.0.0 — aucune release GitHub n’a été publiée.</p>",
+      body_html: `<p>Local test of the TypeR ${version} update: no GitHub release was published.</p>`,
       assets: [{
-        name: "TypeR-3.0.0.zip",
-        browser_download_url: `${baseUrl}/TypeR-3.0.0.zip`,
+        name: "TypeR.zip",
+        browser_download_url: `${baseUrl}/TypeR.zip`,
       }],
     }]));
     return;
   }
-  if (request.url === "/TypeR-3.0.0.zip") {
+  if (request.url === "/TypeR.zip") {
     const stat = fs.statSync(zipPath);
     response.writeHead(200, {
       "Content-Type": "application/zip",

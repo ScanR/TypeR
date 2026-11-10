@@ -162,6 +162,7 @@ const TextBlock = React.memo(function TextBlock() {
     images: state.images,
     autoClosePSD: state.autoClosePSD,
     autoScrollText: state.autoScrollText,
+    currentTabId: state.currentTabId,
   }));
   const direction = context.state.direction || "ltr";
   const markdownEnabled = context.state.interpretMarkdown !== false;

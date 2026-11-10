@@ -134,7 +134,7 @@ Project profiles keep styles, folders, settings, tabs, saved work and background
 
 Themes, custom colors and background images, interface scale, a panel layout you can edit element by element, and a footer that adapts to narrow panels. The interface comes in English, French, German, Spanish, Brazilian Portuguese, Russian, Turkish, Ukrainian, Vietnamese and Arabic, with left-to-right and right-to-left text.
 
-New here? A hands-on walkthrough and a What's new tour open from **Help** and **Settings → General**.
+New here? A hands-on walkthrough and a What's new tour open from **Help**.
 
 ## Install
 
@@ -163,7 +163,7 @@ On macOS, in **Terminal**:
 curl -fsSL https://raw.githubusercontent.com/ScanR/TypeR/master/get.sh | bash
 ```
 
-The installer finds your Photoshop and marks the version made for it as recommended. Choose with the arrow keys and press Enter. Creative Cloud is optional: without it, the plugin is installed directly and appears the next time Photoshop starts. With Creative Cloud, double-click the package for your system: [`TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx) on Windows or [`TypeR-UXP-mac.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP-mac.ccx) on macOS. Settings > Debug shows detected keys and reader errors. Users upgrading from UXP 3.0.0 should use the offline installer or the correct platform CCX for this first upgrade; its old updater does not distinguish platform packages.
+The installer finds your Photoshop and marks the version made for it as recommended. Choose with the arrow keys and press Enter. Creative Cloud is optional: without it, the plugin is installed directly and appears the next time Photoshop starts. With Creative Cloud, double-click the package for your system: [`UXP-Windows.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/UXP-Windows.ccx) on Windows or [`TypeR-UXP.ccx`](https://github.com/ScanR/TypeR/releases/latest/download/TypeR-UXP.ccx) on macOS. Users upgrading from UXP 3.0.0 should use the offline installer or the correct platform CCX for this first upgrade; its old updater does not distinguish platform packages.
 
 ### Coming from Legacy
 
@@ -195,7 +195,7 @@ TypeR checks for updates when it starts and installs them from the panel, or by 
 
 On Windows, close Photoshop before installing. The UXP installer updates existing TypeR copies inside Photoshop's `Plug-ins` folders as well as registered external copies, even when their version numbers match. It verifies every installed file before confirming success, preserves other plugins, and keeps backups outside Photoshop's plugin folders. An interrupted installation is recovered on the next run. Creative Cloud is not needed by this script. For a custom Photoshop location that is not detected, run `install_win.cmd -Uxp -PhotoshopPath "E:\My Photoshop"`.
 
-Windows installer regression tests run with `npm test`, or directly with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/testInstallWindows.ps1`. They use disposable fixtures and do not change Adobe installations. If present, `Releases/TypeR-UXP.ccx` is also verified.
+Windows installer regression tests run with `npm test`, or directly with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/testInstallWindows.ps1`. They use disposable fixtures and do not change Adobe installations. If present, `Releases/UXP-Windows.ccx` is also verified.
 
 </details>
 
@@ -204,7 +204,7 @@ Windows installer regression tests run with `npm test`, or directly with `powers
 
 Photoshop 2026 (v27) and later only include CEP support in their Intel code, so the Legacy version appears only when Photoshop runs with Rosetta. Prefer the new TypeR, which runs natively.
 
-For Legacy, recent macOS versions ignore Finder's **Open using Rosetta** option, so the installer creates a launcher in `~/Applications`, for example **Adobe Photoshop 2026 (TypeR)**. Put it in the Dock and use it instead of the usual Photoshop icon. TypeR is then under **Window → Extensions (Legacy) → TypeR**.
+For Legacy, recent macOS versions ignore Finder's **Open using Rosetta** option, so the installer creates a launcher in `~/Applications`, for example **Adobe Photoshop 2026 (TypeR)**. Put it in the Dock and use it instead of the usual Photoshop icon. TypeR is then under **Window → Extensions (Legacy) → TypeR (CEP)**.
 
 To repair an installation or recreate the launcher, close Photoshop and run from the extracted folder:
 

@@ -543,6 +543,25 @@ const session = createLoader({
 }
 
 {
+  // A step with nothing to point at (its line is on another tab) is set again
+  // at every render of the guide: the listener is told once, not each time,
+  // or its re-render would set the spot again without end
+  const spotlight = createLoader({
+    "./whatsNewGuide": { avoidRing: () => {} },
+    "./whatsNewSession": { whatsNewSession: { active: true, done: {} } },
+  })("app_src/whatsNewSpotlight.js");
+  global.window = { requestAnimationFrame: () => 1 };
+  let notified = 0;
+  spotlight.setTourSpotListener({ onMissing: () => { notified++; } });
+  spotlight.setTourSpot({ key: "paste:1", candidates: [{ selector: ".line" }] });
+  const before = notified;
+  for (let i = 0; i < 5; i++) spotlight.setTourSpot({ key: "pickLine:", candidates: [] });
+  assert.strictEqual(notified - before, 1, "an empty spot is one change, however often it is set");
+  spotlight.setTourSpotListener(null);
+  delete global.window;
+}
+
+{
   // offsetWidth rounds while getBoundingClientRect does not: read on the ring,
   // whose width comes from that scale, a fractional target shook it by several pixels
   const run = { active: true, done: {} };

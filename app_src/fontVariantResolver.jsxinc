@@ -3,11 +3,17 @@
     return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
   }
 
+  // "Semibold" and "Demibold" hold "bold"; a lone "Demi" is a demi-bold. "Semilight",
+  // "SemiCondensed" and "DemiLight" are not bold weights
   function getTraits(styleName) {
     var value = String(styleName || "").toLowerCase();
+    var bold = /(bold|black|heavy)/.test(value);
+    if (!bold && /demi/.test(value)) bold = !/demi[\s-]*light/.test(value);
     return {
-      bold: /(bold|demi|semi|black|heavy)/.test(value),
+      bold: bold,
       italic: /(italic|oblique|slanted)/.test(value),
+      // The style without its slant: "Bold Italic" and "Bold" share a weight
+      weight: value.replace(/italic|oblique|slanted/g, "").replace(/[^a-z0-9]+/g, ""),
     };
   }
 
@@ -53,7 +59,9 @@
   }
 
   function resolveTypeRFontVariant(textStyle, run, fonts) {
-    if (!textStyle || !run || (!run.bold && !run.italic)) return textStyle;
+    // One test a statement: ExtendScript gives && and || the same precedence
+    if (!textStyle || !run) return textStyle;
+    if (!run.bold && !run.italic) return textStyle;
     var records = getFontRecords(fonts);
     var base = findBaseFont(records, textStyle);
     var styleTraits = getTraits(textStyle.fontStyleName);
@@ -61,6 +69,9 @@
     var wantsBold = !!(run.bold || textStyle.syntheticBold || baseTraits.bold || styleTraits.bold);
     var wantsItalic = !!(run.italic || textStyle.syntheticItalic || baseTraits.italic || styleTraits.italic);
     var family = base ? base.family : normalize(textStyle.fontName);
+    // Among several bold faces, a bold run takes "Bold" rather than the first
+    // one listed ("Black"), and an italic run keeps the weight it had
+    var wantedWeight = run.bold && !baseTraits.bold ? "bold" : baseTraits.weight;
     var best = base;
     var bestScore = -1;
 
@@ -72,6 +83,7 @@
       var score = 0;
       if (wantsBold && candidate.traits.bold) score += run.bold ? 200 : 100;
       if (wantsItalic && candidate.traits.italic) score += run.italic ? 200 : 100;
+      if (candidate.traits.weight === wantedWeight) score += 10;
       if (candidate === base) score += 5;
       if (score > bestScore) {
         best = candidate;
