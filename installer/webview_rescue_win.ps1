@@ -336,7 +336,9 @@ $Package = Join-Path $KitRoot 'TypeR-UXP-debug.ccx'
 $Installer = Join-Path $PSScriptRoot 'install.ps1'
 if (-not $NoInstall -and (Test-Path -LiteralPath $Package) -and (Test-Path -LiteralPath $Installer)) {
     Add-Line $T.installing
-    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $Installer -Uxp -Silent -Package $Package 2>&1 | ForEach-Object { Add-Line "  install: $_" }
+    # The installer takes Photoshop's folder, not its executable: without it, a
+    # Photoshop only -PhotoshopPath could find is unknown to the installer too
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $Installer -Uxp -Silent -Package $Package -PhotoshopPath (Split-Path -Parent $Exe) 2>&1 | ForEach-Object { Add-Line "  install: $_" }
     Add-Line "Support build install exit code: $LASTEXITCODE"
 } else {
     Add-Line 'Support build not installed (missing package or -NoInstall): the installed TypeR is used as it is'
