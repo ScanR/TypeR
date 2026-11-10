@@ -133,17 +133,44 @@ done < <(
   mdfind "kMDItemCFBundleIdentifier == 'com.adobe.Photoshop'" 2>/dev/null
 )
 
+# Bytes of a file as lowercase hexadecimal: hex_at <file> <offset> <count>
+hex_at() { od -An -v -tx1 -j "$2" -N "$3" "$1" 2>/dev/null | tr -d ' \n'; }
+
 # CEP lives in Photoshop's own code, so check each architecture separately.
+# The Mach-O headers are read with od: lipo only exists with Apple's developer
+# tools, and without them macOS answers with a prompt to install them.
 slice_has_cep() {
-  local executable="$1" arch="$2" thin="$WORK/slice"
-  lipo -archs "$executable" 2>/dev/null | tr ' ' '\n' | grep -qx "$arch" || return 1
-  if lipo -info "$executable" 2>/dev/null | grep -q '^Non-fat'; then thin="$executable"
-  else lipo "$executable" -thin "$arch" -output "$thin" 2>/dev/null || return 1
-  fi
-  LC_ALL=C grep -q TCEPManager "$thin"
-  local status=$?
-  rm -f "$WORK/slice"
-  return $status
+  local executable="$1" arch="$2" magic type count entry step offset size i=0
+  case "$arch" in arm64) type=0100000c ;; x86_64) type=01000007 ;; *) return 1 ;; esac
+  magic="$(hex_at "$executable" 0 4)"
+  case "$magic" in
+    cffaedfe)
+      # One architecture: a little-endian header
+      [ "$(hex_at "$executable" 4 4)" = "${type:6:2}${type:4:2}${type:2:2}${type:0:2}" ] || return 1
+      [ "$(LC_ALL=C grep -c -F TCEPManager "$executable")" -gt 0 ]
+      return ;;
+    cafebabe) step=20 ;;
+    cafebabf) step=32 ;;
+    *) return 1 ;;
+  esac
+  count=$((16#$(hex_at "$executable" 4 4)))
+  while [ "$i" -lt "$count" ] && [ "$i" -lt 16 ]; do
+    entry=$((8 + i * step))
+    if [ "$(hex_at "$executable" "$entry" 4)" = "$type" ]; then
+      if [ "$step" -eq 20 ]; then
+        offset=$((16#$(hex_at "$executable" $((entry + 8)) 4)))
+        size=$((16#$(hex_at "$executable" $((entry + 12)) 4)))
+      else
+        offset=$((16#$(hex_at "$executable" $((entry + 8)) 8)))
+        size=$((16#$(hex_at "$executable" $((entry + 16)) 8)))
+      fi
+      # grep -c reads to the end: no broken pipe under pipefail
+      [ "$(tail -c +"$((offset + 1))" "$executable" | head -c "$size" | LC_ALL=C grep -c -F TCEPManager)" -gt 0 ]
+      return
+    fi
+    i=$((i + 1))
+  done
+  return 1
 }
 
 rosetta_available() { arch -x86_64 /usr/bin/true 2>/dev/null; }
@@ -153,7 +180,10 @@ rosetta_available() { arch -x86_64 /usr/bin/true 2>/dev/null; }
 create_launcher() {
   local app="$1" name="$2" executable="$3" launcher="$LAUNCHER_DIR/$2 (TypeR).app" script="$WORK/launcher.applescript"
   local escaped="${app//\\/\\\\}"; escaped="${escaped//\"/\\\"}"
-  local escaped_executable="${executable//\\/\\\\}"; escaped_executable="${escaped_executable//\"/\\\"}"
+  # pgrep reads a regular expression: "Adobe Photoshop (Beta)" is literal text
+  local escaped_executable
+  escaped_executable="$(printf '%s' "$executable" | sed 's/[][(){}.^$*+?|\\]/\\&/g')"
+  escaped_executable="${escaped_executable//\\/\\\\}"; escaped_executable="${escaped_executable//\"/\\\"}"
   cat > "$script" <<APPLESCRIPT
 set photoshopApp to "$escaped"
 set photoshopBinary to "$escaped_executable( |\$)"
