@@ -326,7 +326,7 @@ export const planText = async (plan, payload, context) => {
   const timing = { measure: 0, solve: 0 };
   const measure = async (edges, cache) => {
     const mark = now();
-    const result = await measureEdges(edges, { textProps: graphRef.graph.data.style.textProps, baseSize: graphRef.graph.baseSize, dpi, page, useAtlas: context.useAtlas }, context.measure, cache);
+    const result = await measureEdges(edges, { textProps: graphRef.graph.data.style.textProps, baseSize: graphRef.graph.baseSize, dpi: graphRef.graph.dpi, page, useAtlas: context.useAtlas }, context.measure, cache);
     timing.measure += now() - mark;
     return result;
   };
@@ -350,7 +350,7 @@ export const planText = async (plan, payload, context) => {
     const initial = await measure([...probes, ...spaces, ...singles], null);
     const cache = initial.cache;
     const estimated = estimateLineMetrics(graph, probes, spaces, cache);
-    const stylePx = (graph.baseSize * dpi) / 72;
+    const stylePx = (graph.baseSize * graph.dpi) / 72;
     const maxPx = policy.maxPx > 0 ? policy.maxPx : policy.smallest ? stylePx * (policy.minScale || 0.75) : stylePx;
     // Native measurements outlive a pass: later sizes reuse them
     const known = new Map();

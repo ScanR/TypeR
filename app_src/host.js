@@ -593,6 +593,15 @@ function _getTextLayerSize() {
   return _hostState.fallbackTextSize || 20;
 }
 
+// The unit that size is in: Photoshop's own type unit, not a style's
+function _getTextLayerUnit() {
+  try {
+    var unit = jamText.getLayerText().typeUnit;
+    if (_KNOWN_TYPE_UNITS[unit]) return unit;
+  } catch (e) {}
+  return "pointsUnit";
+}
+
 function _convertPixelToPoint(value) {
   return (parseInt(value) / activeDocument.resolution) * 72;
 }
@@ -5448,11 +5457,15 @@ function smartPasteCapture(data) {
     selectionBounds: { left: selection.left, top: selection.top, right: selection.right, bottom: selection.bottom },
     histograms: [],
     rawPath: null,
-    activeTextSize: null
+    activeTextSize: null,
+    activeTextUnit: null
   };
   if (data && data.keepSize) {
     try {
-      if (_layerIsTextLayer()) result.activeTextSize = _getTextLayerSize();
+      if (_layerIsTextLayer()) {
+        result.activeTextSize = _getTextLayerSize();
+        result.activeTextUnit = _getTextLayerUnit();
+      }
     } catch (sizeError) {}
   }
   var needsPath = !data || !data.trigger || data.trigger.source !== "rectangle";
@@ -5521,18 +5534,6 @@ function smartPasteMeasure(data) {
         var params = request.params;
         // The panel compares what an atlas and a single line cost here
         var started = new Date().getTime();
-        if (request.kind === "atlas" && params.typeUnit === "pixelsUnit") {
-          // The shared atlas generator expresses its 256px row advance in
-          // points. JAM honours typeUnit for leading too; pixel styles need
-          // that advance converted back to pixels on non-72dpi documents.
-          params = _clone(params);
-          var ranges = params.layerText.textStyleRange || [];
-          var scale = _getDocumentResolution() / 72;
-          for (var r = 0; r < ranges.length; r++) {
-            var style = ranges[r].textStyle;
-            if (style && typeof style.leading === "number") style.leading *= scale;
-          }
-        }
         var using = jamText.toLayerTextObject(params);
         if (!staging) {
           executeAction(charID.Make, jamEngine.jsonToActionDescriptor({

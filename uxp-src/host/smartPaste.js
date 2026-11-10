@@ -90,6 +90,7 @@ async function captureSelection(trigger, wants) {
   let mask = null;
   let rawPath = null;
   let activeTextSize = null;
+  let activeTextUnit = null;
   await modal("TypeR Read Bubble", async (context) => {
     // Local pixels and the selection mask: the fill and the cleanup checks
     if (ps.imaging && ps.imaging.getPixels && !leakingClick) {
@@ -111,7 +112,10 @@ async function captureSelection(trigger, wants) {
         if (maskResult) maskResult.imageData.dispose();
       }
     }
-    if (wants.keepSize && host._layerIsTextLayer()) activeTextSize = host._getTextLayerSize();
+    if (wants.keepSize && host._layerIsTextLayer()) {
+      activeTextSize = host._getTextLayerSize();
+      activeTextUnit = host._getTextLayerUnit();
+    }
     if (trigger.source === "rectangle" || leakingClick) return;
     // The selection's outline as a work path, read and rolled back: the
     // document (and any unsaved work path) is left untouched
@@ -175,6 +179,7 @@ async function captureSelection(trigger, wants) {
     fill,
     sample,
     activeTextSize,
+    activeTextUnit,
   };
 }
 
@@ -302,20 +307,6 @@ function measureBatch(commands) {
   return results;
 }
 
-function measureTextObject(request) {
-  let params = request.params;
-  if (request.kind === "atlas" && params.typeUnit === "pixelsUnit") {
-    // Shared atlases express row leading in points. JAM writes it using
-    // typeUnit: preserve the 256px row spacing at resolutions other than 72.
-    params = clone(params);
-    const scale = ps.app.activeDocument.resolution / 72;
-    for (const range of params.layerText.textStyleRange || []) {
-      if (range.textStyle && typeof range.textStyle.leading === "number") range.textStyle.leading *= scale;
-    }
-  }
-  return textObject(params);
-}
-
 async function measureRequests(requests) {
   const replies = new Array(requests.length).fill(null);
   if (!requests.length) return replies;
@@ -325,7 +316,7 @@ async function measureRequests(requests) {
       const request = requests[i];
       if (request.kind === "atlas") {
         try {
-          const using = measureTextObject(request);
+          const using = textObject(request.params);
           const commands = [
             staging ? { _obj: "set", _target: [TARGET_LAYER], to: using } : { _obj: "make", _target: [{ _ref: "textLayer" }], using },
             // Convert to shape: the outlines tell each row's ink bounds.
@@ -345,7 +336,7 @@ async function measureRequests(requests) {
         }
         continue;
       }
-      const using = measureTextObject(request);
+      const using = textObject(request.params);
       const results = measureBatch([
         staging ? { _obj: "set", _target: [TARGET_LAYER], to: using } : { _obj: "make", _target: [{ _ref: "textLayer" }], using },
         { _obj: "get", _target: [{ _property: "boundsNoEffects" }, TARGET_LAYER] },

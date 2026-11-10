@@ -101,9 +101,10 @@ assert.ok(result[0].bounds && result[1].metrics && result[2].bounds && result[3]
 assert.deepStrictEqual(mixed.calls, ['make', 'set', 'convert', 'make', 'set', 'convert']);
 assert.strictEqual(mixed.layerRemovals(), 1, 'The group cleanup removes the final atlas without a redundant layer deletion');
 assert.ok(JSON.stringify(result).length < 1000, 'The bridge receives metrics rather than thousands of Bezier points');
-const pixelAtlas = { ...atlas, params: { typeUnit: 'pixelsUnit', layerText: { textStyleRange: [{ textStyle: { leading: 256 * 72 / page.resolution } }] } } };
+// The engine writes a pixel style's row advance in pixels: the host passes it on
+const pixelAtlas = { ...atlas, params: { typeUnit: 'pixelsUnit', layerText: { textStyleRange: [{ textStyle: { leading: 256 } }] } } };
 assert.ok(makeHost().run([pixelAtlas])[0].metrics);
-assert.strictEqual(pixelAtlas.params.layerText.textStyleRange[0].textStyle.leading, 256 * 72 / page.resolution, 'Do not mutate the supplied atlas');
+assert.strictEqual(pixelAtlas.params.layerText.textStyleRange[0].textStyle.leading, 256, 'Do not mutate the supplied atlas');
 
 for (const failure of ['convert', 'path']) {
   const host = makeHost(failure);

@@ -326,10 +326,21 @@ export const applyTextColor = (data, color) => {
   return true;
 };
 
-// Build the graph of one translation. options: { dpi, textColor,
-// resolveRunStyle, allowHyphen, breakPoints, maxHyphenVariants }
+// The resolution a style's sizes follow. Photoshop honours the unit a style
+// was saved with: a size in pixels is that many pixels on every page (what
+// points are at 72 ppi), and a millimetre is 72 / 25.4 points.
+export const typeResolution = (textProps, resolution) => {
+  const unit = textProps && textProps.typeUnit;
+  if (unit === "pixelsUnit") return 72;
+  if (unit === "millimetersUnit") return (resolution * 72) / 25.4;
+  return resolution;
+};
+
+// Build the graph of one translation. options: { dpi (the page's), textColor,
+// resolveRunStyle, allowHyphen, breakPoints, maxHyphenVariants }. graph.dpi
+// is the resolution of the style's sizes (typeResolution), not the page's.
 export const compileGraph = (input, options) => {
-  const dpi = options.dpi;
+  const dpi = typeResolution(input.style.textProps, options.dpi);
   const data = clone(input);
   data.allowHyphen = !!options.allowHyphen;
   data.breakPoints = options.breakPoints;
@@ -449,7 +460,7 @@ export const composeText = (graph, choice, page) => {
   if (!variant) throw new Error("Invalid layout variant");
   const params = clone(graph.data.style.textProps);
   const lt = params.layerText;
-  const scale = (choice.size * 72) / page.resolution / graph.baseSize;
+  const scale = (choice.size * 72) / graph.dpi / graph.baseSize;
   let text = "";
   const map = [];
   for (let i = 0; i < choice.lines.length; i++) {

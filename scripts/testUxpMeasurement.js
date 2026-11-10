@@ -90,6 +90,7 @@ new Function('require', 'module', 'exports', fs.readFileSync(filename, 'utf8'))(
 const load = createLoader({ photoshop: ps, './photoshop': port.exports });
 const smart = load('uxp-src/host/smartPaste.js');
 const { atlasParams, atlasMetrics, lineParams, measureEdges, clearMetricCache } = load('app_src/oneClick/measureSpec.js');
+const { typeResolution } = load('app_src/oneClick/textGraph.js');
 const style = { typeUnit: 'pixelsUnit', layerText: {
   textStyleRange: [{ textStyle: { size: 20, fontPostScriptName: 'ArialMT' } }],
   paragraphStyleRange: [{ paragraphStyle: { alignment: 'center' } }],
@@ -133,7 +134,7 @@ const measure = async requests => {
     reset();
     doc.resolution = dpi;
     const styled = { ...style, typeUnit: unit };
-    const params = atlasParams(edges, styled, 20, dpi);
+    const params = atlasParams(edges, styled, 20, typeResolution(styled, dpi));
     const original = copy(params);
     const reply = await measure([{ kind: 'atlas', count: 3, params }]);
     assert.ok(atlasMetrics(reply[0].path, 3, doc), unit + ' atlas must keep separate rows at ' + dpi + ' dpi');

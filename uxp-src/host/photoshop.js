@@ -452,6 +452,15 @@ function _getTextLayerSize() {
   return _hostState.fallbackTextSize || 20;
 }
 
+// The unit that size is in: Photoshop's own type unit, not a style's
+function _getTextLayerUnit() {
+  try {
+    const unit = _getLayerText().typeUnit;
+    if (_KNOWN_TYPE_UNITS[unit]) return unit;
+  } catch (e) {}
+  return "pointsUnit";
+}
+
 function _getDocumentResolution() {
   return unitValue(get([{ _property: "resolution" }, TARGET_DOCUMENT]).resolution);
 }
@@ -4205,7 +4214,7 @@ module.exports = {
     play, get, modal, suspendHistory, jamText, PhotoshopError, _hostState, _getLayerStroke, _getLayerText, _setTextContentsOnly,
     // smart paste (uxp-src/host/smartPaste.js)
     _smartConvertToParagraph, _makeTextLayer, _applyMiddleEast, _changeToBoxText, _changeToPointText, _setLayerStroke, _getActiveLayerId,
-    _layerIsTextLayer, _getTextLayerSize, _getFontList,
+    _layerIsTextLayer, _getTextLayerSize, _getTextLayerUnit, _getFontList,
     _getCurrentTextLayerBounds, _getCurrentSelectionBounds, _getActiveHistoryIndex,
     // pure helpers, compared with host.js by scripts/testUxpHost.js
     _getHostDefaultStyle, _getHostDefaultStroke, _ensureStyle, _overrideStyleTextSize, _resolveStylePointText,

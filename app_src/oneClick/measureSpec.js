@@ -4,6 +4,9 @@
 // from the rendered bounds. The hosts only create the hidden layers and
 // read their bounds. Ported from MD TYPER's uxp-measure.js, with the
 // author's permission.
+//
+// "dpi" is the resolution of the style's sizes (typeResolution in
+// textGraph.js): 72 for a style in pixels, the page's for one in points.
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 

@@ -249,6 +249,48 @@ const linesInside = (session) => {
   assert.ok(Math.abs(kept22.sessions[0].text.size - 22) < 1e-6, "kept size " + kept22.sessions[0].text.size);
   linesInside(kept22.sessions[0]);
 
+  // Photoshop honours a style's unit: 22 px is 22 pixels on a 300 ppi page
+  // too, where 22 pt is 91.67 pixels. The measurement below does the same,
+  // for the sizes and for the row advance of an atlas.
+  const page300 = { ...page, resolution: 300 };
+  const unitMeasure = async (requests) => requests.map((request) => {
+    const lt = request.params.layerText;
+    const unitPx = request.params.typeUnit === "pixelsUnit" ? 1 : page300.resolution / 72;
+    const first = lt.textStyleRange[0].textStyle;
+    const sizePx = first.size * unitPx;
+    const rows = lt.textKey.split("\r").filter((row, index, all) => index < all.length - 1);
+    const box = (row, index) => {
+      const w = row.split("").reduce((sum, ch) => sum + CHAR(ch), 0) * sizePx;
+      const cy = page300.height / 2 + index * (request.kind === "atlas" ? first.leading * unitPx : 0);
+      return { left: page300.width / 2 - w / 2, right: page300.width / 2 + w / 2, top: cy - 0.72 * sizePx, bottom: cy + 0.06 * sizePx };
+    };
+    if (request.kind !== "atlas") return { bounds: box(rows[0], 0) };
+    return { metrics: rows.map((row, i) => {
+      const b = box(row, i);
+      const cy = page300.height / 2 + i * 256;
+      return { left: (b.left - page300.width / 2 - 1) / 64, right: (b.right - page300.width / 2 + 1) / 64, top: (b.top - cy - 1) / 64, bottom: (b.bottom - cy + 1) / 64 };
+    }) };
+  });
+  const unitPaste = async (unit, input) => {
+    clearMetricCache();
+    const styled = style("regular", 22);
+    styled.textProps.typeUnit = unit;
+    return (await prepareSmartPaste({
+      trigger: { source: "wand" }, lines: [line("Je ne pensais vraiment pas te revoir ici.", styled)], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.7 },
+    }, { capture: async () => ({ ...page300, documentId: 7, ...input }), measure: unitMeasure, useAtlas: true })).sessions[0];
+  };
+  const pixels300 = await unitPaste("pixelsUnit", narrowInput);
+  assert.strictEqual(pixels300.text.tier, "exact", "a style in pixels is as large on a 300 ppi page as on a 72 ppi one");
+  assert.ok(Math.abs(pixels300.text.size - 22) < 1e-6, "22 px stay 22 pixels: " + pixels300.text.size);
+  assert.strictEqual(pixels300.text.params.layerText.textKey, kept22.sessions[0].text.params.layerText.textKey, "with the same lines");
+  assert.ok(Math.abs(pixels300.text.params.layerText.textStyleRange[0].textStyle.size - 22) < 1e-6, "and the size is written in the style's unit");
+  linesInside(pixels300);
+  const scaledUp = ellipseNodes(600, 600, 95 * 300 / 72, 70 * 300 / 72);
+  const points300 = await unitPaste("pointsUnit", { source: "wand", click: { x: 600, y: 600 }, selectionBounds: boundsOf(geometry.flatten(scaledUp)), rawPath: pathOf([scaledUp]), fill: white });
+  assert.ok(Math.abs(points300.text.size - 22 * 300 / 72) < 1e-6, "22 pt are 91.67 pixels there: " + points300.text.size);
+  assert.ok(Math.abs(points300.text.params.layerText.textStyleRange[0].textStyle.size - 22) < 1e-6);
+  clearMetricCache();
+
   // A shrink stays as small as possible: the largest size that fits, not a
   // smaller one with a nicer silhouette (this one used to drop to 85%)
   const round = ellipseNodes(300, 300, 100, 100);
@@ -265,6 +307,13 @@ const linesInside = (session) => {
     trigger: { source: "wand" }, lines: [line("Bonjour.")], roleStyles: {}, settings: { keepSize: true },
   }, { ...adapterFor({ ...ovalInput, activeTextSize: 30 }) });
   assert.ok(Math.abs(kept.sessions[0].text.size - 30) < 1e-6, "keep size uses the active layer size");
+  // The active layer is in Photoshop's type unit, the style in its own: 15 pt
+  // on a 144 ppi page are 30 px for a style in pixels
+  const keptUnit = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Bonjour.")], roleStyles: {}, settings: { keepSize: true },
+  }, { ...adapterFor({ ...ovalInput, resolution: 144, activeTextSize: 15, activeTextUnit: "pointsUnit" }) });
+  assert.ok(Math.abs(keptUnit.sessions[0].text.size - 30) < 1e-6, "the kept size is converted to the style's unit: " + keptUnit.sessions[0].text.size);
+  assert.ok(Math.abs(keptUnit.sessions[0].text.params.layerText.textStyleRange[0].textStyle.size - 30) < 1e-6);
 
   // Punctuation only: the style's scale applies, and only to such a line
   const shouting = { ...style("regular", 24), punctuationOnlyScale: 3 };
