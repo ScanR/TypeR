@@ -179,6 +179,16 @@ const linesInside = (session) => {
   assert.strictEqual(single.sessions[0].text.params.layerText.paragraphStyleRange[0].paragraphStyle.alignment, "center");
   linesInside(single.sessions[0]);
 
+  // A double space typed in the script is a break like any other: the same
+  // line count and size as with single spaces
+  const doubled = ellipseNodes(600, 500, 95, 110);
+  const doubledInput = { source: "wand", click: { x: 600, y: 500 }, selectionBounds: boundsOf(geometry.flatten(doubled)), rawPath: pathOf([doubled]), fill: white };
+  const breaksOf = async (text) => {
+    const out = await prepareSmartPaste({ trigger: { source: "wand" }, lines: [line(text)], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.7 } }, adapterFor(doubledInput));
+    return { size: out.sessions[0].text.size, lines: out.sessions[0].text.params.layerText.textKey.split("\r").map((row) => row.replace(/ +/g, " ")) };
+  };
+  assert.deepStrictEqual(await breaksOf("Je ne pensais  vraiment pas te  revoir ici."), await breaksOf("Je ne pensais vraiment pas te revoir ici."), "double spaces break like single ones");
+
   // A small bubble shrinks the text, never below 70%
   const small = ellipseNodes(300, 300, 95, 70);
   const smallInput = { source: "wand", click: { x: 300, y: 300 }, selectionBounds: boundsOf(geometry.flatten(small)), rawPath: pathOf([small]), fill: white };

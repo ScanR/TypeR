@@ -190,9 +190,22 @@ const lineEdges = (variant, styles, maxLineChars, countOnly, limit) => {
     if (ch === "\r" || ch === "\n") {
       ends.push(i);
       starts.push(i + 1);
-    } else if ((ch === " " || ch === "\t") && !locked) {
-      ends.push(i);
-      starts.push(i + 1);
+    } else if (ch === " " || ch === "\t") {
+      // Several spaces in a row are one break: the line ends before the first
+      // and the next one starts after the last ("a  b" could not break at all)
+      let last = i;
+      let free = !locked;
+      while (last + 1 < n && (s.charAt(last + 1) === " " || s.charAt(last + 1) === "\t")) {
+        last++;
+        const at = map ? map[last] : last;
+        const after = map ? map[Math.min(n - 1, last + 1)] : last + 1;
+        if (!(styles[at] && styles[at].noBreak && styles[after] && styles[after].noBreak)) free = true;
+      }
+      if (free) {
+        ends.push(i);
+        starts.push(last + 1);
+      }
+      i = last;
     } else if (ch === "-" && i + 1 < n && !locked) {
       ends.push(i + 1);
       starts.push(i + 1);
