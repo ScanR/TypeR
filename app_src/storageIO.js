@@ -23,6 +23,8 @@ const clearWriteIssue = (path) => {
   const reason = issues.get(path)?.reason;
   if (reason === 'write' || reason === 'recovered') { issues.delete(path); notify(); }
 };
+// For a host that learns the outcome of a write later (the UXP file mirror)
+export const clearStorageWriteIssue = clearWriteIssue;
 const isMissing = (result, api) => result && (
   result.err === api.ERR_NOT_FOUND || result.err === 2 || result.err === 3
 );

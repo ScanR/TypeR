@@ -4,7 +4,8 @@
 // except where a CEP call was synchronous and a UXP one cannot be: file
 // dialogs and files outside TypeR's own storage return promises, and their
 // call sites await them (an await on CEP's plain result changes nothing).
-import { request, notify, on } from "./bridge";
+import { request, on } from "./bridge";
+import { reportStorageIssue, clearStorageWriteIssue } from "../../app_src/storageIO";
 
 const EXTENSION_ROOT = "/typer";
 const MIRRORED_FILE = /^(storage[A-Za-z0-9._-]*|\.typer-update-test\.json)$/;
@@ -93,6 +94,26 @@ export function installCepEnvironment(init) {
     (error) => ({ err: /no such file|could not find/i.test(String(error && error.message)) ? FS.ERR_NOT_FOUND : FS.ERR_UNKNOWN, data: "" })
   );
 
+  // A write to TypeR's own files is acknowledged before it reaches the disk.
+  // A failure that comes later is reported the way a CEP write failure is:
+  // the storage notice, which can be closed, retries and exports a recovery
+  // file. Until the disk takes the file again, its writes answer "failed",
+  // so the panel keeps the unsaved data and tries again by itself.
+  const failedWrites = new Map();
+  const persist = (name, path) => request("writeMirror", name, files[name]).then(() => {
+    if (!failedWrites.delete(name)) return;
+    clearStorageWriteIssue(path);
+    // The disk works again: the other files it refused go too
+    failedWrites.forEach((failure, other) => {
+      if (Object.prototype.hasOwnProperty.call(files, other)) persist(other, failure.path);
+    });
+  }, (error) => {
+    console.error("TypeR: storage write failed", error);
+    const detail = String((error && error.message) || error);
+    failedWrites.set(name, { path, detail });
+    reportStorageIssue(path, "write", "writeFailed " + detail);
+  });
+
   const fs = Object.assign({}, FS, {
     readFile(path, encoding) {
       const name = relativeName(path);
@@ -112,11 +133,9 @@ export function installCepEnvironment(init) {
         files[name] = String(data);
         // Persisted in the background; the panel reads its own writes back
         // from the mirror (storageIO verifies every write that way)
-        request("writeMirror", name, files[name]).catch((error) => {
-          console.error("TypeR: storage write failed", error);
-          notify("panelError", { text: "TypeR: " + ((error && error.message) || error) });
-        });
-        return { err: FS.NO_ERROR };
+        const failure = failedWrites.get(name);
+        persist(name, String(path));
+        return { err: failure ? failure.detail || FS.ERR_CANT_WRITE : FS.NO_ERROR };
       }
       return userFile(request("writeUserFile", String(path), String(data), encoding === ENCODING.Base64 ? "Base64" : "UTF-8"));
     },
@@ -126,6 +145,7 @@ export function installCepEnvironment(init) {
         if (!MIRRORED_FILE.test(name)) return { err: FS.ERR_NOT_FOUND };
         const existed = Object.prototype.hasOwnProperty.call(files, name);
         delete files[name];
+        if (failedWrites.delete(name)) clearStorageWriteIssue(String(path));
         if (existed) request("deleteMirror", name).catch(() => {});
         return { err: existed ? FS.NO_ERROR : FS.ERR_NOT_FOUND };
       }

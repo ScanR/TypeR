@@ -64,6 +64,35 @@ installCepEnvironment({
   assert.deepStrictEqual(fs.writeFile(root + "/storage", "{}"), { err: 0 });
   assert.deepStrictEqual(fs.readFile(root + "/storage"), { err: 0, data: "{}" }, "A write is read back at once (storageIO verifies it)");
   assert.deepStrictEqual(requests.pop(), { method: "writeMirror", args: ["storage", "{}"] });
+  // The disk refuses a write after the panel was told it went through: the
+  // storage notice says so (no banner outside the panel), the file answers
+  // "failed" while the disk refuses it, and the notice goes once it is saved
+  const { getStorageIssues } = load("app_src/storageIO.js");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const diskOk = replies.writeMirror;
+  const logError = console.error;
+  console.error = () => {};
+  replies.writeMirror = () => Promise.reject(new Error("disk full"));
+  assert.deepStrictEqual(fs.writeFile(root + "/storage", '{"a":1}'), { err: 0 }, "the failure is not known yet");
+  await settle();
+  assert.deepStrictEqual(getStorageIssues(), [{ path: root + "/storage", reason: "write", code: "writeFailed disk full" }]);
+  assert.strictEqual(fs.writeFile(root + "/storage", '{"a":2}').err, "disk full", "a file the disk refused answers failed");
+  assert.deepStrictEqual(fs.readFile(root + "/storage"), { err: 0, data: '{"a":2}' }, "its newest content stays readable");
+  fs.writeFile(root + "/storage_profiles.json", "{}");
+  await settle();
+  assert.strictEqual(getStorageIssues().length, 2);
+  replies.writeMirror = diskOk;
+  requests.length = 0;
+  assert.strictEqual(fs.writeFile(root + "/storage", '{"a":3}').err, "disk full", "still failed until the disk confirms");
+  await settle();
+  await settle();
+  console.error = logError;
+  assert.deepStrictEqual(getStorageIssues(), [], "one confirmed write also retries the other refused files");
+  assert.deepStrictEqual(requests.map((item) => item.args[0]), ["storage", "storage_profiles.json"]);
+  assert.deepStrictEqual(fs.writeFile(root + "/storage", "{}"), { err: 0 });
+  requests.pop();
+  assert.strictEqual(fs.deleteFile(root + "/storage_profiles.json").err, 0);
+  requests.pop();
   assert.strictEqual(fs.deleteFile(root + "/storage.bak").err, 0);
   assert.strictEqual(fs.deleteFile(root + "/storage.bak").err, fs.ERR_NOT_FOUND);
   assert.strictEqual(fs.writeFile(root + "/app/host.jsx", "x").err, fs.ERR_CANT_WRITE, "Only storage files can be written");
