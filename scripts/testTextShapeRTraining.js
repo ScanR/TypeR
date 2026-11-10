@@ -132,9 +132,20 @@ function testPhotoshopScan() {
   box.scanTextShapeRTraining('/pages/quote" and slash\\.psd');
   assert.deepStrictEqual(opened, ['/pages/quote" and slash\\.psd']);
   assert.strictEqual(app.activeDocument, original);
+  // The same page asked for under another spelling of its path (symbolic
+  // link, Unicode form): Photoshop answers the opening with the open
+  // document, which is the user's and must not be closed
+  original.id = 7;
+  const closedBefore = closed.length;
+  original.close = () => { throw new Error("The user's document was closed"); };
+  app.open = (file) => { opened.push(file.fsName); return original; };
+  assert.strictEqual(JSON.parse(box.scanTextShapeRTraining("/link/existing.psd")).entries.length, 93);
+  assert.strictEqual(duplicated, 3, "an open page found by its id is read from a duplicate");
+  assert.strictEqual(closed.length, closedBefore + 1, "only the duplicate is closed");
+  app.open = (file) => { opened.push(file.fsName); if (failOpen) throw new Error("Open failed"); return workDocument(); };
   failRead = true;
   assert.strictEqual(JSON.parse(box.scanTextShapeRTraining("/pages/new.psd")).error, "scanFailed");
-  assert.strictEqual(closed.length, 4, "A failed read still closes its temporary document without saving");
+  assert.strictEqual(closed.length, 5, "A failed read still closes its temporary document without saving");
   assert.strictEqual(app.activeDocument, original);
   assert.strictEqual(app.displayDialogs, "all");
   failRead = false;

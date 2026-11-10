@@ -3575,6 +3575,24 @@ function _readTextShapeRTrainingLayers() {
 
 // An empty path means the current page, including unsaved edits. A supplied
 // path reuses the open document when present, otherwise opens it without saving.
+// The open documents, by id. Photoshop answers the opening of a file it
+// already has with that document, however its path is written (symbolic
+// link, Unicode form): such a document is the user's and is never closed.
+function _openDocumentIds() {
+  var ids = {};
+  for (var i = 0; i < app.documents.length; i++) {
+    try { ids["id" + app.documents[i].id] = true; } catch (idError) {}
+  }
+  return ids;
+}
+
+function _wasAlreadyOpen(doc, openBefore) {
+  var id = null;
+  try { id = doc.id; } catch (idError) {}
+  if (id === undefined || id === null) return false;
+  return openBefore["id" + id] === true;
+}
+
 function scanTextShapeRTraining(path) {
   var previousDoc = null;
   var source = null;
@@ -3600,11 +3618,15 @@ function scanTextShapeRTraining(path) {
       if (!source) return jamJSON.stringify({ error: "document" });
     }
     app.displayDialogs = DialogModes.NO;
+    if (!source) {
+      var openBefore = _openDocumentIds();
+      var opened = app.open(file);
+      if (_wasAlreadyOpen(opened, openBefore)) source = opened;
+      else workDoc = opened;
+    }
     if (source) {
       app.activeDocument = source;
       workDoc = source.duplicate("TypeR Training Preview", false);
-    } else {
-      workDoc = app.open(file);
     }
     app.activeDocument = workDoc;
     _hostState.textShapeRTraining = { entries: [] };
@@ -5273,7 +5295,9 @@ function scanPsdFonts(path) {
     if (doc) {
       app.activeDocument = doc;
     } else {
+      var openBefore = _openDocumentIds();
       doc = app.open(file);
+      if (_wasAlreadyOpen(doc, openBefore)) wasOpen = true;
     }
     var layers = _collectDocumentFontData(doc);
     if (!wasOpen) {

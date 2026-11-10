@@ -2919,6 +2919,18 @@ function _findOpenDocumentByPath(path) {
   return null;
 }
 
+// The open documents' ids. Photoshop answers the opening of a file it already
+// has with that document, however its path is written (symbolic link, Unicode
+// form): such a document is the user's and is never closed.
+function _openDocumentIds() {
+  const ids = [];
+  const documents = ps.app.documents;
+  for (let index = 0; index < documents.length; index++) {
+    try { ids.push(documents[index].id); } catch (idError) {}
+  }
+  return ids;
+}
+
 function normalizeFsPath(path) {
   let value = String(path || "").replace(/^file:\/\//, "").replace(/^file:/, "");
   if (/^[A-Za-z]:[\\/]/.test(value) || value.indexOf("\\") !== -1) value = value.replace(/\//g, "\\").toLowerCase();
@@ -2969,12 +2981,16 @@ async function scanTextShapeRTraining(path) {
       let workDoc = null;
       try { previousDoc = ps.app.activeDocument; } catch (noDocument) {}
       try {
-        const source = path ? _findOpenDocumentByPath(path) : previousDoc;
+        let source = path ? _findOpenDocumentByPath(path) : previousDoc;
+        if (!source) {
+          const openBefore = _openDocumentIds();
+          const opened = await _openDocument(path);
+          if (openBefore.includes(opened.id)) source = opened;
+          else workDoc = opened;
+        }
         if (source) {
           ps.app.activeDocument = source;
           workDoc = await source.duplicate("TypeR Training Preview", false);
-        } else {
-          workDoc = await _openDocument(path);
         }
         ps.app.activeDocument = workDoc;
         const entries = await suspendHistory(context, "TypeR Read Training", () => _readTextShapeRTrainingLayers(workDoc));
@@ -4063,7 +4079,7 @@ async function scanPsdFonts(path) {
   try {
     return await modal("TypeR", async () => {
       let doc = _findOpenDocumentByPath(path);
-      const wasOpen = !!doc;
+      let wasOpen = !!doc;
       let previousDoc = null;
       try {
         previousDoc = ps.app.activeDocument;
@@ -4072,7 +4088,9 @@ async function scanPsdFonts(path) {
         if (doc) {
           ps.app.activeDocument = doc;
         } else {
+          const openBefore = _openDocumentIds();
           doc = await _openDocument(path);
+          if (openBefore.includes(doc.id)) wasOpen = true;
         }
         const layers = _collectDocumentFontData();
         if (!wasOpen) {
