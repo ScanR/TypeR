@@ -440,8 +440,13 @@ const SettingsModal = React.memo(function SettingsModal() {
     context.dispatch({ type: "setModal" });
   };
 
+  // What the discard confirmation leads to: closing, or the window a button
+  // of the settings opens in their place (export, FontScanR, update...)
+  const pendingLeaveRef = React.useRef(null);
+
   const close = () => {
     if (edited) {
+      pendingLeaveRef.current = null;
       setDiscardConfirmOpen(true);
       return;
     }
@@ -450,8 +455,27 @@ const SettingsModal = React.memo(function SettingsModal() {
   useModalClose(close);
 
   const confirmClose = () => {
+    const leave = pendingLeaveRef.current;
+    pendingLeaveRef.current = null;
     setDiscardConfirmOpen(false);
-    closeModal();
+    if (leave) leave();
+    else closeModal();
+  };
+
+  const cancelClose = () => {
+    pendingLeaveRef.current = null;
+    setDiscardConfirmOpen(false);
+  };
+
+  // Another window replaces the settings: unsaved edits are confirmed first,
+  // as they are when the settings are closed
+  const leaveSettings = (action) => {
+    if (edited) {
+      pendingLeaveRef.current = action;
+      setDiscardConfirmOpen(true);
+      return;
+    }
+    action();
   };
 
   const changePastePointText = (e) => {
@@ -1199,7 +1223,7 @@ const SettingsModal = React.memo(function SettingsModal() {
   };
 
   const exportSettings = () => {
-    context.dispatch({ type: "setModal", modal: "export" });
+    leaveSettings(() => context.dispatch({ type: "setModal", modal: "export" }));
   };
 
   // TextShapeR learning travels in its own file, on purpose separate from the
@@ -1256,13 +1280,13 @@ const SettingsModal = React.memo(function SettingsModal() {
     }
   }, []);
   const openUxpMigration = () => {
-    context.dispatch({ type: "setModal", modal: "uxpMigration", data: { forced: uxpMigration.forced } });
+    leaveSettings(() => context.dispatch({ type: "setModal", modal: "uxpMigration", data: { forced: uxpMigration.forced } }));
   };
 
   const checkUpdatesNow = () => {
     checkUpdate(config.appVersion).then((data) => {
       if (data) {
-        context.dispatch({ type: "setModal", modal: "update", data });
+        leaveSettings(() => context.dispatch({ type: "setModal", modal: "update", data }));
       } else {
         nativeAlert(locale.updateNoUpdate, locale.successTitle, false);
       }
@@ -1907,7 +1931,7 @@ const SettingsModal = React.memo(function SettingsModal() {
             <div className="fields">
               <div className="settings-group">
                 <div className="settings-group-title">{locale.settingsGroupImportExport || "Import/Export"}</div>
-                <FontScanPromo />
+                <FontScanPromo onOpen={leaveSettings} />
                 <div className="field">
                   <button type="button" className="topcoat-button--large" onClick={importSettings}>
                     <FaFileImport size={18} /> {locale.settingsImport}
@@ -2678,7 +2702,7 @@ const SettingsModal = React.memo(function SettingsModal() {
         {discardConfirmOpen && (
           <UnsavedChangesDialog
             onConfirm={confirmClose}
-            onCancel={() => setDiscardConfirmOpen(false)}
+            onCancel={cancelClose}
           />
         )}
       </div>
