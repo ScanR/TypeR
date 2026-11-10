@@ -24,8 +24,9 @@ Set-Location -LiteralPath $ScriptDir
 # --- 2. Extraction de la version (plus précis que findstr) ---
 $ManifestPath = Join-Path $ScriptDir "CSXS\manifest.xml"
 $ExtVersion = "Inconnue"
-if (Test-Path $ManifestPath) {
-    $Content = Get-Content $ManifestPath -Raw
+# -LiteralPath: a folder named "TypeR [3.0.4]" is not a wildcard pattern
+if (Test-Path -LiteralPath $ManifestPath) {
+    $Content = Get-Content -LiteralPath $ManifestPath -Raw
     if ($Content -match 'Extension Id="typer".*?Version="([^"]+)"') { $ExtVersion = $matches[1] }
 }
 
@@ -38,6 +39,8 @@ $msg_close    = "Photoshop is open: close it first."
 $msg_complete = "Installation completed."
 $msg_open     = "Open Photoshop and in the upper menu click the following: [Window] > [Extensions] > [TypeR (CEP)]"
 $msg_pause    = "Press Enter to continue..."
+$msg_missing  = "[ERROR] File not found: {0}"
+$msg_extract  = "Extract the whole archive: the 'installer' folder must stay next to 'CSXS', 'app', 'icons' and 'locale'."
 $msg_credits  = "TypeR developed by Sakushi & SeanR."
 $msg_typertools = "typertools, developed by Swirt: https://swirt.github.io/typertools/"
 $msg_discord  = "ScanR's Discord if you need help: https://discord.com/invite/Pdmfmqk"
@@ -67,6 +70,7 @@ $msg_status_newer = "Installed version: {old}, newer than this archive ({new})"
 $msg_choose_update = "Which version of TypeR do you want to update or install?"
 $msg_updated = "TypeR was updated: {old} → {new}"
 $msg_uxp_failed = "Installation failed. See the error above; no success was confirmed."
+$msg_uxp_damaged = "The download of TypeR is damaged: run this installer again."
 $msg_webview2_missing = "No Microsoft Edge WebView2 runtime was found on this computer: without it, Photoshop cannot display the new TypeR (nor its own Home screen). Install it from https://developer.microsoft.com/microsoft-edge/webview2/ then restart Photoshop."
 
 if ($Lang -eq "fr") {
@@ -74,6 +78,8 @@ if ($Lang -eq "fr") {
     $msg_complete = "Installation terminée."
     $msg_open     = "Ouvrez Photoshop et dans le menu supérieur cliquez sur : [Fenêtre] > [Extensions] > [TypeR (CEP)]"
     $msg_pause    = "Appuyez sur Entrée pour continuer..."
+    $msg_missing  = "[ERREUR] Fichier introuvable : {0}"
+    $msg_extract  = "Extrayez toute l'archive : le dossier 'installer' doit rester à côté de 'CSXS', 'app', 'icons' et 'locale'."
     $msg_credits  = "TypeR développé par Sakushi & SeanR."
     $msg_typertools = "typertools, développé par Swirt : https://swirt.github.io/typertools/"
     $msg_discord  = "Discord de ScanR si besoin d'aide : https://discord.com/invite/Pdmfmqk"
@@ -103,6 +109,7 @@ if ($Lang -eq "fr") {
     $msg_choose_update = "Quelle version de TypeR voulez-vous mettre à jour ou installer ?"
     $msg_updated = "TypeR a été mis à jour : {old} → {new}"
     $msg_uxp_failed = "L'installation a échoué. Consultez l'erreur ci-dessus ; aucun succès n'a été confirmé."
+    $msg_uxp_damaged = "Le téléchargement de TypeR est endommagé : relancez cet installateur."
     $msg_webview2_missing = "Aucun composant Microsoft Edge WebView2 n'a été trouvé sur cet ordinateur : sans lui, Photoshop ne peut pas afficher le nouveau TypeR (ni son écran d'accueil). Installez-le depuis https://developer.microsoft.com/microsoft-edge/webview2/ puis redémarrez Photoshop."
 }
 elseif ($Lang -eq "es") {
@@ -110,6 +117,8 @@ elseif ($Lang -eq "es") {
     $msg_complete = "Instalación completada."
     $msg_open     = "Abre Photoshop y en el menú superior haz clic en lo siguiente: [Ventana] > [Extensiones] > [TypeR (CEP)]"
     $msg_pause    = "Presiona Enter para continuar..."
+    $msg_missing  = "[ERROR] Archivo no encontrado: {0}"
+    $msg_extract  = "Extrae todo el archivo: la carpeta 'installer' debe quedar junto a 'CSXS', 'app', 'icons' y 'locale'."
     $msg_credits  = "TypeR desarrollado por Sakushi & SeanR."
     $msg_typertools = "typertools, desarrollado por Swirt: https://swirt.github.io/typertools/"
     $msg_discord  = "Discord de ScanR si necesitas ayuda: https://discord.com/invite/Pdmfmqk"
@@ -139,6 +148,7 @@ elseif ($Lang -eq "es") {
     $msg_choose_update = "¿Qué versión de TypeR quieres actualizar o instalar?"
     $msg_updated = "TypeR se ha actualizado: {old} → {new}"
     $msg_uxp_failed = "La instalación falló. Consulta el error anterior."
+    $msg_uxp_damaged = "La descarga de TypeR está dañada: vuelve a ejecutar este instalador."
     $msg_webview2_missing = "No se encontró el componente Microsoft Edge WebView2 en este equipo: sin él, Photoshop no puede mostrar el nuevo TypeR (ni su pantalla de inicio). Instálalo desde https://developer.microsoft.com/microsoft-edge/webview2/ y reinicia Photoshop."
 }
 elseif ($Lang -eq "pt") {
@@ -146,6 +156,8 @@ elseif ($Lang -eq "pt") {
     $msg_complete = "Instalação concluída."
     $msg_open     = "Abra o Photoshop e no menu superior clique em: [Janela] > [Extensões] > [TypeR (CEP)]"
     $msg_pause    = "Pressione Enter para continuar..."
+    $msg_missing  = "[ERRO] Arquivo não encontrado: {0}"
+    $msg_extract  = "Extraia todo o arquivo: a pasta 'installer' deve ficar ao lado de 'CSXS', 'app', 'icons' e 'locale'."
     $msg_credits  = "TypeR desenvolvido por Sakushi & SeanR."
     $msg_typertools = "typertools, desenvolvido por Swirt: https://swirt.github.io/typertools/"
     $msg_discord  = "Discord do ScanR se precisar de ajuda: https://discord.com/invite/Pdmfmqk"
@@ -175,6 +187,7 @@ elseif ($Lang -eq "pt") {
     $msg_choose_update = "Qual versão do TypeR você quer atualizar ou instalar?"
     $msg_updated = "O TypeR foi atualizado: {old} → {new}"
     $msg_uxp_failed = "A instalação falhou. Consulte o erro acima."
+    $msg_uxp_damaged = "O download do TypeR está danificado: execute este instalador novamente."
     $msg_webview2_missing = "Nenhum componente Microsoft Edge WebView2 foi encontrado neste computador: sem ele, o Photoshop não consegue exibir o novo TypeR (nem a sua tela inicial). Instale-o em https://developer.microsoft.com/microsoft-edge/webview2/ e reinicie o Photoshop."
 }
 
@@ -923,7 +936,15 @@ if ($Edition -eq 'uxp') {
             Write-Host "  $msg_uxp_download"
             [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
             $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/ScanR/TypeR/releases/latest/download/UXP-Windows.ccx' -OutFile $Work -TimeoutSec 180
+            $Release = if ($env:TYPER_RELEASE_URL) { $env:TYPER_RELEASE_URL } else { 'https://github.com/ScanR/TypeR/releases/latest/download' }
+            Invoke-WebRequest -UseBasicParsing -Uri "$Release/UXP-Windows.ccx" -OutFile $Work -TimeoutSec 180
+            # Checked against the release's checksum (older releases have none)
+            $Expected = $null
+            try {
+                Invoke-WebRequest -UseBasicParsing -Uri "$Release/UXP-Windows.ccx.sha256" -OutFile "$Work.sha256" -TimeoutSec 60
+                $Expected = ([IO.File]::ReadAllText("$Work.sha256") -split '\s+')[0]
+            } catch {} finally { Remove-Item -LiteralPath "$Work.sha256" -Force -ErrorAction SilentlyContinue }
+            if ($Expected -match '^[0-9a-fA-F]{64}$' -and (Get-TypeRFileHash $Work) -ne $Expected.ToLowerInvariant()) { throw $msg_uxp_damaged }
         }
         Write-Host "  $msg_uxp_installing"
         Install-TypeRPluginManually $Work
@@ -949,10 +970,10 @@ if ($Edition -eq 'uxp') {
 }
 
 # --- 6. Version Legacy (CEP) ---
-if (-not (Test-Path $ManifestPath)) {
-    Write-Host "[ERREUR] Fichier introuvable : $ManifestPath" -ForegroundColor Red
-    Write-Host "Extrayez toute l'archive : le dossier 'installer' doit rester à côté de 'CSXS', 'app', 'icons' et 'locale'."
-    if ($Interactive) { Read-Host "Appuyez sur Entrée pour quitter..." }
+if (-not (Test-Path -LiteralPath $ManifestPath)) {
+    Write-Host ($msg_missing -f $ManifestPath) -ForegroundColor Red
+    Write-Host $msg_extract
+    if ($Interactive) { Read-Host -Prompt $msg_pause }
     exit 1
 }
 $Folders = @('app', 'CSXS', 'icons', 'locale')

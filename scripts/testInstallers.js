@@ -50,9 +50,9 @@ try {
     'manifest.json': strToU8(JSON.stringify({ id: 'com.scanr.typer', name: 'TypeR', version: '3.1.0', host: { app: 'PS', minVersion: '26.0.0' } })),
     'web/index.js': strToU8('// panel'),
   }));
-  const installUxp = (name, env) => {
+  const installUxp = (name, env, source = [packageFile]) => {
     const uxpRoot = path.join(sandbox, name, 'UXP');
-    const result = runInstaller([windows ? '-Uxp' : '--uxp', packageFile], {
+    const result = runInstaller([windows ? '-Uxp' : '--uxp', ...source], {
       TYPER_UXP_ROOT: uxpRoot,
       TYPER_INSTALL_TARGET: path.join(sandbox, name, 'no-cep'),
       ...env,
@@ -298,6 +298,26 @@ sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
     assert.notStrictEqual(get.status, 0, 'a damaged download stops');
     assert.doesNotMatch(get.stdout, /installer ran/);
     assert.match(get.stderr, /damaged/);
+
+    // The plugin the installer downloads by itself is checked the same way
+    const bare = path.join(sandbox, 'bare-source');
+    fs.mkdirSync(path.join(bare, 'CSXS'), { recursive: true });
+    fs.copyFileSync(path.join(root, 'CSXS', 'manifest.xml'), path.join(bare, 'CSXS', 'manifest.xml'));
+    fs.copyFileSync(packageFile, path.join(release, 'TypeR-UXP.ccx'));
+    const downloadUxp = (name) => installUxp(name, { TYPER_INSTALL_NO_UPIA: '1', TYPER_INSTALL_SOURCE: bare, TYPER_RELEASE_URL: 'file://' + release }, []);
+    let downloaded = downloadUxp('download-unchecked');
+    assert.strictEqual(downloaded.result.status, 0, 'older releases have no checksum: ' + downloaded.result.stderr);
+    assert.strictEqual(downloaded.installedByHand, true);
+    fs.writeFileSync(path.join(release, 'TypeR-UXP.ccx.sha256'), crypto.createHash('sha256').update(fs.readFileSync(packageFile)).digest('hex') + '  TypeR-UXP.ccx\n');
+    downloaded = downloadUxp('download-checked');
+    assert.strictEqual(downloaded.result.status, 0, downloaded.result.stderr);
+    assert.strictEqual(downloaded.installedByHand, true);
+    fs.writeFileSync(path.join(release, 'TypeR-UXP.ccx.sha256'), '0'.repeat(64) + '  TypeR-UXP.ccx\n');
+    downloaded = downloadUxp('download-damaged');
+    assert.notStrictEqual(downloaded.result.status, 0, 'a damaged plugin download stops');
+    assert.strictEqual(downloaded.installedByHand, false);
+    // In the language of this Mac
+    assert.match(downloaded.result.stderr, /damaged|endommagé|dañada|danificado/);
   }
 
   // At the root of the archive, one file to run per system
@@ -306,7 +326,7 @@ sys.exit(os.waitstatus_to_exitcode(os.waitpid(pid, 0)[1]))
 
   // Both the bash installer's messages and the PowerShell ones exist in every language
   const macText = fs.readFileSync(path.join(root, 'installer', 'install_mac.sh'), 'utf8');
-  for (const name of ['TITLE', 'UXP_NAME', 'LEGACY_NAME', 'RECOMMENDED', 'KEYS', 'CANCELLED', 'PS_FOUND', 'PS_NONE', 'UXP_TOO_OLD', 'STATUS_UPDATE', 'STATUS_CURRENT', 'STATUS_NEWER', 'CHOOSE_UPDATE', 'UPDATED']) {
+  for (const name of ['TITLE', 'UXP_NAME', 'LEGACY_NAME', 'RECOMMENDED', 'KEYS', 'CANCELLED', 'PS_FOUND', 'PS_NONE', 'UXP_TOO_OLD', 'STATUS_UPDATE', 'STATUS_CURRENT', 'STATUS_NEWER', 'CHOOSE_UPDATE', 'UPDATED', 'UXP_DAMAGED']) {
     for (const language of ['EN', 'FR', 'ES', 'PT']) assert.ok(macText.includes(`MSG_${name}_${language}=`), name + ' ' + language);
   }
   const winBytes = fs.readFileSync(path.join(root, 'installer', 'install.ps1'));
