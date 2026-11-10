@@ -3635,6 +3635,21 @@ async function getSelectionChanged() {
   return JSON.stringify(result);
 }
 
+// Turns off Photoshop's "Auto-Collapse Iconic Panels", which closes a panel
+// opened from an icon dock at every click on the document, and answers
+// whether it was on (see host.js)
+async function disableAutoCollapsePanels() {
+  try {
+    const target = [{ _property: "workspacePreferences" }, { _ref: "application", _enum: "ordinal", _value: "targetEnum" }];
+    const current = get(target).workspacePreferences;
+    if (!current || current.autoCollapseDrawers !== true) return JSON.stringify({ wasOn: false });
+    await modal("TypeR", () => play({ _obj: "set", _target: target, to: { _obj: "workspacePreferences", autoCollapseDrawers: false } }));
+    return JSON.stringify({ wasOn: true });
+  } catch (error) {
+    return JSON.stringify({ error: "autoCollapse" });
+  }
+}
+
 // Sets a selection tool left on "Add to selection" (or Subtract, Intersect)
 // back to "New selection" for multi-bubble, and answers whether it had to (see
 // host.js)
@@ -4147,6 +4162,7 @@ module.exports = {
     undoLastTyperChange,
     getTypeRDocumentKey,
     getSelectionChanged,
+    disableAutoCollapsePanels,
     createTextLayersInStoredSelections,
     openFile,
     scanPsdFonts,

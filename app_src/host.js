@@ -5959,6 +5959,36 @@ function ensureWandSampleAll() {
   }
 }
 
+// Photoshop's "Auto-Collapse Iconic Panels" (Preferences > Workspace) closes a
+// panel opened from an icon dock at the next click outside it: TypeR "closed
+// by itself" at every click on the document. Turns the option off and answers
+// whether it was on. autoCollapseDrawers is its key in workspacePreferences;
+// the other options of that preference page keep their values.
+function disableAutoCollapsePanels() {
+  try {
+    var applicationClass = charIDToTypeID("capp");
+    var preferencesKey = stringIDToTypeID("workspacePreferences");
+    var collapseKey = stringIDToTypeID("autoCollapseDrawers");
+    var reference = new ActionReference();
+    reference.putProperty(charIDToTypeID("Prpr"), preferencesKey);
+    reference.putEnumerated(applicationClass, charID.Ordinal, charID.Target);
+    var current = executeActionGet(reference).getObjectValue(preferencesKey);
+    if (!current.hasKey(collapseKey) || !current.getBoolean(collapseKey)) return jamJSON.stringify({ wasOn: false });
+    var target = new ActionReference();
+    target.putProperty(charIDToTypeID("Prpr"), preferencesKey);
+    target.putEnumerated(applicationClass, charID.Ordinal, charID.Target);
+    var preferences = new ActionDescriptor();
+    preferences.putBoolean(collapseKey, false);
+    var desc = new ActionDescriptor();
+    desc.putReference(charID.Null, target);
+    desc.putObject(charID.To, preferencesKey, preferences);
+    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+    return jamJSON.stringify({ wasOn: true });
+  } catch (collapseError) {
+    return jamJSON.stringify({ error: "autoCollapse" });
+  }
+}
+
 // Paste on click when Photoshop sends a selection event without its
 // descriptor (some CEP hosts): the current tool and the selection bounds
 function smartPasteSelectionProbe() {

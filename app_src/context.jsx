@@ -18,6 +18,7 @@ import { perfMeasure } from "./perfDebug";
 import { useKeyboardAccessPrompt } from "./keyboardAccess";
 import { useUxpPlatformPackage } from "./uxpPlatformPackage";
 import { useStudioScript } from "./studioScript";
+import { useAutoCollapseGuard } from "./autoCollapse";
 import { TAB_FIELDS, createTab, migrateTabStorage, moveTab } from "./tabStorage";
 import { applyAutoTabNames, getNextDefaultTabName } from "./tabNames";
 import { getInterfaceLanguage } from "./interfaceLanguage";
@@ -2015,6 +2016,8 @@ const ContextProvider = React.memo(function ContextProvider(props) {
   useUxpPlatformPackage();
   // A script sent by TypeR Studio with the pages it opens here
   useStudioScript(dispatch, () => stateRef.current);
+  // Photoshop's "Auto-Collapse Iconic Panels" closes a panel in an icon dock at every click on the document
+  useAutoCollapseGuard(dispatch);
   useKeyboardAccessPrompt(state.modalType);
   // Legacy panel: called "TypeR (CEP)", or "TypeR (old)" while TypeR UXP is installed (uxpMigration.js)
   React.useEffect(() => {
