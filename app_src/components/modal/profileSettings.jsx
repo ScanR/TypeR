@@ -12,6 +12,14 @@ import {
   renameProfile,
 } from "../../profileStorage";
 
+// These fields sit in the settings form: Enter runs the field's own button
+// instead of saving and closing the settings
+const onEnter = (event, action) => {
+  if (event.key !== "Enter" && event.keyCode !== 13) return;
+  event.preventDefault();
+  action();
+};
+
 const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, hasUnsavedChanges }) {
   const [registry, setRegistry] = React.useState(getProfileRegistry);
   const [selectedId, setSelectedId] = React.useState(registry.activeProfileId);
@@ -179,6 +187,7 @@ const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, h
               maxLength={80}
               aria-label={locale.profilesRenameLabel}
               onChange={(event) => setProfileName(event.target.value)}
+              onKeyDown={(event) => onEnter(event, saveProfileName)}
               className="topcoat-text-input--large"
             />
             <button type="button" className="topcoat-button--large" onClick={saveProfileName}>
@@ -219,6 +228,7 @@ const ProfileSettings = React.memo(function ProfileSettings({ currentLanguage, h
               placeholder={locale.profilesNamePlaceholder}
               aria-label={locale.profilesNamePlaceholder}
               onChange={(event) => setNewProfileName(event.target.value)}
+              onKeyDown={(event) => onEnter(event, createAndActivate)}
               className="topcoat-text-input--large"
             />
             <button type="button" className="topcoat-button--large--cta" onClick={createAndActivate}>
