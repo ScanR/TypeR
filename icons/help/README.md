@@ -1,8 +1,9 @@
 # Help illustrations
 
-Drop animated GIFs here to illustrate the Help window sections. Each section
-looks for one file; if the file is missing, the section simply renders without
-an illustration (no broken image, no error).
+Drop animated GIFs here to illustrate the Help window sections, and add each
+file's name (without `.gif`) to `HELP_MEDIA` in
+`app_src/components/modal/help.jsx`. A section whose name is not in that list
+renders without an illustration and asks for no file.
 
 | File | Section |
 | --- | --- |
@@ -21,6 +22,7 @@ Guidelines:
   file name.
 
 To add a new illustrated section, set `media: '<name>'` on the section in
-`app_src/components/modal/help.jsx` and drop `<name>.gif` in this folder.
-This folder is copied as-is by every install/packaging script, so no build step
-is needed after adding a file — but the extension must be reinstalled.
+`app_src/components/modal/help.jsx`, add `<name>` to `HELP_MEDIA` and drop
+`<name>.gif` in this folder, then build. This folder is copied as-is by the
+Legacy install and packaging scripts; the UXP build does not copy it yet
+(`scripts/buildUxp.js`), so an illustration needs that step added too.

@@ -18,6 +18,7 @@ import {
     FiStar,
     FiVideo,
     FiX,
+    FiZap,
 } from 'react-icons/fi';
 
 import config from '../../config';
@@ -50,7 +51,11 @@ const KEY_LABELS = {
 
 const keyLabel = (key) => KEY_LABELS[key] || key;
 
-// Illustrations are optional: drop <name>.gif in icons/help/ and it shows up
+// Illustrations are optional: drop <name>.gif in icons/help/ and add its name
+// here. A section whose name is not listed asks for no file at all (a request
+// that fails each time the section opens, and a 404 in TypeR Studio).
+const HELP_MEDIA = [];
+
 const HelpMedia = React.memo(function HelpMedia({name, caption}) {
     const [failed, setFailed] = React.useState(false);
     if (failed) return null;
@@ -260,6 +265,40 @@ const HelpModal = React.memo(function HelpModal() {
                     text: locale.helpQuickApplyDescr || 'Replaces the active text layer content and style with the current line and style.',
                     keys: shortcut.apply,
                 },
+                {
+                    title: locale.textShapeRTitle || 'TextShapeR',
+                    text: locale.whatsNewTextShapeRIntro || 'TextShapeR suggests several ways to break the lines of a text layer for its bubble, from the best one down.',
+                },
+            ],
+        },
+        // The 3.0 features, in the words of their settings: no text of their own to translate
+        {
+            id: 'smartPaste',
+            icon: FiZap,
+            title: locale.whatsNewSmartPasteTitle || 'Smart paste',
+            subtitle: locale.whatsNewBubblesTitle || 'Every kind of bubble',
+            items: [
+                {
+                    title: locale.settingsSmartPasteLabel || 'Smart paste',
+                    text: locale.settingsSmartPasteHelp || 'Paste fits the text to the real shape of the bubble.',
+                    keys: shortcut.add,
+                },
+                {
+                    title: locale.settingsPasteOnClickLabel || 'Paste on click',
+                    text: locale.settingsPasteOnClickHelp || 'A Magic Wand click or a rectangle/lasso selection pastes the current line right away.',
+                },
+                {
+                    title: locale.settingsSmartPasteDistributeLabel || 'Split lines across connected bubbles',
+                    text: [locale.settingsSmartPasteDistributeHelp, locale.tipSplitDoubleBubble].filter(Boolean).join(' '),
+                },
+                {
+                    title: locale.settingsSmartPasteAutoCleanLabel || 'Auto clean',
+                    text: locale.settingsSmartPasteAutoCleanHelp || '',
+                },
+                {
+                    title: locale.settingsSmartPasteMinScaleLabel || 'Minimum text size (%)',
+                    text: locale.settingsSmartPasteMinScaleHelp || '',
+                },
             ],
         },
         {
@@ -299,6 +338,10 @@ const HelpModal = React.memo(function HelpModal() {
                 {
                     title: locale.helpDataImportTitle || 'Import',
                     text: locale.helpDataImportText || 'Load a JSON file to restore your setup after reinstalling Photoshop, or to share it with other typesetters.',
+                },
+                {
+                    title: locale.profilesTitle || 'Project profiles',
+                    text: locale.profilesHint || 'Each profile keeps its own styles, folders, settings and tabs.',
                 },
                 {
                     title: locale.helpDataFontScanTitle || 'Font scan',
@@ -430,7 +473,7 @@ const HelpModal = React.memo(function HelpModal() {
                                         </button>
                                         {expanded ? (
                                             <div className="help-section-body">
-                                                {section.media ? <HelpMedia name={section.media} caption={section.mediaCaption} /> : null}
+                                                {HELP_MEDIA.includes(section.media) ? <HelpMedia name={section.media} caption={section.mediaCaption} /> : null}
                                                 {(section.items || []).length ? <ul className="help-items">{section.items.map(renderRow)}</ul> : null}
                                                 {(section.shortcuts || []).length ? <ul className="help-items">{section.shortcuts.map(renderRow)}</ul> : null}
                                                 {section.link ? (
