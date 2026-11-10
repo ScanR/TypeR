@@ -5,8 +5,14 @@ const preferences = {
   smartPaste: false, pasteOnClick: true, smartPasteAutoClean: true,
   smartPasteDistribute: false, smartPasteMinScale: 0.8, smartPasteHyphenation: 'fr',
   refontRules: [{ marker: '!', fontPostScriptName: 'Example' }],
+  // Every preference of the Settings window travels, not only the script's
+  shortcut: { add: ['CTRL', 'ENTER'] }, direction: 'rtl', autoCenterMode: 'visual', internalPadding: 12,
+  interpretMarkdown: true, styleSizeStep: 0.5, uiLayout: { blocks: ['text', 'styles'] }, customThemes: [{ id: 'custom-1' }],
+  checkUpdates: false, showTips: false,
 };
-const profile = { folders: [], styles: [], ...preferences };
+// A work session and the tips already seen stay out of the file
+const session = { text: 'script', tabs: [{ id: 'a' }], images: [{ path: '/page.psd' }], currentLineIndex: 4, seenFeatureTips: { pageSync: true }, textShapeRTuning: { samples: 3 }, backgroundImage: { name: 'photo' } };
+const profile = { folders: [], styles: [], ...preferences, ...session, editorTheme: 'custom-image' };
 let saved;
 let stateIndex = 0;
 const load = createLoader({
@@ -36,5 +42,13 @@ function findForm(node) {
   await findForm(tree).props.onSubmit({ preventDefault() {} });
   assert(saved && saved.includesSettings);
   for (const key of Object.keys(preferences)) assert.deepStrictEqual(saved[key], preferences[key], key + ' must be exported from the active profile');
+  for (const key of Object.keys(session)) assert.strictEqual(saved[key], undefined, key + ' is not a setting');
+  assert.strictEqual(saved.editorTheme, undefined, 'the custom image theme needs its picture, which is not in the file');
+  assert.strictEqual(saved.pastePointText, false);
+  // Everything exported is something the importer stores
+  const contextSource = require('fs').readFileSync(require('path').join(__dirname, '..', 'app_src', 'context.jsx'), 'utf8');
+  const stored = /const storeFields = \[([\s\S]*?)\];/.exec(contextSource)[1].match(/"[^"]+"/g).map(name => name.slice(1, -1));
+  const { EXPORTED_SETTINGS } = load('app_src/librarySerialization.js');
+  EXPORTED_SETTINGS.forEach(field => assert.ok(stored.includes(field), field + ' is exported but never imported'));
   console.log('Active profile export preferences regression passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

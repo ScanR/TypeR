@@ -99,6 +99,31 @@ export const serializeStyle = (style) => {
   });
   return result;
 };
+// What "Export my settings" writes: every preference of the Settings window.
+// Left out on purpose: the script, the tabs and the linked pages (a work
+// session), the tips already seen, TextShapeR's learning (its own export) and
+// the background picture, which is a file of its own.
+export const EXPORTED_SETTINGS = [
+  'textScale', 'textSizeIncrement', 'pastePointText', 'ignoreLinePrefixes', 'ignoreTags', 'defaultStyleId',
+  'autoClosePSD', 'checkUpdates', 'autoUpdate', 'currentFolderTagPriority', 'resizeTextBoxOnCenter', 'shortcut',
+  'language', 'direction', 'readingOrder', 'autoCenterMode', 'smartPaste', 'pasteOnClick', 'smartPasteAutoClean',
+  'smartPasteDistribute', 'smartPasteMinScale', 'smartPasteHyphenation', 'refontRules', 'showTips',
+  'showQuickStyleSize', 'inlineTextShapeR', 'textShapeRBubbleAware', 'dehyphenateTextShapeR',
+  'preserveTextShapeRSpaces', 'autoScrollText', 'internalPadding', 'interpretMarkdown', 'styleSizeStep',
+  'resetLineCounterOnPage', 'uiLayout', 'editorTheme', 'customThemes',
+];
+// A value a profile never stored is left out: the importer keeps its own
+export const pickExportedSettings = (source) => {
+  const settings = {};
+  EXPORTED_SETTINGS.forEach((field) => {
+    if (source[field] !== undefined) settings[field] = source[field];
+  });
+  settings.pastePointText = !!source.pastePointText;
+  // The picture of the "Custom image" theme does not travel with the file
+  if (settings.editorTheme === 'custom-image') delete settings.editorTheme;
+  return settings;
+};
+
 export const selectExportStyles = (styles, selectedFolderIds) => styles.filter(style => selectedFolderIds.includes(style.folder || null));
 
 // Build the file of a single folder export. `folder` is a buildFolderTree node.
