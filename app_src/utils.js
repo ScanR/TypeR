@@ -259,9 +259,8 @@ const commitStorageData = (data, rewrite) => {
   const nextData = storage.error || rewrite ? data : Object.assign({}, storage.data, data);
   storageCache = nextData;
   storageReadError = null;
-  const success = writeJsonStorage(storagePath, nextData);
-  if (!success) reportStorageIssue(storagePath, "write");
-  return success;
+  // writeJsonStorage reports its own failure with the exact reason
+  return writeJsonStorage(storagePath, nextData);
 };
 
 const flushStorageWrite = (force = false) => {
@@ -291,6 +290,16 @@ const flushStorageWrite = (force = false) => {
     if (!force) pendingStorageTimer = setTimeout(flushStorageWrite, MAX_STORAGE_DELAY);
   }
   return success;
+};
+
+// The storage notice's retry: save what is waiting, or the whole current
+// state when the failed save already left the queue. A failed first read
+// keeps the cache empty, so it never replaces the file with defaults.
+const retryStorageSave = () => {
+  if (pendingStorageData) return flushStorageWrite(true);
+  const storage = loadStorageCache();
+  if (storage.error) return false;
+  return commitStorageData(storage.data, true);
 };
 
 const writeToStorage = (data, rewrite, options = {}) => {
@@ -1413,4 +1422,4 @@ const scanPsdFonts = (path, callback) => {
   );
 };
 
-export { flushStorageForReload, reloadApp, trackHostAction, msSinceHostAction, safeJsonParse, buildRichTextPayload, alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, baseLocale, openUrl, readStorage, writeToStorage, flushStorageWrite, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };
+export { flushStorageForReload, reloadApp, trackHostAction, msSinceHostAction, safeJsonParse, buildRichTextPayload, alignTextLayersToDoubleBubble, backupStorage, csInterface, locale, baseLocale, openUrl, readStorage, writeToStorage, flushStorageWrite, retryStorageSave, deleteStorageFile, nativeAlert, nativeConfirm, getUserFonts, refreshUserFonts, getActiveLayerText, getSelectedTextLayers, getTypeRSelectionSnapshot, setActiveLayerText, setSelectedTextLayers, setLayerTextFast, getCurrentSelection, getSelectionBoundsHash, addPhotoshopEventListener, hasReceivedPhotoshopEvents, isPhotoshopSelectEvent, isPhotoshopMoveEvent, isHostActionPending, notePanelActivity, isPanelIdle, notePanelInteraction, isPanelInteracting, startSelectionMonitoring, stopSelectionMonitoring, getSelectionChanged, deselectDocument, undoLastTextChange, getActiveLayerRenderedText, getAllLayersRenderedTexts, scanTextShapeRTraining, createTextLayerInSelection, createTextLayersInStoredSelections, alignTextLayerToSelection, changeActiveLayerTextSize, toggleCleaningLayers, getHotkeyPressed, onMouseShortcut, startForegroundWatcher, resizeTextArea, scrollToLine, scrollToStyle, rgbToHex, getStyleObject, getDefaultStyle, getDefaultStroke, openFile, scanPsdFonts, getUpdateTestConfig, clearUpdateTestConfig, checkUpdate, prefetchUpdateZip, downloadAndInstallUpdate, convertHtmlToMarkdown, parseMarkdownRuns };
