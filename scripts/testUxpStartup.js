@@ -360,6 +360,12 @@ function hostHarness({ readWebViewFolders, uxpLog = '', readLog, platform = 'win
   globalOnly.nativeWindow.emit('message', { source: {}, data: JSON.stringify({ type: 'request', id: 2, method: 'count' }) });
   globalOnly.nativeWindow.emit('message', { data: JSON.stringify({ type: 'request', id: 3, method: 'count' }) });
   assert.strictEqual(globalOnly.calls, 1, 'global messages must identify the active WebView');
+  // The page reloads itself (profile switch, settings import): its requests
+  // start at 1 again and are not the previous page's
+  globalView.emit('loadstart', { url: 'plugin:/web/index.html' });
+  globalView.emit('message', { ...request });
+  await Promise.resolve();
+  assert.strictEqual(globalOnly.calls, 2, 'a reloaded page reuses request ids: its first request must run');
   await globalOnly.panel.destroy();
   assert.strictEqual(globalOnly.nativeWindow.listeners.message.length, 0, 'destroy removes the global listener');
 

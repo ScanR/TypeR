@@ -838,6 +838,9 @@ function attachView() {
       panelAddress = url;
     }
     viewOnPanel = url === panelAddress || url.indexOf("plugin:/") === 0;
+    // A page that reloads itself (profile switch, settings import) numbers
+    // its requests from 1 again: those are not the previous page's
+    recentRequestIds.clear();
     if (viewOnPanel) { panelStartup.loadStarted(); return; }
     showPanelPage();
     if (/^https?:\/\//i.test(url)) uxp.shell.openExternal(url).catch(() => {});
