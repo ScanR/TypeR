@@ -863,16 +863,20 @@ const scanTextShapeRTraining = (path, callback = () => {}) => {
   }, 10 * 60 * 1000));
 };
 
-const getSelectionChanged = (callback = () => {}) => {
+// onModeReset: the host found the selection tool on "Add to selection" (or
+// Subtract, Intersect) and set it back to "New selection"
+const getSelectionChanged = (callback = () => {}, onModeReset = () => {}) => {
   csInterface.evalScript("getSelectionChanged()", (result) => {
     const data = safeJsonParse(result);
+    if (data.selectionModeReset) onModeReset();
     if (data.documentChanged) { callback(data); }
     else if (Date.now() < selectionResultsSuppressedUntil || data.noChange || data.error) {
       callback(null);
     } else if (data.multipleSelections) {
-      // The host saw one selection grow around the previous one (Shift-add):
-      // no bounds are usable, the panel should only warn the user
-      callback({ multipleSelections: true });
+      // The host saw one selection grow around the previous one (Shift-add, or
+      // a tool that was on "Add to selection"): no bounds are usable, the
+      // panel should only warn the user
+      callback({ multipleSelections: true, selectionModeReset: !!data.selectionModeReset });
     } else if (typeof data.width !== "number") {
       callback(null);
     } else {

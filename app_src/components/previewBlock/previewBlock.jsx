@@ -863,7 +863,8 @@ const PreviewBlock = React.memo(function PreviewBlock() {
         // multi-bubble needs one selection at a time, so warn instead of
         // storing a selection spanning several outlines
         if (selection.multipleSelections) {
-          showShiftTip();
+          // A tool that was on "Add to selection" gets its own notice below
+          if (!selection.selectionModeReset) showShiftTip();
           return;
         }
         if (selection.multiSelection && selection.multiSelection.length > 0) {
@@ -913,7 +914,7 @@ const PreviewBlock = React.memo(function PreviewBlock() {
           addSelectionAndAdvance(trigger ? { ...cleanSelection, trigger } : cleanSelection);
         }
       }
-    });
+    }, () => context.dispatch({ type: "showNotice", text: locale.multiBubbleNewSelectionMode, kind: "warning" }));
   }, [context.state.multiBubbleMode, context.state.modalType, context.state.storedSelections, context.state.currentLineIndex, context.state.lines, showShiftTip]);
   selectionCheckCallbackRef.current = checkForSelectionChange;
 

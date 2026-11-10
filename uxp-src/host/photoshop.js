@@ -3626,14 +3626,34 @@ async function getSelectionChanged() {
     _resetSelectionMonitor();
     return JSON.stringify({ documentChanged: true, documentKey });
   }
-  const result = JSON.parse(await _getSelectionChanged());
+  const modeReset = await _ensureNewSelectionMode();
+  const result = JSON.parse(await _getSelectionChanged(modeReset));
   result.documentKey = documentKey;
+  if (modeReset) result.selectionModeReset = true;
   const selections = result.multiSelection || [];
   for (let i = 0; i < selections.length; i++) selections[i].documentKey = documentKey;
   return JSON.stringify(result);
 }
 
-async function _getSelectionChanged() {
+// Sets a selection tool left on "Add to selection" (or Subtract, Intersect)
+// back to "New selection" for multi-bubble, and answers whether it had to (see
+// host.js)
+async function _ensureNewSelectionMode() {
+  try {
+    const application = { _ref: "application", _enum: "ordinal", _value: "targetEnum" };
+    const current = get([{ _property: "currentToolOptions" }, application]).currentToolOptions;
+    if (!current || typeof current.selectionEnum !== "number" || current.selectionEnum === 0) return false;
+    const tool = get([{ _property: "tool" }, application]).tool;
+    const toolClass = tool && (tool._enum || tool._value);
+    if (!toolClass) return false;
+    await modal("TypeR", () => play({ _obj: "set", _target: [{ _ref: toolClass }], to: { _obj: "currentToolOptions", selectionEnum: 0 } }));
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function _getSelectionChanged(modeReset) {
   try {
     const monitor = _hostState.selectionMonitor;
     const shiftPressed = keyboard.isShiftDown();
@@ -3742,8 +3762,9 @@ async function _getSelectionChanged() {
     }
 
     // Shift-adding a second outline reports a single union rectangle that
-    // still contains the previous bounds: warn instead of capturing it
-    if (shiftPressed && !isSame && monitor.lastBounds && merged.length === 1 &&
+    // still contains the previous bounds: warn instead of capturing it. The
+    // same union comes from a tool that was on "Add to selection" (modeReset)
+    if ((shiftPressed || modeReset) && !isSame && monitor.lastBounds && merged.length === 1 &&
       merged[0].top <= monitor.lastBounds.top + 5 &&
       merged[0].left <= monitor.lastBounds.left + 5 &&
       merged[0].right >= monitor.lastBounds.right - 5 &&
@@ -4153,6 +4174,8 @@ module.exports = {
     _scaleTextShape, _textResizePlan, _appliedSizeRatio, _keepLiveTextSize, _alignPlacementMap,
     // where a new text goes in the layer stack
     _raiseNewTextLayer,
+    // multi-bubble: the selection tool goes back to "New selection"
+    _ensureNewSelectionMode,
     // the auto-centre entry point, run against a simulated Photoshop
     _autoCenterCreated,
   },

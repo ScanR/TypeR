@@ -4627,14 +4627,51 @@ function getSelectionChanged() {
     monitor.multiWarnBounds = null;
     return jamJSON.stringify({ documentChanged: true, documentKey: documentKey });
   }
-  var result = jamJSON.parse(_getSelectionChanged());
+  var modeReset = _ensureNewSelectionMode();
+  var result = jamJSON.parse(_getSelectionChanged(modeReset));
   result.documentKey = documentKey;
+  if (modeReset) result.selectionModeReset = true;
   var selections = result.multiSelection || [];
   for (var i = 0; i < selections.length; i++) selections[i].documentKey = documentKey;
   return jamJSON.stringify(result);
 }
 
-function _getSelectionChanged() {
+// Multi-bubble stores one selection per click. A selection tool left on "Add
+// to selection" (or Subtract, Intersect) joins every click to the ones before:
+// each bubble was stored as the rectangle around all of them, and the texts
+// landed between the bubbles. Sets the current tool back to "New selection"
+// and answers whether it had to. selectionEnum is the option's key (0 new,
+// 1 add, 2 subtract, 3 intersect): the Magic Wand, the Object Selection tool,
+// the marquees and the lassos have it, the other tools do not.
+function _ensureNewSelectionMode() {
+  try {
+    var applicationClass = charIDToTypeID("capp");
+    var optionsKey = stringIDToTypeID("currentToolOptions");
+    var modeKey = stringIDToTypeID("selectionEnum");
+    var optionsReference = new ActionReference();
+    optionsReference.putProperty(charIDToTypeID("Prpr"), optionsKey);
+    optionsReference.putEnumerated(applicationClass, charID.Ordinal, charID.Target);
+    var current = executeActionGet(optionsReference).getObjectValue(optionsKey);
+    if (!current.hasKey(modeKey) || current.getInteger(modeKey) === 0) return false;
+    var toolReference = new ActionReference();
+    toolReference.putProperty(charIDToTypeID("Prpr"), stringIDToTypeID("tool"));
+    toolReference.putEnumerated(applicationClass, charID.Ordinal, charID.Target);
+    var toolClass = executeActionGet(toolReference).getEnumerationType(stringIDToTypeID("tool"));
+    var tool = new ActionReference();
+    tool.putClass(toolClass);
+    var options = new ActionDescriptor();
+    options.putInteger(modeKey, 0);
+    var desc = new ActionDescriptor();
+    desc.putReference(charID.Null, tool);
+    desc.putObject(charID.To, optionsKey, options);
+    executeAction(charIDToTypeID("setd"), desc, DialogModes.NO);
+    return true;
+  } catch (selectionModeError) {
+    return false;
+  }
+}
+
+function _getSelectionChanged(modeReset) {
   try {
     var monitor = _hostState.selectionMonitor;
     var keyboardState = ScriptUI.environment && ScriptUI.environment.keyboardState;
@@ -4752,7 +4789,9 @@ function _getSelectionChanged() {
     // reports a single union rectangle that still contains the previously
     // seen bounds. Warn the panel instead of capturing that union as one
     // giant bubble, and remember it so it is not captured later either.
-    if (shiftPressed && !isSame && monitor.lastBounds && merged.length === 1 &&
+    // The same union comes from a tool that was on "Add to selection"
+    // (modeReset: the tool was just set back to "New selection").
+    if ((shiftPressed || modeReset) && !isSame && monitor.lastBounds && merged.length === 1 &&
       merged[0].top <= monitor.lastBounds.top + 5 &&
       merged[0].left <= monitor.lastBounds.left + 5 &&
       merged[0].right >= monitor.lastBounds.right - 5 &&
