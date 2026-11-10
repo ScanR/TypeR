@@ -10,6 +10,7 @@ import {
 import { getScaledStyle, resolveStylePointText } from "./textLayerPayload";
 import { parsePageMarker } from "./pageMarker";
 import { prepareSmartPaste } from "./oneClick/smartPaste";
+import { solverInternals } from "./oneClick/solver";
 import { captureSource, fillFromHistograms, leakClick, triggerClick } from "./oneClick/bubblePlan";
 import { discRegion, localPlan, localRegion, localWindow } from "./oneClick/openBubble";
 import { applyRefont, refontTextStyle } from "./oneClick/refont";
@@ -233,13 +234,32 @@ const cepAdapter = (request) => ({
   leanMeasure: true,
 });
 
+// The Legacy host checks that Photoshop's ink stays in the bubble, as the UXP
+// host does, but the solver runs here: the rows the ink fits in travel with
+// each text, for an ink within INK_SLACK pixels of the planned one. Further
+// off, or without rows, the host tests the pixels themselves.
+const INK_SLACK = 3;
+export const withInkBands = (prepared) => {
+  (prepared.sessions || []).forEach((session) => {
+    const { plan, text } = session;
+    try {
+      const top = text.top - INK_SLACK;
+      const bottom = text.bottom + INK_SLACK;
+      text.inkBand = { top, bottom, rows: solverInternals.band(plan.cleanPolygon, top, bottom, text.pad + 1) };
+    } catch (error) {
+      text.inkBand = null;
+    }
+  });
+  return prepared;
+};
+
 export const runSmartPaste = async (request) => {
   if (isUxp()) {
     const raw = await evalHost("smartPaste(" + JSON.stringify(request) + ")", 120000);
     return safeJsonParse(raw, { ok: false, code: "error" });
   }
   try {
-    const prepared = await prepareSmartPaste(request, cepAdapter(request));
+    const prepared = withInkBands(await prepareSmartPaste(request, cepAdapter(request)));
     const raw = await evalHost("smartPasteCommit(" + JSON.stringify(prepared) + ")");
     const done = safeJsonParse(raw, { error: "commit" });
     if (done.error) return { ok: false, code: done.error, message: done.message };

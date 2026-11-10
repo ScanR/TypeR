@@ -5790,6 +5790,72 @@ function _smartConvertToParagraph() {
   }
 }
 
+// The active layer's transparency, kept where the selection is
+function _smartIntersectTransparency() {
+  var desc = new ActionDescriptor();
+  var channel = new ActionReference();
+  channel.putEnumerated(charID.Channel, charID.Channel, charIDToTypeID("Trsp"));
+  desc.putReference(charID.Null, channel);
+  var selection = new ActionReference();
+  selection.putProperty(charID.Channel, charID.FrameSelect);
+  desc.putReference(charIDToTypeID("With"), selection);
+  executeAction(charIDToTypeID("Intr"), desc, DialogModes.NO);
+}
+
+// Layer ink inside the chamber, as in the UXP host: a fast test on rows, then
+// an alpha test. The solver lives in the panel here, so the rows come with
+// the text (text.inkBand, for an ink within a few pixels of the planned one).
+function _smartInkFits(plan, text, bounds) {
+  if (!bounds) return false;
+  var band = text.inkBand;
+  if (band && band.rows && bounds.top >= band.top && bounds.bottom <= band.bottom) {
+    for (var i = 0; i < band.rows.length; i++) {
+      if (bounds.left >= band.rows[i][0] && bounds.right <= band.rows[i][1]) return true;
+    }
+  }
+  try {
+    _smartSelectPolygon(plan.cleanPolygon);
+    _modifySelectionBounds(-Math.max(1, Math.ceil(text.pad)));
+    app.activeDocument.selection.invert();
+    _smartIntersectTransparency();
+    return !_getCurrentSelectionBounds();
+  } catch (inkError) {
+    return true;
+  } finally {
+    try { app.activeDocument.selection.deselect(); } catch (deselectError) {}
+  }
+}
+
+function _smartMoveInk(dx, dy) {
+  if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
+  _moveLayer(dx, dy);
+}
+
+// Photoshop's ink can sit a pixel off the measured one: back toward the
+// planned place when it leaves the chamber. A lone "…" line: the whole ink
+// is centred if it still fits.
+function _smartSettleInk(session) {
+  var plan = session.plan;
+  var text = session.text;
+  var ink = _currentLayerBox();
+  if (!ink) return;
+  if (!_smartInkFits(plan, text, ink)) {
+    _smartMoveInk(
+      Math.max(-2, Math.min(2, text.axis - (ink.left + ink.right) / 2)),
+      Math.max(-2, Math.min(2, (text.top + text.bottom - ink.top - ink.bottom) / 2))
+    );
+  } else if (text.terminalPause) {
+    var dx = plan.selection.xMid - (ink.left + ink.right) / 2;
+    var dy = plan.selection.yMid - (ink.top + ink.bottom) / 2;
+    var scales = [1, 0.5];
+    for (var i = 0; i < scales.length; i++) {
+      _smartMoveInk(dx * scales[i], dy * scales[i]);
+      if (_smartInkFits(plan, text, _currentLayerBox())) break;
+      _smartMoveInk(-dx * scales[i], -dy * scales[i]);
+    }
+  }
+}
+
 function _smartPlaceText(session, pointText) {
   var params = session.text.params;
   _smartMakeText(params);
@@ -5797,6 +5863,7 @@ function _smartPlaceText(session, pointText) {
   var ranges = params.layerText.textStyleRange;
   if (ranges && ranges[0]) _applyMiddleEast(ranges[0].textStyle);
   if (!pointText) _smartConvertToParagraph();
+  _smartSettleInk(session);
   if (session.text.stroke) _setLayerStroke(session.text.stroke);
   return _getActiveLayerId();
 }

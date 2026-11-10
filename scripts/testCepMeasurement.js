@@ -224,4 +224,48 @@ for (const failures of [0, 1, 2]) {
   assert.deepStrictEqual(JSON.parse(JSON.stringify(context._smartSelectionHistograms())), failures === 2 ? [] : [[4, 5], [6, 7], [8, 9]]);
   assert.strictEqual(stamps, failures ? 1 : 0);
 }
-console.log('CEP measurement: invisible groups, native updates, atlas metrics, DPI parity, composite histograms and failure cleanup passed');
+
+// The ink of a pasted text stays in its chamber, as in the UXP host: the rows
+// the panel sends, then Photoshop's pixels; a nudge of two pixels at most,
+// and a lone "…" centred when it still fits
+{
+  const { withInkBands } = require('./helpers/loadAppModule')({ './utils': { csInterface: {}, locale: {}, getUserFonts: () => [] } })('app_src/smartPasteClient.js');
+  const square = [[100, 100], [300, 100], [300, 300], [100, 300]];
+  const prepared = withInkBands({ sessions: [{ plan: { cleanPolygon: square }, text: { top: 180, bottom: 220, pad: 4 } }] });
+  const band = prepared.sessions[0].text.inkBand;
+  assert.deepStrictEqual([band.top, band.bottom], [177, 223], 'rows for an ink within 3 px of the planned one');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(band.rows)), [[105, 295]], 'the chamber less the padding and one pixel');
+  assert.strictEqual(withInkBands({ sessions: [{ plan: {}, text: {} }] }).sessions[0].text.inkBand, null, 'no rows: the host tests the pixels');
+
+  const makeInk = (box, pixelsOutside) => {
+    const log = [];
+    const state = { box: { ...box }, selection: null };
+    const context = vm.createContext({
+      app: { activeDocument: { selection: { invert() { log.push('invert'); }, deselect() { state.selection = null; } } } },
+      _currentLayerBox: () => state.box && { ...state.box },
+      _smartSelectPolygon: () => { log.push('select'); },
+      _modifySelectionBounds: amount => { log.push('contract ' + -amount); },
+      _smartIntersectTransparency: () => { state.selection = pixelsOutside(state.box) ? {} : null; },
+      _getCurrentSelectionBounds: () => state.selection,
+      _moveLayer(dx, dy) { log.push('move ' + dx + ' ' + dy); state.box = { left: state.box.left + dx, right: state.box.right + dx, top: state.box.top + dy, bottom: state.box.bottom + dy }; },
+    });
+    ['_smartInkFits', '_smartMoveInk', '_smartSettleInk'].forEach(name => vm.runInContext(extract(name), context));
+    return { context, log, state };
+  };
+  const text = { ...prepared.sessions[0].text, axis: 200 };
+  const plan = { cleanPolygon: square, selection: { xMid: 200, yMid: 200 } };
+  const inside = makeInk({ left: 150, right: 250, top: 181, bottom: 221 }, () => { throw Error('no pixel test needed'); });
+  inside.context._smartSettleInk({ plan, text });
+  assert.deepStrictEqual(inside.log, [], 'an ink inside the rows costs no Photoshop action');
+  const outside = makeInk({ left: 98, right: 198, top: 183, bottom: 223 }, () => true);
+  outside.context._smartSettleInk({ plan, text });
+  assert.deepStrictEqual(outside.log, ['select', 'contract 4', 'invert', 'move 2 -2'], 'out of the chamber: back toward the planned place, 2 px at most');
+  const pause = makeInk({ left: 220, right: 240, top: 190, bottom: 200 }, () => false);
+  pause.context._smartSettleInk({ plan, text: { ...text, terminalPause: true } });
+  assert.deepStrictEqual(pause.state.box, { left: 190, right: 210, top: 195, bottom: 205 }, 'a lone pause is centred in the chamber');
+  const cramped = makeInk({ left: 220, right: 240, top: 190, bottom: 200 }, box => box.left < 220);
+  cramped.context._smartSettleInk({ plan, text: { ...text, terminalPause: true, inkBand: null } });
+  assert.deepStrictEqual(cramped.state.box, { left: 220, right: 240, top: 190, bottom: 200 }, 'and stays where it was when no centring fits');
+  assert.strictEqual(cramped.state.selection, null, 'no selection left behind');
+}
+console.log('CEP measurement: invisible groups, native updates, atlas metrics, DPI parity, composite histograms, ink fit and failure cleanup passed');
