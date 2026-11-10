@@ -65,8 +65,9 @@ pure helpers of both files (default style, selection maths, sample counts…) an
 Each one fixes something the CEP host gets wrong in Photoshop 2026:
 
 - Bubble and selection shapes are sampled from the selection mask (`imaging.getSelection`) instead of
-  a work path. The CEP host's path sampler returns inconsistent rows in Photoshop 2026; the mask gives
-  the shape its slower legacy sampler measured, without temporary channels or paths.
+  a work path: the same rows, without temporary channels or paths. (The CEP host's path sampler used
+  to return wrong rows in Photoshop: ExtendScript misread its scanline test and the path's handles were
+  paired the wrong way round. Both are fixed and it now agrees with its slower legacy sampler.)
 - Reads (rendered line breaks, shape scans) leave no `TyperTools Read Shape(s)` history state, and a
   failed or empty operation leaves no empty history state.
 - Text colors Photoshop reports as unit floats (`redFloat`…) are read and written as 0–255 RGB. The CEP

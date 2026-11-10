@@ -314,6 +314,32 @@ assert.deepStrictEqual(plain(transformed.layerText.textStyleRange[0].textStyle),
 assert(/payload\.preserveActiveTextSize = true;\s*_hostState\.setActiveLayerText\.data = payload;/.test(source),
   "the TextShapeR fallback must keep the layer size");
 
+/* --------------------- selection shape from a work path --------------------- */
+
+// The work path Photoshop 2026 makes from a diamond selection: the handle that
+// leads to the next point is leftDirection there, rightDirection in Adobe's
+// reference. Either way the outline read is the diamond, never loops
+const diamondPath = (leadsLeft) => {
+  const points = [
+    { anchor: [400, 100], out: [500, 200], back: [300, 200] },
+    { anchor: [700, 400], out: [600, 500], back: [600, 300] },
+    { anchor: [400, 700], out: [300, 600], back: [500, 600] },
+    { anchor: [100, 400], out: [200, 300], back: [200, 500] },
+  ];
+  return { subPathItems: [{ pathPoints: points.map((point) => ({
+    anchor: point.anchor,
+    leftDirection: leadsLeft ? point.out : point.back,
+    rightDirection: leadsLeft ? point.back : point.out,
+  })) }] };
+};
+[true, false].forEach((leadsLeft) => {
+  const polygons = box._readPathPolygons(diamondPath(leadsLeft));
+  polygons[0].forEach((point) => close(Math.abs(point[0] - 400) + Math.abs(point[1] - 400), 300, "every point of the outline is on the diamond"));
+  const rows = box._buildPathShapeRows(polygons, 9);
+  close(rows[4].width, 1, "the middle row spans the diamond");
+  close(rows[2].width, 11 / 18, "a row a quarter of the way down, as the legacy sampler measures it");
+});
+
 /* ------------------------- auto-centre ------------------------- */
 
 const calls = [];

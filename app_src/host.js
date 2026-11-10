@@ -4047,6 +4047,18 @@ function _findWorkPath(doc) {
   return null;
 }
 
+// Length of the control polygon of a curve from a to b
+function _controlPolygonLength(a, c1, c2, b) {
+  var points = [a, c1, c2, b];
+  var total = 0;
+  for (var i = 1; i < points.length; i++) {
+    var dx = points[i][0] - points[i - 1][0];
+    var dy = points[i][1] - points[i - 1][1];
+    total += Math.sqrt(dx * dx + dy * dy);
+  }
+  return total;
+}
+
 function _readPathPolygons(pathItem) {
   var polygons = [];
   var subPaths = pathItem.subPathItems;
@@ -4057,14 +4069,40 @@ function _readPathPolygons(pathItem) {
     // On noisy outlines (wand caught screentone) the point count explodes:
     // skip curve flattening there, the anchors alone are dense enough
     var flattenSteps = count > 500 ? 1 : 6;
+    // Every DOM read is a call into Photoshop: each point is read once
+    var anchors = [];
+    var lefts = [];
+    var rights = [];
+    for (var r = 0; r < count; r++) {
+      anchors.push(points[r].anchor);
+      if (flattenSteps > 1) {
+        lefts.push(points[r].leftDirection);
+        rights.push(points[r].rightDirection);
+      } else {
+        lefts.push(anchors[r]);
+        rights.push(anchors[r]);
+      }
+    }
+    // Which of a point's two handles leads to the next point: Photoshop 2026
+    // gives it as leftDirection, its scripting reference as rightDirection.
+    // The right pairing keeps both handles along their own segment, so its
+    // control polygons are the shortest; the wrong one draws loops.
+    var leftLeads = 0;
+    var rightLeads = 0;
+    for (var h = 0; h < count; h++) {
+      var after = (h + 1) % count;
+      leftLeads += _controlPolygonLength(anchors[h], lefts[h], rights[after], anchors[after]);
+      rightLeads += _controlPolygonLength(anchors[h], rights[h], lefts[after], anchors[after]);
+    }
+    var outgoing = leftLeads <= rightLeads ? lefts : rights;
+    var incoming = leftLeads <= rightLeads ? rights : lefts;
     var poly = [];
     for (var i = 0; i < count; i++) {
-      var current = points[i];
-      var next = points[(i + 1) % count];
-      var a = current.anchor;
-      var c1 = current.rightDirection;
-      var c2 = next.leftDirection;
-      var b = next.anchor;
+      var following = (i + 1) % count;
+      var a = anchors[i];
+      var c1 = outgoing[i];
+      var c2 = incoming[following];
+      var b = anchors[following];
       var straight = c1[0] === a[0] && c1[1] === a[1] && c2[0] === b[0] && c2[1] === b[1];
       var steps = straight ? 1 : flattenSteps;
       for (var t = 0; t < steps; t++) {
@@ -4090,7 +4128,8 @@ function _polygonScanlineSpan(polygons, y) {
       var a = poly[i];
       var b = poly[(i + 1) % poly.length];
       // Half-open rule so scanlines crossing a vertex count it exactly once
-      if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) {
+      // One comparison: ExtendScript reads "a && b || c && d" left to right
+      if ((a[1] <= y) !== (b[1] <= y)) {
         var x = a[0] + ((y - a[1]) / (b[1] - a[1])) * (b[0] - a[0]);
         if (minX === null || x < minX) minX = x;
         if (maxX === null || x > maxX) maxX = x;

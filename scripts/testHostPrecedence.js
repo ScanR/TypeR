@@ -19,7 +19,6 @@ const files = fs.readFileSync(path.join(root, "webpack.config.js"), "utf8").matc
 assert.ok(files.includes("app_src/host.js"), "the host files are read from webpack.config.js");
 
 const KNOWN = [
-  "app_src/host.js _polygonScanlineSpan",
   "app_src/host.js _withTemporaryHistory",
   "app_src/lib/jam/jamHelpers.jsxinc restoreDesc",
   "app_src/lib/jam/jamStyles.jsxinc restoreDesc",
