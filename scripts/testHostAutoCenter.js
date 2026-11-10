@@ -305,6 +305,12 @@ assert.strictEqual(pixels.layerText.textStyleRange[0].textStyle.leading, 144);
 const noUnit = { layerText: { textStyleRange: [{ textStyle: { size: 40 } }] } };
 box._keepLiveTextSize(noUnit, { typeUnit: "pixelsUnit", layerText: { textStyleRange: [{ textStyle: { size: 30 } }] } }, 300);
 assert.deepStrictEqual([noUnit.typeUnit, noUnit.layerText.textStyleRange[0].textStyle.size], ["pixelsUnit", 30]);
+// A layer scaled with Free Transform stores the size it had before: the size
+// and leading written back are the ones it shows (Photoshop reads a written
+// value as a displayed one, checked in Photoshop 2026)
+const transformed = { typeUnit: "pixelsUnit", layerText: { textStyleRange: [{ textStyle: { size: 10, leading: 12, autoLeading: false } }] } };
+box._keepLiveTextSize(transformed, { typeUnit: "pixelsUnit", layerText: { transform: { xx: 2, xy: 0, yx: 0, yy: 2, tx: 0, ty: 0 }, textStyleRange: [{ textStyle: { size: 40, impliedFontSize: 80, leading: 50, autoLeading: false } }] } }, 72);
+assert.deepStrictEqual(plain(transformed.layerText.textStyleRange[0].textStyle), { size: 80, leading: 100, autoLeading: false });
 assert(/payload\.preserveActiveTextSize = true;\s*_hostState\.setActiveLayerText\.data = payload;/.test(source),
   "the TextShapeR fallback must keep the layer size");
 

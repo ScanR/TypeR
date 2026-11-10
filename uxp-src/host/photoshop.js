@@ -446,14 +446,8 @@ function _setLayerText(layerText) {
 
 function _getTextLayerSize() {
   try {
-    const textParams = _getLayerText();
-    if (textParams && textParams.layerText &&
-        textParams.layerText.textStyleRange &&
-        textParams.layerText.textStyleRange[0] &&
-        textParams.layerText.textStyleRange[0].textStyle &&
-        textParams.layerText.textStyleRange[0].textStyle.size) {
-      return textParams.layerText.textStyleRange[0].textStyle.size;
-    }
+    const size = _liveTextSize(_getLayerText());
+    if (size) return size;
   } catch (e) {}
   return _hostState.fallbackTextSize || 20;
 }
@@ -1079,6 +1073,36 @@ function _displayedStyleValue(style, key, impliedKey, scale) {
   return Number(style[key]) * scale;
 }
 
+// The size a layer shows, the one to write back to keep it (a layer scaled
+// with Free Transform stores the size it had before). Null without a size.
+function _liveTextSize(textParams) {
+  const layerText = textParams && textParams.layerText;
+  const range = layerText && layerText.textStyleRange && layerText.textStyleRange[0];
+  const style = range && range.textStyle;
+  if (!style) return null;
+  if (style.size === undefined || style.size === null) return null;
+  const shown = _displayedStyleValue(style, "size", "impliedFontSize", _transformScale(layerText));
+  if (isFinite(shown) && shown > 0) return shown;
+  return style.size;
+}
+
+// A layer's own style run as values to write back: the size, leading and
+// baseline shift it shows, not the ones stored before its transform
+function _displayedTextRange(range, layerText) {
+  const copy = _clone(range);
+  const style = copy.textStyle;
+  if (!style) return copy;
+  const scale = _transformScale(layerText);
+  const pairs = [["size", "impliedFontSize"], ["leading", "impliedLeading"], ["baselineShift", "impliedBaselineShift"]];
+  for (let i = 0; i < pairs.length; i++) {
+    const value = style[pairs[i][0]];
+    if (value === undefined || value === null) continue;
+    style[pairs[i][0]] = _displayedStyleValue(style, pairs[i][0], pairs[i][1], scale);
+    delete style[pairs[i][1]];
+  }
+  return copy;
+}
+
 // A box frame scaled with its text. Point text has no frame: null.
 function _scaleTextShape(shape, ratio) {
   if (!shape || shape.textType !== "box" || !shape.bounds) return null;
@@ -1153,12 +1177,16 @@ function _keepLiveTextSize(newTextParams, liveParams, resolution) {
     convert = true;
   }
   const keys = ["size", "leading", "autoLeading"];
+  const scale = _transformScale(liveParams.layerText);
   for (let i = 0; i < ranges.length; i++) {
     const style = ranges[i] && ranges[i].textStyle;
     if (!style) continue;
     for (let k = 0; k < keys.length; k++) {
       let value = live[keys[k]];
       if (value === undefined) continue;
+      // Written values are displayed ones: a scaled layer keeps what it shows
+      if (keys[k] === "size") value = _displayedStyleValue(live, "size", "impliedFontSize", scale);
+      if (keys[k] === "leading" && value !== null) value = _displayedStyleValue(live, "leading", "impliedLeading", scale);
       if (convert && keys[k] !== "autoLeading") {
         value = _pointsToTypeUnit(_typeValueToPoints(Number(value), liveUnit, resolution), targetUnit, resolution);
       }
@@ -1948,7 +1976,7 @@ function _createAndSetLayerText(data, width, height) {
   if (typeof sizeProp !== "number") {
     try {
       const textParams = _getLayerText();
-      _hostState.fallbackTextSize = textParams.layerText.textStyleRange[0].textStyle.size;
+      _hostState.fallbackTextSize = _liveTextSize(textParams);
     } catch (error) {}
     style.textProps.layerText.textStyleRange[0].textStyle.size = _hostState.fallbackTextSize;
   }
@@ -2127,7 +2155,7 @@ function _setActiveLayerText(payload) {
     dataStyle = _scaleStyleForPunctuationOnlyText(baseStyle ? _clone(baseStyle) : baseStyle, dataText || oldTextParams.layerText.textKey);
     if (payload.preserveActiveTextSize && dataStyle && oldTextParams.layerText.textStyleRange &&
         oldTextParams.layerText.textStyleRange[0] && oldTextParams.layerText.textStyleRange[0].textStyle) {
-      _overrideStyleTextSize(dataStyle, oldTextParams.layerText.textStyleRange[0].textStyle.size);
+      _overrideStyleTextSize(dataStyle, _liveTextSize(oldTextParams));
     }
     let newTextParams;
     if (dataText && dataStyle) {
@@ -2136,7 +2164,7 @@ function _setActiveLayerText(payload) {
           oldTextParams.layerText.textStyleRange &&
           oldTextParams.layerText.textStyleRange[0] &&
           oldTextParams.layerText.textStyleRange[0].textStyle.size != null) {
-        newTextParams.layerText.textStyleRange[0].textStyle.size = oldTextParams.layerText.textStyleRange[0].textStyle.size;
+        newTextParams.layerText.textStyleRange[0].textStyle.size = _liveTextSize(oldTextParams);
       }
       newTextParams.layerText.textKey = _normalizeTextKey(dataText);
       newTextParams.layerText.textStyleRange[0].to = dataText.length;
@@ -2150,7 +2178,7 @@ function _setActiveLayerText(payload) {
         },
       };
       if (oldTextParams.layerText.textStyleRange && oldTextParams.layerText.textStyleRange[0]) {
-        newTextParams.layerText.textStyleRange = [oldTextParams.layerText.textStyleRange[0]];
+        newTextParams.layerText.textStyleRange = [_displayedTextRange(oldTextParams.layerText.textStyleRange[0], oldTextParams.layerText)];
         newTextParams.layerText.textStyleRange[0].to = dataText.length;
       }
       if (oldTextParams.layerText.paragraphStyleRange && oldTextParams.layerText.paragraphStyleRange[0]) {

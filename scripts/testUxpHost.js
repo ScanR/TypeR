@@ -546,7 +546,11 @@ const liveCases = [
   [{ layerText: { textStyleRange: [{ textStyle: { size: 40 } }] } }, { typeUnit: "millimetersUnit", layerText: { textStyleRange: [{ textStyle: { size: 3 } }] } }],
   [{ typeUnit: "rulerUnit", layerText: { textStyleRange: [{ textStyle: { size: 40 } }] } }, { typeUnit: "pixelsUnit", layerText: { textStyleRange: [{ textStyle: { size: 3 } }] } }],
   [{ typeUnit: "pointsUnit", layerText: {} }, null],
+  [{ typeUnit: "pixelsUnit", layerText: { textStyleRange: [{ textStyle: { size: 10, leading: 12, autoLeading: false } }] } },
+    { typeUnit: "pixelsUnit", layerText: { transform: { xx: 2, xy: 0, yx: 0, yy: 2, tx: 0, ty: 0 }, textStyleRange: [{ textStyle: { size: 40, impliedFontSize: 80, leading: 50, autoLeading: false } }] } }],
 ];
+assert.strictEqual(port._keepLiveTextSize(JSON.parse(JSON.stringify(liveCases[5][0])), liveCases[5][1], 72).layerText.textStyleRange[0].textStyle.size, 80,
+  "a transformed layer keeps the size it shows");
 liveCases.forEach(([target, live]) => {
   [72, 300].forEach((resolution) => {
     const fromPort = port._keepLiveTextSize(JSON.parse(JSON.stringify(target)), live, resolution);

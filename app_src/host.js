@@ -587,14 +587,8 @@ function _resolveStylePointText(style, fallbackPointText) {
 
 function _getTextLayerSize() {
   try {
-    var textParams = jamText.getLayerText();
-    if (textParams && textParams.layerText && 
-        textParams.layerText.textStyleRange && 
-        textParams.layerText.textStyleRange[0] &&
-        textParams.layerText.textStyleRange[0].textStyle &&
-        textParams.layerText.textStyleRange[0].textStyle.size) {
-      return textParams.layerText.textStyleRange[0].textStyle.size;
-    }
+    var size = _liveTextSize(jamText.getLayerText());
+    if (size) return size;
   } catch (e) {}
   return _hostState.fallbackTextSize || 20;
 }
@@ -1360,6 +1354,36 @@ function _displayedStyleValue(style, key, impliedKey, scale) {
   return Number(style[key]) * scale;
 }
 
+// The size a layer shows, the one to write back to keep it (a layer scaled
+// with Free Transform stores the size it had before). Null without a size.
+function _liveTextSize(textParams) {
+  var layerText = textParams && textParams.layerText;
+  var range = layerText && layerText.textStyleRange && layerText.textStyleRange[0];
+  var style = range && range.textStyle;
+  if (!style) return null;
+  if (style.size === undefined || style.size === null) return null;
+  var shown = _displayedStyleValue(style, "size", "impliedFontSize", _transformScale(layerText));
+  if (isFinite(shown) && shown > 0) return shown;
+  return style.size;
+}
+
+// A layer's own style run as values to write back: the size, leading and
+// baseline shift it shows, not the ones stored before its transform
+function _displayedTextRange(range, layerText) {
+  var copy = _clone(range);
+  var style = copy.textStyle;
+  if (!style) return copy;
+  var scale = _transformScale(layerText);
+  var pairs = [["size", "impliedFontSize"], ["leading", "impliedLeading"], ["baselineShift", "impliedBaselineShift"]];
+  for (var i = 0; i < pairs.length; i++) {
+    var value = style[pairs[i][0]];
+    if (value === undefined || value === null) continue;
+    style[pairs[i][0]] = _displayedStyleValue(style, pairs[i][0], pairs[i][1], scale);
+    delete style[pairs[i][1]];
+  }
+  return copy;
+}
+
 // A box frame scaled with its text. Point text has no frame: null.
 function _scaleTextShape(shape, ratio) {
   if (!shape || shape.textType !== "box" || !shape.bounds) return null;
@@ -1442,12 +1466,16 @@ function _keepLiveTextSize(newTextParams, liveParams, resolution) {
     convert = true;
   }
   var keys = ["size", "leading", "autoLeading"];
+  var scale = _transformScale(liveParams.layerText);
   for (var i = 0; i < ranges.length; i++) {
     var style = ranges[i] && ranges[i].textStyle;
     if (!style) continue;
     for (var k = 0; k < keys.length; k++) {
       var value = live[keys[k]];
       if (value === undefined) continue;
+      // Written values are displayed ones: a scaled layer keeps what it shows
+      if (keys[k] === "size") value = _displayedStyleValue(live, "size", "impliedFontSize", scale);
+      if (keys[k] === "leading" && value !== null) value = _displayedStyleValue(live, "leading", "impliedLeading", scale);
       if (convert && keys[k] !== "autoLeading") {
         value = _pointsToTypeUnit(_typeValueToPoints(Number(value), liveUnit, resolution), targetUnit, resolution);
       }
@@ -2414,7 +2442,7 @@ function _createAndSetLayerText(data, width, height) {
   if (typeof sizeProp !== "number") {
     try {
       var textParams = jamText.getLayerText();
-      _hostState.fallbackTextSize = textParams.layerText.textStyleRange[0].textStyle.size;
+      _hostState.fallbackTextSize = _liveTextSize(textParams);
     } catch (error) {}
     style.textProps.layerText.textStyleRange[0].textStyle.size = _hostState.fallbackTextSize;
   }
@@ -2597,7 +2625,7 @@ function _setActiveLayerText() {
     dataStyle = _scaleStyleForPunctuationOnlyText(baseStyle ? _clone(baseStyle) : baseStyle, dataText || oldTextParams.layerText.textKey);
     if (payload.preserveActiveTextSize && dataStyle && oldTextParams.layerText.textStyleRange &&
         oldTextParams.layerText.textStyleRange[0] && oldTextParams.layerText.textStyleRange[0].textStyle) {
-      _overrideStyleTextSize(dataStyle, oldTextParams.layerText.textStyleRange[0].textStyle.size);
+      _overrideStyleTextSize(dataStyle, _liveTextSize(oldTextParams));
     }
     var newTextParams;
     if (dataText && dataStyle) {
@@ -2606,7 +2634,7 @@ function _setActiveLayerText() {
           oldTextParams.layerText.textStyleRange &&
           oldTextParams.layerText.textStyleRange[0] &&
           oldTextParams.layerText.textStyleRange[0].textStyle.size != null) {
-        newTextParams.layerText.textStyleRange[0].textStyle.size = oldTextParams.layerText.textStyleRange[0].textStyle.size;
+        newTextParams.layerText.textStyleRange[0].textStyle.size = _liveTextSize(oldTextParams);
       }
       newTextParams.layerText.textKey = _normalizeTextKey(dataText);
       newTextParams.layerText.textStyleRange[0].to = dataText.length;
@@ -2620,7 +2648,7 @@ function _setActiveLayerText() {
         },
       };
       if (oldTextParams.layerText.textStyleRange && oldTextParams.layerText.textStyleRange[0]) {
-        newTextParams.layerText.textStyleRange = [oldTextParams.layerText.textStyleRange[0]];
+        newTextParams.layerText.textStyleRange = [_displayedTextRange(oldTextParams.layerText.textStyleRange[0], oldTextParams.layerText)];
         newTextParams.layerText.textStyleRange[0].to = dataText.length;
       }
       if (oldTextParams.layerText.paragraphStyleRange && oldTextParams.layerText.paragraphStyleRange[0]) {
