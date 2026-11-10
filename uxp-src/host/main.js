@@ -294,7 +294,14 @@ function readLocaleStrings() {
   } catch (error) {}
   if (language === "auto") language = uxp.host.uiLocale || "en_US";
   const strings = parse(locales["locale/messages.properties"]);
-  Object.assign(strings, parse(locales["locale/" + language + "/messages.properties"]));
+  let file = "locale/" + language + "/messages.properties";
+  if (typeof locales[file] !== "string" && !/^en/i.test(language)) {
+    // No folder for this country: one of the same language (Photoshop's
+    // "es_ES" and "es_MX" read "es_SP"), as the panel does (localeBundle.js)
+    const prefix = "locale/" + String(language).slice(0, 2).toLowerCase() + "_";
+    file = Object.keys(locales).find((name) => name.toLowerCase().indexOf(prefix) === 0) || file;
+  }
+  Object.assign(strings, parse(locales[file]));
   return strings;
 }
 

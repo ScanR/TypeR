@@ -1,7 +1,8 @@
 import { fetchBody } from "./network";
 import { htmlNodeToMarkdown } from "./markdownFormatting";
 import { createLatestTaskQueue } from "./latestTaskQueue";
-import { mergeLocaleBundle } from "./localeBundle";
+import { findLocaleFallback, mergeLocaleBundle } from "./localeBundle";
+import config from "./config";
 import { readJsonStorage, writeJsonStorage, reportStorageIssue } from "./storageIO";
 import "./lib/CSInterface";
 import { resolveStylePointText } from "./textLayerPayload";
@@ -431,6 +432,10 @@ const initLocale = () => {
   loadLocaleFile(`${path}/locale/messages.properties`);
   baseLocale = Object.assign({}, locale);
   locale = mergeLocaleBundle(locale, automatic);
+  // "Auto" in a Photoshop whose language has no folder of its own country
+  const uiLocale = csInterface.hostEnvironment && csInterface.hostEnvironment.appUILocale;
+  const fallback = findLocaleFallback(uiLocale, Object.keys(config.languages).filter((id) => id !== "auto" && id !== "en_US"));
+  if (fallback) loadLocaleFile(`${path}/locale/${fallback}/messages.properties`);
   const lang = readStorage("language");
   if (lang && lang !== "auto") {
     const file = lang === "en_US" ? `${path}/locale/messages.properties` : `${path}/locale/${lang}/messages.properties`;

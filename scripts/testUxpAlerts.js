@@ -33,7 +33,7 @@ vm.runInNewContext(callback + "\nthis.alert = nativeAlert;", scope);
 // The dialog labels follow the language of the active profile, not of the default one
 {
   const reader = source.slice(source.indexOf("function readLocaleStrings()"), source.indexOf("function nativeAlert(data)"));
-  const locales = { "locale/messages.properties": "yes=Yes", "locale/fr_FR/messages.properties": "yes=Oui", "locale/de_DE/messages.properties": "yes=Ja" };
+  const locales = { "locale/messages.properties": "yes=Yes", "locale/fr_FR/messages.properties": "yes=Oui", "locale/de_DE/messages.properties": "yes=Ja", "locale/es_SP/messages.properties": "yes=Sí" };
   const read = (files, uiLocale = "en_US") => {
     const host = { mirrorFiles: { files, locales }, uxp: { host: { uiLocale } } };
     vm.runInNewContext(reader + "\nthis.strings = readLocaleStrings();", host);
@@ -45,6 +45,9 @@ vm.runInNewContext(callback + "\nthis.alert = nativeAlert;", scope);
   assert.strictEqual(read({ storage: '{"language":"fr_FR"}', storage_profiles: registry("work"), storage_profile_work: '{"language":"de_DE"}' }), "Ja");
   assert.strictEqual(read({ storage: '{"language":"fr_FR"}', storage_profiles: registry("gone") }), "Oui", "a profile without its file falls back to the default one");
   assert.strictEqual(read({ storage: "{}", storage_profiles: "not json" }, "de_DE"), "Ja", "auto follows Photoshop");
+  assert.strictEqual(read({ storage: "{}" }, "es_MX"), "Sí", "auto reads the folder of the same language when the country has none");
+  assert.strictEqual(read({ storage: "{}" }, "en_GB"), "Yes", "English is the default file");
+  assert.strictEqual(read({ storage: "{}" }, "ja_JP"), "Yes", "a language without a folder stays in English");
 }
 (async () => {
   assert.strictEqual(await scope.alert(null), "");

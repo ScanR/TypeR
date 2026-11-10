@@ -1,6 +1,14 @@
 const assert = require('assert');
 const load = require('./helpers/loadAppModule')();
-const { mergeLocaleBundle } = load('app_src/localeBundle.js');
+const { mergeLocaleBundle, findLocaleFallback } = load('app_src/localeBundle.js');
+// Photoshop's Spanish is es_ES or es_MX: the es_SP folder is read for both
+const folders = ['fr_FR', 'es_SP', 'pt_BR'];
+assert.strictEqual(findLocaleFallback('es_MX', folders), 'es_SP');
+assert.strictEqual(findLocaleFallback('es_ES', folders), 'es_SP');
+assert.strictEqual(findLocaleFallback('fr_FR', folders), null, 'an exact folder needs no fallback');
+assert.strictEqual(findLocaleFallback('en_GB', folders), null, 'English is the default file');
+assert.strictEqual(findLocaleFallback('ja_JP', folders), null);
+assert.strictEqual(findLocaleFallback('', folders), null);
 assert.deepStrictEqual(mergeLocaleBundle({ close: 'Close', newKey: 'Fallback' }, { close: 'Fermer' }), { close: 'Fermer', newKey: 'Fallback' });
 assert.strictEqual(mergeLocaleBundle({ close: 'Close' }, { close: 'Fermer' }, { close: 'Schließen' }).close, 'Schließen');
 const { registerModalClose, requestModalClose } = load('app_src/modalClose.js');
