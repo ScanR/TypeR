@@ -21,22 +21,22 @@ assert(/function queueFocusRestore\(reason\) \{\s*return enqueue\(\(\) => restor
 assert.strictEqual(main.split('if (changesDocument) await restoreFocus("call")').length, 3);
 assert(!main.includes('if (changesDocument) restoreFocus("call")'), "a call never starts a restore without awaiting it");
 assert(main.includes("'focusState'"), "the host accepts the page's focusState message");
+assert(main.includes("panelFocused = message.focused !== false;"), "a page that does not say holds the focus, as before");
+// The page reports its focus as it starts, before appReady: nothing else may
+// set it back to "holds the focus"
+assert.strictEqual(main.split("panelFocused = ").length, 3, "only the declaration and the page's report set panelFocused");
+const entry = fs.readFileSync(path.join(__dirname, "../uxp-src/web/entry.js"), "utf8");
+assert(entry.indexOf("installFocusRelease({") !== -1 && entry.indexOf("installFocusRelease({") < entry.indexOf('notify("appReady")'), "the focus report precedes appReady");
 
 async function test() {
   const calls = [];
   let finish;
   let fail = false;
   let platform = "darwin";
-  const elements = {};
   const context = {
     view: { blur() { calls.push("native-blur"); } },
     viewOnPanel: true,
     os: { platform: () => platform },
-    document: {
-      getElementById: (id) => elements[id] || null,
-      createElement: () => ({ style: {}, setAttribute() {}, focus() { calls.push("sink-focus"); } }),
-      body: { appendChild: (element) => { elements[element.id] = element; calls.push("sink-added"); } },
-    },
     keysHelper: { requestFocusRelease: async () => { calls.push("reader"); return true; } },
     photoshop: { _internals: { modal: async (name, fn) => {
       calls.push("modal");
@@ -57,19 +57,40 @@ async function test() {
   finish();
   await first;
 
-  // Windows: the panel's own DOM takes the focus and the reader is asked,
-  // before Photoshop is brought forward; the sink is made once
+  // Windows: the reader is asked to take the focus out of the WebView before
+  // Photoshop is brought forward. Nothing of the panel's own DOM takes the
+  // focus: a UXP panel that holds it keeps Photoshop's keys for itself (3.0.3:
+  // tool keys dead after every paste)
   calls.length = 0;
   platform = "win32";
   const windows = context.restoreFocus("call");
   finish();
   await windows;
-  assert.deepStrictEqual(calls, ["native-blur", "sink-added", "sink-focus", "reader", "modal", "front"]);
+  assert.deepStrictEqual(calls, ["native-blur", "reader", "modal", "front"]);
+  assert(!main.includes("typer-focus-sink") && !/\.focus\(\)/.test(source), "the host never focuses an element of the panel");
+
+  // The page does not hold the focus (a paste by shortcut from the document):
+  // a call leaves the focus where it is; the page's own request and a tooltip
+  // theft still restore it
   calls.length = 0;
-  const again = context.restoreFocus("panel");
+  vm.runInContext("panelFocused = false", context);
+  await context.restoreFocus("call");
+  assert.deepStrictEqual(calls, []);
+  assert.strictEqual(vm.runInContext("focusSkips", context), 1);
+  const asked = context.restoreFocus("panel");
   finish();
-  await again;
-  assert.deepStrictEqual(calls, ["native-blur", "sink-focus", "reader", "modal", "front"]);
+  await asked;
+  assert.deepStrictEqual(calls, ["native-blur", "reader", "modal", "front"]);
+  // macOS keeps restoring after every call: its restore changes nothing
+  // while the document already holds the focus
+  calls.length = 0;
+  platform = "darwin";
+  const mac = context.restoreFocus("call");
+  finish();
+  await mac;
+  assert.deepStrictEqual(calls, ["native-blur", "modal", "front"]);
+  platform = "win32";
+  vm.runInContext("panelFocused = true", context);
 
   // The user types in the page: a change made by a shortcut keeps the caret,
   // the page's own request (nothing edited) and a tooltip theft do not wait
@@ -78,26 +99,24 @@ async function test() {
   vm.runInContext("panelEditing = true", context);
   await context.restoreFocus("call");
   assert.deepStrictEqual(calls, []);
-  assert.strictEqual(vm.runInContext("focusSkips", context), 1);
+  assert.strictEqual(vm.runInContext("focusSkips", context), 2);
   const panel = context.restoreFocus("panel");
   finish();
   await panel;
   const reader = context.restoreFocus("reader");
   finish();
   await reader;
-  assert.deepStrictEqual(calls, ["native-blur", "sink-focus", "reader", "modal", "front", "native-blur", "sink-focus", "reader", "modal", "front"]);
+  assert.deepStrictEqual(calls, ["native-blur", "reader", "modal", "front", "native-blur", "reader", "modal", "front"]);
   vm.runInContext("panelEditing = false", context);
 
-  // A sink that cannot take the focus, or a reader that cannot be asked, do
-  // not stop the restore
+  // A reader that cannot be asked does not stop the restore
   calls.length = 0;
-  elements["typer-focus-sink"].focus = () => { throw new Error("not focusable"); };
   context.keysHelper.requestFocusRelease = async () => { throw new Error("no folder"); };
   const broken = context.restoreFocus("call");
   finish();
   await broken;
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepStrictEqual(calls, ["native-blur", "note:focus.sink", "modal", "front", "note:focus.request"]);
+  assert.deepStrictEqual(calls, ["native-blur", "modal", "front", "note:focus.request"]);
 
   // No WebView (the panel's own renderer): nothing to release there
   calls.length = 0;
@@ -118,7 +137,7 @@ async function test() {
   finish();
   await retry;
   assert.deepStrictEqual(calls, ["native-blur", "modal", "note:focus.restore", "native-blur", "modal", "front"], "a refused modal must not disable future focus restores");
-  console.log("UXP native focus: WebView release, Windows sink and reader request, typing, concurrent requests, in-panel fallback and error recovery passed");
+  console.log("UXP native focus: WebView release, Windows reader request, focus left alone outside the page, typing, concurrent requests, in-panel fallback and error recovery passed");
 }
 
 test().catch(error => { console.error(error); process.exitCode = 1; });

@@ -71,9 +71,10 @@ assert.equal(restores, 3, "hovering an inactive Photoshop window must not activa
     setTimeout: (fn) => { pending.set(++id, fn); return id; }, clearTimeout: (timer) => pending.delete(timer),
   };
   const run = () => { const callbacks = [...pending.values()]; pending.clear(); callbacks.forEach(fn => fn()); };
-  installFocusRelease({ document: doc, window: win, on: () => {}, request: async () => {}, notify: (type, payload) => reports.push(type + ":" + payload.editing) });
+  installFocusRelease({ document: doc, window: win, on: () => {}, request: async () => {}, notify: (type, payload) => reports.push(type + ":" + payload.editing + (payload.focused ? "" : ":away")) });
+  assert.deepStrictEqual(reports, ["focusState:false"], "the page reports its focus as it starts");
   doc.activeElement = element("BUTTON"); ev.focusin();
-  assert.deepStrictEqual(reports, ["focusState:false"]);
+  assert.equal(reports.length, 1);
   doc.activeElement = element("TEXTAREA"); ev.focusin();
   assert.deepStrictEqual(reports, ["focusState:false", "focusState:true"]);
   ev.focusin(); assert.equal(reports.length, 2, "reported on change only");
@@ -81,7 +82,21 @@ assert.equal(restores, 3, "hovering an inactive Photoshop window must not activa
   assert.equal(reports.length, 2, "focusout waits for the new active element");
   run(); assert.deepStrictEqual(reports.slice(2), ["focusState:false"]);
   doc.activeElement = element("INPUT"); ev.focusin(); owns = false; ev["win:blur"]();
-  assert.deepStrictEqual(reports.slice(3), ["focusState:true", "focusState:false"], "an editor left behind by Cmd-Tab is not being typed in");
+  assert.deepStrictEqual(reports.slice(3), ["focusState:true", "focusState:false:away"], "an editor left behind by Cmd-Tab is not being typed in");
   owns = true; ev["win:focus"](); assert.deepStrictEqual(reports.slice(5), ["focusState:true"]);
+  // The focus leaving a page where nothing was edited is reported too: on
+  // Windows the host leaves the focus alone while the page does not hold it
+  doc.activeElement = element("BODY"); ev.focusout(); run();
+  owns = false; ev["win:blur"](); owns = true; ev["win:focus"]();
+  assert.deepStrictEqual(reports.slice(6), ["focusState:false", "focusState:false:away", "focusState:false"]);
 }
-console.log("UXP focus: armed release, no repeated modals, native focus, typing, IME, drag, Cmd-Tab and editing reports passed");
+{
+  // A page that starts without the focus says so
+  const reports = [];
+  const noop = () => {};
+  installFocusRelease({ document: { activeElement: element("BODY"), hidden: false, hasFocus: () => false, documentElement: { addEventListener: noop }, addEventListener: noop },
+    window: { addEventListener: noop, setTimeout: noop, clearTimeout: noop }, on: noop, request: async () => {},
+    notify: (type, payload) => reports.push(payload) });
+  assert.deepStrictEqual(reports, [{ editing: false, focused: false }]);
+}
+console.log("UXP focus: armed release, no repeated modals, native focus, typing, IME, drag, Cmd-Tab, editing and focus reports passed");

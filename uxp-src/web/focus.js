@@ -27,15 +27,20 @@ export function installFocusRelease({ document, window, request, on, notify, del
   const ownsFocus = () => typeof document.hasFocus !== "function" || document.hasFocus();
   const cancel = () => { if (timer !== null) window.clearTimeout(timer); timer = null; };
   const arm = () => { if (ownsFocus()) armed = true; };
-  // The host hears whether an editor has the focus here: after a change made
-  // by a shortcut while typing, it leaves the caret alone (main.js restoreFocus)
+  // The host hears whether the page holds the keyboard focus and whether an
+  // editor has it here: after a change made by a shortcut while typing, it
+  // leaves the caret alone, and on Windows it leaves the focus alone when the
+  // page does not hold it (main.js restoreFocus)
   let editing = null;
+  let focused = null;
   const reportEditing = () => {
     if (typeof notify !== "function") return;
-    const now = ownsFocus() && isEditing(document.activeElement);
-    if (now === editing) return;
+    const owns = !!ownsFocus();
+    const now = owns && isEditing(document.activeElement);
+    if (now === editing && owns === focused) return;
     editing = now;
-    notify("focusState", { editing: now });
+    focused = owns;
+    notify("focusState", { editing: now, focused: owns });
   };
   const release = () => {
     if (!armed || composing || draggingOutside || document.hidden) return;
@@ -83,4 +88,6 @@ export function installFocusRelease({ document, window, request, on, notify, del
     cancel();
     release();
   });
+  // The host starts by assuming the page holds the focus
+  reportEditing();
 }

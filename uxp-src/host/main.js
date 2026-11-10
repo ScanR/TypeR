@@ -643,10 +643,12 @@ function handlePanelMessage(message, generation, channel) {
     debugNote('bridge.ready', channel);
     return;
   }
-  // Whether the user is typing in the page (an input, a text area or an
-  // editable element has its focus): see restoreFocus
+  // Whether the page holds the keyboard focus, and whether the user is typing
+  // in it (an input, a text area or an editable element has its focus): see
+  // restoreFocus
   if (message.type === "focusState") {
     panelEditing = !!message.editing;
+    panelFocused = message.focused !== false;
     return;
   }
   if (message.type === "appReady") {
@@ -921,38 +923,33 @@ keyboard.onChange((state) => post({ type: "keys", state }));
 // On Windows the WebView2 windows belong to msedgewebview2.exe and neither
 // UXP's blur nor bringToFront takes the focus out of them (the canvas click
 // does not always either, and the user switches documents to get the keys
-// back): the panel's own DOM takes the focus first, which moves it to the
-// panel's view where Photoshop reads its keys, and the keyboard reader, asked
-// through its state folder, sets it on Photoshop's windows from outside if a
-// WebView still holds it (typer-keys.cs, ReleaseWebViewFocus). The page
-// reports whether the user is typing in it (focusState): a change made by a
-// shortcut while typing keeps the caret. Photoshop busy (a text being edited,
-// a dialog): the user's next click restores it, as before.
+// back): the keyboard reader, asked through its state folder, sets it on
+// Photoshop's windows from outside if a WebView still holds it (typer-keys.cs,
+// ReleaseWebViewFocus). Nothing else moves the focus there, and a call
+// restores nothing while the page does not hold the focus: 3.0.2 and 3.0.3
+// gave the focus to an element of the panel's own DOM first, on every paste,
+// and a UXP panel that holds the focus on Windows keeps Photoshop's keys for
+// itself, so a paste by shortcut from the document killed the tool keys and
+// the actions' shortcuts until a click on the document. The page reports
+// whether it holds the focus and whether the user is typing in it
+// (focusState): a change made by a shortcut while typing keeps the caret.
+// Photoshop busy (a text being edited, a dialog): the user's next click
+// restores it, as before.
 let restoringFocus = false;
 let focusRestores = 0;
 let focusSkips = 0;
 let panelEditing = false;
-
-// A focusable element of the panel's own DOM: giving it the focus takes it
-// from the WebView (UXP moves the native focus to the panel's view)
-function focusSink() {
-  let sink = document.getElementById("typer-focus-sink");
-  if (!sink) {
-    sink = document.createElement("div");
-    sink.id = "typer-focus-sink";
-    sink.setAttribute("tabindex", "-1");
-    sink.style.cssText = "position:absolute;width:0;height:0;overflow:hidden";
-    document.body.appendChild(sink);
-  }
-  if (typeof sink.focus === "function") sink.focus();
-}
+// Until the page says otherwise: web/focus.js reports as it starts, before
+// appReady, which therefore leaves this alone
+let panelFocused = true;
 
 // reason: "call" after a document change made from the panel, "panel" asked
 // by the page (its pointer left and nothing is being edited), "reader" for a
 // tooltip theft
 async function restoreFocus(reason) {
   if (restoringFocus) return;
-  if (reason === "call" && panelEditing) {
+  const windowsWebView = !!(view && viewOnPanel && os.platform() === "win32");
+  if (reason === "call" && (panelEditing || (windowsWebView && !panelFocused))) {
     focusSkips++;
     return;
   }
@@ -962,12 +959,7 @@ async function restoreFocus(reason) {
     // Release the native WebView too: bringToFront alone leaves it as the
     // keyboard responder on macOS, swallowing Photoshop's tool shortcuts.
     if (view && typeof view.blur === "function") view.blur();
-    if (view && viewOnPanel && os.platform() === "win32") {
-      try {
-        focusSink();
-      } catch (error) {
-        debugNote("focus.sink", String((error && error.message) || error));
-      }
+    if (windowsWebView) {
       keysHelper.requestFocusRelease().catch((error) => debugNote("focus.request", String((error && error.message) || error)));
     }
     await photoshop._internals.modal("TypeR", () => ps.app.bringToFront());
