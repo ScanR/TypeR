@@ -5928,7 +5928,13 @@ function smartPasteCommit(data) {
     // Undo whatever the failed run left, then let the panel fall back
     try {
       var states = doc.historyStates;
-      if (states.length > count && states[states.length - 1].name === _SMART_HISTORY_NAME) {
+      // A full history does not grow, it drops its oldest state: the current
+      // state tells whether the run left one
+      var added = states.length > count;
+      if (!added && before !== null) {
+        added = String(_smartCurrentHistoryKey()) !== String(before);
+      }
+      if (added && states[states.length - 1].name === _SMART_HISTORY_NAME) {
         doc.activeHistoryState = states[states.length - 2];
       }
     } catch (rollbackError) {}
