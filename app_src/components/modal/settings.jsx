@@ -1,5 +1,6 @@
 import { useModalClose } from "../../modalClose";
-import { serializeStyle, validateImportData, hasStyleImportConflicts } from "../../librarySerialization";
+import { hasStyleImportConflicts } from "../../librarySerialization";
+import { STYLE_IMPORT_EXTENSIONS, buildFolderImport, buildLibraryImport, describeImportError, readStyleImportFile, reportStyleImport } from "../../styleImport";
 import React from "react";
 import { FiX, FiSearch, FiSettings, FiEye, FiEyeOff, FiEdit3, FiFileText, FiLayers, FiAlertTriangle, FiChevronUp, FiChevronDown, FiRotateCcw, FiCheck, FiPlayCircle, FiEdit2, FiGrid, FiPlus, FiImage, FiTrash2, FiDatabase, FiHelpCircle, FiFolderPlus, FiLock, FiMonitor, FiType, FiZoomIn, FiExternalLink } from "react-icons/fi";
 import { MdSave, MdTab, MdCenterFocusWeak, MdFormatSize, MdSwapVert, MdOutlineSubject, MdOutlineCallToAction } from "react-icons/md";
@@ -7,7 +8,7 @@ import { AiOutlineBorderInner } from "react-icons/ai";
 import { FaKeyboard, FaFileExport, FaFileImport } from "react-icons/fa";
 
 import config from "../../config";
-import { reloadApp, backupStorage, locale, baseLocale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig, getUserFonts } from "../../utils";
+import { reloadApp, backupStorage, locale, baseLocale, nativeAlert, nativeConfirm, checkUpdate, readStorage, writeToStorage, deleteStorageFile, getUpdateTestConfig } from "../../utils";
 import { readUxpMigrationState } from "../../uxpMigration";
 import { openKeyboardAccessSettings, readKeyboardAccess } from "../../keyboardAccess";
 import { useContext, defaultUiLayout, normalizeUiLayout, normalizeSmartPasteMinScale } from "../../context";
@@ -38,8 +39,6 @@ import FontViewer from "./fontViewer";
 import TextShapeRTraining from "./textShapeRTraining";
 import FontFinderLogo from "./fontFinderLogo";
 import MissingFontsDialog from "./missingFontsDialog";
-import { collectMissingStyleFonts } from "../../fontFinderMatch";
-import { NO_TEXT_PRESETS, toolPresetFileToImportData } from "../../toolPresetImport";
 import { getFontViewerStatus } from "../../fontViewerApi";
 import { shortcutCommands } from "../../shortcutCommands";
 import { clearTypeRCache, formatCacheBytes, getTypeRCacheInfo } from "../../cepCache";
@@ -1109,116 +1108,73 @@ const SettingsModal = React.memo(function SettingsModal() {
   };
 
   const importSettings = async () => {
-    const pathSelect = await window.cep.fs.showOpenDialogEx(true, false, null, null, ["json", "tpl"]);
+    const pathSelect = await window.cep.fs.showOpenDialogEx(true, false, null, null, STYLE_IMPORT_EXTENSIONS);
     if (!pathSelect?.data?.length) return false;
     let foldersImported = 0;
     let backedUp = false;
     const importedStyles = [];
+    const importedFontFiles = [];
     for (const path of pathSelect.data) {
-      const isToolPresetFile = /\.tpl$/i.test(path);
-      const result = await window.cep.fs.readFile(path, isToolPresetFile ? window.cep.encoding.Base64 : undefined);
-      if (result.err) {
-        nativeAlert(locale.errorImportStyles, locale.errorTitle, true);
-      } else {
-        try {
-          const data = validateImportData(isToolPresetFile ? toolPresetFileToImportData(result.data, path) : JSON.parse(result.data));
-          if (data.incomplete) nativeAlert(locale.importTplPartial, locale.errorTitle, true);
-          if (!backedUp) {
-            if (!backupStorage()) { nativeAlert(locale.storageWarning, locale.errorTitle, true); continue; }
-            backedUp = true;
-          }
-          if (data.pastePointText === undefined && data.textItemKind !== undefined) {
-            data.pastePointText = !!data.textItemKind;
-          }
-          if (data.typerTextShapeRTuning) {
-            // A shared TextShapeR learning file: route it to its own flow so
-            // it never falls through to the full-settings import (which
-            // replaces storage and reloads the panel)
-            const tuningValue = sanitizeTextShapeRTuning(data.typerTextShapeRTuning);
-            if (!tuningValue.samples) throw new Error("format");
-            context.dispatch({ type: "setTextShapeRTuning", value: tuningValue });
-            nativeAlert(locale.textShapeRTuningImportSuccess || "TextShapeR learning imported — suggestions now follow this style.", locale.successTitle, false);
-          } else if (data.exportedStyles) {
-            const folderId = Math.random().toString(36).substring(2, 8);
-            const importedAt = Date.now();
-            const dataFolder = { id: folderId, name: data.name };
-            const styles = data.exportedStyles.map((style) => ({
-                ...serializeStyle(style),
-                name: style.name,
-                id: Math.random().toString(36).substring(2, 8),
-                folder: folderId,
-                textType: style.textType || "inherit",
-                textProps: style.textProps,
-                prefixes: style.prefixes || [],
-                prefixColor: style.prefixColor,
-                stroke: style.stroke,
-                edited: importedAt,
-            }));
-            context.dispatch({ type: "importStyleFolder", folder: dataFolder, styles });
-            importedStyles.push(...styles);
-            foldersImported++;
-          } else if (
-            data.folders &&
-            data.styles &&
-            data.includesSettings !== true &&
-            !data.ignoreLinePrefixes &&
-            !data.ignoreTags &&
-            !data.defaultStyleId &&
-            !data.language &&
-            !data.autoClosePSD &&
-            !data.autoScrollStyle &&
-            !data.pastePointText &&
-            !data.textItemKind
-          ) {
-            const idMap = {};
-            const foldersWithNewIds = data.folders.map((folder) => {
-              const newId = Math.random().toString(36).substring(2, 8);
-              idMap[folder.id] = newId;
-              return { folder, newId };
-            });
-            const folders = foldersWithNewIds.map(({ folder, newId }) => ({
-              id: newId,
-              name: folder.name,
-              parentId: folder.parentId ? idMap[folder.parentId] || null : null,
-              order: typeof folder.order === "number" ? folder.order : undefined,
-            }));
-            const importedAt = Date.now();
-            const styles = data.styles.map((style) => ({
-              ...serializeStyle(style),
-              id: Math.random().toString(36).substring(2, 8),
-              name: style.name,
-              folder: style.folder ? idMap[style.folder] : null,
-              textType: style.textType || "inherit",
-              textProps: style.textProps,
-              prefixes: style.prefixes || [],
-              prefixColor: style.prefixColor,
-              stroke: style.stroke,
-              edited: importedAt,
-            }));
-            context.dispatch({ type: "importStyleLibrary", folders, styles });
-            importedStyles.push(...styles);
-            foldersImported += folders.length;
-          } else {
-            const currentStyles = context.getState().styles;
-            const keepExistingStyles = data.styles && hasStyleImportConflicts(currentStyles, data.styles)
-              ? await new Promise(resolve => nativeConfirm(locale.settingsImportReplace, locale.confirmTitle, resolve))
-              : false;
-            context.dispatch({ type: "import", data, keepExistingStyles });
-            setTimeout(() => reloadApp(), 100);
-            closeModal();
-          }
-        } catch (error) {
-          nativeAlert(error.message === NO_TEXT_PRESETS ? locale.importTplNoText : locale.errorImportStyles, locale.errorTitle, true);
+      try {
+        const { data, fontFiles } = await readStyleImportFile(path);
+        if (data.incomplete) nativeAlert(locale.importTplPartial, locale.errorTitle, true);
+        if (!backedUp) {
+          if (!backupStorage()) { nativeAlert(locale.storageWarning, locale.errorTitle, true); continue; }
+          backedUp = true;
         }
+        if (data.pastePointText === undefined && data.textItemKind !== undefined) {
+          data.pastePointText = !!data.textItemKind;
+        }
+        if (data.typerTextShapeRTuning) {
+          // A shared TextShapeR learning file: route it to its own flow so
+          // it never falls through to the full-settings import (which
+          // replaces storage and reloads the panel)
+          const tuningValue = sanitizeTextShapeRTuning(data.typerTextShapeRTuning);
+          if (!tuningValue.samples) throw new Error("format");
+          context.dispatch({ type: "setTextShapeRTuning", value: tuningValue });
+          nativeAlert(locale.textShapeRTuningImportSuccess || "TextShapeR learning imported — suggestions now follow this style.", locale.successTitle, false);
+        } else if (data.exportedStyles) {
+          const { folder, styles } = buildFolderImport(data);
+          context.dispatch({ type: "importStyleFolder", folder, styles });
+          importedStyles.push(...styles);
+          importedFontFiles.push(...fontFiles);
+          foldersImported++;
+        } else if (
+          data.folders &&
+          data.styles &&
+          data.includesSettings !== true &&
+          !data.ignoreLinePrefixes &&
+          !data.ignoreTags &&
+          !data.defaultStyleId &&
+          !data.language &&
+          !data.autoClosePSD &&
+          !data.autoScrollStyle &&
+          !data.pastePointText &&
+          !data.textItemKind
+        ) {
+          const { folders, styles } = buildLibraryImport(data);
+          context.dispatch({ type: "importStyleLibrary", folders, styles });
+          importedStyles.push(...styles);
+          importedFontFiles.push(...fontFiles);
+          foldersImported += folders.length;
+        } else {
+          const currentStyles = context.getState().styles;
+          const keepExistingStyles = data.styles && hasStyleImportConflicts(currentStyles, data.styles)
+            ? await new Promise(resolve => nativeConfirm(locale.settingsImportReplace, locale.confirmTitle, resolve))
+            : false;
+          context.dispatch({ type: "import", data, keepExistingStyles });
+          setTimeout(() => reloadApp(), 100);
+          closeModal();
+        }
+      } catch (error) {
+        nativeAlert(describeImportError(error), locale.errorTitle, true);
       }
     }
     if (foldersImported > 0) {
-      const message = foldersImported > 1 ? locale.importFoldersSuccess : locale.importFolderSuccess;
-      // An empty list means Photoshop's fonts are not known yet: no warning
-      const installedFonts = getUserFonts();
-      const missingFonts = installedFonts.length ? collectMissingStyleFonts(importedStyles, installedFonts) : [];
-      if (missingFonts.length) setMissingFontsImport({ fonts: missingFonts, message });
-      else nativeAlert(message, locale.successTitle, false);
+      reportStyleImport(
+        { folders: foldersImported, styles: importedStyles, fontFiles: importedFontFiles },
+        { showMissingFonts: setMissingFontsImport }
+      );
     }
   };
 
