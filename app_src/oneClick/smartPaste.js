@@ -61,9 +61,26 @@ export const resolveStyleSizeForPage = (style, pageWidth) => {
   if (isNaN(selectedSize) || selectedSize <= 0) return style;
   const ranges = style.textProps && style.textProps.layerText && style.textProps.layerText.textStyleRange;
   if (!ranges || !ranges[0] || !ranges[0].textStyle) return style;
-  ranges[0].textStyle.size = selectedSize;
-  if (ranges[0].textStyle.impliedFontSize != null) ranges[0].textStyle.impliedFontSize = selectedSize;
+  scaleTextStyleRanges(ranges, selectedSize);
   return style;
+};
+
+// The preset is the size of the style's first run: every run, its leading
+// and its baseline shift follow it in proportion, as the hosts do
+const SCALED_FIELDS = ["size", "impliedFontSize", "leading", "impliedLeading", "baselineShift", "impliedBaselineShift"];
+export const scaleTextStyleRanges = (ranges, size) => {
+  const base = parseFloat(ranges[0].textStyle.size);
+  const scale = base > 0 ? size / base : 1;
+  for (let i = 0; i < ranges.length; i++) {
+    const textStyle = ranges[i] && ranges[i].textStyle;
+    if (!textStyle) continue;
+    SCALED_FIELDS.forEach((field) => {
+      if (typeof textStyle[field] === "number") textStyle[field] *= scale;
+    });
+  }
+  // The first run gets the preset itself, not a product off by a rounding
+  ranges[0].textStyle.size = size;
+  if (ranges[0].textStyle.impliedFontSize != null) ranges[0].textStyle.impliedFontSize = size;
 };
 
 // A line made only of punctuation, as the hosts do
@@ -240,8 +257,9 @@ export const prepareSmartPaste = async (request, adapter) => {
         axis: text.candidate.axis,
         top: text.candidate.top,
         bottom: text.candidate.bottom,
-        // The last line is a lone pause ("…"): its ink may be re-centred
-        terminalPause: text.candidate.lines.length > 1 && (text.candidate.lines[text.candidate.lines.length - 1].edge.flags & 1) === 1,
+        // Where the centre of the ink box goes, Align's centre: the commit
+        // moves Photoshop's ink there (it can sit a pixel off the measured one)
+        target: { x: chamber.selection.xMid, y: chamber.selection.yMid },
       },
       styleId: picked.style.id || null,
       role: picked.role,

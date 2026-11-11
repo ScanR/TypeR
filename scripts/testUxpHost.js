@@ -285,7 +285,7 @@ const loadKeysHelper = () => {
 
 const hostSource = fs.readFileSync(path.join(root, "app_src/host.js"), "utf8");
 const HOST_HELPERS = [
-  "_clone", "_normalizeTextKey", "_getHostDefaultStyle", "_getHostDefaultStroke", "_ensureStyle", "_overrideStyleTextSize", "_setLayerStroke",
+  "_clone", "_normalizeTextKey", "_getHostDefaultStyle", "_getHostDefaultStroke", "_ensureStyle", "_overrideStyleTextSize", "_scaleTextStyleRanges", "_setLayerStroke",
   "_isPunctuationOnlyText", "_scaleStyleForPunctuationOnlyText", "_punctuationOnlyBoxDimensions", "_resolveStylePointText", "_getAdaptiveSelectionOpenRadius", "_calculateSelectionDimensions", "_clampAdjustAmount",
   "_getAdjustedSelectionBoundsFallback", "_buildBoundsShapeRows", "_normalizeShapeSampleCount", "_selectionBoundsKey",
   "_buildPathShapeRows", "_polygonScanlineSpan",
@@ -352,6 +352,14 @@ assert.deepStrictEqual(contentWrites[0].to.antiAlias, antiAliasStrong, "A conten
 });
 const sized = () => ({ textProps: { layerText: { textStyleRange: [{ textStyle: { size: 10, impliedFontSize: 10 } }, { textStyle: { size: 12 } }] } } });
 assert.deepStrictEqual(port._overrideStyleTextSize(sized(), 30), host._overrideStyleTextSize(sized(), 30));
+// A size preset scales every run with its leading, in both hosts
+const runs = () => [{ textStyle: { size: 10, impliedFontSize: 10, leading: 12, autoLeading: false } }, { textStyle: { size: 15, leading: 18, baselineShift: 2 } }];
+const hostRuns = runs();
+const portRuns = runs();
+host._scaleTextStyleRanges(hostRuns, 20);
+port._scaleTextStyleRanges(portRuns, 20);
+assert.deepStrictEqual(portRuns, hostRuns);
+assert.deepStrictEqual(hostRuns, [{ textStyle: { size: 20, impliedFontSize: 20, leading: 24, autoLeading: false } }, { textStyle: { size: 30, leading: 36, baselineShift: 4 } }]);
 const PUNCTUATION_ONLY = ["?!", "!!", "...", "…", " ?!", "« !! »", "(?)", "¿¡", "؟", "！？", "?\r!"];
 const NOT_PUNCTUATION_ONLY = ["", "  ", "\r", "Non!", "?!a", "1!", "♪", null, undefined];
 PUNCTUATION_ONLY.forEach((text) => {

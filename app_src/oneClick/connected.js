@@ -7,7 +7,7 @@
 // falls back to the clicked chamber alone.
 
 import { area, bodyBounds, box, clipToSide, contains, findCut, flatten, polygonContour, simplify } from "./geometry";
-import { buildBubblePlan, contoursAt } from "./bubblePlan";
+import { buildBubblePlan, centredBody, contoursAt } from "./bubblePlan";
 
 // The 2 px work path tolerance allows a slightly offset equivalent cut
 export const sameNeck = (a, b) => {
@@ -235,7 +235,7 @@ export const deriveTriplePlans = (input, plan, subpaths, options = {}) => {
       const cleanPolygon = applyConstraints(built.cleanPolygon, leaf.constraints);
       const boundaries = partition.necks.map((neck) => boundaryNeck(cleanPolygon, neck)).filter(Boolean);
       if (!boundaries.length || !contains(cleanPolygon, seed)) return null;
-      const selection = bodyBounds(cleanPolygon, box(cleanPolygon));
+      const selection = centredBody(cleanPolygon, cleanPolygon, true);
       plans.push({
         ...built,
         click: { ...seed },

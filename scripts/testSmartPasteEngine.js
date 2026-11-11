@@ -110,6 +110,8 @@ const style = (id, size, font = "AnimeAce") => ({
   stroke: { enabled: true, size: 3, color: { r: 255, g: 255, b: 255 } },
 });
 
+const unstroked = (id, size, font) => ({ ...style(id, size, font), stroke: null });
+
 const page = { width: 1200, height: 1700, resolution: 72 };
 const white = { fill: 255, rgb: { red: 255, green: 255, blue: 255 } };
 const black = { fill: 0, rgb: { red: 0, green: 0, blue: 0 } };
@@ -248,13 +250,24 @@ const linesInside = (session) => {
   const kept100 = await prepareSmartPaste({ ...shrinkRequest, settings: { hyphenation: "off", minScale: 1 } }, { ...noShrink.adapter, leanMeasure: true });
   assert.ok(Math.abs(kept100.sessions[0].text.size - 24) < 1e-6, "no shrinking at 100%: " + kept100.sessions[0].text.size);
 
-  // The style size fits only in a vertical window between the coarse block
-  // centres: the fine retry finds it instead of shrinking the text
+  // The style size fits this bubble only above its centre, where Align would
+  // not leave it: the text shrinks a little and its ink box is centred (a
+  // style without a stroke: a stroke's width counts as ink)
   const narrow = ellipseNodes(300, 300, 95, 70);
   const narrowInput = { source: "wand", click: { x: 300, y: 300 }, selectionBounds: boundsOf(geometry.flatten(narrow)), rawPath: pathOf([narrow]), fill: white };
-  const kept22 = await prepareSmartPaste({
-    trigger: { source: "wand" }, lines: [line("Je ne pensais vraiment pas te revoir ici.", style("regular", 22))], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.7 },
+  const centred22 = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Je ne pensais vraiment pas te revoir ici.", unstroked("regular", 22))], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.7 },
   }, adapterFor(narrowInput));
+  assert.strictEqual(centred22.sessions[0].text.tier, "range", "the style size does not fit on the centre");
+  assert.ok(centred22.sessions[0].text.size >= 22 * 0.95 && centred22.sessions[0].text.size < 22, "a small shrink: " + centred22.sessions[0].text.size);
+  assert.ok(Math.abs((centred22.sessions[0].text.top + centred22.sessions[0].text.bottom) / 2 - 300) < 1e-6, "the ink box is centred");
+  linesInside(centred22.sessions[0]);
+  // A little wider, the style size fits on the centre
+  const wider = ellipseNodes(300, 300, 100, 72);
+  const widerInput = { source: "wand", click: { x: 300, y: 300 }, selectionBounds: boundsOf(geometry.flatten(wider)), rawPath: pathOf([wider]), fill: white };
+  const kept22 = await prepareSmartPaste({
+    trigger: { source: "wand" }, lines: [line("Je ne pensais vraiment pas te revoir ici.", unstroked("regular", 22))], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.7 },
+  }, adapterFor(widerInput));
   assert.strictEqual(kept22.sessions[0].text.tier, "exact", "the style size fits this bubble");
   assert.ok(Math.abs(kept22.sessions[0].text.size - 22) < 1e-6, "kept size " + kept22.sessions[0].text.size);
   linesInside(kept22.sessions[0]);
@@ -283,33 +296,35 @@ const linesInside = (session) => {
   });
   const unitPaste = async (unit, input) => {
     clearMetricCache();
-    const styled = style("regular", 22);
+    const styled = unstroked("regular", 22);
     styled.textProps.typeUnit = unit;
     return (await prepareSmartPaste({
       trigger: { source: "wand" }, lines: [line("Je ne pensais vraiment pas te revoir ici.", styled)], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.7 },
     }, { capture: async () => ({ ...page300, documentId: 7, ...input }), measure: unitMeasure, useAtlas: true })).sessions[0];
   };
-  const pixels300 = await unitPaste("pixelsUnit", narrowInput);
+  const pixels300 = await unitPaste("pixelsUnit", widerInput);
   assert.strictEqual(pixels300.text.tier, "exact", "a style in pixels is as large on a 300 ppi page as on a 72 ppi one");
   assert.ok(Math.abs(pixels300.text.size - 22) < 1e-6, "22 px stay 22 pixels: " + pixels300.text.size);
   assert.strictEqual(pixels300.text.params.layerText.textKey, kept22.sessions[0].text.params.layerText.textKey, "with the same lines");
   assert.ok(Math.abs(pixels300.text.params.layerText.textStyleRange[0].textStyle.size - 22) < 1e-6, "and the size is written in the style's unit");
   linesInside(pixels300);
-  const scaledUp = ellipseNodes(600, 600, 95 * 300 / 72, 70 * 300 / 72);
+  const scaledUp = ellipseNodes(600, 600, 100 * 300 / 72, 72 * 300 / 72);
   const points300 = await unitPaste("pointsUnit", { source: "wand", click: { x: 600, y: 600 }, selectionBounds: boundsOf(geometry.flatten(scaledUp)), rawPath: pathOf([scaledUp]), fill: white });
   assert.ok(Math.abs(points300.text.size - 22 * 300 / 72) < 1e-6, "22 pt are 91.67 pixels there: " + points300.text.size);
   assert.ok(Math.abs(points300.text.params.layerText.textStyleRange[0].textStyle.size - 22) < 1e-6);
   clearMetricCache();
 
   // A shrink stays as small as possible: the largest size that fits, not a
-  // smaller one with a nicer silhouette (this one used to drop to 85%)
+  // smaller one with a nicer silhouette (this one used to drop to 85%), rounded
+  // down to half a unit of the style
   const round = ellipseNodes(300, 300, 100, 100);
   const roundInput = { source: "wand", click: { x: 300, y: 300 }, selectionBounds: boundsOf(geometry.flatten(round)), rawPath: pathOf([round]), fill: white };
   const least = await prepareSmartPaste({
-    trigger: { source: "wand" }, lines: [line("Merci beaucoup pour tout ce que tu as fait pour nous.", style("regular", 26))], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.85 },
+    trigger: { source: "wand" }, lines: [line("Merci beaucoup pour tout ce que tu as fait pour nous.", unstroked("regular", 26))], roleStyles: {}, settings: { hyphenation: "off", minScale: 0.85 },
   }, adapterFor(roundInput));
   assert.strictEqual(least.sessions[0].text.tier, "range");
   assert.ok(least.sessions[0].text.size >= 26 * 0.92 && least.sessions[0].text.size < 26, "least shrink " + least.sessions[0].text.size);
+  assert.ok(Math.abs(least.sessions[0].text.size * 2 - Math.round(least.sessions[0].text.size * 2)) < 1e-6, "a round size " + least.sessions[0].text.size);
   linesInside(least.sessions[0]);
 
   // Keep size (Alt): one exact size

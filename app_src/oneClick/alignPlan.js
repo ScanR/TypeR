@@ -1,18 +1,22 @@
-// Align in a double or triple bubble. The classic Align centres a text on
-// the wand selection around it, and the wand selects every chamber of a
-// connected bubble: each text then lands on the neck. Here the outline the
-// host read (alignCapture) is cut with the smart paste's neck finder, and
-// each text goes to a chamber. Pure: nothing here reads Photoshop.
+// Align. The classic Align centres a text on the wand selection around it,
+// opened in Photoshop to cut the tail off. Here the outline the host read
+// (alignCapture) goes through the smart paste's own geometry, so that both put
+// a text on the same point: a single bubble gets its body's centre
+// (bodyCentre, geometry.js), and a double or triple bubble is cut with the
+// neck finder, each text going to a chamber (the wand selects every chamber
+// of a connected bubble: each text landed on the neck). Pure: nothing here
+// reads Photoshop.
 //
 // capture = {
 //   documentId, width, height, resolution,
 //   texts: [{ id, index, box: { left, top, right, bottom } }],  // index: stack position
-//   bubbles: [{ selectionBounds, rawPath, textIds }],            // one per outline
+//   bubbles: [{ selectionBounds, rawPath, textIds, probed }],    // one per outline; probed: found by the host's wand
 // }
 // planAlignment(capture, readingOrder) -> [{ id, rect }], rect being the
-// chamber's body (left, top, right, bottom, width, height, xMid, yMid). A
-// text left out keeps the classic Align: its bubble is single, a rectangle,
-// or the split is uncertain.
+// body of the bubble or of the chamber (left, top, right, bottom, width,
+// height) and the point the text is centred on (xMid, yMid). A text left out
+// keeps the classic Align: its selection is a rectangle, or no bubble can be
+// read in the outline.
 
 import { buildBubblePlan, isAxisRectangle, subpathsFromDescriptor } from "./bubblePlan";
 import { deriveDoubleSibling, deriveTriplePlans } from "./connected";
@@ -38,8 +42,9 @@ const seedsFor = (texts) => {
   return seeds;
 };
 
-// The chambers of the outline (two or three), or null for a single bubble
-const chambersOf = (input, subpaths, texts) => {
+// The plans of the outline: its two or three chambers, the bubble itself when
+// it is single, or null when no bubble can be read
+const plansOf = (input, subpaths, texts) => {
   const seeds = seedsFor(texts);
   for (let i = 0; i < seeds.length; i++) {
     let plan;
@@ -48,7 +53,7 @@ const chambersOf = (input, subpaths, texts) => {
     } catch (uncertain) {
       continue;
     }
-    if (!plan.connected) return null;
+    if (!plan.connected) return [plan];
     const triple = deriveTriplePlans(input, plan, subpaths);
     if (triple) return triple;
     const sibling = deriveDoubleSibling(input, plan, subpaths);
@@ -145,11 +150,23 @@ export const planAlignment = (capture, readingOrder) => {
     };
     let chambers;
     try {
-      chambers = chambersOf(input, subpathsFromDescriptor(bubble.rawPath, input.resolution), texts);
+      chambers = plansOf(input, subpathsFromDescriptor(bubble.rawPath, input.resolution), texts);
     } catch (unreadable) {
       chambers = null;
     }
-    if (!chambers || chambers.length < 2) return;
+    if (!chambers) return;
+    if (chambers.length < 2) {
+      // A single bubble: every text on its centre. The user's selection takes
+      // any text (Align moves a text into the selected bubble); an outline the
+      // host's own wand found (probed) only the texts inside it: its probes
+      // around a text can land in the region next to a narrow bubble
+      texts.forEach((text) => {
+        if (bubble.probed && !contains(chambers[0].cleanPolygon, centreOf(text.box))) return;
+        placed[text.id] = true;
+        placements.push({ id: text.id, rect: rectOf(chambers[0].selection) });
+      });
+      return;
+    }
     const assigned = assignChambers(texts, chambers, input.selectionBounds, readingOrder);
     texts.forEach((text, i) => {
       placed[text.id] = true;

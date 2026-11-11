@@ -344,11 +344,28 @@ function _resolveStyleSizeForDocument(style) {
 
   const ranges = style.textProps && style.textProps.layerText && style.textProps.layerText.textStyleRange;
   if (!ranges || !ranges[0] || !ranges[0].textStyle) return style;
-  ranges[0].textStyle.size = selectedSize;
-  if (ranges[0].textStyle.impliedFontSize != null) {
-    ranges[0].textStyle.impliedFontSize = selectedSize;
-  }
+  _scaleTextStyleRanges(ranges, selectedSize);
   return style;
+}
+
+// The preset is the size of the style's first run: every run, its leading
+// and its baseline shift follow it in proportion
+function _scaleTextStyleRanges(ranges, size) {
+  const base = parseFloat(ranges[0].textStyle.size);
+  const scale = base > 0 ? size / base : 1;
+  const fields = ["size", "impliedFontSize", "leading", "impliedLeading", "baselineShift", "impliedBaselineShift"];
+  for (let i = 0; i < ranges.length; i++) {
+    const textStyle = ranges[i] && ranges[i].textStyle;
+    if (!textStyle) continue;
+    for (let j = 0; j < fields.length; j++) {
+      if (typeof textStyle[fields[j]] === "number") textStyle[fields[j]] *= scale;
+    }
+  }
+  // The first run gets the preset itself, not a product off by a rounding
+  ranges[0].textStyle.size = size;
+  if (ranges[0].textStyle.impliedFontSize != null) {
+    ranges[0].textStyle.impliedFontSize = size;
+  }
 }
 
 /* ========================================================= */
@@ -3180,13 +3197,13 @@ function _layerStackIndex(id) {
   }
 }
 
-function _alignReadOutline() {
+function _alignReadOutline(probed) {
   const bounds = _liveSelectionBounds();
   if (!bounds) return null;
   play({ _obj: "make", _target: [{ _ref: "path" }], from: SELECTION, tolerance: px(2) });
   const path = get([{ _ref: "path", _property: "workPath" }]);
   if (!path || !path.pathContents) return null;
-  return { selectionBounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom }, rawPath: path, textIds: [] };
+  return { selectionBounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom }, rawPath: path, textIds: [], probed: !!probed };
 }
 
 function _alignCaptureRun() {
@@ -3218,7 +3235,7 @@ function _alignCaptureRun() {
           return b.left === live.left && b.top === live.top && b.right === live.right && b.bottom === live.bottom;
         });
         if (!known) {
-          known = _alignReadOutline();
+          known = _alignReadOutline(true);
           if (!known) return;
           bubbles.push(known);
         }
@@ -4235,7 +4252,7 @@ module.exports = {
     _layerIsTextLayer, _getTextLayerSize, _getTextLayerUnit, _getFontList,
     _getCurrentTextLayerBounds, _getCurrentSelectionBounds, _getActiveHistoryIndex,
     // pure helpers, compared with host.js by scripts/testUxpHost.js
-    _getHostDefaultStyle, _getHostDefaultStroke, _ensureStyle, _overrideStyleTextSize, _resolveStylePointText,
+    _getHostDefaultStyle, _getHostDefaultStroke, _ensureStyle, _overrideStyleTextSize, _scaleTextStyleRanges, _resolveStylePointText,
     _isPunctuationOnlyText, _scaleStyleForPunctuationOnlyText, _punctuationOnlyBoxDimensions,
     _getAdaptiveSelectionOpenRadius, _calculateSelectionDimensions, _clampAdjustAmount,
     _getAdjustedSelectionBoundsFallback, _buildBoundsShapeRows, _normalizeShapeSampleCount, _buildMaskShapeRows,

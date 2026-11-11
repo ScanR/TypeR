@@ -12,7 +12,6 @@ const ps = require("photoshop");
 const photoshop = require("./photoshop");
 const { prepareSmartPaste } = require("../../app_src/oneClick/smartPaste");
 const { fillFromMask, triggerClick, leakClick, captureSource } = require("../../app_src/oneClick/bubblePlan");
-const { solverInternals } = require("../../app_src/oneClick/solver");
 const openBubble = require("../../app_src/oneClick/openBubble");
 const { box: boxOfPolygon } = require("../../app_src/oneClick/geometry");
 const { resolveTypeRFontVariant } = require("../../app_src/fontVariantResolver.jsxinc");
@@ -393,29 +392,16 @@ function paintCleanup(doc, plan) {
   return cleanId;
 }
 
-// Layer ink inside the chamber: the fast band test, then an alpha test
-function inkFits(plan, bounds, pad) {
-  if (!bounds) return false;
-  const rows = solverInternals.band(plan.cleanPolygon, bounds.top, bounds.bottom, pad + 1);
-  if (rows.some((row) => bounds.left >= row[0] && bounds.right <= row[1])) return true;
-  try {
-    play(polygonSelection(plan.cleanPolygon));
-    play({ _obj: "contract", by: px(Math.max(1, Math.ceil(pad))) });
-    play({ _obj: "inverse" });
-    play({
-      _obj: "intersect",
-      _target: [{ _ref: "channel", _enum: "channel", _value: "transparencyEnum" }],
-      with: SELECTION,
-    });
-    const selection = get([{ _property: "selection" }, TARGET_DOCUMENT]).selection;
-    return !selection;
-  } catch (error) {
-    return true;
-  } finally {
-    try {
-      play({ _obj: "set", _target: [SELECTION], to: { _enum: "ordinal", _value: "none" } });
-    } catch (ignored) {}
-  }
+// The move that puts the centre of the ink box on the target, or null when it
+// is already there (host.js, _smartSettleOffset: Photoshop's bounds are whole
+// pixels, half a pixel off is the closest they tell)
+function settleOffset(ink, target) {
+  if (!ink || !target) return null;
+  const dx = target.x - (ink.left + ink.right) / 2;
+  const dy = target.y - (ink.top + ink.bottom) / 2;
+  if (!isFinite(dx) || !isFinite(dy)) return null;
+  if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) return null;
+  return { dx, dy };
 }
 
 const layerInk = () => {
@@ -429,28 +415,20 @@ const translateLayer = (dx, dy) => {
 };
 
 function placeText(session, pointText) {
-  const { plan, text } = session;
+  const { text } = session;
   const params = clone(text.params);
   host._makeTextLayer(params);
   const firstStyle = params.layerText.textStyleRange[0] && params.layerText.textStyleRange[0].textStyle;
   host._applyMiddleEast(firstStyle);
+  // A point text set to point again (what Align does) moves its ink by a few
+  // pixels the first time only: done here, before the ink is settled, Align
+  // finds the text where it puts it
   if (!pointText) host._smartConvertToParagraph();
-  let ink = layerInk();
-  if (!inkFits(plan, ink, text.pad) && ink) {
-    const dx = Math.max(-2, Math.min(2, text.axis - (ink.left + ink.right) / 2));
-    const dy = Math.max(-2, Math.min(2, (text.top + text.bottom - ink.top - ink.bottom) / 2));
-    translateLayer(dx, dy);
-  } else if (text.terminalPause && ink) {
-    // A lone "…" line: centre the whole ink if it still fits
-    const dx = plan.selection.xMid - (ink.left + ink.right) / 2;
-    const dy = plan.selection.yMid - (ink.top + ink.bottom) / 2;
-    for (const scale of [1, 0.5]) {
-      translateLayer(dx * scale, dy * scale);
-      ink = layerInk();
-      if (inkFits(plan, ink, text.pad)) break;
-      translateLayer(-dx * scale, -dy * scale);
-    }
-  }
+  else host._changeToPointText();
+  // Photoshop's ink can sit a pixel off the measured one: the centre of its
+  // box goes on the bubble's centre, where Align puts it
+  const offset = settleOffset(layerInk(), text.target);
+  if (offset) translateLayer(offset.dx, offset.dy);
   if (text.stroke) host._setLayerStroke(text.stroke);
   return host._getActiveLayerId();
 }
@@ -521,8 +499,10 @@ async function smartPaste(request) {
     const done = await commitSessions(prepared);
     return JSON.stringify({
       ok: true,
+      documentId: prepared.documentId,
       consumed: prepared.consumed,
       layerIds: done.layerIds,
+      targets: prepared.sessions.map((session) => session.text.target || null),
       history: done.history,
       cleanupSkipped: prepared.cleanupSkipped,
       selectionBounds: prepared.selectionBounds,
@@ -666,5 +646,5 @@ function smartPasteSelectionProbe() {
 
 module.exports = {
   methods: { smartPaste, smartPasteCapture, smartPasteMeasure, smartPasteCommit, getHistorySnapshot, restoreHistoryState, replaySelectionTrigger, ensureWandSampleAll, smartPasteSelectionProbe },
-  _internals: { captureSelection, measureRequests, commitSessions, inkFits, failureCode },
+  _internals: { captureSelection, measureRequests, commitSessions, settleOffset, failureCode },
 };

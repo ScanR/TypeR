@@ -7,6 +7,7 @@ import { readJsonStorage, writeJsonStorage, reportStorageIssue } from "./storage
 import "./lib/CSInterface";
 import { resolveStylePointText } from "./textLayerPayload";
 import { planAlignment } from "./oneClick/alignPlan";
+import { keepPastedTexts } from "./oneClick/pasteTargets";
 import { noteTourEvent } from "./tourEvents";
 import { findNewerReleases, pickUpdateDownloadUrl } from "./updateLogic";
 import { installUpdateInPlace, uint8ToBase64 } from "./updateInstaller";
@@ -983,6 +984,8 @@ const alignTextLayerToSelection = (resizeTextBox = false, padding = 0, callback 
     let placements = [];
     try {
       placements = capture && !capture.error ? planAlignment(capture, readingOrder) : [];
+      // A text the smart paste just centred stays on that centre
+      placements = capture && !capture.error ? keepPastedTexts(capture, placements, !!resizeTextBox) : placements;
     } catch (planError) {
       placements = [];
     }

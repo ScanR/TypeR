@@ -17,7 +17,7 @@
 // cleanup polygon and the text colour.
 
 import {
-  area, bodyBounds, box, clipToSide, contains, findCut, flatten, forcedCut, planCleanup, polygonContour, shapeKind, simplify, fillTone,
+  area, bodyBounds, bodyCentre, box, clipToSide, contains, findCut, flatten, forcedCut, planCleanup, polygonContour, shapeKind, simplify, fillTone,
 } from "./geometry";
 
 const PATH_COMPONENT_LIMIT = 512;
@@ -283,6 +283,19 @@ const finishPlan = (input, parts) => {
   return plan;
 };
 
+// The body of a bubble (its box without the tail) and, as xMid / yMid, the
+// point its text is centred on: bodyCentre, the same for the smart paste and
+// for Align (alignPlan.js). The body's centroid when that point is not inside.
+export const centredBody = (polygon, cleanPolygon, chamber) => {
+  const body = bodyBounds(polygon, box(polygon));
+  const centre = bodyCentre(polygon, chamber);
+  if (centre && contains(cleanPolygon, centre)) {
+    body.xMid = centre.x;
+    body.yMid = centre.y;
+  }
+  return body;
+};
+
 // Wand selection inside a closed bubble (or the chamber of a connected one)
 export const buildBubblePlan = (input, options = {}) => {
   const autoClean = options.autoClean === true;
@@ -346,7 +359,7 @@ export const buildBubblePlan = (input, options = {}) => {
   }
   if (kind === "unknown") kind = "regular";
   const cleanPolygon = simplify(chamber, 0.3);
-  const layoutBounds = bodyBounds(chamber, box(chamber));
+  const layoutBounds = centredBody(chamber, cleanPolygon, !!(cut && cut.neck));
   let clean = planCleanup({
     page,
     click,
@@ -453,7 +466,7 @@ export const buildLassoPlan = (input, options = {}) => {
     cleanupSkipped: options.autoClean === true && !solid ? "Auto Clean supports solid white or black interiors only." : null,
     fill: tone.fill,
     fillRGB: tone.rgb,
-    layoutBounds: bodyBounds(polygon, box(polygon)),
+    layoutBounds: centredBody(polygon, polygon, false),
   });
 };
 

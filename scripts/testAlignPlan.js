@@ -91,15 +91,27 @@ const bubble = (textIds) => ({ selectionBounds: boundsOf(outline), rawPath: path
   assert.ok(inRect(neck[0].rect, 290, 290) !== inRect(neck[0].rect, 610, 475));
 }
 
-// A single bubble keeps the classic Align (no placement)
+// A single bubble: every text on the bubble's centre (bodyCentre), the point
+// the smart paste centres a text on
 {
   const oval = unionOf([[450, 400, 250, 160]], [450, 400]);
-  assert.deepStrictEqual(planAlignment({
+  const single = planAlignment({
     ...page,
     texts: [{ id: 7, index: 1, box: boxAt(450, 400, 200, 80) }, { id: 8, index: 2, box: boxAt(450, 470, 200, 60) }],
     bubbles: [{ selectionBounds: boundsOf(oval), rawPath: pathOf([oval]), textIds: [7, 8] }],
-  }), []);
-  // A rectangle marquee too
+  });
+  assert.deepStrictEqual(single.map((p) => p.id), [7, 8]);
+  single.forEach((p) => {
+    assert.ok(Math.abs(p.rect.xMid - 450) < 0.5 && Math.abs(p.rect.yMid - 400) < 0.5, "the oval's centre: " + p.rect.xMid + ", " + p.rect.yMid);
+    assert.ok(p.rect.left >= 199 && p.rect.right <= 701 && p.rect.top >= 239 && p.rect.bottom <= 561, "the oval's box");
+  });
+  // A text beside the bubble's middle still finds the bubble
+  const off = planAlignment({
+    ...page, texts: [{ id: 7, index: 1, box: boxAt(560, 330, 120, 60) }],
+    bubbles: [{ selectionBounds: boundsOf(oval), rawPath: pathOf([oval]), textIds: [7] }],
+  });
+  assert.ok(off.length === 1 && Math.abs(off[0].rect.xMid - 450) < 0.5 && Math.abs(off[0].rect.yMid - 400) < 0.5);
+  // A rectangle marquee keeps the classic Align (no placement)
   const rect = [[100, 100], [500, 100], [500, 300], [100, 300]];
   assert.deepStrictEqual(planAlignment({
     ...page, texts: [{ id: 9, index: 1, box: boxAt(300, 200, 100, 40) }],
@@ -155,6 +167,65 @@ const bubble = (textIds) => ({ selectionBounds: boundsOf(outline), rawPath: path
   assert.deepStrictEqual(assignChambers(texts, chambers, bounds), [1, 0]);
   assert.deepStrictEqual(assignChambers(texts, chambers, bounds, "rtl"), [1, 0]);
   assert.deepStrictEqual(assignChambers(texts, chambers, bounds, "ltr"), [0, 1]);
+}
+
+// An outline the host's own wand found (probed) only takes the texts inside
+// it: a probe beside a narrow bubble can land in the region next to it. The
+// user's own selection takes any text (Align moves a text into it).
+{
+  const oval = unionOf([[450, 400, 250, 160]], [450, 400]);
+  const outside = { id: 11, index: 1, box: boxAt(900, 400, 120, 60) };
+  const inside = { id: 12, index: 2, box: boxAt(430, 380, 120, 60) };
+  const bubble = (probed) => ({ selectionBounds: boundsOf(oval), rawPath: pathOf([oval]), textIds: [11, 12], probed });
+  assert.deepStrictEqual(planAlignment({ ...page, texts: [outside, inside], bubbles: [bubble(true)] }).map((p) => p.id), [12]);
+  assert.deepStrictEqual(planAlignment({ ...page, texts: [outside, inside], bubbles: [bubble(false)] }).map((p) => p.id), [11, 12]);
+}
+
+// A text the smart paste just centred stays on that centre (pasteTargets.js)
+{
+  const { rememberPasteTargets, keepPastedTexts, forgetPasteTargets } = load("app_src/oneClick/pasteTargets.js");
+  const rect = { left: 300, top: 250, right: 600, bottom: 550, width: 300, height: 300, xMid: 452, yMid: 398 };
+  const capture = (box, documentId = 7) => ({ documentId, texts: [{ id: 21, index: 1, box }] });
+  rememberPasteTargets(7, [21, 22], [{ x: 450, y: 400 }, null]);
+  // Still where the paste put it (whole-pixel bounds: half a pixel off)
+  const still = boxAt(450.5, 399.5, 120, 60);
+  assert.deepStrictEqual(keepPastedTexts(capture(still), [{ id: 21, rect }], false), [{ id: 21, rect: { ...rect, xMid: 450, yMid: 400 } }], "Align's other reading of the bubble is left out");
+  assert.strictEqual(rect.xMid, 452, "the plan itself is not changed");
+  // No placement (Align found no bubble): the text's own box on that centre
+  const own = keepPastedTexts(capture(still), [], false);
+  assert.deepStrictEqual(own, [{ id: 21, rect: { left: 390, top: 370, right: 510, bottom: 430, width: 120, height: 60, xMid: 450, yMid: 400 } }]);
+  // ...unless Align resizes the text box to the bubble: the classic Align
+  assert.deepStrictEqual(keepPastedTexts(capture(still), [], true), []);
+  // A placement in another region (Align's wand took the wrong one): kept
+  // on the paste's centre, or left to the classic Align with a resize
+  const far = { ...rect, left: 900, right: 1200, xMid: 1050 };
+  assert.deepStrictEqual(keepPastedTexts(capture(still), [{ id: 21, rect: far }], false)[0].rect.xMid, 450);
+  assert.deepStrictEqual(keepPastedTexts(capture(still), [{ id: 21, rect: far }], true), []);
+  // A selection of the user's: Align moves the text into it, pasted or not,
+  // and a marquee (no placement) keeps the classic Align
+  const picked = { documentId: 7, texts: [{ id: 21, index: 1, box: still }], bubbles: [{ textIds: [21], probed: false }] };
+  assert.deepStrictEqual(keepPastedTexts(picked, [{ id: 21, rect: far }], false), [{ id: 21, rect: far }]);
+  assert.deepStrictEqual(keepPastedTexts(picked, [], false), []);
+  // ...but the same bubble selected again keeps the paste's own centre
+  assert.deepStrictEqual(keepPastedTexts(picked, [{ id: 21, rect }], false)[0].rect.xMid, 450);
+  // An outline the host probed itself is no selection of the user's
+  const probedCapture = { documentId: 7, texts: [{ id: 21, index: 1, box: still }], bubbles: [{ textIds: [21], probed: true }] };
+  assert.deepStrictEqual(keepPastedTexts(probedCapture, [{ id: 21, rect: far }], false)[0].rect.xMid, 450);
+  // Moved since the paste, another document, another layer: aligned as usual
+  assert.deepStrictEqual(keepPastedTexts(capture(boxAt(455, 400, 120, 60)), [{ id: 21, rect }], false), [{ id: 21, rect }]);
+  assert.deepStrictEqual(keepPastedTexts(capture(still, 8), [{ id: 21, rect }], false), [{ id: 21, rect }]);
+  assert.deepStrictEqual(keepPastedTexts({ documentId: 7, texts: [{ id: 22, index: 1, box: still }] }, [], false), []);
+  // Garbage in, and nothing remembered
+  assert.deepStrictEqual(keepPastedTexts(null, null, false), []);
+  rememberPasteTargets(undefined, [1], [{ x: 1, y: 1 }]);
+  rememberPasteTargets(7, null, null);
+  forgetPasteTargets();
+  assert.deepStrictEqual(keepPastedTexts(capture(still), [{ id: 21, rect }], false), [{ id: 21, rect }]);
+  // The oldest centres go first
+  for (let i = 0; i < 450; i++) rememberPasteTargets(7, [1000 + i], [{ x: 450, y: 400 }]);
+  assert.deepStrictEqual(keepPastedTexts({ documentId: 7, texts: [{ id: 1000, box: still }] }, [], false), []);
+  assert.strictEqual(keepPastedTexts({ documentId: 7, texts: [{ id: 1449, box: still }] }, [], false).length, 1);
+  forgetPasteTargets();
 }
 
 // Garbage in: nothing placed, nothing thrown

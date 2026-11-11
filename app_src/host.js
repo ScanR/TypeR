@@ -454,11 +454,28 @@ function _resolveStyleSizeForDocument(style) {
 
   var ranges = style.textProps && style.textProps.layerText && style.textProps.layerText.textStyleRange;
   if (!ranges || !ranges[0] || !ranges[0].textStyle) return style;
-  ranges[0].textStyle.size = selectedSize;
-  if (ranges[0].textStyle.impliedFontSize != null) {
-    ranges[0].textStyle.impliedFontSize = selectedSize;
-  }
+  _scaleTextStyleRanges(ranges, selectedSize);
   return style;
+}
+
+// The preset is the size of the style's first run: every run, its leading
+// and its baseline shift follow it in proportion
+function _scaleTextStyleRanges(ranges, size) {
+  var base = parseFloat(ranges[0].textStyle.size);
+  var scale = base > 0 ? size / base : 1;
+  var fields = ["size", "impliedFontSize", "leading", "impliedLeading", "baselineShift", "impliedBaselineShift"];
+  for (var i = 0; i < ranges.length; i++) {
+    var textStyle = ranges[i] && ranges[i].textStyle;
+    if (!textStyle) continue;
+    for (var j = 0; j < fields.length; j++) {
+      if (typeof textStyle[fields[j]] === "number") textStyle[fields[j]] *= scale;
+    }
+  }
+  // The first run gets the preset itself, not a product off by a rounding
+  ranges[0].textStyle.size = size;
+  if (ranges[0].textStyle.impliedFontSize != null) {
+    ranges[0].textStyle.impliedFontSize = size;
+  }
 }
 
 function _changeToPointText() {
@@ -3843,13 +3860,13 @@ function _layerStackIndex(id) {
   }
 }
 
-function _alignReadOutline() {
+function _alignReadOutline(probed) {
   var bounds = _liveSelectionBounds();
   if (!bounds) return null;
   _makeWorkPathFromSelection(2.0);
   var path = _smartReadWorkPath();
   if (!path) return null;
-  return { selectionBounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom }, rawPath: path, textIds: [] };
+  return { selectionBounds: { left: bounds.left, top: bounds.top, right: bounds.right, bottom: bounds.bottom }, rawPath: path, textIds: [], probed: !!probed };
 }
 
 function _alignCaptureRun() {
@@ -3884,7 +3901,7 @@ function _alignCaptureRun() {
           if (b.left === live.left && b.top === live.top && b.right === live.right && b.bottom === live.bottom) known = bubbles[j];
         }
         if (!known) {
-          known = _alignReadOutline();
+          known = _alignReadOutline(true);
           if (!known) continue;
           bubbles.push(known);
         }
@@ -5790,70 +5807,24 @@ function _smartConvertToParagraph() {
   }
 }
 
-// The active layer's transparency, kept where the selection is
-function _smartIntersectTransparency() {
-  var desc = new ActionDescriptor();
-  var channel = new ActionReference();
-  channel.putEnumerated(charID.Channel, charID.Channel, charIDToTypeID("Trsp"));
-  desc.putReference(charID.Null, channel);
-  var selection = new ActionReference();
-  selection.putProperty(charID.Channel, charID.FrameSelect);
-  desc.putReference(charIDToTypeID("With"), selection);
-  executeAction(charIDToTypeID("Intr"), desc, DialogModes.NO);
+// The move that puts the centre of the ink box on the target, or null when it
+// is already there (Photoshop's bounds are whole pixels: half a pixel off is
+// the closest they tell)
+function _smartSettleOffset(ink, target) {
+  if (!ink || !target) return null;
+  var dx = target.x - (ink.left + ink.right) / 2;
+  var dy = target.y - (ink.top + ink.bottom) / 2;
+  if (!isFinite(dx) || !isFinite(dy)) return null;
+  if (Math.abs(dx) <= 0.5 && Math.abs(dy) <= 0.5) return null;
+  return { dx: dx, dy: dy };
 }
 
-// Layer ink inside the chamber, as in the UXP host: a fast test on rows, then
-// an alpha test. The solver lives in the panel here, so the rows come with
-// the text (text.inkBand, for an ink within a few pixels of the planned one).
-function _smartInkFits(plan, text, bounds) {
-  if (!bounds) return false;
-  var band = text.inkBand;
-  if (band && band.rows && bounds.top >= band.top && bounds.bottom <= band.bottom) {
-    for (var i = 0; i < band.rows.length; i++) {
-      if (bounds.left >= band.rows[i][0] && bounds.right <= band.rows[i][1]) return true;
-    }
-  }
-  try {
-    _smartSelectPolygon(plan.cleanPolygon);
-    _modifySelectionBounds(-Math.max(1, Math.ceil(text.pad)));
-    app.activeDocument.selection.invert();
-    _smartIntersectTransparency();
-    return !_getCurrentSelectionBounds();
-  } catch (inkError) {
-    return true;
-  } finally {
-    try { app.activeDocument.selection.deselect(); } catch (deselectError) {}
-  }
-}
-
-function _smartMoveInk(dx, dy) {
-  if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
-  _moveLayer(dx, dy);
-}
-
-// Photoshop's ink can sit a pixel off the measured one: back toward the
-// planned place when it leaves the chamber. A lone "…" line: the whole ink
-// is centred if it still fits.
+// Photoshop's ink can sit a pixel off the measured one: the centre of its box
+// goes on the bubble's centre, where the engine laid the text out and where
+// Align puts it (text.target)
 function _smartSettleInk(session) {
-  var plan = session.plan;
-  var text = session.text;
-  var ink = _currentLayerBox();
-  if (!ink) return;
-  if (!_smartInkFits(plan, text, ink)) {
-    _smartMoveInk(
-      Math.max(-2, Math.min(2, text.axis - (ink.left + ink.right) / 2)),
-      Math.max(-2, Math.min(2, (text.top + text.bottom - ink.top - ink.bottom) / 2))
-    );
-  } else if (text.terminalPause) {
-    var dx = plan.selection.xMid - (ink.left + ink.right) / 2;
-    var dy = plan.selection.yMid - (ink.top + ink.bottom) / 2;
-    var scales = [1, 0.5];
-    for (var i = 0; i < scales.length; i++) {
-      _smartMoveInk(dx * scales[i], dy * scales[i]);
-      if (_smartInkFits(plan, text, _currentLayerBox())) break;
-      _smartMoveInk(-dx * scales[i], -dy * scales[i]);
-    }
-  }
+  var offset = _smartSettleOffset(_currentLayerBox(), session.text.target);
+  if (offset) _moveLayer(offset.dx, offset.dy);
 }
 
 function _smartPlaceText(session, pointText) {
@@ -5862,7 +5833,11 @@ function _smartPlaceText(session, pointText) {
   _raiseNewTextLayer();
   var ranges = params.layerText.textStyleRange;
   if (ranges && ranges[0]) _applyMiddleEast(ranges[0].textStyle);
+  // A point text set to point again (what Align does) moves its ink by a few
+  // pixels the first time only: done here, before the ink is settled, Align
+  // finds the text where it puts it
   if (!pointText) _smartConvertToParagraph();
+  else _changeToPointText();
   _smartSettleInk(session);
   if (session.text.stroke) _setLayerStroke(session.text.stroke);
   return _getActiveLayerId();

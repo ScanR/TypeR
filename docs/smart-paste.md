@@ -9,24 +9,30 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
 - **Smart paste** (on by default; Settings > Behavior). Paste, the Paste shortcut and multi-bubble batches:
   - read the selection's outline (work path, 2 px tolerance) and keep the bubble's body, without its tail;
   - keep the style size when the text fits, otherwise shrink it as little as possible (the largest size that fits,
-    to half a percent), down to the minimum size (75% by default), then allow one hyphen in a long word (French or
-    English, by default the script's language, or off);
+    to half a percent, then rounded down to half a point or pixel, a tenth of a millimetre, where it still fits),
+    down to the minimum size (75% by default), then allow one hyphen in a long word (French or English, by default
+    the script's language, or off);
+  - keep the padding (Settings, "Internal padding") between the outline and the text's ink, the style's stroke
+    included;
   - set a line made only of punctuation at the style's punctuation scale (×2 or ×3, off by default); a small bubble
     shrinks it, down to the minimum size of the style's own size;
-  - break the lines to follow the bubble's silhouette and centre the ink optically, all lines inside the outline;
+  - break the lines to follow the bubble's silhouette and centre the text where Align puts it, every line inside
+    the outline there: pressing Align right after a paste does not move the text (see *Centring*);
   - write white text without a stroke in a black bubble;
   - use the style marked *Shout* or *Narration* (style editor, "Bubble type") of the current folder for a spiky
     bubble or, on a Magic Wand selection only, a rectangular box (a rectangle marquee or a lasso keeps the line's
     style); a script prefix always wins;
   - split a double or triple bubble and paste the next lines in its other chambers ("Distribute lines"). A chamber's
-    line is always pasted: the style size comes before the user's padding, the padding before a smaller size, then no
-    margin at all, then the smallest size overflowing as little as possible. The neck is no bubble line: the padding
+    line is always pasted, on the same ladder as a single bubble (below). The neck is no bubble line: the padding
     does not apply along it;
   - optionally paint the bubble under the text (Auto clean): one `TypeR Clean` layer per document, under the
     texts, only on solid white or black;
   - apply conditional refont rules: text between two markers takes another style's font.
-  - When the text does not fit at the minimum size, the user's padding gives way, then the margin, then the text
-    overflows the bubble as little as possible: a text is always placed. The classic paste only takes over, without
+  - When the text does not fit at the minimum size, even with a hyphen, the margin gives way one step at a time, each
+    step with the whole size range and the hyphenation again (`marginSteps`, layout.js): two thirds of the padding,
+    one third, the base margin (3.5% of the bubble's smaller side, 2 px at least), half of it, none. Then the text
+    overflows the bubble as little as possible: a text is always placed. A larger padding never sets the text closer
+    to the outline than a smaller one. The classic paste only takes over, without
     a notice, when no bubble can be read at all (see *When the classic paste still runs*).
 - **Paste on click** (off by default; footer toggle, shortcut without a default key). A Magic Wand click, a
   rectangle or a lasso pastes the current line at once. Restored or loaded selections, and the selections
@@ -88,6 +94,80 @@ come from MD TYPER 1.3.22, a TypeR fork, reused with its author's permission and
   a timeout, stop the paste instead.
 - **Undo sync**. Undoing a TypeR paste in Photoshop puts the script line back; a redo moves it forward again.
 
+## Centring
+
+The paste and Align put a text on the same point, so that Align right after a paste leaves it in place. Both
+move the layer so that the centre of its bounds, the box of its ink, lands on the bubble's centre, and both get
+that centre from the same function, `bodyCentre` (geometry.js), on the outline of the bubble.
+
+- **The centre.** The body first: the outline opened (contracted, then grown back) by 14% of its short side, which
+  cuts the tail off, as Align did with Photoshop's Contract and Expand. A single bubble is centred on the body's
+  centroid, its centre of mass. A chamber of a double or triple bubble is centred halfway between the body's
+  centroid and the centre of its box: the cut at the neck takes a chamber's end away and pulls its centroid from
+  the neck, where typesetters set the text nearer the neck, as if the lobe went on under the other one. Align used
+  the centre of the opened selection's box for a single bubble: it follows every bump of the outline and the whole
+  stub of a thick tail the opening cannot cut (a tail whose base is a third of the bubble's short side moved it by
+  9 to 18 px on a 220 px bubble, the centroid by 2).
+- **What it was chosen on**, against where typesetters set their texts (the centre of the text's ink box):
+  - typeset PSDs of two runs of chapters (417 pages; `psd-truth` in the neck bench reads the text layers and
+    floods the bubble around each on the page without its lettering): 1,514 single bubbles and 842 chambers. The
+    texts of these files all sit 2 to 3 px right and down of every centre tried, the same whatever the bubble or
+    the text, so each centre is judged without its own constant offset per chapter. Median distance left, first
+    run / second run: single bubbles 2.8 / 6.4 px for the opened box centre, 2.6 / 3.2 px for `bodyCentre`
+    (nearer by more than a pixel for 239 and 473 texts, farther for 110 and 45); chambers 3.1 / 4.8 px for the
+    centroid of the eroded body Align and the paste used, 2.9 / 4.5 px for `bodyCentre`;
+  - 696 lettered pages of 35 series (real Magic Wand outlines, the lettering's ink as the truth): 931 single
+    bubbles, 660 chambers. On the nine chapters lettered within 3 px of any centre (372 bubbles), 2.6 px for the
+    opened box centre, 2.1 px for the body's centroid (nearer for 112, farther for 59); chambers 5.9 px for the
+    centroid of the eroded body, 4.0 px halfway to the box (nearer for 118, farther for 23). The typesetters set
+    a chamber's text 4 px nearer the neck than its centroid, in 86% of the chambers.
+  - Tried and left out: the centre of the largest inscribed circle, centroids weighted by the distance to the
+    outline, the middle between the sides over the rows the text spans (a little better on the lettered pages,
+    worse on the PSDs), the box of the widest chords.
+- **Align** (`alignPlan.js`). The host reads the outline of the bubble around each selected text (`alignCapture`:
+  the user's selection, or its own wand probes) and the panel answers a placement per text: the bubble's body
+  and its centre, or the chamber's. The host then only moves the layers; it no longer opens the selection in
+  Photoshop (a stored channel, Contract, Expand, a reload) for a text the panel placed. An outline the host's own
+  wand found (`probed`) only takes the texts that lie inside it: a probe beside a narrow bubble can land in the
+  region next to it. A rectangle marquee, and a text no bubble can be read around, keep the classic Align.
+- **A pasted text stays where the paste put it** (`pasteTargets.js`). The paste read the bubble on the user's own
+  Magic Wand click; Align reads it again with its own wand, another tolerance at another point: an outline a
+  pixel or two apart, now and then another region or another split. The panel remembers where each pasted layer
+  was centred, and an Align of a layer still within a pixel of that point keeps it there. A text moved since is
+  aligned as any other, and a selection of the user's still wins: Align moves the text into the selected bubble.
+  In memory only: a panel reload forgets it.
+- The solver (`_jointSearch`) tries one axis and one block centre, the target, where MD TYPER tried them 5% and
+  10% off it too and kept a layout off the centre when the centred one did not fit. Once a set of lines is
+  complete, the centre of its ink box goes on the target: the lines move down or up, the axis moves by the
+  asymmetry of their ink (side bearings, a "?" or a "…" at the end of a line), and every line must fit there
+  (`_jointCentreInk`); otherwise the search goes on. The fine pass only seeds the beam a tenth to three tenths of
+  the text size above and below. The native verification centres the measured ink box again and checks every
+  line there (`verifyPackedChoice`, layout.js). The ladders of sizes, margins and overflow keep the same centre.
+- The commit moves Photoshop's ink box onto the target (`text.target`) when it is more than half a pixel off
+  (`_smartSettleInk` in host.js, `placeText` in the UXP host): one move in the commit's own call, reading the ink
+  box the commit already read. A point text is first set to point once more, as Align does after its move: the
+  first time, Photoshop moves its ink 2 or 3 px sideways (7 to 14 ms); afterwards Align's own conversion no
+  longer moves it.
+- Cost of the centred layout: a layout that only fits off the centre is no longer kept. On 400 real outlines
+  (simulated measurement, asymmetric ink), 11% of the texts are set smaller than with MD TYPER's off-centre
+  layouts, by 2.3% of the style size at the median, 9% at p90 and 15% at most (the minimum size); 3% are set
+  larger. The engine time is halved (fewer axes and block centres); `bodyCentre` adds under a millisecond a
+  bubble.
+- Measured with censuses (`psd-truth` in the neck bench: a Magic Wand click, the paste, Align on each pasted text
+  as the panel does, then the text moved by hand and Align again), on pages cleaned of their lettering:
+
+  | | Align right after a paste moves the text | a text moved by hand, then Align: back within 1 px of the paste's place |
+  | --- | --- | --- |
+  | TypeR Studio, 221 bubbles, 349 texts | 0 px, every text | 99% single, 95% double, 80% triple |
+  | Photoshop, Legacy host, 32 bubbles, 48 texts | 0 px, every text | 100% single, 93% double (2 px at most), 3 of 3 triple |
+
+  Before any of this, Align moved one pasted text in two (72 bubbles in Photoshop: 4 px at the median and 37 px
+  at p95 in a single bubble). What Align still puts elsewhere, when it reads the bubble itself, is its own reading:
+  another outline a pixel apart, another split of a triple, a probe in the next region. In the Legacy host the
+  move of an Align takes 12 ms instead of 137 (the selection is no longer contracted and expanded in Photoshop);
+  reading the outline (`alignCapture`, 90 ms) is unchanged. Paste times are unchanged: the same measurement round
+  trips (`benchSmartPasteCep.js`: 23 round trips, 28 requests lean, 36 exhaustive).
+
 ## Architecture
 
 ```
@@ -98,7 +178,7 @@ app_src/oneClick/            shared engine (pure, ES5 after babel)
   connected.js               double and triple chambers
   alignPlan.js               Align: each selected text to its chamber (outlines read by alignCapture)
   textGraph.js               candidate lines of a translation, composition of the chosen lines
-  solver.js                  beam search of lines inside the polygon (MD TYPER's frozen solver)
+  solver.js                  beam search of lines inside the polygon (MD TYPER's frozen solver), ink box centred
   measureSpec.js             64 px measuring parameters, metrics from bounds or vector atlases, metric cache
   layout.js                  measure -> solve -> verify natively, size policy, hyphenation retry
   hyphenation.js, hyphen/    French (TextShapeR syllables) and English (hyphen library, ISC) break points
@@ -155,6 +235,9 @@ These follow from what ExtendScript can do; the behaviour stays the same otherwi
 
 - `scripts/testSmartPasteEngine.js` runs the engine on synthetic bubbles (oval, small, tiny, shout, rectangle,
   double, triple, RTL, black) with a simulated measurement.
+- `scripts/testSmartPasteCentre.js` checks the centring contract: the ink box on Align's centre (oval, tail,
+  asymmetric lines, double, triple, overflow), Align's plan of the pasted texts on the same targets, and the
+  opening of a single bubble.
 - `scripts/testSmartPasteClient.js` covers the panel client, multi-bubble replay and the paste-on-click gate.
 - `scripts/testSmartPasteSettings.js` covers the settings state.
 - `scripts/testHostPrecedence.js` refuses an `a || (b && c)` in the ExtendScript host. ExtendScript reads `&&` and

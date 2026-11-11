@@ -672,9 +672,11 @@ function _jointRescore276(candidate, selection, opts, poly) {
     state = _jointShapeAcc276(state, m.right - m.left, i, profile);
     peak = Math.max(peak, m.right - m.left);
   }
-  var displacement =
-    Math.abs((candidate.top + candidate.bottom) / 2 - selection.yMid) / selection.height +
-    Math.abs(candidate.axis - selection.xMid) / selection.width;
+  // The ink box's distance to the centre (none once centred)
+  var ink = _jointInkBox(candidate.lines, candidate.size, candidate.axis),
+    displacement =
+      Math.abs((ink.top + ink.bottom) / 2 - selection.yMid) / selection.height +
+      Math.abs((ink.left + ink.right) / 2 - selection.xMid) / selection.width;
   var block = _jointBlock277(
       candidate.top,
       candidate.bottom,
@@ -726,48 +728,50 @@ function _jointChooseHyphen(plain, candidates) {
   }
   return best;
 }
-function _jointCenterLines(lines, top, bottom, center, poly, size, axis, pad, exact) {
-  // The first baseline is only a search seed. Once all actual glyph bands
-  // are known, center their combined ink before comparing layouts. Keep the
-  // original feasible placement if neither bounded adjustment fits.
-  var delta = center - (top + bottom) / 2;
-  if (Math.abs(delta) < 0.000001) return { lines: lines, top: top, bottom: bottom };
-  // The closest fit to the centre: a bubble's curve can stop the widest line
-  // just short of it.
-  for (var attempt = 0; attempt < 4; attempt++) {
-    var shift = delta * (1 - attempt * 0.25),
-      valid = true;
-    for (var i = 0; i < lines.length; i++)
-      if (
-        !(exact ? _jointFitsExactBand : _jointFitsBand)(
-          poly,
-          lines[i].edge.metric,
-          size,
-          lines[i].baseline + shift,
-          axis,
-          pad,
-        )
-      ) {
-        valid = false;
-        break;
-      }
-    if (valid) {
-      var moved = [];
-      for (i = 0; i < lines.length; i++)
-        moved.push({ edge: lines[i].edge, baseline: lines[i].baseline + shift });
-      return { lines: moved, top: top + shift, bottom: bottom + shift };
-    }
+// The ink box of placed lines (axis: the paragraph's centring axis; a line's
+// metric runs from its own left to right ink edge around it)
+function _jointInkBox(lines, size, axis) {
+  var top = Infinity,
+    bottom = -Infinity,
+    left = Infinity,
+    right = -Infinity;
+  for (var i = 0; i < lines.length; i++) {
+    var m = lines[i].edge.metric;
+    top = Math.min(top, lines[i].baseline + m.top * size);
+    bottom = Math.max(bottom, lines[i].baseline + m.bottom * size);
+    left = Math.min(left, axis + m.left * size);
+    right = Math.max(right, axis + m.right * size);
   }
-  return { lines: lines, top: top, bottom: bottom };
+  return { left: left, top: top, right: right, bottom: bottom };
 }
-// The five block centres miss a fit whose vertical window is narrower than
-// their 5% step. A retry scans the same +-10% band in steps of a tenth of the
-// text size (one pixel at least), nearest the middle first.
-function _jointFineCentres(size, selection) {
+// TypeR: the text goes where Align puts it, the centre of its ink box on the
+// bubble's centre (selection.xMid, yMid), and every line must fit there. Lines
+// with asymmetric ink (side bearings, a "?" or a "…" at the end) move their
+// axis off the centre. Returns the moved lines, or null when one line leaves
+// the polygon: such a layout is not placed elsewhere, the search goes on.
+function _jointCentreInk(lines, size, axis, selection, poly, pad, exact) {
+  var ink = _jointInkBox(lines, size, axis),
+    dy = selection.yMid - (ink.top + ink.bottom) / 2,
+    centred = axis + selection.xMid - (ink.left + ink.right) / 2;
+  // Estimated lines are symmetric: their axis stays, with its cached profile
+  if (Math.abs(centred - axis) < 0.000001) centred = axis;
+  var cached = !exact && centred === axis,
+    moved = [];
+  for (var i = 0; i < lines.length; i++) {
+    var baseline = lines[i].baseline + dy;
+    if (!(cached ? _jointFitsBand : _jointFitsExactBand)(poly, lines[i].edge.metric, size, baseline, centred, pad)) return null;
+    moved.push({ edge: lines[i].edge, baseline: baseline, safe: lines[i].safe });
+  }
+  return { lines: moved, top: ink.top + dy, bottom: ink.bottom + dy, axis: centred };
+}
+// The first baseline of a search is a guess of where the centred block
+// starts; a line it rejects may still fit once centred. A retry seeds the
+// beam a tenth, a fifth and three tenths of the text size above and below.
+function _jointSeedCentres(size, selection) {
   var height = Math.max(1, selection.height),
-    step = Math.max(1, size * 0.1) / height,
-    out = [0];
-  for (var k = 1; k * step <= 0.1 + 0.000001; k++) out.push(-k * step, k * step);
+    step = (size * 0.1) / height,
+    out = [];
+  for (var k = 1; k <= 3; k++) out.push(-k * step, k * step);
   return out;
 }
 // Beam search keeps multiple break histories at each source position. Leading
@@ -786,9 +790,11 @@ function _jointSearch(variant, poly, selection, opts) {
   var hasEllipsis277 = false;
   for (i = 0; i < edges.length; i++)
     if (edges[i].flags & 1 && edges[i].to === variant.nodes - 1) hasEllipsis277 = true;
+  // TypeR: one axis and one block centre, the bubble's (MD TYPER tried the
+  // axis and the block 5% and 10% off it, which Align undid)
   var cx = selection.xMid,
     cy = selection.yMid,
-    positions = [0, -0.05, 0.05, -0.1, 0.1],
+    positions = [0],
     best = null,
     operations = 0,
     profiles281 = {},
@@ -837,7 +843,7 @@ function _jointSearch(variant, poly, selection, opts) {
       // Horizontal displacement and the split penalty cannot disappear
       // during optical centering. Skip only a provably inferior axis.
       if (best && _jointRank(best) >= shapeUpper276) continue;
-      var centres = opts.fineCentres ? _jointFineCentres(size, selection) : positions;
+      var centres = opts.fineCentres ? _jointSeedCentres(size, selection) : positions;
       for (var py = 0; py < centres.length; py++) {
         var center = cy + centres[py] * selection.height;
         // Try plausible line counts, hence first-baseline positions.
@@ -930,22 +936,13 @@ function _jointSearch(variant, poly, selection, opts) {
                     lines[prefix] = tail.line;
                     tail = tail.previous;
                   }
-                  var centered = _jointCenterLines(
-                    lines,
-                    top,
-                    bottom,
-                    center,
-                    poly,
-                    size,
-                    axis,
-                    opts.pad,
-                  );
+                  var centered = _jointCentreInk(lines, size, axis, selection, poly, opts.pad, false);
+                  if (!centered) continue;
                   lines = centered.lines;
                   top = centered.top;
                   bottom = centered.bottom;
-                  var displacement =
-                      Math.abs((top + bottom) / 2 - cy) / selection.height +
-                      Math.abs(axis - cx) / selection.width,
+                  var lineAxis = centered.axis,
+                    displacement = 0,
                     peak = 0,
                     middle = 0,
                     widths = [];
@@ -964,7 +961,7 @@ function _jointSearch(variant, poly, selection, opts) {
                     selection,
                     opts,
                     lines,
-                    axis,
+                    lineAxis,
                     poly,
                   );
                   if (shapeUpper276 === undefined)
@@ -980,7 +977,7 @@ function _jointSearch(variant, poly, selection, opts) {
                     );
                   var c = {
                     size: size,
-                    axis: axis,
+                    axis: lineAxis,
                     lines: lines,
                     top: top,
                     bottom: bottom,
@@ -1116,7 +1113,8 @@ export const solverInternals = {
   rank: _jointRank,
   rescore: _jointRescore276,
   fitsExactBand: _jointFitsExactBand,
-  centerLines: _jointCenterLines,
+  centreInk: _jointCentreInk,
+  inkBox: _jointInkBox,
   band: _jointBand,
 };
 export { solve };

@@ -5,8 +5,8 @@
 //
 // Size policy (TypeR): the style size is a ceiling. The search first tries
 // the exact style size, then the largest size that fits down to minScale of
-// it, then (when enabled) allows one hyphen in a long word. "fixed" keeps one
-// exact size.
+// it (rounded down to a step of the style's unit), then (when enabled) allows
+// one hyphen in a long word. "fixed" keeps one exact size.
 
 import { compileGraph, composeText, probesForGraph } from "./textGraph";
 import { measureEdges } from "./measureSpec";
@@ -95,6 +95,19 @@ const layoutPolygon = (plan, pad) => {
   return simplify(out, 0.3);
 };
 
+// The style's stroke is drawn outside the glyphs after the text is placed
+// (_setLayerStroke, always outside): its width is ink the margin must hold.
+// The same tests as the hosts, which draw 3 px when the size is missing.
+export const strokeWidth = (stroke) => {
+  if (!stroke || stroke.enabled === false) return 0;
+  const size = Number(stroke.size);
+  if (size <= 0 && stroke.enabled !== true) return 0;
+  return size > 0 ? size : 3;
+};
+
+// The margin kept without any padding: 3.5% of the bubble's smaller side
+const baseMargin = (selection) => Math.max(2, Math.min(selection.width, selection.height) * 0.035);
+
 const solverModel = (graph, plan, cache, probes, sizes, data) => {
   const selection = plan.selection;
   if (!selection || !plan.cleanPolygon) throw new Error("Bubble layout is incomplete");
@@ -117,10 +130,13 @@ const solverModel = (graph, plan, cache, probes, sizes, data) => {
     if (/^[\s.,!?;:…-]+$/.test(graph.source)) ascent = Math.max(ascent, -metric.top);
   }
   const dim = Math.min(selection.width, selection.height);
-  const borderPad = data.noMargin ? 0 : Math.max(2, dim * 0.035, Number(data.padding) || 0);
-  const pad = borderPad + 0.75;
-  const poly = layoutPolygon(plan, pad);
-  const geometricMax = Math.max(0.1, (selection.height - 2 * borderPad) / Math.max(0.05, minXHeight));
+  const marginScale = data.marginScale > 0 ? Math.min(1, data.marginScale) : 1;
+  const borderPad = data.noMargin ? 0 : Math.max(baseMargin(selection) * marginScale, Number(data.padding) || 0);
+  const stroke = strokeWidth(graph.stroke);
+  const pad = borderPad + 0.75 + stroke;
+  // The neck keeps NECK_GAP from the stroke, not from the bare glyphs
+  const poly = layoutPolygon(plan, borderPad + 0.75);
+  const geometricMax = Math.max(0.1, (selection.height - 2 * (borderPad + stroke)) / Math.max(0.05, minXHeight));
   const opts = {
     min: Math.max(0.1, sizes.min),
     max: Math.min(geometricMax, sizes.max),
@@ -164,16 +180,19 @@ const packChoice = (candidate, variantIndex, model) => {
   };
 };
 
-// The chosen lines with exact metrics: still inside the polygon? Then
-// re-centre and re-score them
+// A line placed inside the band the search proved free (solve's "safe"):
+// no polygon test needed
+const provenSafe = (safe, metric, size, baseline, axis, pad) => !!(safe && safe.pad >= pad &&
+  baseline + metric.top * size >= safe.top && baseline + metric.bottom * size <= safe.bottom &&
+  axis + metric.left * size >= safe.left && axis + metric.right * size <= safe.right);
+
+// The chosen lines with exact metrics, their ink box centred again on the
+// bubble's centre: all still inside the polygon there? Then re-score them
 const verifyPackedChoice = (graph, model, choice, exact) => {
   if (!choice) return null;
   const variant = graph.variants[choice.variant];
   if (!variant) return null;
   const opts = model.opts;
-  let top = Infinity;
-  let bottom = -Infinity;
-  let valid = true;
   const lines = [];
   for (let i = 0; i < choice.lines.length; i++) {
     const item = choice.lines[i];
@@ -182,21 +201,23 @@ const verifyPackedChoice = (graph, model, choice, exact) => {
     if (!metric) return null;
     const modelEdge = model.variants[choice.variant].edges[item.edge];
     modelEdge.metric = metric;
-    const inkTop = item.baseline + metric.top * choice.size;
-    const inkBottom = item.baseline + metric.bottom * choice.size;
-    top = Math.min(top, inkTop);
-    bottom = Math.max(bottom, inkBottom);
-    const safe = item.safe;
-    const proven = safe && safe.pad >= opts.pad && inkTop >= safe.top && inkBottom <= safe.bottom &&
-      choice.axis + metric.left * choice.size >= safe.left && choice.axis + metric.right * choice.size <= safe.right;
-    if (!proven && !solverInternals.fitsExactBand(model.poly, metric, choice.size, item.baseline, choice.axis, opts.pad)) valid = false;
-    lines.push({ edge: modelEdge, baseline: item.baseline, safe });
+    lines.push({ edge: modelEdge, baseline: item.baseline, safe: item.safe });
   }
-  if (!valid) return null;
-  const centered = solverInternals.centerLines(lines, top, bottom, model.selection.yMid, model.poly, choice.size, choice.axis, opts.pad, true);
+  const ink = solverInternals.inkBox(lines, choice.size, choice.axis);
+  const dy = model.selection.yMid - (ink.top + ink.bottom) / 2;
+  const axis = choice.axis + model.selection.xMid - (ink.left + ink.right) / 2;
+  const centered = { lines: [], top: ink.top + dy, bottom: ink.bottom + dy };
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const baseline = line.baseline + dy;
+    const metric = line.edge.metric;
+    if (!provenSafe(line.safe, metric, choice.size, baseline, axis, opts.pad) &&
+        !solverInternals.fitsExactBand(model.poly, metric, choice.size, baseline, axis, opts.pad)) return null;
+    centered.lines.push({ edge: line.edge, baseline, safe: line.safe });
+  }
   const candidate = {
     size: choice.size,
-    axis: choice.axis,
+    axis,
     lines: centered.lines,
     top: centered.top,
     bottom: centered.bottom,
@@ -269,6 +290,17 @@ const estimatedFit = (graph, plan, data, size, cache, probes, estimated) => {
     if (narrowedSearch(graph, model, estimated)) return true;
   }
   return false;
+};
+
+// The step a shrunk size is rounded down to, in the style's unit: half a point
+// or half a pixel, a tenth of a millimetre
+const sizeStep = (graph) => (graph.data.style.textProps.typeUnit === "millimetersUnit" ? 0.1 : 0.5);
+
+// A size in pixels rounded down to that step of the style's unit
+export const roundedSize = (sizePx, graph) => {
+  const step = sizeStep(graph);
+  const inUnit = (sizePx * 72) / graph.dpi;
+  return (Math.floor(inUnit / step + 1e-6) * step * graph.dpi) / 72;
 };
 
 // One search pass between sizes.min and sizes.max (pixels); fine scans the
@@ -413,6 +445,14 @@ export const planText = async (plan, payload, context) => {
         fittedSize = middle;
       } else failed = middle;
     }
+    // A size the user would type: down to a step of the style's unit, so that
+    // the bubbles of a page read 23.5 / 22 / 18.5 rather than 23.4 / 21.9 /
+    // 18.7. Not below the minimum, and only if the text still fits there.
+    const rounded = roundedSize(fittedSize, graph);
+    if (rounded >= minPx - 0.001 && rounded < fittedSize - 0.001) {
+      const pass = await fitAt(rounded);
+      if (pass) return { graph, pass, tier: "range" };
+    }
     return { graph, pass: fitted, tier: "range" };
   };
   const tiers = policy.fixed || policy.smallest ? ["exact"] : ["exact", "range"];
@@ -474,19 +514,52 @@ const rememberedMeasure = (nativeMeasure) => {
   };
 };
 
+// The margins tried one after the other when the text does not fit, from
+// the user's padding down to none: two thirds and one third of the padding,
+// the base margin alone (3.5% of the bubble), half of it, then a hair's
+// breadth. Each one gets the whole size range and the hyphenation before the
+// next one is tried, so the text gives up as little of its margin as it can:
+// a larger padding never ends closer to the line than a smaller one. A step
+// that would not free at least half a pixel is skipped.
+export const marginSteps = (plan, payload) => {
+  const base = baseMargin(plan.selection);
+  const padding = Number(payload.padding) || 0;
+  const candidates = [
+    {},
+    { padding: (padding * 2) / 3 },
+    { padding: padding / 3 },
+    { padding: 0 },
+    { padding: 0, marginScale: 0.5 },
+    { padding: 0, noMargin: true },
+  ];
+  const steps = [];
+  let last = Infinity;
+  for (let i = 0; i < candidates.length; i++) {
+    const step = { ...payload, ...candidates[i] };
+    const border = step.noMargin ? 0 : Math.max(base * (step.marginScale || 1), Number(step.padding) || 0);
+    if (i && border > last - 0.5) continue;
+    steps.push(step);
+    last = border;
+  }
+  return steps;
+};
+
 // A bubble too small for the user's padding at the smallest size: a tighter
 // margin beats the classic paste, which ignores the bubble and the smaller size.
 // A text too long for the bubble even without margin overflows it as little as
-// possible at the smallest size, on the bubble's centre, as a chamber does: the
-// classic paste would overflow it too, at the style size.
-export const planBubbleText = async (plan, payload, context) => {
+// possible at the smallest size, on the bubble's centre: the classic paste would
+// overflow it too, at the style size.
+//
+// A chamber of a connected bubble takes its line whatever happens, on the same
+// ladder: the style size first, then a smaller size, the hyphenation, and only
+// then a smaller margin. Its padding used to give way before any shrinking,
+// which set a long line right against the outline of a small chamber.
+const planWithFallbacks = async (plan, payload, context) => {
   const measure = rememberedMeasure(context.measure);
   const bare = { ...payload, padding: 0, noMargin: true };
   const smallest = { ...context.sizePolicy, smallest: true };
   const steps = [
-    { plan, payload },
-    { plan, payload: { ...payload, padding: 0 } },
-    { plan, payload: bare },
+    ...marginSteps(plan, payload).map((margin) => ({ plan, payload: margin })),
     ...OVERFLOW_STEPS.map((ratio) => ({ plan: overflowPlan(plan, ratio), payload: bare, sizePolicy: smallest })),
   ];
   for (let i = 0; i < steps.length; i++) {
@@ -499,26 +572,5 @@ export const planBubbleText = async (plan, payload, context) => {
   throw new NoPlacementError();
 };
 
-// A chamber of a connected bubble is small and takes its line whatever
-// happens. The style size comes before the user's padding, the padding before
-// a smaller size. Then no margin at all, then overflowing as little as
-// possible at the smallest size the policy allows, on the chamber's centre.
-export const planChamberText = async (plan, payload, context) => {
-  const measure = rememberedMeasure(context.measure);
-  const bare = { ...payload, padding: 0, noMargin: true };
-  const smallest = { ...context.sizePolicy, smallest: true };
-  const steps = [
-    { plan, payload, breakPoints: null, sizePolicy: { ...context.sizePolicy, fixed: true } },
-    { plan, payload: { ...payload, padding: 0 } },
-    { plan, payload: bare },
-    ...OVERFLOW_STEPS.map((ratio) => ({ plan: overflowPlan(plan, ratio), payload: bare, sizePolicy: smallest })),
-  ];
-  for (let i = 0; i < steps.length; i++) {
-    try {
-      return await planText(steps[i].plan, steps[i].payload, { ...context, measure, ...steps[i] });
-    } catch (error) {
-      if (!(error instanceof NoPlacementError)) throw error;
-    }
-  }
-  throw new NoPlacementError();
-};
+export const planBubbleText = planWithFallbacks;
+export const planChamberText = planWithFallbacks;
