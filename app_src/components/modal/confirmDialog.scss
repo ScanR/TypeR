@@ -87,6 +87,16 @@
 }
 
 // Open in TypeR Studio (components/footer/openInStudio.jsx)
+// A long label (Download TypeR Studio, in some languages) wraps instead of being cut
+.open-in-studio .settings-confirm-actions > button {
+    flex: 0 1 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
 .open-in-studio-options {
     display: flex;
     flex-direction: column;

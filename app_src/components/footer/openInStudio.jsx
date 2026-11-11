@@ -151,7 +151,7 @@ const OpenInStudioButton = React.memo(function OpenInStudioButton() {
         </StudioDialog>
       )}
       {dialog && !dialog.missing && (
-        <StudioDialog title={label} icon={<FiExternalLink size={26} />} okLabel={label} onOk={confirm} onCancel={close}>
+        <StudioDialog title={label} icon={<FiExternalLink size={26} />} okLabel={locale.studioOpenOk || "Open"} onOk={confirm} onCancel={close}>
           <div className="settings-confirm-text">
             {locale.studioNote || "Unsaved changes are saved first. Documents without a Photoshop file yet are saved as PSD in a folder you choose."}
           </div>
