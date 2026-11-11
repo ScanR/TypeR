@@ -152,7 +152,8 @@ const TabBar = React.memo(function TabBar() {
             onDragEnd={endTabDrag}
             onClick={() => selectTab(tab)}
             onDoubleClick={() => startRename(tab)}
-            title={locale.tabRenameHint || "Double-click to rename, drag to reorder"}
+            // Long names are truncated in narrow tabs: the tooltip shows the full name above the hint.
+            title={[tab.name, locale.tabRenameHint || "Double-click to rename, drag to reorder"].filter(Boolean).join("\n")}
           >
             {(tab.images || []).length ? (
               <span className="tab-bar-sync-dot" title={locale.tabSynced || "PSDs are synced to this tab"} />

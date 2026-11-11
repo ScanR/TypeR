@@ -125,6 +125,11 @@ find(render(), 'tab-bar-rename-input').props.onKeyDown({ key: 'Escape' });
 context.state.tabs = [{ id: 't1', name: 'One' }];
 assert.strictEqual(tabNode(render(), 't1').props.draggable, false, 'A single tab has nowhere to go');
 
+// Truncated names: hovering a tab shows its full name, then the hint.
+context.state.tabs = [{ id: 't1', name: 'Chapter 12 - The very long name' }];
+assert.strictEqual(tabNode(render(), 't1').props.title, 'Chapter 12 - The very long name\nDouble-click to rename, drag to reorder');
+context.state.tabs = [{ id: 't1', name: 'One' }];
+
 // A plain blur still saves.
 firstTab(render()).props.onDoubleClick();
 input = find(render(), 'tab-bar-rename-input');
