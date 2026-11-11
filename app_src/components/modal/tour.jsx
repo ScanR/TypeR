@@ -567,7 +567,7 @@ const TourModal = React.memo(function TourModal({ course }) {
       : locale.whatsNewPrepScriptButton || "Load the practice script";
     if (action.type === "paste") return locale.whatsNewPasteButton || "Paste in the selection";
     if (action.type === "editStyle") return locale.whatsNewEditCurrentStyle || "Edit the current style";
-    if (action.type === "align") return locale.alignLayer || "Align";
+    if (action.type === "align") return locale.alignLayer || "Center";
     if (action.type === "importPages") return locale.footerOpenRepo || "Import pages";
     return "";
   };

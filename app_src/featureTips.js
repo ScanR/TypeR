@@ -100,7 +100,7 @@ const formatFeatureTip = (id, localeStrings = {}, vars = {}) => {
     unsorted: localeStrings.noFolderTitle || "Unsorted",
     importPages: localeStrings.footerOpenRepo || "Import pages",
     paste: localeStrings.createLayer || "Paste",
-    align: localeStrings.alignLayer || "Align",
+    align: localeStrings.alignLayer || "Center",
     ...vars,
   };
   const text = localeStrings[tip.key] || tip.fallback;

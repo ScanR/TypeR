@@ -241,7 +241,7 @@ const HelpModal = React.memo(function HelpModal() {
         {
             id: 'paste',
             icon: FiCrosshair,
-            title: locale.helpSectionPasteTitle || 'Paste and align',
+            title: locale.helpSectionPasteTitle || 'Paste and center',
             subtitle: locale.helpSectionPasteSubtitle || 'The core loop: select, paste, move on.',
             media: 'paste',
             mediaCaption: locale.helpSectionPasteMedia || 'Pasting a line into a bubble',
@@ -256,7 +256,7 @@ const HelpModal = React.memo(function HelpModal() {
                     keys: shortcut.add,
                 },
                 {
-                    title: locale.helpPasteAlignTitle || 'Align',
+                    title: locale.helpPasteAlignTitle || 'Center',
                     text: locale.helpQuickAlignDescr || 'Centers the active text layer in the current selection.',
                     keys: shortcut.center,
                 },

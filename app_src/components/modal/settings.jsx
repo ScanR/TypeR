@@ -1929,7 +1929,7 @@ const SettingsModal = React.memo(function SettingsModal() {
         }, {
           tabBar: locale.settingsLayoutElTabBar || "Tab bar",
           previewCreateButton: locale.settingsLayoutElCreate || "Create layer button",
-          previewAlignButton: locale.settingsLayoutElAlign || "Align button",
+          previewAlignButton: locale.settingsLayoutElAlign || "Center button",
           previewSizeControls: locale.settingsLayoutElSize || "Text size controls",
           previewNav: locale.settingsLayoutElNav || "Line navigation arrows",
           previewWidget: locale.settingsLayoutElWidget || "Line preview / TextShapeR",
