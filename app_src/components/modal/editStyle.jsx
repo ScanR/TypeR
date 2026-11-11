@@ -4,7 +4,7 @@ import "./editStyle.scss";
 import React from "react";
 import deepClone from "../../deepClone";
 import PropTypes from "prop-types";
-import { FiChevronDown, FiChevronUp, FiCopy, FiX, FiMinus, FiPlus } from "react-icons/fi";
+import { FiChevronDown, FiChevronUp, FiCopy, FiX, FiMinus, FiPlus, FiDownload } from "react-icons/fi";
 import { TiSortAlphabetically } from "react-icons/ti";
 import { GiVerticalFlip, GiHorizontalFlip } from "react-icons/gi";
 import { TbAlphabetArabic } from "react-icons/tb";
@@ -32,6 +32,7 @@ import FontScanPromo from "./fontScanPromo";
 import FontPicker from "./fontPicker";
 import { pickFamilyPreviewFont } from "../../fontPreview";
 import UnsavedChangesDialog from "./unsavedChangesDialog";
+import { importStyleFiles, reportStyleImport } from "../../styleImport";
 
 const BUBBLE_TYPES = ["shout", "narration"];
 const PUNCTUATION_ONLY_SCALES = [2, 3];
@@ -92,6 +93,22 @@ const EditStyleModal = React.memo(function EditStyleModal() {
   const confirmClose = () => {
     setDiscardConfirmOpen(false);
     closeModal();
+  };
+
+  // Imported styles replace the one being created: the window closes once
+  // something came in, and the styles block reports (missing fonts…)
+  const [importing, setImporting] = React.useState(false);
+  const importStyle = async () => {
+    setImporting(true);
+    let result = null;
+    try {
+      result = await importStyleFiles(context.dispatch);
+    } finally {
+      setImporting(false);
+    }
+    if (!result) return;
+    closeModal();
+    reportStyleImport(result);
   };
 
   const changeStyleName = (e) => {
@@ -247,6 +264,17 @@ const EditStyleModal = React.memo(function EditStyleModal() {
       </div>
       <div className="app-modal-body">
         <form className="app-modal-body-inner" onSubmit={saveStyle}>
+          {currentData.create && (
+            <div className="fsr-promo hostBgd">
+              <div className="fsr-promo-text">
+                <b>{locale.importStyleTitle || "Already have a style?"}</b>
+                <span>{locale.importStyleHint || "Import a TypeR export (.json, .zip with fonts) or a Photoshop tool preset (.tpl)."}</span>
+              </div>
+              <button type="button" className="topcoat-button--large fsr-promo-btn" disabled={importing} onClick={importStyle}>
+                <FiDownload size={16} /> {locale.importStyle || "Import a style"}
+              </button>
+            </div>
+          )}
           {currentData.create && <FontScanPromo />}
           <div className="fields">
             <div className="field">

@@ -4,7 +4,7 @@ import "./stylesBlock.scss";
 import React from "react";
 import deepClone from "../../deepClone";
 import PropTypes from "prop-types";
-import { FiArrowRightCircle, FiPlus, FiFolderPlus, FiChevronDown, FiChevronUp, FiCopy, FiClipboard, FiTrash2, FiPlusSquare, FiEye, FiEyeOff, FiMinus, FiInfo, FiX } from "react-icons/fi";
+import { FiArrowRightCircle, FiPlus, FiFolderPlus, FiChevronDown, FiChevronUp, FiCopy, FiClipboard, FiTrash2, FiPlusSquare, FiEye, FiEyeOff, FiMinus, FiInfo, FiX, FiDownload } from "react-icons/fi";
 import { MdEdit, MdLock } from "react-icons/md";
 import { CiExport } from "react-icons/ci";
 
@@ -18,6 +18,11 @@ import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPrevi
 import { notePerfRender } from "../../perfDebug";
 import { getStyleTextSize, normalizeStyleSizePresets, parseStyleSize, sanitizeStyleSizeInput, stepStyleSize } from "../../styleSizePresets";
 import { isStyleStrokeOn } from "../../styleStroke";
+import { setStyleImportReporter } from "../../styleImportReporter";
+
+// Loaded on first use, like the import code: neither is needed at startup
+const MissingFontsDialog = React.lazy(() => import(/* webpackChunkName: "missing-fonts" */ "../modal/missingFontsDialog"));
+const loadStyleImport = () => import(/* webpackChunkName: "style-import" */ "../../styleImport");
 
 const FontPreviewContext = React.createContext({ aliases: {}, css: "", revision: 0 });
 const emptyIdSet = new Set();
@@ -123,6 +128,21 @@ const StylesBlock = React.memo(function StylesBlock() {
     context.dispatch({ type: "setModal", modal: "editFolder", data: { create: true } });
     closeStyleContextMenu();
   }, [context.dispatch, closeStyleContextMenu]);
+
+  // The same import as Settings > Data, styles only: .json, .zip with fonts, .tpl
+  const importContextStyle = React.useCallback(() => {
+    closeStyleContextMenu();
+    loadStyleImport()
+      .then(({ importStyleFiles, reportStyleImport }) =>
+        importStyleFiles(context.dispatch).then((result) => reportStyleImport(result)))
+      .catch(() => nativeAlert(locale.importStyleError || locale.errorImportStyles, locale.errorTitle, true));
+  }, [context.dispatch, closeStyleContextMenu]);
+
+  const [missingFontsImport, setMissingFontsImport] = React.useState(null);
+  React.useEffect(() => setStyleImportReporter({
+    showMissingFonts: setMissingFontsImport,
+    onFonts: (fonts) => setInstalledFonts(fonts),
+  }), []);
 
   // Fonts are fetched once at panel startup: enumerating app.fonts blocks
   // Photoshop, and refreshing on focus used to swallow clicks on style items
@@ -241,7 +261,7 @@ const StylesBlock = React.memo(function StylesBlock() {
           role="menu"
           style={{
             left: Math.max(4, Math.min(styleContextMenu.x, window.innerWidth - 196)),
-            top: Math.max(4, Math.min(styleContextMenu.y, window.innerHeight - (styleContextMenu.type === "style" ? 216 : 116))),
+            top: Math.max(4, Math.min(styleContextMenu.y, window.innerHeight - (styleContextMenu.type === "style" ? 246 : 146))),
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
@@ -273,6 +293,10 @@ const StylesBlock = React.memo(function StylesBlock() {
             <FiFolderPlus size={15} />
             <span>{locale.addFolder}</span>
           </button>
+          <button type="button" role="menuitem" onClick={importContextStyle}>
+            <FiDownload size={15} />
+            <span>{locale.importStyle || "Import a style"}</span>
+          </button>
           {styleContextMenu.type === "style" && (
             <React.Fragment>
               <div className="style-context-menu-separator hostBrdTopContrast" />
@@ -283,6 +307,15 @@ const StylesBlock = React.memo(function StylesBlock() {
             </React.Fragment>
           )}
         </div>
+      )}
+      {missingFontsImport && (
+        <React.Suspense fallback={null}>
+          <MissingFontsDialog
+            fonts={missingFontsImport.fonts}
+            message={missingFontsImport.message}
+            onClose={() => setMissingFontsImport(null)}
+          />
+        </React.Suspense>
       )}
       <div className="style-add hostBrdTopContrast style-btn-list">
         <button className="topcoat-button--large" onClick={() => context.dispatch({ type: "setModal", modal: "editFolder", data: { create: true } })}>
