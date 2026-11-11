@@ -1,8 +1,7 @@
 # Changelog
 
-## 3.0.4
+## 3.0.5
 
-- The panel reports its own version correctly again. The 3.0.3 packages still carried 3.0.2 in the panel: Help showed the old version and the update check kept offering 3.0.3 to a panel that already had it, and on Windows the automatic install could fetch the 3.0.2 package back. The release checks now fail when the panel version differs from the package version.
 - Windows: Photoshop's tool keys and the shortcuts of actions no longer die after a paste in the new TypeR. Since 3.0.2, every paste, style or TextShapeR change gave the keyboard focus to a hidden element of the panel, to take it out of the panel's WebView, even when the document already had it (a paste by shortcut). A UXP panel that holds the focus on Windows keeps Photoshop's keys for itself, so the tool keys stayed dead until a click on the document; the Legacy panel was not affected. TypeR no longer gives the focus to the panel: after a paste by shortcut it leaves the focus where it is, and after a click in the panel it asks TypeR Shortcuts.exe alone to hand the focus back to Photoshop's window. Not yet confirmed on a Windows computer.
 - Multi-bubble no longer stores wrong bubbles when the Magic Wand (or a lasso, a marquee, the Object Selection tool) is on "Add to selection", "Subtract" or "Intersect". Each click was joined to the ones before, so every bubble was stored as the rectangle around all of them and the texts landed between the bubbles. TypeR sets the tool back to "New selection" while multi-bubble is on and says so; a click that was already joined to another bubble is left out, to be made again.
 - Photoshop's "Auto-Collapse Iconic Panels" (Preferences > Workspace) no longer closes TypeR at every click on the document when the panel is opened from an icon dock, in the Legacy panel as in the new one. The first time TypeR finds the option on, it turns it off and says so. Only once: turned back on afterwards, the option stays on.
@@ -19,6 +18,19 @@
 - Size presets by page width scale every run of the style with its leading, in the smart paste and the classic paste. Only the first run changed size: a fixed leading or a run in another size kept the old values.
 - Hovering a tab shows its full name, which narrow tabs cut short, above the rename hint.
 - The **Align** button is now called **Center**, the name its shortcut and its settings already used: it centres the text in the bubble, which "Align" did not say. The help, the tour and the settings use the new name in every language.
+- Styles can be imported from a .zip exported with their fonts: **Import a style** in the style creation window and in the styles' context menu takes a TypeR export (.json or .zip) or a Photoshop tool preset (.tpl), and offers to install the fonts of the archive that are missing on the computer.
+- The Help window explains the smart paste, TextShapeR and project profiles.
+- **Export my settings** exports every preference of the Settings window, not only those of the script.
+- Leaving the Settings for Export, FontScanR, the update window or the UXP migration asks before dropping unsaved edits. Enter in a profile name field runs that field's button instead of saving and closing the Settings.
+- The size of a text layer scaled with Free Transform is read and kept as Photoshop shows it, in both panels. A style saved in pixels or millimetres keeps its unit in the smart paste, and Keep size converts from Photoshop's type unit.
+- "Auto" language: a Photoshop in Spanish (Spain or Mexico) shows TypeR in Spanish instead of English.
+- macOS: with two versions of Photoshop open at once, the shortcuts of the first no longer stop when the second starts.
+- The installers check the plugin they download against the release's checksum and stop on a damaged download. An update removes the build files of versions before the previous one, which piled up a few megabytes at a time.
+- In a right-to-left interface, the footer modes are measured correctly and a style dropped on a row lands on the right side.
+
+## 3.0.4
+
+- The panel reports its own version correctly again. The 3.0.3 packages still carried 3.0.2 in the panel: Help showed the old version and the update check kept offering 3.0.3 to a panel that already had it, and on Windows the automatic install could fetch the 3.0.2 package back. The release checks now fail when the panel version differs from the package version.
 
 ## 3.0.3
 

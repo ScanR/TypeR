@@ -1,6 +1,6 @@
 const config = {
   appTitle: "TypeR",
-  appVersion: "3.0.4",
+  appVersion: "3.0.5",
   // Bump to show the "What's new" tour again after an update
   whatsNewVersion: "3.0",
   appUrl: "https://typer.hayasaku.fr/",
