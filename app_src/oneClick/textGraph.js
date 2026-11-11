@@ -104,7 +104,8 @@ const COMMON_OPENINGS = /^(Abandoning|Surveillance|Extraordinary|Unbelievable|Ev
 
 // Names and acronyms are never hyphenated nor broken at their own hyphen. A
 // capitalized word that opens a sentence is not taken for a name (TypeR:
-// French scripts capitalize any first word)
+// French scripts capitalize any first word), nor any capitalized word when
+// the text hyphenates in German, where every noun takes a capital
 const sentenceStart = (source, index) => {
   let i = index - 1;
   while (i >= 0 && /[ \t"'«“(\[]/.test(source.charAt(i))) i--;
@@ -114,9 +115,10 @@ const protectedCharacters = (source, styles, data) => {
   const out = [];
   for (let i = 0; i < source.length; i++) out[i] = styles[i].noBreak === true;
   const re = /https?:\/\/\S+|www\.\S+|\b[A-Z]{2,7}\b|\b[A-Z][a-z]+\b/g;
+  const nouns = data.hyphenationLanguage === "de";
   let m;
   while ((m = re.exec(source)) !== null) {
-    if (/^[A-Z][a-z]+$/.test(m[0]) && (sentenceStart(source, m.index) || COMMON_OPENINGS.test(m[0]))) continue;
+    if (/^[A-Z][a-z]+$/.test(m[0]) && (nouns || sentenceStart(source, m.index) || COMMON_OPENINGS.test(m[0]))) continue;
     for (let j = m.index; j < m.index + m[0].length; j++) out[j] = true;
   }
   const phrases = data.protectedPhrases || [];
@@ -132,7 +134,8 @@ const protectedCharacters = (source, styles, data) => {
   return out;
 };
 
-const LONG_WORD = /[A-Za-zÀ-ɏœŒ]+(?:['’][A-Za-zÀ-ɏœŒ]+)*/g;
+// Latin and Cyrillic letters: the scripts TypeR has hyphenation patterns for
+const LONG_WORD = /[A-Za-zÀ-ɏœŒЀ-ӿ]+(?:['’][A-Za-zÀ-ɏœŒЀ-ӿ]+)*/g;
 
 // The whole-word text, plus up to two variants that each insert one hyphen
 // in a long word (only when hyphenation is allowed)
@@ -350,13 +353,15 @@ export const typeResolution = (textProps, resolution) => {
 };
 
 // Build the graph of one translation. options: { dpi (the page's), textColor,
-// resolveRunStyle, allowHyphen, breakPoints, maxHyphenVariants }. graph.dpi
+// resolveRunStyle, allowHyphen, breakPoints, hyphenationLanguage,
+// maxHyphenVariants }. graph.dpi
 // is the resolution of the style's sizes (typeResolution), not the page's.
 export const compileGraph = (input, options) => {
   const dpi = typeResolution(input.style.textProps, options.dpi);
   const data = clone(input);
   data.allowHyphen = !!options.allowHyphen;
   data.breakPoints = options.breakPoints;
+  data.hyphenationLanguage = options.hyphenationLanguage || null;
   const recolored = applyTextColor(data, options.textColor);
   // The stroke is applied after the text is placed: never measured
   const stroke = recolored ? null : data.style.stroke || null;

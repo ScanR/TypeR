@@ -346,6 +346,7 @@ const searchPass = async (graph, plan, data, sizes, cache, probes, estimated, me
 // candidate, model, hyphenated, timing }
 // context = { page: { width, height, resolution }, measure (nativeMeasure),
 //   useAtlas, leanMeasure, resolveRunStyle, breakPoints (null = no hyphenation),
+//   hyphenationLanguage (its code),
 //   sizePolicy: { maxPx, minScale, fixed } }
 // leanMeasure (the Legacy panel, where every measurement is an ExtendScript
 // round trip): no exhaustive measurement of the candidate lines, and a text
@@ -370,6 +371,7 @@ export const planText = async (plan, payload, context) => {
       resolveRunStyle: context.resolveRunStyle,
       allowHyphen,
       breakPoints: context.breakPoints,
+      hyphenationLanguage: context.hyphenationLanguage,
     });
     if (allowHyphen && graph.variants.length < 2) return null;
     graphRef.graph = graph;

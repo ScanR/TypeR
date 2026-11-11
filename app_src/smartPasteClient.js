@@ -14,7 +14,7 @@ import { rememberPasteTargets } from "./oneClick/pasteTargets";
 import { captureSource, fillFromHistograms, leakClick, triggerClick } from "./oneClick/bubblePlan";
 import { discRegion, localPlan, localRegion, localWindow } from "./oneClick/openBubble";
 import { applyRefont, refontTextStyle } from "./oneClick/refont";
-import { resolveHyphenationLanguage } from "./oneClick/hyphenation";
+import { needsHyphenationPatterns, registerHyphenationPatterns, resolveHyphenationLanguage } from "./oneClick/hyphenation";
 import { getInterfaceLanguage } from "./interfaceLanguage";
 import { createPasteHistory, lineAfterHistoryMove } from "./oneClick/pasteHistory";
 import { resolveTypeRFontVariant } from "./fontVariantResolver.jsxinc";
@@ -234,6 +234,19 @@ const cepAdapter = (request) => ({
   leanMeasure: true,
 });
 
+// The patterns of a language other than French or English, before the paste
+// that hyphenates in it: the chunk TextShapeR loads too. Without them the
+// paste goes on, only without hyphens.
+const loadHyphenation = async (language) => {
+  if (!needsHyphenationPatterns(language)) return;
+  try {
+    const patterns = await import(/* webpackChunkName: "text-shaper-patterns" */ "./textShapeRPatterns");
+    registerHyphenationPatterns(patterns.default);
+  } catch (error) {
+    console.warn("TypeR: hyphenation patterns", error);
+  }
+};
+
 export const runSmartPaste = async (request) => {
   if (isUxp()) {
     const raw = await evalHost("smartPaste(" + JSON.stringify(request) + ")", 120000);
@@ -242,6 +255,7 @@ export const runSmartPaste = async (request) => {
     return result;
   }
   try {
+    await loadHyphenation(request.settings && request.settings.hyphenation);
     const prepared = await prepareSmartPaste(request, cepAdapter(request));
     const raw = await evalHost("smartPasteCommit(" + JSON.stringify(prepared) + ")");
     const done = safeJsonParse(raw, { error: "commit" });

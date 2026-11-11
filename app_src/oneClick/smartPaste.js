@@ -13,7 +13,8 @@
 //   trigger: { source: "wand" | "rectangle" | "lasso" | "manual", x, y },
 //   lines: [{ text, richTextRuns, style, styleLocked }],   // N, N+1, N+2
 //   roleStyles: { shout: style | null, narration: style | null },
-//   settings: { autoClean, distribute, minScale, hyphenation ("fr"|"en"|"off"),
+//   settings: { autoClean, distribute, minScale, hyphenation (a code of
+//               HYPHENATION_LANGUAGES, or "off"),
 //               direction, readingOrder, padding, keepSize, pointText, forceSplit },
 //   forceSplit: split the bubble at its likeliest neck even when it does not
 //   look double (the user clicked it again after a one-line paste)
@@ -234,6 +235,7 @@ export const prepareSmartPaste = async (request, adapter) => {
       leanMeasure: !!adapter.leanMeasure,
       resolveRunStyle: adapter.resolveRunStyle,
       breakPoints,
+      hyphenationLanguage: settings.hyphenation || "off",
       sizePolicy: { minScale: (settings.minScale > 0 ? settings.minScale : 0.75) / enlargedBy, fixed: !!settings.keepSize },
     };
     let text;

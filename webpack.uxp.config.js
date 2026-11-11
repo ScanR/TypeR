@@ -28,9 +28,11 @@ const hostConfig = (env, argv, entry, filename, library) => ({
     rules: [
       { test: /\.jsxinc$/, type: "javascript/auto" },
       {
-        // app_src helpers shared with the panel are ES modules
+        // app_src helpers shared with the panel are ES modules. The hyphenation
+        // patterns are plain data: left as they are, not one value per line
         test: /\.m?js$/,
         include: [path.join(__dirname, "app_src")],
+        exclude: /[\\/]oneClick[\\/]hyphen[\\/]\w+Patterns\.js$/,
         use: { loader: "babel-loader", options: { babelrc: false, configFile: false, presets: [["@babel/preset-env", { targets: { chrome: "100" }, modules: false }]] } },
       },
     ],

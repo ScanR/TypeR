@@ -11,7 +11,8 @@ const { prepareSmartPaste, styleForKind, resolveStyleSizeForPage } = load("app_s
 const { applyRefont, normalizeRefontRules, refontTextStyle } = load("app_src/oneClick/refont.js");
 const { classifySelectionEvent, parseCepEventData, triggerSourceForTool } = load("app_src/oneClick/selectionEvent.js");
 const { createPasteHistory, lineAfterHistoryMove } = load("app_src/oneClick/pasteHistory.js");
-const { breakPointsFor, resolveHyphenationLanguage } = load("app_src/oneClick/hyphenation.js");
+const { breakPointsFor, resolveHyphenationLanguage, registerHyphenationPatterns, needsHyphenationPatterns } = load("app_src/oneClick/hyphenation.js");
+const { HYPHENATION_LANGUAGES, SMART_PASTE_HYPHENATION_MODES } = load("app_src/oneClick/hyphenationLanguages.js");
 const { metricFromBounds, atlasMetrics, clearMetricCache } = load("app_src/oneClick/measureSpec.js");
 
 const px = (value) => ({ _unit: "pixelsUnit", _value: value });
@@ -778,6 +779,52 @@ const linesInside = (session) => {
   assert.ok(!breakPointsFor("fr")("l’amitiés").some((at) => at < 4), "never right after an elision");
   assert.ok(breakPointsFor("en")("neighbor's").length > 0);
   assert.deepStrictEqual(breakPointsFor("en")("cafétérias"), [], "not English letters");
+
+  // Every language TypeR has patterns for: chosen, or found in the script
+  assert.deepStrictEqual(HYPHENATION_LANGUAGES, ["de", "en", "es", "fr", "it", "pt", "ru", "tr", "uk"]);
+  assert.deepStrictEqual(SMART_PASTE_HYPHENATION_MODES, ["auto", "de", "en", "es", "fr", "it", "pt", "ru", "tr", "uk", "off"]);
+  for (const language of HYPHENATION_LANGUAGES) assert.strictEqual(resolveHyphenationLanguage(language, "fr_FR", "Il y a quelqu’un."), language, `${language} chosen stays`);
+  assert.strictEqual(resolveHyphenationLanguage("off", "tr_TR", "Merhaba"), "off");
+  assert.strictEqual(resolveHyphenationLanguage("auto", "en_US", "Ben bu değil, sen ne için buradasın? Çok güzel."), "tr", "a Turkish script");
+  assert.strictEqual(resolveHyphenationLanguage("auto", "en_US", "Ich weiß nicht, was du hier machst. Danke."), "de", "a German script");
+  assert.strictEqual(resolveHyphenationLanguage("auto", "en_US", "Что это такое? Я не знаю."), "ru", "a Russian script");
+  assert.strictEqual(resolveHyphenationLanguage("auto", "en_US", "Що це таке? Я не знаю, її немає."), "uk", "a Ukrainian script");
+  assert.strictEqual(resolveHyphenationLanguage("auto", "tr_TR", "OK"), "tr", "the interface settles a short script");
+  assert.strictEqual(resolveHyphenationLanguage("auto", "vi_VN", "OK"), "en", "an interface without patterns: English");
+  // Their patterns arrive with the first paste that needs them: none until then, without an error
+  assert.strictEqual(needsHyphenationPatterns("tr"), true);
+  assert.strictEqual(needsHyphenationPatterns("fr"), false, "French has its syllables");
+  assert.strictEqual(needsHyphenationPatterns("en"), false, "English is loaded");
+  assert.strictEqual(needsHyphenationPatterns("off"), false);
+  assert.deepStrictEqual(breakPointsFor("tr")("araştırmacılarımızdan"), [], "no patterns yet");
+  registerHyphenationPatterns(load("app_src/textShapeRPatterns.js").default);
+  assert.strictEqual(needsHyphenationPatterns("tr"), false);
+  assert.deepStrictEqual(breakPointsFor("tr")("araştırmacılarımızdan"), [4, 7, 9, 11, 13, 15, 18], "araş-tır-ma-cı-la-rı-mız-dan");
+  assert.deepStrictEqual(breakPointsFor("tr")("ARAŞTIRMACILARIMIZDAN"), [4, 7, 9, 11, 13, 15, 18], "Turkish capitals: I is ı");
+  assert.deepStrictEqual(breakPointsFor("tr")("İSTANBULLULAŞTIRAMADIKLARIMIZDAN").slice(0, 3), [5, 8, 10], "İSTAN-BUL-LU");
+  assert.deepStrictEqual(breakPointsFor("de")("Donaudampfschifffahrt"), [5, 10, 16]);
+  assert.deepStrictEqual(breakPointsFor("ru")("достопримечательность"), [5, 8, 10, 12, 16]);
+  assert.deepStrictEqual(breakPointsFor("uk")("відповідальність"), [3, 5, 8, 11]);
+  assert.ok(breakPointsFor("es")("desafortunadamente").length > 0);
+  assert.ok(breakPointsFor("it")("sfortunatamente").length > 0);
+  assert.ok(breakPointsFor("pt")("infelizmente").length > 0);
+  assert.deepStrictEqual(breakPointsFor("tr")("kitap"), [], "a short word stays whole");
+  assert.strictEqual(breakPointsFor("ja"), null, "no patterns, no hyphenation");
+  // A Cyrillic word is a candidate for the hyphen too
+  {
+    const { textVariants } = load("app_src/oneClick/textGraph.js").textGraphInternals;
+    const variants = textVariants("Это достопримечательность", [], { allowHyphen: true, breakPoints: breakPointsFor("ru") }, 2);
+    assert.ok(variants.some((variant) => variant.text === "Это достоприме-чательность"), JSON.stringify(variants.map((variant) => variant.text)));
+  }
+  // In German every noun has a capital: none is taken for a name, acronyms stay whole
+  {
+    const { protectedCharacters } = load("app_src/oneClick/textGraph.js").textGraphInternals;
+    const source = "Die Donaudampfschifffahrt der USA";
+    const styles = Array.from(source, () => ({}));
+    const locked = (data) => source.split("").map((ch, i) => (data && protectedCharacters(source, styles, data)[i] ? ch : "")).join("");
+    assert.strictEqual(locked({ hyphenationLanguage: "en" }), "DonaudampfschifffahrtUSA", "elsewhere a capitalized word is a name");
+    assert.strictEqual(locked({ hyphenationLanguage: "de" }), "USA");
+  }
 
   // Measurement metrics
   assert.deepStrictEqual(metricFromBounds({ left: 568, right: 632, top: 818, bottom: 858 }, { width: 1200, height: 1700 }), { left: -0.515625, right: 0.515625, top: -0.515625, bottom: 0.140625 });

@@ -13,6 +13,7 @@ import { readUxpMigrationState } from "../../uxpMigration";
 import { openKeyboardAccessSettings, readKeyboardAccess } from "../../keyboardAccess";
 import { useContext, defaultUiLayout, normalizeUiLayout, normalizeSmartPasteMinScale } from "../../context";
 import { normalizeRefontRules } from "../../oneClick/refont";
+import { HYPHENATION_LANGUAGES } from "../../oneClick/hyphenationLanguages";
 import { sanitizeTextShapeRTuning } from "../../textShapeR";
 import {
   CUSTOM_IMAGE_THEME_ID,
@@ -48,6 +49,12 @@ import SettingsSearchResults from "./settingsSearchResults";
 import { FOOTER_MODE_KEYS } from "../../uiLayout";
 import { FOOTER_MODE_ICONS, footerModeLabel } from "../footer/footer";
 import { otherAppAvailable } from "../../openInStudio";
+
+// Every language the smart paste hyphenates in, by its name in the interface
+const HYPHENATION_LANGUAGE_NAMES = { de: "German", en: "English", es: "Spanish", fr: "French", it: "Italian", pt: "Portuguese", ru: "Russian", tr: "Turkish", uk: "Ukrainian" };
+const hyphenationLanguageOptions = () => HYPHENATION_LANGUAGES
+  .map((code) => ({ code, name: locale["settingsHyphenation" + code.charAt(0).toUpperCase() + code.slice(1)] || HYPHENATION_LANGUAGE_NAMES[code] }))
+  .sort((a, b) => a.name.localeCompare(b.name));
 
 // Interactive layout mockup: canvas px per real panel px
 const LAYOUT_CANVAS_SCALE = 0.3;
@@ -1572,8 +1579,9 @@ const SettingsModal = React.memo(function SettingsModal() {
                       <div className="field-input">
                         <select value={smartPasteHyphenation} onChange={changeSmartPasteHyphenation} className="topcoat-textarea">
                           <option value="auto">{locale.settingsHyphenationAuto || "Automatic (script language)"}</option>
-                          <option value="fr">{locale.settingsHyphenationFr || "French"}</option>
-                          <option value="en">{locale.settingsHyphenationEn || "English"}</option>
+                          {hyphenationLanguageOptions().map(({ code, name }) => (
+                            <option key={code} value={code}>{name}</option>
+                          ))}
                           <option value="off">{locale.settingsHyphenationOff || "Off"}</option>
                         </select>
                       </div>

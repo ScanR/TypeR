@@ -11,6 +11,7 @@
 const ps = require("photoshop");
 const photoshop = require("./photoshop");
 const { prepareSmartPaste } = require("../../app_src/oneClick/smartPaste");
+const { needsHyphenationPatterns, registerHyphenationPatterns } = require("../../app_src/oneClick/hyphenation");
 const { fillFromMask, triggerClick, leakClick, captureSource } = require("../../app_src/oneClick/bubblePlan");
 const openBubble = require("../../app_src/oneClick/openBubble");
 const { box: boxOfPolygon } = require("../../app_src/oneClick/geometry");
@@ -490,6 +491,9 @@ async function smartPaste(request) {
   try {
     if (!request || !Array.isArray(request.lines)) return JSON.stringify({ ok: false, code: "noText" });
     const settings = request.settings || {};
+    // The patterns of a language other than French or English (bundled, but
+    // large) are only read when a paste hyphenates in it
+    if (needsHyphenationPatterns(settings.hyphenation)) registerHyphenationPatterns(require("../../app_src/textShapeRPatterns").default);
     const prepared = await prepareSmartPaste(request, {
       capture: (trigger) => captureSelection(trigger, { keepSize: !!settings.keepSize, autoClean: !!settings.autoClean }),
       measure: measureRequests,

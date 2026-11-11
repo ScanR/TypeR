@@ -23,6 +23,7 @@ import { TAB_FIELDS, createTab, migrateTabStorage, moveTab } from "./tabStorage"
 import { applyAutoTabNames, getNextDefaultTabName } from "./tabNames";
 import { getInterfaceLanguage } from "./interfaceLanguage";
 import { loadTextShapeREngine } from "./textShapeREngineLoader";
+import { normalizeSmartPasteHyphenation } from "./oneClick/hyphenationLanguages";
 import {
   cycleStyleSizePreset,
   normalizeStyleSizePresets,
@@ -59,10 +60,6 @@ const normalizeSmartPasteMinScale = (value) => {
   if (!Number.isFinite(num)) return SMART_PASTE_MIN_SCALE_DEFAULT;
   return Math.round(Math.min(1, Math.max(0.5, num)) * 100) / 100;
 };
-const SMART_PASTE_HYPHENATION_MODES = ["auto", "fr", "en", "off"];
-const normalizeSmartPasteHyphenation = (value) => (
-  SMART_PASTE_HYPHENATION_MODES.indexOf(value) !== -1 ? value : "auto"
-);
 // Transient toast shown above the footer (smart paste fallbacks, toggles)
 const NOTICE_KINDS = ["info", "warning"];
 let lastNoticeId = 0;
