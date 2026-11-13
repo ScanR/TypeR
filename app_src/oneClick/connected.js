@@ -164,13 +164,19 @@ const boundaryNeck = (poly, neck) => {
   return null;
 };
 
-// The clicked chamber first, then reading order: stacked chambers top first,
-// side by side ones right first in a manga and left first in a comic or a
-// manhwa (readingOrder "ltr"), whatever the text direction
+// The clicked chamber first. From an end of the chain the lines follow the
+// chain, its neighbour next: joined bubbles are read one into the other. From
+// the middle one, reading order: stacked chambers top first, side by side
+// ones right first in a manga and left first in a comic or a manhwa
+// (readingOrder "ltr"), whatever the text direction
 export const orderChambers = (plans, click, readingOrder) => {
   const current = plans.find((plan) => contains(plan.cleanPolygon, click));
   if (!current) return null;
   const remaining = plans.filter((plan) => plan !== current);
+  const touches = (plan) => (plan.necks || []).some((neck) => (current.necks || []).some((own) => sameNeck(own, neck)));
+  if (remaining.length === 2 && touches(remaining[0]) !== touches(remaining[1])) {
+    return [current, ...(touches(remaining[0]) ? remaining : remaining.reverse())];
+  }
   remaining.sort((p, q) => {
     const x = p.selection;
     const y = q.selection;

@@ -714,11 +714,19 @@ const linesInside = (session) => {
   }, adapterFor(tripleInput));
   assert.strictEqual(triple.consumed, 3, "three chambers");
   assert.ok(triple.sessions[0].text.axis > triple.sessions[1].text.axis && triple.sessions[1].text.axis > triple.sessions[2].text.axis, "right to left");
-  // Clicked in the left chamber: that one first, then the others right to left
+  // Clicked in the left chamber, an end of the chain: the lines follow the
+  // chain, the neighbour before the far chamber, even in a manga
   const tripleFromLeft = await prepareSmartPaste({
     trigger: { source: "wand" }, lines: [line("Un."), line("Deux."), line("Trois.")], roleStyles: {}, settings: { distribute: true },
   }, adapterFor({ ...tripleInput, click: { x: 300, y: 400 } }));
-  assert.deepStrictEqual(tripleFromLeft.sessions.map((s) => Math.round(s.plan.selection.xMid / 240)), [1, 3, 2], "clicked chamber, then right, then middle");
+  assert.deepStrictEqual(tripleFromLeft.sessions.map((s) => Math.round(s.plan.selection.xMid / 240)), [1, 2, 3], "clicked chamber, then its neighbour, then the far one");
+  // Clicked in the middle chamber: the two others in reading order
+  for (const [readingOrder, expected] of [["rtl", [2, 3, 1]], ["ltr", [2, 1, 3]]]) {
+    const fromMiddle = await prepareSmartPaste({
+      trigger: { source: "wand" }, lines: [line("Un."), line("Deux."), line("Trois.")], roleStyles: {}, settings: { distribute: true, readingOrder },
+    }, adapterFor({ ...tripleInput, click: { x: 540, y: 400 } }));
+    assert.deepStrictEqual(fromMiddle.sessions.map((s) => Math.round(s.plan.selection.xMid / 240)), expected, "middle chamber first, then " + readingOrder);
+  }
   // A comic or a manhwa reads left to right
   const comic = await prepareSmartPaste({
     trigger: { source: "wand" }, lines: [line("Un."), line("Deux."), line("Trois.")], roleStyles: {}, settings: { distribute: true, readingOrder: "ltr" },
