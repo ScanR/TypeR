@@ -158,9 +158,9 @@ const EditStyleModal = React.memo(function EditStyleModal() {
         setSizePresetDefaultIndex(0);
         setSizePresetMinWidths([null]);
       }
-      if (data.textType === "point" || data.textType === "paragraph") {
-        setTextType(data.textType);
-      }
+      // The layer's text type is not part of its style (as in Photoshop's
+      // character and paragraph styles): copying it made every style taken
+      // from a point text paste point text whatever the paste setting
       if (data.stroke) setStroke(data.stroke);
       setEdited(true);
     });
