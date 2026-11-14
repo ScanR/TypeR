@@ -7,3 +7,12 @@ export const getInterfaceLanguage = (state) => {
     return (typeof navigator !== "undefined" && navigator.language) || "";
   }
 };
+
+// The panel's layout follows its own language, never the text direction
+// setting: an English panel stays left to right while it types Arabic, and an
+// Arabic panel stays right to left for a left-to-right script
+const RTL_LANGUAGES = ["ar", "fa", "he", "ur"];
+export const getInterfaceDirection = (state) => {
+  const code = String(getInterfaceLanguage(state) || "").toLowerCase().split(/[_-]/)[0];
+  return RTL_LANGUAGES.includes(code) ? "rtl" : "ltr";
+};
