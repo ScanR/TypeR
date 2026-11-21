@@ -4,7 +4,7 @@ import "./editStyle.scss";
 import React from "react";
 import deepClone from "../../deepClone";
 import PropTypes from "prop-types";
-import { FiChevronDown, FiChevronUp, FiCopy, FiX, FiMinus, FiPlus, FiDownload } from "react-icons/fi";
+import { FiChevronDown, FiChevronUp, FiCopy, FiX, FiMinus, FiPlus, FiDownload, FiRefreshCw } from "react-icons/fi";
 import { TiSortAlphabetically } from "react-icons/ti";
 import { GiVerticalFlip, GiHorizontalFlip } from "react-icons/gi";
 import { TbAlphabetArabic } from "react-icons/tb";
@@ -33,6 +33,12 @@ import FontPicker from "./fontPicker";
 import { pickFamilyPreviewFont } from "../../fontPreview";
 import UnsavedChangesDialog from "./unsavedChangesDialog";
 import { importStyleFiles, reportStyleImport } from "../../styleImport";
+import {
+  generateRandomBackgroundPalettes,
+  getStyleItemColors,
+  normalizeStyleBackgroundColor,
+} from "../../styleBackground";
+import { toHex } from "../../themeColors";
 
 const BUBBLE_TYPES = ["shout", "narration"];
 const PUNCTUATION_ONLY_SCALES = [2, 3];
@@ -69,6 +75,9 @@ const EditStyleModal = React.memo(function EditStyleModal() {
   const [prefixes, setPrefixes] = React.useState(currentData.prefixes?.join("\n") || "");
   const [prefixColor, setPrefixColor] = React.useState(currentData.prefixColor || config.defaultPrefixColor);
   const [colorPickerOpen, setColorPickerOpen] = React.useState(false);
+  const [backgroundColor, setBackgroundColor] = React.useState(() => normalizeStyleBackgroundColor(currentData.backgroundColor));
+  const [bgPalette, setBgPalette] = React.useState(() => generateRandomBackgroundPalettes());
+  const [bgColorPickerOpen, setBgColorPickerOpen] = React.useState(false);
   const [stroke, setStroke] = React.useState(currentData.stroke || getDefaultStroke());
   const [strokePickerOpen, setStrokePickerOpen] = React.useState(false);
   const [edited, setEdited] = React.useState(false);
@@ -181,6 +190,26 @@ const EditStyleModal = React.memo(function EditStyleModal() {
     setEdited(true);
   };
 
+  const changeBackgroundColor = (e) => {
+    setBackgroundColor(toHex(e.hex || e));
+    setEdited(true);
+  };
+
+  const selectPaletteBackgroundColor = (color) => {
+    setBackgroundColor(normalizeStyleBackgroundColor(color));
+    setEdited(true);
+  };
+
+  const clearBackgroundColor = () => {
+    setBgColorPickerOpen(false);
+    setBackgroundColor("");
+    setEdited(true);
+  };
+
+  const shuffleBgPalette = () => {
+    setBgPalette(generateRandomBackgroundPalettes());
+  };
+
   const changeStrokeSize = (e) => {
     const newSize = parseFloat(e.target.value) || 0;
     setStroke({ ...stroke, size: newSize, enabled: newSize > 0 });
@@ -220,6 +249,7 @@ const EditStyleModal = React.memo(function EditStyleModal() {
       punctuationOnlyScale,
       prefixes,
       prefixColor,
+      backgroundColor: normalizeStyleBackgroundColor(backgroundColor),
       stroke: fixedStroke,
       bubbleType,
     };
@@ -415,6 +445,69 @@ const EditStyleModal = React.memo(function EditStyleModal() {
                   </div>
                 </div>
               </div>
+            </div>
+            <div className="field hostBrdTopContrast">
+              <div className="field-label">{locale.editStyleBackgroundColorLabel || "Background color"}</div>
+              <div className="field-input">
+                <div className="style-edit-bg-control">
+                  <div className="style-edit-color">
+                    {bgColorPickerOpen && (
+                      <React.Fragment>
+                        <div className="color-picker-overlay" onClick={() => setBgColorPickerOpen(false)}></div>
+                        <SketchPicker
+                          disableAlpha={true}
+                          color={backgroundColor || bgPalette[0]}
+                          onChange={changeBackgroundColor}
+                          presetColors={bgPalette}
+                        />
+                      </React.Fragment>
+                    )}
+                    <div
+                      className={"style-edit-color-sample" + (backgroundColor ? "" : " m-empty")}
+                      title={locale.editStyleColorButton}
+                      onClick={() => setBgColorPickerOpen(true)}
+                    >
+                      <div style={backgroundColor ? { background: backgroundColor } : undefined}></div>
+                      <span style={backgroundColor ? { color: getStyleItemColors(backgroundColor)?.color, textShadow: "none" } : undefined}>
+                        {backgroundColor || (locale.settingsColorDefault || "Default")}
+                      </span>
+                    </div>
+                  </div>
+                  {backgroundColor && (
+                    <button
+                      type="button"
+                      className="topcoat-button--large style-edit-bg-reset"
+                      onClick={clearBackgroundColor}
+                      title={locale.settingsColorReset || "Reset"}
+                    >
+                      {locale.settingsColorReset || "Reset"}
+                    </button>
+                  )}
+                </div>
+                <div className="style-edit-bg-palette" role="group" aria-label={locale.editStyleBackgroundPaletteLabel || "Random color palettes"}>
+                  {bgPalette.map((paletteColor, index) => (
+                    <button
+                      key={index + "-" + paletteColor}
+                      type="button"
+                      className={"style-edit-bg-swatch" + (backgroundColor && backgroundColor.toLowerCase() === paletteColor.toLowerCase() ? " m-active" : "")}
+                      style={{ backgroundColor: paletteColor }}
+                      title={paletteColor}
+                      aria-label={paletteColor}
+                      onClick={() => selectPaletteBackgroundColor(paletteColor)}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    className="topcoat-icon-button--large--quiet style-edit-bg-shuffle"
+                    onClick={shuffleBgPalette}
+                    title={locale.editStyleBackgroundShuffle || "New random palette"}
+                    aria-label={locale.editStyleBackgroundShuffle || "New random palette"}
+                  >
+                    <FiRefreshCw size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="field-descr">{locale.editStyleBackgroundColorDescr || "Choose a background color for this style in the list, or pick from the 10 random palettes."}</div>
             </div>
           </div>
           <div className="fields style-edit-actions hostBrdTopContrast">

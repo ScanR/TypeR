@@ -10,6 +10,7 @@ import { getNextLineNumberState } from "./lineNumbering";
 import { CUSTOM_IMAGE_THEME_ID, normalizeCustomThemes, normalizeEditorTheme, setCustomEditorThemes } from "./themePresets";
 import { normalizeBackgroundImage } from "./backgroundImage";
 import { toggleStyleStroke } from "./styleStroke";
+import { normalizeStyleBackgroundColor } from "./styleBackground";
 import { applyThemeState } from "./lib/themeManager";
 import { getDefaultShortcuts, migrateShortcutDefaults } from "./shortcutCommands";
 import { getStoredSelectionLineIndex } from "./multiBubbleHistory";
@@ -937,6 +938,9 @@ const baseReducer = (state, action) => {
       }
       stylePayload.sizePresets = normalizeStyleSizePresets(stylePayload);
       Object.assign(stylePayload, normalizeStyleSizePresetWidthConfig(stylePayload));
+      if ("backgroundColor" in stylePayload) {
+        stylePayload.backgroundColor = normalizeStyleBackgroundColor(stylePayload.backgroundColor);
+      }
       const editId = action.id || stylePayload.id;
       const styleExists = state.styles.some((s) => s.id === editId);
       newState.styles = styleExists
