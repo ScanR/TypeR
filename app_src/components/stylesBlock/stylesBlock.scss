@@ -209,6 +209,21 @@
     color: #fff;
     opacity: 1;
   }
+  &.m-has-bg {
+    opacity: 0.92;
+    &:hover {
+      opacity: 1;
+    }
+    &.m-current {
+      background: inherit;
+      color: inherit;
+      outline: 2px solid var(--editor-accent, #288edf) !important;
+      outline-offset: -2px;
+      .topcoat-icon-button--large--quiet.m-cta {
+        color: inherit;
+      }
+    }
+  }
   &.m-drop-top,
   &.m-drop-right,
   &.m-drop-bottom,

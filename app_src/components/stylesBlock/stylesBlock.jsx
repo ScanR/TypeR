@@ -18,6 +18,7 @@ import { createFontPreviewRegistry, getFontPreviewFamily } from "../../fontPrevi
 import { notePerfRender } from "../../perfDebug";
 import { getStyleTextSize, normalizeStyleSizePresets, parseStyleSize, sanitizeStyleSizeInput, stepStyleSize } from "../../styleSizePresets";
 import { isStyleStrokeOn } from "../../styleStroke";
+import { getStyleItemColors } from "../../styleBackground";
 import { setStyleImportReporter } from "../../styleImportReporter";
 
 // Loaded on first use, like the import code: neither is needed at startup
@@ -743,6 +744,14 @@ const StyleItem = React.memo(function StyleItem(props) {
   const layerText = props.style.textProps?.layerText || {};
   const textStyle = layerText.textStyleRange?.[0]?.textStyle || {};
   const styleObject = getStyleObject(textStyle);
+  const bgColors = getStyleItemColors(props.style.backgroundColor);
+  const hasStroke = isStyleStrokeOn(props.style);
+  const itemStyle = bgColors || hasStroke
+    ? {
+        ...(bgColors || {}),
+        ...(hasStroke ? { boxShadow: "inset 0 0 0 2px " + rgbToHex(props.style.stroke.color) } : {}),
+      }
+    : undefined;
   const fontPreviewRegistry = React.useContext(FontPreviewContext);
   const prefixes = props.style.prefixes || [];
   const dispatch = props.dispatch;
@@ -851,6 +860,10 @@ const StyleItem = React.memo(function StyleItem(props) {
     e.dataTransfer.setData("text/plain", props.style.id);
     const preview = document.createElement("div");
     preview.className = "style-drag-preview";
+    if (bgColors) {
+      preview.style.background = bgColors.backgroundColor;
+      preview.style.color = bgColors.color;
+    }
     const color = document.createElement("span");
     color.className = "style-drag-preview-color";
     color.style.background = rgbToHex(textStyle.color);
@@ -863,7 +876,7 @@ const StyleItem = React.memo(function StyleItem(props) {
     window.setTimeout(() => {
       if (preview.parentNode) preview.parentNode.removeChild(preview);
     }, 0);
-  }, [props.style.id, props.style.name, textStyle.color]);
+  }, [props.style.id, props.style.name, textStyle.color, bgColors]);
 
   const endDrag = React.useCallback(() => {
     currentDraggingStyleId = null;
@@ -886,9 +899,10 @@ const StyleItem = React.memo(function StyleItem(props) {
   return (
     <div
       id={props.style.id}
-      style={isStyleStrokeOn(props.style) ? { boxShadow: "inset 0 0 0 2px " + rgbToHex(props.style.stroke.color) } : undefined}
+      style={itemStyle}
       className={
-        "style-item hostBgdLight" +
+        "style-item" +
+        (bgColors ? " m-has-bg" : " hostBgdLight") +
         (props.active ? " m-current" : "") +
         (props.style.prefixesDisabled ? " m-disabled" : "") +
         (props.dropEdge ? " m-drop-" + props.dropEdge : "")

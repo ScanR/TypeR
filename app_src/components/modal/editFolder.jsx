@@ -7,6 +7,7 @@ import {FiX} from "react-icons/fi";
 import {MdDelete, MdCancel, MdSave} from "react-icons/md";
 
 import {locale, nativeAlert, nativeConfirm, getStyleObject, rgbToHex} from '../../utils';
+import { getStyleItemColors } from '../../styleBackground';
 import {useContext} from '../../context';
 import {buildFolderTree, flattenFolderTree, collectDescendantIds} from '../../folderUtils';
 import FontScanPromo from './fontScanPromo';
@@ -297,9 +298,10 @@ FolderStylesList.propTypes = {
 const StylePreview = React.memo(function StylePreview(props) {
     const textStyle = props.style.textProps?.layerText?.textStyleRange?.[0]?.textStyle || {};
     const styleObject = getStyleObject(textStyle);
+    const bgColors = getStyleItemColors(props.style.backgroundColor);
     const previewStyle = {
         ...styleObject,
-        color: '#fff',
+        color: bgColors ? bgColors.color : '#fff',
         fontFamily: styleObject.fontFamily || 'Tahoma'
     };
     if (props.style.stroke?.enabled && props.style.stroke?.size > 0) {
@@ -313,7 +315,7 @@ const StylePreview = React.memo(function StylePreview(props) {
     }
 
     return (
-        <div className="folder-style-preview" title={props.style.name}>
+        <div className="folder-style-preview" style={bgColors ? { backgroundColor: bgColors.backgroundColor } : undefined} title={props.style.name}>
             <span style={previewStyle}>Aa</span>
         </div>
     );

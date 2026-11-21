@@ -249,7 +249,7 @@ body[data-editor-theme]:not([data-editor-theme="system"]) {
 
   .topcoat-button--cta,
   .topcoat-button--large--cta,
-  .style-item.m-current {
+  .style-item.m-current:not(.m-has-bg) {
     background: var(--editor-accent) !important;
     border-color: var(--editor-accent) !important;
     color: var(--editor-accentText) !important;
