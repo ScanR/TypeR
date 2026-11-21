@@ -1,5 +1,6 @@
 import React from "react";
 import { getFontFamilies, getFontViewerStatus } from "./fontViewerApi";
+import { isNetworkDisabled } from "./network";
 import { isFontInstallSupported } from "./fontInstaller";
 import { findFontFinderMatch, getMatchTargetKey } from "./fontFinderMatch";
 import { installFontFinderFamilies, readInstalledFontIds } from "./fontFinderInstall";
@@ -61,6 +62,11 @@ const useFontFinderMatches = (targets, onFonts) => {
 
   React.useEffect(() => {
     if (!supported) return undefined;
+    if (isNetworkDisabled()) {
+      setAvailable(false);
+      setChecked(true);
+      return undefined;
+    }
     let active = true;
     getFontViewerStatus().then(
       (status) => {

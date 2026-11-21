@@ -9,8 +9,9 @@ import config from "./config";
 import { windowsPackageUrl } from "./updateLogic";
 import { downloadAndInstallUpdate, getUpdateTestConfig, locale, nativeAlert } from "./utils";
 
-export const useUxpPlatformPackage = () => {
+export const useUxpPlatformPackage = (disableNetwork = false) => {
   React.useEffect(() => {
+    if (disableNetwork) return;
     const host = typeof window !== "undefined" ? window.typerUXP : null;
     if (!host) return;
     const testConfig = getUpdateTestConfig();
@@ -31,5 +32,5 @@ export const useUxpPlatformPackage = () => {
         { expectedVersion: config.appVersion }
       );
     });
-  }, []);
+  }, [disableNetwork]);
 };

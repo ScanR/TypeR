@@ -510,6 +510,20 @@ const startupFiles = createStartupLoader({
   describe: keyboardAddonState,
 });
 
+function readStoredProfileSetting(stored, key, fallback) {
+  try {
+    let storage = "storage";
+    try {
+      const profile = "storage_profile_" + String(JSON.parse(stored.storage_profiles || "{}").activeProfileId || "");
+      if (profile !== "storage_profile_default" && typeof stored[profile] === "string") storage = profile;
+    } catch (registryError) {}
+    const parsed = JSON.parse(stored[storage] || "{}");
+    return parsed && Object.prototype.hasOwnProperty.call(parsed, key) ? parsed[key] : fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
 async function init() {
   if (!mirrorFiles) {
     const loaded = await startupFiles.get();
@@ -519,6 +533,7 @@ async function init() {
       mirrorFiles = { files: loaded.files, locales: loaded.locales };
     }
   }
+  services.setNetworkDisabled(readStoredProfileSetting(mirrorFiles.files, "disableNetwork", false) === true);
   return {
     extensionId: EXTENSION_ID,
     extensionRoot: "/typer",

@@ -5,7 +5,7 @@ import {readUxpMigrationState, startupUxpGuide} from '../../uxpMigration';
 import config from '../../config';
 import {getWhatsNewDock, isTourModal, restoreTourTuning, whatsNewSession} from '../../whatsNewSession';
 import {getGuideStyle} from '../../whatsNewGuide';
-import {fetchBody} from '../../network';
+import {fetchBody, isNetworkDisabled} from '../../network';
 import {
     STUDIO_PROMO_OFF_KEY,
     STUDIO_PROMO_RECORD_KEY,
@@ -198,7 +198,7 @@ const Modal = React.memo(function Modal() {
             setStudioPromo({promo: {id: 1}, test: true});
             return undefined;
         }
-        if (!knownUser.current || readStorage(STUDIO_PROMO_OFF_KEY) === true) return undefined;
+        if (isNetworkDisabled() || !knownUser.current || readStorage(STUDIO_PROMO_OFF_KEY) === true) return undefined;
         let active = true;
         fetchBody(STUDIO_PROMO_URL, {}, 'json', 10000).then((data) => {
             const promo = parseStudioPromo(data);

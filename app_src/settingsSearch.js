@@ -39,6 +39,13 @@ const SECTIONS = [
   },
   {
     tab: "general",
+    group: "settingsGroupNetwork",
+    entries: [
+      { title: "settingsDisableNetworkLabel", hint: "settingsDisableNetworkHint", keywords: "network offline internet privacy disable block reseau hors ligne" },
+    ],
+  },
+  {
+    tab: "general",
     group: "settingsGroupMaintenance",
     entries: [
       { title: "settingsClearCache", hint: "settingsClearCacheHint", requires: "clearCache", keywords: "vider nettoyer espace disque disk space temporary" },
