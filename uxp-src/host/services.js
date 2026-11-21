@@ -332,9 +332,17 @@ async function installFonts(fontFiles, registrationScript) {
 
 /* ======================== network ========================= */
 
+let networkDisabled = false;
+
+function setNetworkDisabled(disabled) {
+  networkDisabled = !!disabled;
+  return networkDisabled;
+}
+
 // Requests the WebView refuses (CORS), made from the host; see
 // uxp-src/web/domShims.js installFetchFallback
 async function fetchUrl(url, options = {}) {
+  if (networkDisabled) throw new Error("networkDisabled");
   if (!/^https?:\/\//i.test(String(url))) throw new Error("Unsupported URL");
   const response = await fetch(String(url), {
     method: options.method || "GET",
@@ -525,6 +533,7 @@ module.exports = {
   renameLegacyPanel,
   bytesToBase64,
   base64ToBytes,
+  setNetworkDisabled,
   requests: {
     showOpenDialog,
     showSaveDialog,
@@ -534,6 +543,7 @@ module.exports = {
     stat,
     exportZipWithFonts,
     fetchUrl,
+    setNetworkDisabled,
     installFonts: (fontFiles) => installFonts(fontFiles, buildWindowsRegistrationScript),
     installUpdatePackage,
     pluginVersion: () => readManifestVersion(),

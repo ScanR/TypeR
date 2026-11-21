@@ -134,6 +134,7 @@ const SettingsModal = React.memo(function SettingsModal() {
     resizeTextBoxOnCenter: state.resizeTextBoxOnCenter,
     checkUpdates: state.checkUpdates,
     autoUpdate: state.autoUpdate,
+    disableNetwork: state.disableNetwork,
     multiBubbleMode: state.multiBubbleMode,
     autoCenterMode: state.autoCenterMode,
     smartPaste: state.smartPaste,
@@ -191,6 +192,9 @@ const SettingsModal = React.memo(function SettingsModal() {
   );
   const [autoUpdate, setAutoUpdate] = React.useState(
     context.state.autoUpdate === true
+  );
+  const [disableNetwork, setDisableNetwork] = React.useState(
+    context.state.disableNetwork === true
   );
   const [multiBubbleMode, setMultiBubbleMode] = React.useState(
     !!context.state.multiBubbleMode
@@ -362,6 +366,15 @@ const SettingsModal = React.memo(function SettingsModal() {
   }, [context.state.smartPasteAutoClean]);
 
   React.useEffect(() => {
+    setDisableNetwork(context.state.disableNetwork === true);
+  }, [context.state.disableNetwork]);
+
+  React.useEffect(() => {
+    if (disableNetwork) {
+      setFontViewerAvailable(false);
+      setActiveTab((tab) => (tab === "fontViewer" ? DEFAULT_SETTINGS_TAB : tab));
+      return undefined;
+    }
     let active = true;
     getFontViewerStatus()
       .then((status) => {
@@ -375,7 +388,7 @@ const SettingsModal = React.memo(function SettingsModal() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [disableNetwork]);
 
   const shortcutGroups = React.useMemo(
     () => groupShortcutCommands(shortcutCommands).map((group) => ({ ...group, label: locale[group.labelKey] || group.fallback })),
@@ -562,6 +575,11 @@ const SettingsModal = React.memo(function SettingsModal() {
 
   const changeAutoUpdate = (e) => {
     setAutoUpdate(e.target.checked);
+    setEdited(true);
+  };
+
+  const changeDisableNetwork = (e) => {
+    setDisableNetwork(e.target.checked);
     setEdited(true);
   };
 
@@ -994,6 +1012,12 @@ const SettingsModal = React.memo(function SettingsModal() {
         value: autoUpdate,
       });
     }
+    if (disableNetwork !== context.state.disableNetwork) {
+      context.dispatch({
+        type: "setDisableNetwork",
+        value: disableNetwork,
+      });
+    }
     if (multiBubbleMode !== context.state.multiBubbleMode) {
       context.dispatch({
         type: "setMultiBubbleMode",
@@ -1247,13 +1271,22 @@ const SettingsModal = React.memo(function SettingsModal() {
   };
 
   const checkUpdatesNow = () => {
+    if (disableNetwork || context.state.disableNetwork) {
+      nativeAlert(locale.settingsNetworkDisabledError || "Network calls are disabled in Settings.", locale.errorTitle, true);
+      return;
+    }
     checkUpdate(config.appVersion).then((data) => {
       if (data) {
         leaveSettings(() => context.dispatch({ type: "setModal", modal: "update", data }));
       } else {
         nativeAlert(locale.updateNoUpdate, locale.successTitle, false);
       }
-    }).catch(() => nativeAlert(locale.updateCheckFailed, locale.errorTitle, true));
+    }).catch((error) => {
+      const msg = error && error.message === "networkDisabled"
+        ? (locale.settingsNetworkDisabledError || "Network calls are disabled in Settings.")
+        : locale.updateCheckFailed;
+      nativeAlert(msg, locale.errorTitle, true);
+    });
   };
 
   const resetStorage = () => {
@@ -1461,7 +1494,13 @@ const SettingsModal = React.memo(function SettingsModal() {
                 )}
               </div>
               <div className="field">
-                <button type="button" className="topcoat-button--large" onClick={checkUpdatesNow}>
+                <button
+                  type="button"
+                  className="topcoat-button--large"
+                  onClick={checkUpdatesNow}
+                  disabled={disableNetwork}
+                  title={disableNetwork ? (locale.settingsNetworkDisabledError || "Network calls are disabled in Settings.") : undefined}
+                >
                   {locale.settingsCheckUpdatesButton}
                 </button>
               </div>
@@ -1470,7 +1509,7 @@ const SettingsModal = React.memo(function SettingsModal() {
                 <div className="settings-checkbox-hint">
                   {locale.settingsUxpMigrationHint || "Your Photoshop can run the new TypeR (UXP), the faster version of the panel."}
                 </div>
-                <button type="button" className="topcoat-button--large" onClick={openUxpMigration}>
+                <button type="button" className="topcoat-button--large" onClick={openUxpMigration} disabled={disableNetwork}>
                   {locale.settingsUxpMigrationButton || "Switch to the new TypeR"}
                 </button>
               </div>
@@ -1482,6 +1521,17 @@ const SettingsModal = React.memo(function SettingsModal() {
                 </div>
               </div>
               )}
+            </div>
+            <div className="settings-group">
+              <div className="settings-group-title">{locale.settingsGroupNetwork || "Network"}</div>
+              <div className="settings-checkbox-grid">
+                {renderToggle(
+                  disableNetwork,
+                  changeDisableNetwork,
+                  locale.settingsDisableNetworkLabel || "Disable all network calls",
+                  locale.settingsDisableNetworkHint || "Block all internet requests from TypeR, including update checks, Font FindeR lookups and previews, Studio news, and video guide checks"
+                )}
+              </div>
             </div>
             {cacheInfo.supported && (
             <div className="settings-group">

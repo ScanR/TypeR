@@ -113,6 +113,9 @@ export function installFetchFallback() {
     return bytes;
   };
   window.fetch = async (input, init = {}) => {
+    if (typeof window !== "undefined" && window.__typerNetworkDisabled === true) {
+      throw new Error("networkDisabled");
+    }
     try {
       return await nativeFetch(input, init);
     } catch (error) {

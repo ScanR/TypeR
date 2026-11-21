@@ -105,7 +105,7 @@ export const serializeStyle = (style) => {
 // the background picture, which is a file of its own.
 export const EXPORTED_SETTINGS = [
   'textScale', 'textSizeIncrement', 'pastePointText', 'ignoreLinePrefixes', 'ignoreTags', 'defaultStyleId',
-  'autoClosePSD', 'checkUpdates', 'autoUpdate', 'currentFolderTagPriority', 'resizeTextBoxOnCenter', 'shortcut',
+  'autoClosePSD', 'checkUpdates', 'autoUpdate', 'disableNetwork', 'currentFolderTagPriority', 'resizeTextBoxOnCenter', 'shortcut',
   'language', 'direction', 'readingOrder', 'autoCenterMode', 'smartPaste', 'pasteOnClick', 'smartPasteAutoClean',
   'smartPasteDistribute', 'smartPasteMinScale', 'smartPasteHyphenation', 'refontRules', 'showTips',
   'showQuickStyleSize', 'inlineTextShapeR', 'textShapeRBubbleAware', 'dehyphenateTextShapeR',

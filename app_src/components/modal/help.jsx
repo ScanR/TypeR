@@ -1,6 +1,6 @@
 import './help.scss';
 
-import { fetchBody } from "../../network";
+import { fetchBody, isNetworkDisabled } from "../../network";
 import React from 'react';
 import {
     FiAlignLeft,
@@ -91,7 +91,7 @@ const HelpModal = React.memo(function HelpModal() {
     const shortcut = context.state.shortcut || {};
 
     React.useEffect(() => {
-        if (readStorage(VIDEO_GUIDE_CURRENT_SEEN_KEY) === true) return undefined;
+        if (isNetworkDisabled() || readStorage(VIDEO_GUIDE_CURRENT_SEEN_KEY) === true) return undefined;
 
         let active = true;
         fetchBody(`${VIDEO_CONFIG_URL}?v=${Date.now()}`, {cache: 'no-store'})

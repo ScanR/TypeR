@@ -18,6 +18,7 @@ import {
 import { getUserFonts, locale, openUrl, refreshUserFonts } from "../../utils";
 import { uint8ToBase64 } from "../../updateInstaller";
 import { FONT_VIEWER_API_BASE, getFontFamilies, getFontFilters } from "../../fontViewerApi";
+import { isNetworkDisabled } from "../../network";
 import { installFontFiles, isFontInstallSupported } from "../../fontInstaller";
 import { fetchFontFinderFiles, fetchWithConcurrency, safeFileName, scheduleFontRefresh } from "../../fontFinderInstall";
 import { getRemainingPages, shuffleFamilies } from "../../fontViewerRandom";
@@ -208,25 +209,27 @@ const sortFamilies = (families, sort) => {
 const LazyFontPreview = ({ font, text, uppercase }) => {
   const ref = React.useRef(null);
   const [ready, setReady] = React.useState(false);
+  const networkDisabled = isNetworkDisabled();
 
   React.useEffect(() => {
     setReady(false);
+    if (networkDisabled) return undefined;
     const element = ref.current;
     if (!element) {
       setReady(true);
       return undefined;
     }
     return observeVisibility(element, () => setReady(true));
-  }, [font.id]);
+  }, [font.id, networkDisabled]);
 
   const fontFamily = `TypeRRemoteFont${font.id}`;
   const previewUrl = `${FONT_VIEWER_API_BASE}/fonts/${Number(font.id)}/file`;
   return (
     <div ref={ref} className="font-viewer-card-preview">
-      {ready && (
+      {ready && !networkDisabled && (
         <style>{`@font-face{font-family:"${fontFamily}";src:url("${previewUrl}");font-display:swap;}`}</style>
       )}
-      <span style={ready ? { fontFamily: `"${fontFamily}"` } : null}>
+      <span style={ready && !networkDisabled ? { fontFamily: `"${fontFamily}"` } : null}>
         {uppercase ? String(text).toUpperCase() : text}
       </span>
     </div>
@@ -492,7 +495,11 @@ const FontViewer = () => {
       snapshotSilenceRef.current = false;
       // A failed silent revalidation keeps the cached list browsable instead
       // of replacing it with the error screen.
-      if (!silent) setError(requestError && requestError.message === "rateLimited" ? "rateLimited" : "requestFailed");
+      if (!silent) {
+        if (requestError && requestError.message === "rateLimited") setError("rateLimited");
+        else if (requestError && requestError.message === "networkDisabled") setError("networkDisabled");
+        else setError("requestFailed");
+      }
       setLoading(false);
       setSettledRequest(currentRequest);
     });
@@ -1003,7 +1010,7 @@ const FontViewer = () => {
 
       {error ? (
         <div className="font-viewer-empty m-error">
-          <strong>{error === "rateLimited" ? locale.fontViewerRateLimited : locale.fontViewerLoadError}</strong>
+          <strong>{error === "rateLimited" ? locale.fontViewerRateLimited : error === "networkDisabled" ? (locale.settingsNetworkDisabledError || locale.fontViewerUnavailable) : locale.fontViewerLoadError}</strong>
           <button type="button" className="topcoat-button--large" onClick={() => { setPage(1); setRetryToken((value) => value + 1); }}>
             <FiRefreshCw size={13} /> {locale.fontViewerRetry}
           </button>
